@@ -3,7 +3,20 @@
 import hashlib
 import json
 import re
+import shutil
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
+
+
+@contextmanager
+def artifact_output(path):
+    """仅清理由本次调用新建的失败产物，不删除或覆盖已有输出。"""
+    path.mkdir(parents=True, exist_ok=False)
+    try:
+        yield path
+    except BaseException:
+        shutil.rmtree(path)
+        raise
 
 
 def sha256(path):

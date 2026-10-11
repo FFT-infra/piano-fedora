@@ -76,7 +76,7 @@ def stage_boot_diagnostics(root):
         "etc/systemd/system/gdm.service.d/20-piano-display.conf":
             "[Unit]\nRequires=piano-display.service\nAfter=piano-display.service\n",
         "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf":
-            "[Unit]\nRequires=piano-camera.service\nAfter=piano-camera.service\n"
+            "[Unit]\nWants=piano-camera.service\nAfter=piano-camera.service\n"
             "StartLimitIntervalSec=60\nStartLimitBurst=3\n",
     }
     for name, text in files.items():

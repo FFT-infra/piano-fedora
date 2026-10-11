@@ -197,9 +197,9 @@ jobs:
           tool.build(Path('build/abl-source-layout/debian-piano'),
                      source / 'boot/dtbo-piano-power.dts', Path('build/dtbo-abl-storage.img'), 'dtc')
           PY
-          sudo python3 scripts/build-initramfs.py --rootfs build/device-root/rootfs \
+          python3 scripts/build-initramfs.py --rootfs build/device-root/rootfs \
             --kernel build/kernel --output build/initramfs-abl --boot-chain abl-storage --abl-source "$source"
-          sudo python3 scripts/build-abl-diagnostic.py --kernel build/kernel \
+          python3 scripts/build-abl-diagnostic.py --kernel build/kernel \
             --initramfs build/initramfs-abl --source "$source" \
             --dtbo build/dtbo-abl-storage.img --output build/diagnostic-abl-storage
           sudo tar -I 'zstd -6 -T0' -cf diagnostic-abl-storage.tar.zst -C build/diagnostic-abl-storage .

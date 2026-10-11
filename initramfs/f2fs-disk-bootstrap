@@ -26,23 +26,19 @@ start_debug() {
     if /usr/local/sbin/piano-debug-bootstrap start &&
        [ -r /run/piano-debug/boot-id ] && [ -r /run/piano-debug/udc ]; then
         debug_started=1
-        setsid /bin/sh -c '
-            while :; do
-                /usr/local/sbin/piano-debug-bootstrap serial
-                sleep 5
-            done
-        ' &
+        # 正常启动只转发 kmsg；getty 会自行创建会话，只在不会再交接的救援路径启动。
+        (exec /bin/cat /dev/kmsg >/dev/ttyGS0) &
         debug_serial_pid=$!
-        log 'DEBUG_READY: ACM console requested; NCM address 192.168.77.1/30'
+        log 'DEBUG_READY: ACM kernel log requested; NCM address 192.168.77.1/30'
     else
         log 'DEBUG_UNAVAILABLE: USB setup failed; physical console remains available'
     fi
 }
 stop_debug_serial() {
     [ -n "$debug_serial_pid" ] || return 0
-    # 只结束本入口创建的独立会话，避免旧 initramfs 的 getty 跨根交接遗留。
-    kill -TERM -- "-$debug_serial_pid" 2>/dev/null || :
-    wait "$debug_serial_pid" 2>/dev/null || :
+    # 结束本入口创建的单进程日志转发器，不跨根保留旧 initramfs 进程。
+    # 不在启动关键路径等待串口退出，避免设备未读数据拖住 switch_root。
+    kill -KILL "$debug_serial_pid" 2>/dev/null || :
     debug_serial_pid=
     # gadget 与 NCM 地址保留，真实 Fedora 的 sshd 可接管。
 }
@@ -62,6 +58,15 @@ fail() {
     if mountpoint -q /dev && mountpoint -q /proc &&
        mountpoint -q /sys && mountpoint -q /run; then
         start_debug
+        stop_debug_serial
+        if [ "$debug_started" -eq 1 ]; then
+            (
+                while :; do
+                    /usr/local/sbin/piano-debug-bootstrap serial
+                    sleep 5
+                done
+            ) &
+        fi
     fi
     console=/dev/console
     [ -c "$console" ] || console=/sysroot/dev/console

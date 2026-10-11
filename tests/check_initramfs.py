@@ -61,14 +61,15 @@ def build_fixture(tmp, busybox):
     if blkid:
         shutil.copy2(blkid, rootfs / "usr" / "bin" / "blkid")
         for library in ("libblkid.so.1", "libc.so.6"):
-            for directory in ("/usr/lib64", "/lib64", "/usr/lib"):
+            for directory in ("/usr/lib64", "/lib64", "/usr/lib", "/usr/lib/aarch64-linux-gnu", "/lib/aarch64-linux-gnu"):
                 source = Path(directory) / library
                 if source.exists():
                     shutil.copy2(source.resolve(), rootfs / "lib64" / library)
                     break
-        loader = Path("/usr/lib/ld-linux-aarch64.so.1")
-        if loader.exists():
-            shutil.copy2(loader, rootfs / "lib" / "ld-linux-aarch64.so.1")
+        for loader in (Path("/usr/lib/ld-linux-aarch64.so.1"), Path("/lib/ld-linux-aarch64.so.1")):
+            if loader.exists():
+                shutil.copy2(loader.resolve(), rootfs / "lib" / "ld-linux-aarch64.so.1")
+                break
 
     rescue = rootfs / "usr/local/sbin/piano-debug-bootstrap"
     rescue.parent.mkdir(parents=True)

@@ -69,7 +69,8 @@ def main():
         assert "Requires=piano-display.service" in gdm.read_text()
         assert "After=piano-display.service" in gdm.read_text()
         camera = root / "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf"
-        assert "Requires=piano-camera.service" in camera.read_text()
+        assert "Wants=piano-camera.service" in camera.read_text()
+        assert "Requires=" not in camera.read_text()
         assert "StartLimitBurst=3" in camera.read_text()
         assert not (root / "etc/systemd/system/piano-camerad.service").is_symlink()
         assert (root / "usr/bin/piano-collect-boot").stat().st_mode & 0o111

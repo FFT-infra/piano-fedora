@@ -96,7 +96,7 @@ jobs:
       - name: Build initramfs
         run: |
           set -euo pipefail
-          sudo python3 scripts/build-initramfs.py \
+          python3 scripts/build-initramfs.py \
             --rootfs stage/rootfs/rootfs \
             --kernel stage/kernel \
             --output initramfs-out

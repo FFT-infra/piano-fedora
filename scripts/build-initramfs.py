@@ -29,7 +29,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from piano_artifacts import inspect_kernel
+from piano_artifacts import artifact_output, inspect_kernel
 
 ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = ROOT / "initramfs" / "f2fs-disk-bootstrap"
@@ -43,7 +43,7 @@ APPLETS = (
     "sh", "cat", "mkdir", "mount", "mountpoint", "chmod", "uname", "chroot",
     "switch_root", "sleep", "insmod", "umount", "grep", "tr", "id", "awk",
     "readlink", "rm", "rmdir", "ln", "ip", "reboot", "getty", "kill",
-    "dmesg", "tail", "head", "ls", "sed", "date", "ps", "sort", "setsid",
+    "dmesg", "tail", "head", "ls", "sed", "date", "ps", "sort",
 )
 
 # 早期硬件准备需要按序加载的模块，与上游 disk bootstrap 的种子一致。
@@ -252,7 +252,8 @@ def make_newc(entries):
     seen = set()
     for inode, record in enumerate(entries + [{"name": "TRAILER!!!", "mode": 0, "data": b""}], 1):
         name, mode, data = record["name"], record["mode"], record.get("data", b"")
-        if (not name or name.startswith("/") or "\0" in name or ".." in name.split("/")):
+        if (not name or name.startswith("/") or "\0" in name or
+                any(part in ("", ".", "..") for part in name.split("/"))):
             raise InitramfsError(f"invalid archive path: {name!r}")
         if name in seen:
             raise InitramfsError(f"duplicate archive path: {name}")
@@ -315,17 +316,49 @@ def inspect_newc(archive):
     raise InitramfsError("newc archive has no trailer")
 
 
-def verify_archive(archive):
+def verify_archive(archive, kernel_manifest=None, expected_chain=None):
     """检查实际 cpio 的入口、链接和每个 ELF 的传递依赖。"""
     records = inspect_newc(archive)
     rows = {row["name"]: row for row in records}
     for name in ("init", "pianoinit", "bin/busybox", "usr/bin/blkid",
                  "etc/piano/root-label", "etc/piano/root-partname",
-                 "etc/piano/kernel-release", "etc/piano/modules-load-order"):
+                 "etc/piano/kernel-release", "etc/piano/modules-load-order", "etc/piano/boot-chain"):
         if name not in rows:
             raise InitramfsError(f"required archive member missing: {name}")
     if rows["init"]["data"] != rows["pianoinit"]["data"]:
         raise InitramfsError("init and pianoinit select different bootstraps")
+    chain = rows["etc/piano/boot-chain"]["data"].decode().strip()
+    if chain not in BOOT_CHAINS or (expected_chain is not None and chain != expected_chain):
+        raise InitramfsError("archive boot chain differs from its consumer")
+    release = rows["etc/piano/kernel-release"]["data"].decode().strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.+-]{1,128}", release):
+        raise InitramfsError("archive kernel release is invalid")
+    if kernel_manifest is not None:
+        if release != kernel_manifest["kernel_release"]:
+            raise InitramfsError("archive and sealed kernel releases differ")
+        modules = {row["path"]: row for row in kernel_manifest["modules"]}
+        for name, row in rows.items():
+            if name.endswith(".ko"):
+                if name not in modules or hashlib.sha256(row["data"]).hexdigest() != modules[name]["sha256"]:
+                    raise InitramfsError(f"archive module differs from sealed kernel: {name}")
+    ordered = []
+    for line in rows["etc/piano/modules-load-order"]["data"].decode().splitlines():
+        words = line.split()
+        if len(words) != 2 or not words[1].startswith(f"/lib/modules/{release}/") or words[1].lstrip("/") not in rows:
+            raise InitramfsError("module load order refers to a missing or foreign module")
+        if words[0] != module_name(words[1]):
+            raise InitramfsError("module load order name differs from its module path")
+        ordered.append(words[0])
+    if not ordered or len(ordered) != len(set(ordered)):
+        raise InitramfsError("empty or duplicate early module load order")
+    if chain == "abl-storage":
+        if any(name in ordered for name in ("arm_smmu", "pinctrl_sm8750")):
+            raise InitramfsError("ABL probe contains a native hardware takeover module")
+        helper = rows.get("usr/bin/piano-qup-smmu", {})
+        if not stat.S_ISREG(helper.get("mode", 0)) or not helper["mode"] & 0o111:
+            raise InitramfsError("ABL probe is missing its executable upstream helper")
+    elif "usr/bin/piano-qup-smmu" in rows:
+        raise InitramfsError("legacy ABL hardware helper entered the SunUEFI archive")
     for name in ("init", "pianoinit", "bin/busybox", "usr/bin/blkid"):
         if not stat.S_ISREG(rows[name]["mode"]) or not rows[name]["mode"] & 0o111:
             raise InitramfsError(f"required program is not executable: {name}")
@@ -346,6 +379,9 @@ def verify_archive(archive):
                 raise InitramfsError(f"broken archive link: {name}")
         if row["data"].startswith(b"\x7fELF"):
             needed, interpreters = elf_dependencies_bytes(row["data"], name)
+            if (struct.unpack_from("<H", row["data"], 16)[0] == 1
+                    and not (name.startswith(f"lib/modules/{release}/") and name.endswith(".ko"))):
+                raise InitramfsError(f"relocatable ELF is not a kernel module: {name}")
             for interpreter in interpreters:
                 if interpreter.lstrip("/") not in rows:
                     raise InitramfsError(f"missing interpreter for {name}: {interpreter}")
@@ -360,6 +396,7 @@ def verify_archive(archive):
     if re.search(rb"(?<![/\w-])blkid\s+-p", rows["pianoinit"]["data"]):
         raise InitramfsError("bootstrap must call /usr/bin/blkid explicitly")
     return {"entries": len(rows), "elf_closure_verified": True,
+            "module_identities_verified": kernel_manifest is not None,
             "relative_links_verified": True, "canonical_blkid_verified": True}
 
 
@@ -381,6 +418,12 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
     if not manifest_path.is_file():
         raise InitramfsError(f"kernel manifest missing: {manifest_path}")
     kernel_manifest, kernel_hash = inspect_kernel(kernel)
+    if boot_chain == "abl-storage":
+        config = dict(line.split("=", 1) for line in (kernel / "config").read_text().splitlines()
+                      if line.startswith("CONFIG_") and "=" in line)
+        for symbol in ("CONFIG_SCSI_UFSHCD", "CONFIG_SCSI_UFS_QCOM", "CONFIG_PHY_QCOM_QMP_UFS"):
+            if config.get(symbol) != "m":
+                raise InitramfsError("ABL storage preparation requires modular " + symbol)
     release = release_override or kernel_manifest["kernel_release"]
     if release != kernel_manifest["kernel_release"]:
         raise InitramfsError("release override differs from sealed kernel")
@@ -495,7 +538,7 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
     ]
 
     archive = make_newc(entries)
-    verification = verify_archive(archive)
+    verification = verify_archive(archive, kernel_manifest, boot_chain)
     # 写回读，确认归档可解析且内容一致。
     parsed = inspect_newc(archive)
     if [row["name"] for row in parsed] != [row["name"] for row in entries]:
@@ -508,9 +551,8 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
         if sha256(path) != digests[name]:
             raise InitramfsError(f"source changed while packing: {name}")
 
-    output.mkdir(parents=True)
     target = output / "initramfs.cpio.gz"
-    target.write_bytes(gzip.compress(archive, mtime=0))
+    compressed = gzip.compress(archive, mtime=0)
 
     result = {
         "status": "INITRAMFS_BUILT_NOT_BOOT_VERIFIED",
@@ -524,8 +566,8 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
         "handoff": "read-only-storage-probe" if boot_chain == "abl-storage" else "fedora-systemd",
         "hardware_helper_source": source_record,
         "verification": verification,
-        "initramfs_sha256": sha256(target),
-        "initramfs_bytes": target.stat().st_size,
+        "initramfs_sha256": hashlib.sha256(compressed).hexdigest(),
+        "initramfs_bytes": len(compressed),
         "uncompressed_bytes": len(archive),
         "entry_count": len(entries),
         "modules": [module_name(path) for path in ordered],
@@ -537,9 +579,10 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
         },
         "device_tested": False,
     }
-    (output / "manifest.json").write_text(
-        json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    with artifact_output(output):
+        target.write_bytes(compressed)
+        (output / "manifest.json").write_text(
+            json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return result
 
 

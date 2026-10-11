@@ -23,13 +23,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install native bootstrap test tools
+      - name: Install the Fedora test container runtime
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq busybox-static binutils util-linux
+          sudo apt-get install -y -qq podman
       - name: Prepare the pinned source for real staging and patch checks
         run: python3 scripts/checkout-sources.py --output build/test-sources --mode check
-      - run: make test
+      - name: Run all checks with the actual Fedora bootstrap tools
+        run: |
+          sudo podman run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            --env PIANO_TEST_SUNUEFI=/workspace/build/test-sources/sunuefi \
+            registry.fedoraproject.org/fedora:44 bash -euo pipefail -c '
+              dnf -y install busybox binutils util-linux make git python3
+              git config --global --add safe.directory /workspace
+              git config --global --add safe.directory /workspace/build/test-sources/sunuefi
+              make test
+            '
       - name: Verify no device-write commands in workflows
         run: |
           set -euo pipefail
