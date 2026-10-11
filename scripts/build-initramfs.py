@@ -27,13 +27,13 @@ import stat
 import struct
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from piano_artifacts import inspect_kernel
 
 ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = ROOT / "initramfs" / "f2fs-disk-bootstrap"
+COLLECTOR = ROOT / "scripts" / "collect-boot-evidence.sh"
 
 MIB = 1024 * 1024
 
@@ -42,12 +42,15 @@ MIB = 1024 * 1024
 APPLETS = (
     "sh", "cat", "mkdir", "mount", "mountpoint", "chmod", "uname", "chroot",
     "switch_root", "sleep", "insmod", "umount", "grep", "tr", "id", "awk",
-    "readlink", "rm", "rmdir", "ln", "ip", "reboot",
+    "readlink", "rm", "rmdir", "ln", "ip", "reboot", "getty", "kill",
+    "dmesg", "tail", "head", "ls", "sed", "date", "ps", "sort", "setsid",
 )
 
 # 早期硬件准备需要按序加载的模块，与上游 disk bootstrap 的种子一致。
 SEEDS = ("arm_smmu", "pinctrl_sm8750", "qcom_cpucp_mbox",
          "phy_qcom_qmp_ufs", "ufs_qcom")
+BOOT_CHAINS = ("sunuefi", "abl-storage")
+ABL_SEEDS = ("phy_qcom_qmp_ufs", "ufs_qcom")
 
 # Fedora 把动态库放在 /lib64，解释器在 /lib。这是与 Debian 的关键差异。
 FEDORA_LIBDIRS = ("/lib64", "/usr/lib64", "/lib")
@@ -94,16 +97,60 @@ def guest_resolve(root, name):
     return root.joinpath(*parts)
 
 
+def elf_dependencies_bytes(raw, name):
+    """只读解析目标 ELF，校验最终归档时不执行归档中的程序。"""
+    if (len(raw) < 64 or raw[:6] != b"\x7fELF\x02\x01"
+            or struct.unpack_from("<H", raw, 18)[0] != 183):
+        raise InitramfsError(f"expected little-endian ELF64 AArch64: {name}")
+    offset = struct.unpack_from("<Q", raw, 32)[0]
+    size, count = struct.unpack_from("<HH", raw, 54)
+    if struct.unpack_from("<H", raw, 16)[0] == 1 and count == 0:
+        return [], []  # 内核 .ko 的身份由封存 kernel manifest 单独验证。
+    if size != 56 or count > 1024 or offset + count * size > len(raw):
+        raise InitramfsError(f"invalid ELF program headers: {name}")
+    loads, dynamic, interpreters = [], [], []
+    for index in range(count):
+        kind, flags, start, address, physical, length, memory, align = struct.unpack_from(
+            "<IIQQQQQQ", raw, offset + index * size)
+        if start + length > len(raw):
+            raise InitramfsError(f"truncated ELF segment: {name}")
+        if kind == 1:
+            loads.append((address, start, length))
+        elif kind == 2:
+            if length % 16:
+                raise InitramfsError(f"invalid ELF dynamic table: {name}")
+            dynamic = [struct.unpack_from("<qQ", raw, cursor)
+                       for cursor in range(start, start + length, 16)]
+        elif kind == 3:
+            data = raw[start:start + length]
+            if not data.endswith(b"\0"):
+                raise InitramfsError(f"invalid ELF interpreter: {name}")
+            interpreters.append(data[:-1].decode())
+    names = [value for tag, value in dynamic if tag == 1]
+    strings = [value for tag, value in dynamic if tag == 5]
+    if not names:
+        return [], interpreters
+    if len(strings) != 1:
+        raise InitramfsError(f"missing ELF string table: {name}")
+    locations = [start + strings[0] - address for address, start, length in loads
+                 if address <= strings[0] < address + length]
+    if len(locations) != 1:
+        raise InitramfsError(f"unmapped ELF string table: {name}")
+    needed = []
+    for value in names:
+        start = locations[0] + value
+        end = raw.find(b"\0", start)
+        if start >= len(raw) or end < start:
+            raise InitramfsError(f"invalid ELF library name: {name}")
+        soname = raw[start:end].decode()
+        if not soname or "/" in soname:
+            raise InitramfsError(f"unsafe ELF library name: {name}")
+        needed.append(soname)
+    return needed, interpreters
+
+
 def elf_dependencies(path):
-    """读 ELF 的 NEEDED 与 interpreter，并确认是 AArch64。"""
-    header = Path(path).read_bytes()[:64]
-    if len(header) < 64 or header[:5] != b"\x7fELF\x02" or struct.unpack_from("<H", header, 18)[0] != 183:
-        raise InitramfsError(f"expected ELF64 AArch64: {path}")
-    dynamic = subprocess.check_output(["readelf", "-d", str(path)], text=True)
-    program = subprocess.check_output(["readelf", "-l", str(path)], text=True)
-    needed = re.findall(r"\(NEEDED\).*\[([^\]]+)\]", dynamic)
-    interpreter = re.findall(r"Requesting program interpreter: ([^\]]+)\]", program)
-    return needed, interpreter
+    return elf_dependencies_bytes(Path(path).read_bytes(), str(path))
 
 
 def resolve_library(root, soname):
@@ -147,7 +194,7 @@ def module_name(path):
     return Path(path).name.removesuffix(".ko").replace("-", "_")
 
 
-def module_closure(directory):
+def module_closure(directory, seeds=SEEDS):
     """按依赖顺序展开早期模块闭包。
 
     与上游 `build_piano_disk_bootstrap.module_closure` 同构：按 seeds 深度优先，
@@ -194,7 +241,7 @@ def module_closure(directory):
         seen.add(name)
         ordered.append(names[name])
 
-    for seed in SEEDS:
+    for seed in seeds:
         visit(seed)
     return ordered, sorted(used_builtin)
 
@@ -242,22 +289,82 @@ def inspect_newc(archive):
                   for index in range(13)]
         mode, size, name_size = fields[1], fields[6], fields[11]
         name_start = offset + 110
+        if (name_size < 2 or name_size > 4096
+                or name_start + name_size > len(archive)
+                or archive[name_start + name_size - 1] != 0):
+            raise InitramfsError("invalid newc pathname")
         name = archive[name_start:name_start + name_size - 1].decode()
+        if "\0" in name or name.startswith("/") or any(part in ("", ".", "..") for part in name.split("/")):
+            raise InitramfsError(f"unsafe newc pathname: {name}")
         data_start = name_start + name_size
         data_start += -data_start % 4
         data = archive[data_start:data_start + size]
+        if data_start > len(archive) or len(data) != size:
+            raise InitramfsError(f"truncated newc member: {name}")
         if name == "TRAILER!!!":
+            if size or any(archive[data_start:]):
+                raise InitramfsError("unexpected data or a second archive after the newc trailer")
             return records
         if name in seen:
             raise InitramfsError(f"duplicate newc path: {name}")
         seen.add(name)
-        records.append({"name": name, "mode": mode, "size": size, "data": data})
+        records.append({"name": name, "mode": mode, "size": size, "data": data,
+                        "uid": fields[2], "gid": fields[3], "major": fields[9], "minor": fields[10]})
         offset = data_start + size
         offset += -offset % 4
     raise InitramfsError("newc archive has no trailer")
 
 
-def build(rootfs, kernel, output, root_label, root_partname, release_override=None):
+def verify_archive(archive):
+    """检查实际 cpio 的入口、链接和每个 ELF 的传递依赖。"""
+    records = inspect_newc(archive)
+    rows = {row["name"]: row for row in records}
+    for name in ("init", "pianoinit", "bin/busybox", "usr/bin/blkid",
+                 "etc/piano/root-label", "etc/piano/root-partname",
+                 "etc/piano/kernel-release", "etc/piano/modules-load-order"):
+        if name not in rows:
+            raise InitramfsError(f"required archive member missing: {name}")
+    if rows["init"]["data"] != rows["pianoinit"]["data"]:
+        raise InitramfsError("init and pianoinit select different bootstraps")
+    for name in ("init", "pianoinit", "bin/busybox", "usr/bin/blkid"):
+        if not stat.S_ISREG(rows[name]["mode"]) or not rows[name]["mode"] & 0o111:
+            raise InitramfsError(f"required program is not executable: {name}")
+    for name, identity in (("dev/console", (5, 1)), ("dev/null", (1, 3))):
+        row = rows.get(name, {})
+        if not stat.S_ISCHR(row.get("mode", 0)) or (row.get("major"), row.get("minor")) != identity:
+            raise InitramfsError(f"missing or wrong early device node: {name}")
+    if rows["etc/piano/root-label"]["data"] != b"PIANOROOT\n" or rows["etc/piano/root-partname"]["data"] != b"sunuefi_root\n":
+        raise InitramfsError("archive does not select the dedicated Linux root")
+    for name, row in rows.items():
+        if row["uid"] or row["gid"]:
+            raise InitramfsError(f"runtime member is not root-owned: {name}")
+        if stat.S_ISLNK(row["mode"]):
+            target = row["data"].decode()
+            if not target or target.startswith("/") or ".." in target.split("/"):
+                raise InitramfsError(f"unsafe archive link: {name}")
+            if (Path(name).parent / target).as_posix() not in rows:
+                raise InitramfsError(f"broken archive link: {name}")
+        if row["data"].startswith(b"\x7fELF"):
+            needed, interpreters = elf_dependencies_bytes(row["data"], name)
+            for interpreter in interpreters:
+                if interpreter.lstrip("/") not in rows:
+                    raise InitramfsError(f"missing interpreter for {name}: {interpreter}")
+            for soname in needed:
+                if not any((directory + "/" + soname).lstrip("/") in rows
+                           for directory in FEDORA_LIBDIRS):
+                    raise InitramfsError(f"missing library for {name}: {soname}")
+    # util-linux 参数不能落到 BusyBox applet，也不能由手工链接替换。
+    blkid = rows["usr/bin/blkid"]
+    if not stat.S_ISREG(blkid["mode"]) or not blkid["data"].startswith(b"\x7fELF") or blkid["data"] == rows["bin/busybox"]["data"]:
+        raise InitramfsError("/usr/bin/blkid must be the independent util-linux ELF")
+    if re.search(rb"(?<![/\w-])blkid\s+-p", rows["pianoinit"]["data"]):
+        raise InitramfsError("bootstrap must call /usr/bin/blkid explicitly")
+    return {"entries": len(rows), "elf_closure_verified": True,
+            "relative_links_verified": True, "canonical_blkid_verified": True}
+
+
+def build(rootfs, kernel, output, root_label, root_partname, release_override=None,
+          boot_chain="sunuefi", abl_source=None):
     rootfs, kernel, output = Path(rootfs).resolve(), Path(kernel).resolve(), Path(output).resolve()
     if output.exists():
         raise InitramfsError(f"output already exists: {output}")
@@ -265,6 +372,10 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
         raise InitramfsError(f"rootfs is not a directory: {rootfs}")
     if not BOOTSTRAP.is_file():
         raise InitramfsError(f"missing bootstrap: {BOOTSTRAP}")
+    if boot_chain not in BOOT_CHAINS:
+        raise InitramfsError("unsupported boot chain")
+    if boot_chain == "sunuefi" and abl_source is not None:
+        raise InitramfsError("ABL hardware preparation cannot enter a SunUEFI image")
 
     manifest_path = kernel / "manifest.json"
     if not manifest_path.is_file():
@@ -287,15 +398,14 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
     header = busybox.read_bytes()[:64]
     if header[:5] != b"\x7fELF\x02" or struct.unpack_from("<H", header, 18)[0] != 183:
         raise InitramfsError("busybox is not an ELF64 AArch64 binary")
-    if b"Requesting program interpreter" in subprocess.check_output(
-        ["readelf", "-l", str(busybox)]
-    ):
+    if any(elf_dependencies(busybox)):
         raise InitramfsError("busybox must be statically linked")
 
     applets = set(
         subprocess.check_output([str(busybox), "--list"], text=True).splitlines()
     )
-    missing = set(APPLETS) - applets
+    required_applets = APPLETS + (("devmem",) if boot_chain == "abl-storage" else ())
+    missing = set(required_applets) - applets
     if missing:
         raise InitramfsError("busybox is missing applets: " + ", ".join(sorted(missing)))
 
@@ -305,7 +415,9 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
     module_dir = kernel / "modules" / "lib" / "modules" / release
     if not module_dir.is_dir():
         raise InitramfsError(f"missing kernel modules: {module_dir}")
-    ordered, builtin = module_closure(module_dir)
+    ordered, builtin = module_closure(module_dir, ABL_SEEDS if boot_chain == "abl-storage" else SEEDS)
+    if boot_chain == "abl-storage" and any(module_name(path) in ("arm_smmu", "pinctrl_sm8750") for path in ordered):
+        raise InitramfsError("ABL storage probe must not load display or SMMU takeover modules")
     if not ordered:
         raise InitramfsError("empty module closure")
 
@@ -317,6 +429,22 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
     rows["bin/busybox"] = busybox
     rows["pianoinit"] = BOOTSTRAP
     rows["init"] = BOOTSTRAP
+    rows["usr/bin/piano-collect-boot"] = COLLECTOR
+    source_record = None
+    if boot_chain == "abl-storage":
+        if abl_source is None:
+            raise InitramfsError("ABL storage diagnostics require the pinned debian-piano source")
+        source = Path(abl_source).resolve()
+        lock = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["debian-piano"]
+        commit = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+        helper = source / "initramfs/tests/piano-qup-smmu"
+        if commit != lock["commit"] or not helper.is_file():
+            raise InitramfsError("ABL helper source differs from sources.lock.json")
+        original = subprocess.check_output(["git", "-C", str(source), "show", commit + ":initramfs/tests/piano-qup-smmu"])
+        if helper.read_bytes() != original:
+            raise InitramfsError("ABL hardware helper has local modifications")
+        rows["usr/bin/piano-qup-smmu"] = helper
+        source_record = {"commit": commit, "path": "initramfs/tests/piano-qup-smmu", "sha256": sha256(helper)}
     rescue = guest_resolve(rootfs, "/usr/local/sbin/piano-debug-bootstrap")
     if not rescue.is_file():
         raise InitramfsError("stage the piano USB rescue helper into rootfs first")
@@ -327,7 +455,8 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
         "etc/piano/root-label": root_label + "\n",
         "etc/piano/root-partname": root_partname + "\n",
         "etc/piano/kernel-release": release + "\n",
-        "etc/piano/linux-debug.conf": "usb=acm-ncm\nshell=1\nrecovery_seconds=0\n",
+        "etc/piano/boot-chain": boot_chain + "\n",
+        "etc/piano/linux-debug.conf": "usb=acm-ncm\nshell=1\nrecovery_seconds=0\nipv4=192.168.77.1/30\n",
         "etc/piano/modules-load-order": "".join(
             f"{module_name(path)} /lib/modules/{release}/{path}\n" for path in ordered
         ),
@@ -362,10 +491,11 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
     ]
     entries += [
         {"name": "bin/" + name, "mode": stat.S_IFLNK | 0o777, "data": b"busybox"}
-        for name in APPLETS
+        for name in APPLETS + (("devmem",) if boot_chain == "abl-storage" else ())
     ]
 
     archive = make_newc(entries)
+    verification = verify_archive(archive)
     # 写回读，确认归档可解析且内容一致。
     parsed = inspect_newc(archive)
     if [row["name"] for row in parsed] != [row["name"] for row in entries]:
@@ -390,6 +520,10 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
         "root_policy": f"LABEL={root_label}",
         "root_partname": root_partname,
         "root_fstype": "f2fs",
+        "boot_chain": boot_chain,
+        "handoff": "read-only-storage-probe" if boot_chain == "abl-storage" else "fedora-systemd",
+        "hardware_helper_source": source_record,
+        "verification": verification,
         "initramfs_sha256": sha256(target),
         "initramfs_bytes": target.stat().st_size,
         "uncompressed_bytes": len(archive),
@@ -417,11 +551,14 @@ def main(argv=None):
     parser.add_argument("--root-label", default="PIANOROOT")
     parser.add_argument("--root-partname", default="sunuefi_root")
     parser.add_argument("--release", help="覆盖内核 release（默认取 kernel manifest）")
+    parser.add_argument("--boot-chain", choices=BOOT_CHAINS, default="sunuefi")
+    parser.add_argument("--abl-source", help="锁定的 debian-piano checkout，仅用于 ABL 只读诊断")
     args = parser.parse_args(argv)
 
     try:
         result = build(args.rootfs, args.kernel, args.output,
-                       args.root_label, args.root_partname, args.release)
+                       args.root_label, args.root_partname, args.release,
+                       args.boot_chain, args.abl_source)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
     except (InitramfsError, ValueError, OSError, KeyError) as exc:

@@ -5,6 +5,7 @@
 """
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -81,7 +82,7 @@ def main():
     # 这条是本轮 CI 失败换来的：补丁里混进过一个 .gitignore，本地 fixture
     # 没有这个文件所以没暴露，真实 checkout 上 git apply 直接拒绝覆盖。
     # 现在对每个补丁的 --check 都要求它在真实目录结构上可应用。
-    sunuefi = ROOT.parent / "mipad8p-piano" / "sources" / "Project-SunUEFI"
+    sunuefi = Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT.parent / "mipad8p-piano" / "sources" / "Project-SunUEFI"))
     if (sunuefi / "build.sh").is_file():
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp) / "sunuefi"
@@ -94,7 +95,11 @@ def main():
                         destination = work / relative
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         if source.is_file():
-                            destination.write_bytes(source.read_bytes())
+                            # 提供的 checkout 可已应用 Fedora 补丁；应用性验证仍从固定 HEAD 原文开始。
+                            original = subprocess.run(["git", "-C", str(sunuefi), "show", "HEAD:" + relative],
+                                                      capture_output=True)
+                            if original.returncode == 0:
+                                destination.write_bytes(original.stdout)
             (work / "build.sh").write_text("#!/bin/sh\n")
             # 把上游已有的文件也放进来，才能发现"补丁想创建已存在文件"。
             for existing in (".gitignore",):

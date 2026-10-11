@@ -8,6 +8,8 @@
 #
 # 保留的结构：两次身份校验、先只读后读写、失败进救援而不回退到 Android。
 export PATH=/usr/sbin:/usr/bin:/bin:/sbin
+debug_started=0
+debug_serial_pid=
 log() {
     printf 'piano: %s\n' "$*"
     # 帧缓冲空白时也要留下早期失败记录。mount --move 之后同一个 devtmpfs
@@ -15,6 +17,34 @@ log() {
     kmsg=/dev/kmsg
     [ -c "$kmsg" ] || kmsg=/sysroot/dev/kmsg
     if [ -c "$kmsg" ]; then printf '<5>piano: %s\n' "$*" >"$kmsg"; fi
+    for console in /dev/console /dev/tty0 /sysroot/dev/console; do
+        [ ! -c "$console" ] || printf 'piano: %s\n' "$*" >"$console" 2>/dev/null || :
+    done
+}
+start_debug() {
+    [ "$debug_started" -eq 0 ] || return 0
+    if /usr/local/sbin/piano-debug-bootstrap start &&
+       [ -r /run/piano-debug/boot-id ] && [ -r /run/piano-debug/udc ]; then
+        debug_started=1
+        setsid /bin/sh -c '
+            while :; do
+                /usr/local/sbin/piano-debug-bootstrap serial
+                sleep 5
+            done
+        ' &
+        debug_serial_pid=$!
+        log 'DEBUG_READY: ACM console requested; NCM address 192.168.77.1/30'
+    else
+        log 'DEBUG_UNAVAILABLE: USB setup failed; physical console remains available'
+    fi
+}
+stop_debug_serial() {
+    [ -n "$debug_serial_pid" ] || return 0
+    # 只结束本入口创建的独立会话，避免旧 initramfs 的 getty 跨根交接遗留。
+    kill -TERM -- "-$debug_serial_pid" 2>/dev/null || :
+    wait "$debug_serial_pid" 2>/dev/null || :
+    debug_serial_pid=
+    # gadget 与 NCM 地址保留，真实 Fedora 的 sshd 可接管。
 }
 fail() {
     log "DISK_ROOT_REFUSED: $*; remaining in initramfs rescue"
@@ -31,16 +61,7 @@ fail() {
     done
     if mountpoint -q /dev && mountpoint -q /proc &&
        mountpoint -q /sys && mountpoint -q /run; then
-        if /usr/local/sbin/piano-debug-bootstrap start; then
-            (
-                while :; do
-                    /usr/local/sbin/piano-debug-bootstrap serial
-                    sleep 5
-                done
-            ) &
-        else
-            log 'USB rescue setup failed; console rescue remains available'
-        fi
+        start_debug
     fi
     console=/dev/console
     [ -c "$console" ] || console=/sysroot/dev/console
@@ -59,6 +80,8 @@ expected=$(cat /etc/piano/root-label) || fail 'Missing root label'
 [ "$(cat /etc/piano/root-partname)" = sunuefi_root ] || fail 'Unexpected root partition name'
 release=$(cat /etc/piano/kernel-release) || fail 'Missing kernel identity'
 [ "$(uname -r)" = "$release" ] || fail 'Kernel/module release mismatch'
+boot_chain=$(cat /etc/piano/boot-chain) || fail 'Missing boot-chain contract'
+case "$boot_chain" in sunuefi|abl-storage) : ;; *) fail 'Unknown boot-chain contract' ;; esac
 log "DISK_INIT_BEGIN: kernel=$release root=LABEL=$expected fstype=f2fs"
 selected=0
 dma_log=0
@@ -72,6 +95,15 @@ for arg in $(cat /proc/cmdline); do
     esac
 done
 [ "$selected" -eq 1 ] || fail 'Exactly one explicit piano.root=LABEL is required'
+# 先建立只使用已绑定 UDC 的上游诊断通道，再启动任何存储 DMA。
+start_debug
+log "BOOT_CONTRACT: $boot_chain"
+if [ "$boot_chain" = abl-storage ]; then
+    # ABL 对照仅复用锁定上游的早期存储流程；不会启动桌面或写入根分区。
+    /usr/bin/piano-qup-smmu 0xb6 0xa3 0x1400/0x7f 0x436 0x423 0x60 || fail 'ABL storage stream preparation failed'
+    clock=$(/bin/devmem 0x0f205008 32) || fail 'Cannot read the upstream UFS reference clock'
+    /bin/devmem 0x0f205008 32 "$((clock | 1))" || fail 'Cannot enable the upstream UFS reference clock'
+fi
 dma_routes() {
     # 完整路由转储只是诊断，不是加载模块的条件。
     [ "$dma_log" -eq 1 ] || return 0
@@ -103,7 +135,7 @@ while [ "$attempt" -lt 30 ]; do
         grep -qx 'PARTNAME=sunuefi_root' "$part/uevent" || continue
         candidate=/dev/${part##*/}
         [ -b "$candidate" ] || continue
-        label=$(blkid -p -s LABEL -o value "$candidate" 2>/dev/null) || continue
+        label=$(/usr/bin/blkid -p -s LABEL -o value "$candidate" 2>/dev/null) || continue
         [ "$label" = "$expected" ] || continue
         [ -z "$rootdev" ] || fail 'Duplicate root label'
         rootdev=$candidate
@@ -114,9 +146,9 @@ while [ "$attempt" -lt 30 ]; do
 done
 [ -n "$rootdev" ] || fail 'Selected Linux partition did not appear'
 verify_device() {
-    [ "$(blkid -p -s LABEL -o value "$rootdev")" = "$expected" ] &&
-    [ "$(blkid -p -s PART_ENTRY_NAME -o value "$rootdev")" = sunuefi_root ] &&
-    [ "$(blkid -p -s TYPE -o value "$rootdev")" = f2fs ]
+    [ "$(/usr/bin/blkid -p -s LABEL -o value "$rootdev")" = "$expected" ] &&
+    [ "$(/usr/bin/blkid -p -s PART_ENTRY_NAME -o value "$rootdev")" = sunuefi_root ] &&
+    [ "$(/usr/bin/blkid -p -s TYPE -o value "$rootdev")" = f2fs ]
 }
 verify_device || fail 'LABEL/PARTNAME/TYPE mismatch'
 # 只读检查：确认这是一套真实系统，且模块与内核匹配。
@@ -127,6 +159,13 @@ mount -t f2fs -o ro,norecovery "$rootdev" /sysroot || fail 'Read-only Linux moun
 [ -d "/sysroot/usr/lib/modules/$release" ] || fail 'Matching distro modules are missing'
 [ ! -f /sysroot/etc/initrd-release ] || fail 'Root is initrd-only'
 [ -x /sysroot/usr/lib/piano/piano-disk-hardware-prepare ] || fail 'Hardware preparation is missing'
+log "DISK_ROOT_INSPECTED: device=$rootdev LABEL=$expected PARTNAME=sunuefi_root TYPE=f2fs"
+if [ "$boot_chain" = abl-storage ]; then
+    /usr/bin/piano-collect-boot
+    log 'STORAGE_PROBE_PASSED: Fedora root inspected with ro,norecovery; no writable mount or systemd handoff performed'
+    umount /sysroot || fail 'Cannot unmount the diagnostic root'
+    fail 'Read-only storage probe complete; retained for evidence collection'
+fi
 umount /sysroot || fail 'Cannot finish read-only inspection'
 verify_device || fail 'Root identity changed before writable mount'
 # 读写挂载。身份已在上一步核对过，这里再核对一次防止设备在两步之间变化。
@@ -135,10 +174,11 @@ mkdir -p /sysroot/dev /sysroot/proc /sysroot/sys /sysroot/run /sysroot/tmp || fa
 chmod 1777 /sysroot/tmp || fail 'Root tmp permissions failed'
 printf 'LABEL=%s\n' "$expected" >/run/piano-root-mode || fail 'Cannot record root mode'
 printf '%s\n' "$rootdev" >/run/piano-root-device || fail 'Cannot record root device'
+stop_debug_serial
 for virtual in dev proc sys run; do
     mount --move "/$virtual" "/sysroot/$virtual" || fail "Cannot move $virtual"
 done
-chroot /sysroot /usr/lib/piano/piano-disk-hardware-prepare || fail 'Hardware preparation failed'
+chroot /sysroot /usr/lib/piano/piano-disk-hardware-prepare || fail 'Hardware preparation failed; collect the verifier output before continuing'
 log "DISK_ROOT_READY: starting Fedora systemd on LABEL=$expected fstype=f2fs"
 if [ -f /etc/piano/boot-task-snapshot ]; then
     # 从真实 root 运行，让这个进程在 initramfs 被移除后仍然存活。

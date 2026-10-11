@@ -63,6 +63,16 @@ def main():
         else:
             raise AssertionError("an unexpected runtime escape was normalized")
         assert (binary / "bad").is_symlink()
+        staged = finalizer.stage_boot_diagnostics(root)
+        assert "usr/bin/piano-collect-boot" in staged
+        gdm = root / "etc/systemd/system/gdm.service.d/20-piano-display.conf"
+        assert "Requires=piano-display.service" in gdm.read_text()
+        assert "After=piano-display.service" in gdm.read_text()
+        camera = root / "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf"
+        assert "Requires=piano-camera.service" in camera.read_text()
+        assert "StartLimitBurst=3" in camera.read_text()
+        assert not (root / "etc/systemd/system/piano-camerad.service").is_symlink()
+        assert (root / "usr/bin/piano-collect-boot").stat().st_mode & 0o111
     print("OK: missing manuals pruned, launcher normalized and runtime path guards preserved")
 
 

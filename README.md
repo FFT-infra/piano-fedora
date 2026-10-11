@@ -6,6 +6,8 @@ SunUEFI 按 commit 锁定为上游，本仓库只带三样增量：Fedora 后端
 
 Fedora 44/GNOME、A830v1 Mesa、F2FS/SELinux 内核与完整主机构建包已在 GitHub Actions 构建并核对。产物尚未真机验证，交付内容和构建顺序见 [产物说明](docs/artifacts.md)。
 
+启动合同、离线诊断和图形服务取证见 [离线构建与设备验收](docs/offline-bringup.md)。
+
 ## 用法
 
 ```sh

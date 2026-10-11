@@ -10,16 +10,21 @@ on:
   workflow_dispatch:
     inputs:
       rootfs_artifact:
-        description: "rootfs artifact 名"
+        description: "完整设备根文件系统 artifact（含 device-root.tar.zst）"
         required: true
-        default: "rootfs-44-gnome"
+        default: "root-image-8192"
       kernel_artifact:
         description: "内核 artifact 名"
         required: true
         default: "kernel-release-7.2.9"
+      root_image_run_id:
+        description: "固定完整集成镜像 run，留空解析最新成功 run"
+        required: false
+        default: ""
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   initramfs:
@@ -34,29 +39,18 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq binutils cpio zstd python3
 
-      - name: Find the runs that produced the inputs
+      - name: Resolve the complete device root
         id: src
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ROOT_ARTIFACT: ${{ inputs.rootfs_artifact }}
+          ROOT_RUN: ${{ inputs.root_image_run_id }}
         run: |
           set -euo pipefail
-          find_run() {
-            local wf="$1" name="$2"
-            for id in $(gh run list --workflow="$wf" --limit 20 --json databaseId --jq '.[].databaseId'); do
-              if gh api "repos/${{ github.repository }}/actions/runs/$id/artifacts" \
-                   --jq ".artifacts[].name" 2>/dev/null | grep -qx "$name"; then
-                echo "$id"; return 0
-              fi
-            done
-            return 1
-          }
-          R=$(find_run build-rootfs.yml "${{ inputs.rootfs_artifact }}") \
-            || { echo "::error::rootfs artifact not found"; exit 1; }
-          K=$(find_run build-kernel.yml "${{ inputs.kernel_artifact }}") \
-            || { echo "::error::kernel artifact not found"; exit 1; }
-          echo "rootfs_run=$R" >> "$GITHUB_OUTPUT"
-          echo "kernel_run=$K" >> "$GITHUB_OUTPUT"
-          echo "rootfs run $R, kernel run $K"
+          args=()
+          if [ -n "$ROOT_RUN" ]; then args+=(--run-id "$ROOT_RUN"); fi
+          python3 scripts/resolve-artifact-run.py --workflow build-image.yml \
+            --artifact "$ROOT_ARTIFACT" --output-key rootfs_run "${args[@]}"
 
       - name: Download rootfs
         uses: actions/download-artifact@v4
@@ -66,12 +60,23 @@ jobs:
           run-id: ${{ steps.src.outputs.rootfs_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve the exact device root kernel
+        id: kernel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KERNEL_ARTIFACT: ${{ inputs.kernel_artifact }}
+        run: |
+          set -euo pipefail
+          run=$(python3 -c 'import json;print(json.load(open("in/rootfs/source-runs.json"))["kernel_run"])')
+          python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml \
+            --artifact "$KERNEL_ARTIFACT" --run-id "$run"
+
       - name: Download kernel
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.kernel_artifact }}
           path: in/kernel
-          run-id: ${{ steps.src.outputs.kernel_run }}
+          run-id: ${{ steps.kernel.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Unpack inputs
@@ -79,8 +84,11 @@ jobs:
           set -euo pipefail
           mkdir -p stage/rootfs stage/kernel
           # rootfs 里有 root 拥有的文件，解包需要 root 才能保留权限。
-          sudo tar -I zstd -xf in/rootfs/*.tar.zst -C stage/rootfs
+          (cd in/rootfs && sha256sum -c image-SHA256SUMS)
+          sudo tar -I zstd --numeric-owner --xattrs --xattrs-include='*' --acls --selinux \
+            -xf in/rootfs/device-root.tar.zst -C stage/rootfs
           tar -I zstd -xf in/kernel/*.tar.zst -C stage/kernel
+          cmp stage/kernel/manifest.json in/rootfs/kernel-manifest.json
           test -d stage/rootfs/rootfs
           test -f stage/kernel/manifest.json
           sudo du -sh stage/rootfs/rootfs
@@ -88,7 +96,7 @@ jobs:
       - name: Build initramfs
         run: |
           set -euo pipefail
-          python3 scripts/build-initramfs.py \
+          sudo python3 scripts/build-initramfs.py \
             --rootfs stage/rootfs/rootfs \
             --kernel stage/kernel \
             --output initramfs-out
@@ -105,8 +113,6 @@ jobs:
                           etc/piano/kernel-release etc/piano/modules-load-order; do
             grep -qx "$required" listing.txt || { echo "::error::$required missing"; exit 1; }
           done
-          # 引导脚本必须是 F2FS 版本，不能留着 ext4 的类型检查。
-          cpio -idm --quiet usr/bin/blkid < initramfs.cpio 2>/dev/null || true
           python3 - <<'PY'
           import json, gzip, sys
           from pathlib import Path
@@ -122,7 +128,8 @@ jobs:
       - name: Package
         run: |
           set -euo pipefail
-          tar -I 'zstd -10 -T0' -cf initramfs.tar.zst -C initramfs-out .
+          sudo tar -I 'zstd -10 -T0' -cf initramfs.tar.zst -C initramfs-out .
+          sudo chown "$(id -u):$(id -g)" initramfs.tar.zst
           ls -lh initramfs.tar.zst
 
       - uses: actions/upload-artifact@v4

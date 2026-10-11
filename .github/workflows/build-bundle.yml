@@ -12,6 +12,10 @@ on:
         description: "UEFI artifact"
         required: false
         default: "uefi-product"
+      root_image_run_id:
+        description: "固定本次完整集成镜像的成功 run"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -36,9 +40,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ROOT_IMAGE: ${{ inputs.root_image_artifact }}
           UEFI_ARTIFACT: ${{ inputs.uefi_artifact }}
+          ROOT_RUN: ${{ inputs.root_image_run_id }}
         run: |
           set -euo pipefail
-          python3 scripts/resolve-artifact-run.py --workflow build-image.yml --artifact "$ROOT_IMAGE" --output-key root_run
+          args=()
+          if [ -n "$ROOT_RUN" ]; then args+=(--run-id "$ROOT_RUN"); fi
+          python3 scripts/resolve-artifact-run.py --workflow build-image.yml --artifact "$ROOT_IMAGE" --output-key root_run "${args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-uefi.yml --artifact "$UEFI_ARTIFACT" --output-key uefi_run
 
       - uses: actions/download-artifact@v4
@@ -107,6 +114,7 @@ jobs:
           mkdir -p bundle
           sudo cp build/packaged/esp.img build/packaged/boot.img build/packaged/PianoUEFI-product.img bundle/
           cp build/in/image/pianoroot.f2fs.img.zst bundle/
+          cp build/in/image/diagnostic-abl-storage.tar.zst bundle/
           cp build/in/image/root-image-manifest.json build/in/image/source-runs.json build/in/image/runtime-manifest.json bundle/
           cp build/in/image/mesa-manifest.json build/in/image/rootfs-manifest.json bundle/
           cp build/kernel/manifest.json bundle/kernel-manifest.json

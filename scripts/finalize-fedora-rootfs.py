@@ -70,6 +70,26 @@ def prune_missing_manpage_links(root):
     return removed
 
 
+def stage_boot_diagnostics(root):
+    """Fedora 的 GDM 单元名不同于 Debian；复用上游相同的显示依赖。"""
+    files = {
+        "etc/systemd/system/gdm.service.d/20-piano-display.conf":
+            "[Unit]\nRequires=piano-display.service\nAfter=piano-display.service\n",
+        "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf":
+            "[Unit]\nRequires=piano-camera.service\nAfter=piano-camera.service\n"
+            "StartLimitIntervalSec=60\nStartLimitBurst=3\n",
+    }
+    for name, text in files.items():
+        target = safe_destination(root, name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+    target = safe_destination(root, "usr/bin/piano-collect-boot")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / "scripts/collect-boot-evidence.sh", target)
+    target.chmod(0o755)
+    return sorted([*files, "usr/bin/piano-collect-boot"])
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     for name in ("rootfs", "kernel", "runtime", "mesa", "output"):
@@ -116,6 +136,7 @@ def main():
                 "piano-cpufreq.service", "piano-video.service", "piano-camera.service",
                 "piano-camerad.service", "adsprpcd-sensorspd.service"]
     chroot(root, "systemctl", "enable", *services)
+    diagnostic_files = stage_boot_diagnostics(root)
     # FastRPC 的默认 root/audio PD 自动启动与 piano 的顺序服务冲突。
     for unit in ("adsprpcd.service", "adsprpcd_audiopd.service", "adsprpcd-audiopd.service"):
         p = root / "etc/systemd/system" / unit
@@ -165,6 +186,7 @@ def main():
               "device_configuration_required": ["/etc/piano/boot-request.json", "active Android slot for sensors"],
               "normalized_launcher_links": normalized_launchers,
               "removed_manpage_links": removed_manpages, "device_tested": False}
+    result["boot_diagnostic_files"] = diagnostic_files
     (output / "manifest.json").write_text(json.dumps(result, indent=2) + "\n")
 
 

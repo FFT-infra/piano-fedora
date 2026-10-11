@@ -20,6 +20,14 @@ on:
         description: "测试 root 镜像容量（MiB），不修改设备分区"
         required: false
         default: "8192"
+      kernel_run_id:
+        description: "固定内核与 SDK 的成功 run，留空解析最新"
+        required: false
+        default: ""
+      runtime_run_id:
+        description: "固定设备运行时的成功 run，必须与内核摘要匹配"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -36,7 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq f2fs-tools attr acl libcap2-bin zstd podman kmod binutils
+          sudo apt-get install -y -qq f2fs-tools attr acl libcap2-bin zstd podman kmod binutils cpp device-tree-compiler lz4 git
           sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)"
           sudo modprobe f2fs
           grep -qw f2fs /proc/filesystems
@@ -49,11 +57,16 @@ jobs:
           ROOTFS_ARTIFACT: ${{ inputs.rootfs_artifact }}
           KERNEL_ARTIFACT: ${{ inputs.kernel_artifact }}
           RUNTIME_ARTIFACT: ${{ inputs.runtime_artifact }}
+          KERNEL_RUN: ${{ inputs.kernel_run_id }}
+          RUNTIME_RUN: ${{ inputs.runtime_run_id }}
         run: |
           set -euo pipefail
           python3 scripts/resolve-artifact-run.py --workflow build-rootfs.yml --artifact "$ROOTFS_ARTIFACT" --output-key rootfs_run
-          python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml --artifact "$KERNEL_ARTIFACT" --artifact kernel-sdk-7.2.9 --output-key kernel_run
-          python3 scripts/resolve-artifact-run.py --workflow build-device-runtime.yml --artifact "$RUNTIME_ARTIFACT" --output-key runtime_run
+          kernel_args=(); runtime_args=()
+          if [ -n "$KERNEL_RUN" ]; then kernel_args+=(--run-id "$KERNEL_RUN"); fi
+          if [ -n "$RUNTIME_RUN" ]; then runtime_args+=(--run-id "$RUNTIME_RUN"); fi
+          python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml --artifact "$KERNEL_ARTIFACT" --artifact kernel-sdk-7.2.9 --output-key kernel_run "${kernel_args[@]}"
+          python3 scripts/resolve-artifact-run.py --workflow build-device-runtime.yml --artifact "$RUNTIME_ARTIFACT" --output-key runtime_run "${runtime_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-mesa.yml --artifact piano-fedora-mesa --output-key mesa_run
 
       - uses: actions/download-artifact@v4
@@ -156,6 +169,42 @@ jobs:
           sudo python3 scripts/build-initramfs.py --rootfs build/device-root/rootfs --kernel build/kernel --output build/initramfs
           cat build/initramfs/manifest.json
 
+      - name: Build the isolated upstream ABL storage diagnostic
+        run: |
+          set -euo pipefail
+          headers=build/sources/sunuefi/upstream/linux-piano
+          git init -q "$headers"
+          kernel_url=$(python3 -c 'import json;print(json.load(open("sources.lock.json"))["sources"]["linux-piano"]["url"])')
+          kernel_commit=$(python3 -c 'import json;print(json.load(open("sources.lock.json"))["sources"]["linux-piano"]["commit"])')
+          git -C "$headers" remote add origin "$kernel_url"
+          git -C "$headers" sparse-checkout set --cone include/dt-bindings include/uapi
+          git -C "$headers" fetch --depth=1 --filter=blob:none origin "$kernel_commit"
+          git -C "$headers" checkout --detach FETCH_HEAD
+          test "$(git -C "$headers" rev-parse HEAD)" = "$kernel_commit"
+          source=build/sources/sunuefi/upstream/debian-piano-current
+          # 上游脚本按同级 linux-piano/include 取头文件；gitlink 名不同，用明确包装目录。
+          mkdir -p build/abl-source-layout
+          ln -s "$GITHUB_WORKSPACE/$source" build/abl-source-layout/debian-piano
+          ln -s "$GITHUB_WORKSPACE/$headers" build/abl-source-layout/linux-piano
+          # build() 接收显式 repo 路径，不改上游脚本或 checkout。
+          PIANO_ABL_SOURCE="$source" python3 - <<'PY'
+          import importlib.util, os
+          from pathlib import Path
+          source = Path(os.environ['PIANO_ABL_SOURCE'])
+          spec = importlib.util.spec_from_file_location('pinned_dtbo', source / 'scripts/build-dtbo.py')
+          tool = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(tool)
+          tool.build(Path('build/abl-source-layout/debian-piano'),
+                     source / 'boot/dtbo-piano-power.dts', Path('build/dtbo-abl-storage.img'), 'dtc')
+          PY
+          sudo python3 scripts/build-initramfs.py --rootfs build/device-root/rootfs \
+            --kernel build/kernel --output build/initramfs-abl --boot-chain abl-storage --abl-source "$source"
+          sudo python3 scripts/build-abl-diagnostic.py --kernel build/kernel \
+            --initramfs build/initramfs-abl --source "$source" \
+            --dtbo build/dtbo-abl-storage.img --output build/diagnostic-abl-storage
+          sudo tar -I 'zstd -6 -T0' -cf diagnostic-abl-storage.tar.zst -C build/diagnostic-abl-storage .
+          sudo chown "$(id -u):$(id -g)" diagnostic-abl-storage.tar.zst
+
       - name: Build and fully verify the F2FS image
         env:
           ROOT_SIZE: ${{ inputs.size_mib }}
@@ -200,7 +249,7 @@ jobs:
               'runtime_run': os.environ['RUNTIME_RUN'], 'mesa_run': os.environ['MESA_RUN']}, indent=2) + '\n')
           PY
           sudo chown "$(id -u):$(id -g)" device-root.tar.zst root-image-manifest.json
-          sha256sum pianoroot.f2fs.img.zst device-root.tar.zst initramfs.tar.zst > image-SHA256SUMS
+          sha256sum pianoroot.f2fs.img.zst device-root.tar.zst initramfs.tar.zst diagnostic-abl-storage.tar.zst > image-SHA256SUMS
 
       - uses: actions/upload-artifact@v4
         with:
@@ -210,6 +259,7 @@ jobs:
             root-image-manifest.json
             device-root.tar.zst
             initramfs.tar.zst
+            diagnostic-abl-storage.tar.zst
             kernel-manifest.json
             runtime-manifest.json
             mesa-manifest.json
