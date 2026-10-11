@@ -162,25 +162,24 @@ def check_serial_stop(bootstrap, directory):
     match = re.search(r"^stop_debug_serial\(\) \{\n.*?^\}", bootstrap.read_text(), re.M | re.S)
     assert match, "bootstrap lost its serial handoff function"
     for index, startup_delay in enumerate((0, 0.2)):
-        child_file = directory / f"serial-child-{index}"
-        # 第一种覆盖 setsid 前的调度窗口，第二种覆盖已创建的独立 getty 会话。
+        fifo = directory / f"serial-input-{index}"
+        os.mkfifo(fifo)
+        # 与生产路径相同：一个 exec cat 日志转发器，不再模拟已移除的 getty 会话。
         command = (match.group() + '\n'
-                   + '/bin/sh -c \'sleep 0.1; exec setsid /bin/sh -c "while :; do sleep 30; done"\' &\n'
-                   + 'debug_serial_pid=$!\nprintf "%s" "$debug_serial_pid" >"$PIANO_SERIAL_CHILD"\n'
+                   + '(exec "$PIANO_BUSYBOX" cat "$PIANO_SERIAL_FIFO") &\n'
+                   + 'debug_serial_pid=$!\n'
                    + f'sleep {startup_delay}\nstop_debug_serial\nprintf "HANDOFF_REACHED\\n"\n')
         process = subprocess.Popen([busybox, "sh", "-c", command], stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, text=True, start_new_session=True,
-                                   env={**os.environ, "PIANO_SERIAL_CHILD": str(child_file)})
+                                   env={**os.environ, "PIANO_BUSYBOX": busybox, "PIANO_SERIAL_FIFO": str(fifo)})
         try:
             output, error = process.communicate(timeout=2)
             assert process.returncode == 0 and "HANDOFF_REACHED" in output, error
         except subprocess.TimeoutExpired:
-            raise AssertionError("serial cleanup blocked the systemd handoff") from None
+            raise AssertionError("serial log forwarder remained alive or prevented handoff") from None
         finally:
-            # 只回收测试创建并记录的会话；先杀父会话，再杀可能已 setsid 的子会话。
+            # 只回收测试创建的独立会话，生产日志转发器没有脱离会话的子进程。
             groups = [process.pid]
-            if child_file.exists():
-                groups.append(int(child_file.read_text()))
             for group in groups:
                 try:
                     os.killpg(group, signal.SIGKILL)
