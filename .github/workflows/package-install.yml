@@ -2,6 +2,12 @@ name: package-install
 
 # 只压缩已校验的安装材料；不重新制作文件系统，不连接设备。
 on:
+  workflow_call:
+    inputs:
+      prepare_run:
+        description: "已经成功的 prepare-install run"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       prepare_run:

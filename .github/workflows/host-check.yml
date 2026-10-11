@@ -6,11 +6,22 @@ on:
     branches: ["main"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      package_prepare_run:
+        description: "可选：同时压缩该成功 prepare-install run 的材料"
+        required: false
+        default: ""
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
+  package-install:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.package_prepare_run != '' }}
+    uses: ./.github/workflows/package-install.yml
+    with:
+      prepare_run: ${{ inputs.package_prepare_run }}
   checks:
     env:
       PIANO_TEST_SUNUEFI: ${{ github.workspace }}/build/test-sources/sunuefi
