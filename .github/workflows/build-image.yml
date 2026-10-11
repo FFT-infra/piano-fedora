@@ -246,7 +246,9 @@ jobs:
           from pathlib import Path
           Path('source-runs.json').write_text(json.dumps({
               'kernel_run': os.environ['KERNEL_RUN'], 'rootfs_run': os.environ['ROOTFS_RUN'],
-              'runtime_run': os.environ['RUNTIME_RUN'], 'mesa_run': os.environ['MESA_RUN']}, indent=2) + '\n')
+              'runtime_run': os.environ['RUNTIME_RUN'], 'mesa_run': os.environ['MESA_RUN'],
+              'image_run': os.environ['GITHUB_RUN_ID'],
+              'image_source_commit': os.environ['GITHUB_SHA']}, indent=2) + '\n')
           PY
           sudo chown "$(id -u):$(id -g)" device-root.tar.zst root-image-manifest.json
           sha256sum pianoroot.f2fs.img.zst device-root.tar.zst initramfs.tar.zst diagnostic-abl-storage.tar.zst > image-SHA256SUMS

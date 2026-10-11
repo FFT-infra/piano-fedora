@@ -27,6 +27,37 @@ def sha256(path):
     return h.hexdigest()
 
 
+def uefi_patch_identities(project):
+    """UEFI 实际消费的项目补丁和应用入口，不绑定无关 Linux 补丁。"""
+    project = Path(project)
+    series = "patches/uefi-ufs/series.json"
+    metadata = json.loads((project / series).read_text())
+    names = ["scripts/apply-patches.py", series]
+    for row in metadata["patches"]:
+        name = row["file"]
+        if not name or Path(name).name != name or name in (".", ".."):
+            raise ValueError("invalid UEFI patch path")
+        names.append("patches/uefi-ufs/" + name)
+    return {name: sha256(project / name) for name in names}
+
+
+def verify_uefi_source(project, image, record, run_id):
+    expected = json.loads((Path(project) / "sources.lock.json").read_text())["sources"]["sunuefi"]["commit"]
+    if (record.get("schema_version") != 1 or record.get("run_id") != str(run_id)
+            or not re.fullmatch(r"[1-9][0-9]*", str(run_id))
+            or record.get("workflow") != ".github/workflows/build-uefi.yml"
+            or not re.fullmatch(r"[0-9a-f]{40}", record.get("producer_commit", ""))
+            or record.get("sunuefi_commit") != expected
+            or record.get("project_source_sha256") != uefi_patch_identities(project)):
+        raise ValueError("UEFI provenance differs from its run or pinned source/patches")
+    if record.get("product") != {"sha256": sha256(image), "bytes": Path(image).stat().st_size}:
+        raise ValueError("UEFI provenance names a different product image")
+    evidence = record.get("evidence", {})
+    if (evidence.get("kind") != "successful-actions-build-log"
+            or not re.fullmatch(r"[0-9a-f]{64}", evidence.get("log_sha256", ""))):
+        raise ValueError("UEFI provenance is missing its actual build evidence")
+
+
 def safe_relative(name):
     p = PurePosixPath(name)
     if p.is_absolute() or not name or any(x in ("", ".", "..") for x in name.split("/")):

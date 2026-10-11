@@ -16,6 +16,10 @@ on:
         description: "固定本次完整集成镜像的成功 run"
         required: false
         default: ""
+      uefi_run_id:
+        description: "固定 UEFI 的成功 run；仍核对实际源码和补丁"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -41,12 +45,15 @@ jobs:
           ROOT_IMAGE: ${{ inputs.root_image_artifact }}
           UEFI_ARTIFACT: ${{ inputs.uefi_artifact }}
           ROOT_RUN: ${{ inputs.root_image_run_id }}
+          UEFI_RUN: ${{ inputs.uefi_run_id }}
         run: |
           set -euo pipefail
           args=()
           if [ -n "$ROOT_RUN" ]; then args+=(--run-id "$ROOT_RUN"); fi
           python3 scripts/resolve-artifact-run.py --workflow build-image.yml --artifact "$ROOT_IMAGE" --output-key root_run "${args[@]}"
-          python3 scripts/resolve-artifact-run.py --workflow build-uefi.yml --artifact "$UEFI_ARTIFACT" --output-key uefi_run
+          uefi_args=()
+          if [ -n "$UEFI_RUN" ]; then uefi_args+=(--run-id "$UEFI_RUN"); fi
+          python3 scripts/resolve-artifact-run.py --workflow build-uefi.yml --artifact "$UEFI_ARTIFACT" --output-key uefi_run "${uefi_args[@]}"
 
       - uses: actions/download-artifact@v4
         with:
@@ -90,6 +97,15 @@ jobs:
           cmp build/kernel/manifest.json build/in/image/kernel-manifest.json
           python3 scripts/checkout-sources.py --output build/sources --mode boot
 
+      - name: Seal the actual UEFI source and project patches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UEFI_RUN: ${{ steps.src.outputs.uefi_run }}
+        run: |
+          set -euo pipefail
+          python3 scripts/seal-uefi-source.py --run-id "$UEFI_RUN" \
+            --image build/uefi/PianoUEFI-product.img --output build/uefi-source.json
+
       - name: Create the upstream-compatible ESP and Linux boot payload
         run: |
           set -euo pipefail
@@ -109,6 +125,9 @@ jobs:
             --root-selector LABEL=PIANOROOT --esp-size-mib 512 --output build/packaged
 
       - name: Assemble and verify the delivery set
+        env:
+          UEFI_RUN: ${{ steps.src.outputs.uefi_run }}
+          ROOT_RUN: ${{ steps.src.outputs.root_run }}
         run: |
           set -euo pipefail
           mkdir -p bundle
@@ -118,6 +137,16 @@ jobs:
           cp build/in/image/root-image-manifest.json build/in/image/source-runs.json build/in/image/runtime-manifest.json bundle/
           cp build/in/image/mesa-manifest.json build/in/image/rootfs-manifest.json bundle/
           cp build/kernel/manifest.json bundle/kernel-manifest.json
+          cp build/uefi-source.json bundle/
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path('bundle/source-runs.json')
+          record = json.loads(path.read_text())
+          record.update(uefi_run=os.environ['UEFI_RUN'], image_run=os.environ['ROOT_RUN'],
+                        bundle_source_commit=os.environ['GITHUB_SHA'])
+          path.write_text(json.dumps(record, indent=2) + '\n')
+          PY
           cp build/initramfs/manifest.json bundle/initramfs-manifest.json
           sudo cp build/packaged/manifest.json bundle/esp-manifest.json
           sudo chown -R "$(id -u):$(id -g)" bundle

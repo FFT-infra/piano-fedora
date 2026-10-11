@@ -13,9 +13,105 @@ from piano_artifacts import guest_resolve, inspect_kernel, safe_destination, saf
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# 上游 1b3c538 的默认登录策略：piano 用文档化默认口令，root 保持锁定、不加
+# NOPASSWD。口令只在 finalizer 定义一次，测试与 manifest proof 都引用它。
+DEFAULT_PIANO_LOGIN = "piano"
+DEFAULT_PIANO_PASSWORD = "piano123456"
+
+# 上游 piano-debug-bootstrap 在 NCM gadget 上使用的固定 dev MAC。NM profile 只按
+# 这个 MAC 匹配，避免绑定可能被内核改名的 usb0。
+PIANO_DEBUG_NCM_MAC = "02:87:50:00:00:01"
+PIANO_DEBUG_NCM_ADDRESS = "192.168.77.1/30"
+PIANO_DEBUG_NM_UUID = "5b1c9a2e-6f3d-4a71-8c2b-0d4e5f607182"
+
 
 def chroot(root, *command):
     return subprocess.check_output(["chroot", str(root), *command], text=True)
+
+
+def login_password_input(user=DEFAULT_PIANO_LOGIN, password=DEFAULT_PIANO_PASSWORD):
+    """chpasswd 的 stdin：user:password 后跟一个真实换行（不是字面 \\n）。"""
+    return f"{user}:{password}\n"
+
+
+def set_login_password(root, user=DEFAULT_PIANO_LOGIN, password=DEFAULT_PIANO_PASSWORD):
+    """在目标树里用 chpasswd 设置默认口令；不碰 root，也不加 NOPASSWD。"""
+    subprocess.run(["chroot", str(root), "/usr/sbin/chpasswd"],
+                   input=login_password_input(user, password), text=True, check=True)
+
+
+def shadow_password(root, user):
+    """读目标树 /etc/shadow 里某个账号的口令字段。"""
+    for line in safe_destination(root, "etc/shadow").read_text().splitlines():
+        parts = line.split(":")
+        if parts and parts[0] == user and len(parts) >= 2:
+            return parts[1]
+    raise ValueError("missing shadow entry for " + user)
+
+
+def password_locked(field):
+    """shadow 口令字段为空或以 !/* 开头即视为锁定。"""
+    return field == "" or field[0] in "!*"
+
+
+def stage_linux_debug_handoff(root):
+    """成功交接后的 debug 消费者：piano-linux-debug + Fedora 原生 ttyGS0 getty。
+
+    正常 root 不提供免密 root shell：linux-debug.conf 用 shell=0，串口 getty 走
+    系统默认的账户/口令认证，不启用上游自动 root shell 的 piano-linux-serial。
+    NCM 静态地址由 NetworkManager 按 gadget 固定 dev MAC 匹配，不改接口名、不
+    DHCP、不设默认路由。
+    """
+    files = {
+        # 串口 getty 实例只在 piano-linux-debug 建立 gadget 之后启动，并保留登录认证。
+        "etc/systemd/system/serial-getty@ttyGS0.service.d/20-piano-debug.conf":
+            "[Unit]\nRequires=piano-linux-debug.service\nAfter=piano-linux-debug.service\n",
+        # 上游 opt-in 配置：正常 root 不提供免密 root shell。
+        "etc/piano/linux-debug.conf":
+            "usb=acm-ncm\nshell=0\n"
+            f"ipv4={PIANO_DEBUG_NCM_ADDRESS}\nrecovery_seconds=0\n",
+        # 只按 gadget 固定 dev MAC 匹配，避免绑定可能被改名的 usb0。
+        "etc/NetworkManager/system-connections/piano-debug-ncm.nmconnection":
+            "[connection]\n"
+            "id=piano-debug-ncm\n"
+            f"uuid={PIANO_DEBUG_NM_UUID}\n"
+            "type=ethernet\n"
+            "autoconnect=true\n"
+            "\n"
+            "[ethernet]\n"
+            f"mac-address={PIANO_DEBUG_NCM_MAC}\n"
+            "\n"
+            "[ipv4]\n"
+            "method=manual\n"
+            f"address1={PIANO_DEBUG_NCM_ADDRESS}\n"
+            "never-default=true\n"
+            "\n"
+            "[ipv6]\n"
+            "method=disabled\n",
+    }
+    modes = {"etc/piano/linux-debug.conf": 0o600,
+             "etc/NetworkManager/system-connections/piano-debug-ncm.nmconnection": 0o600}
+    for name, text in files.items():
+        target = safe_destination(root, name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+        target.chmod(modes.get(name, 0o644))
+    # 启用 debug stage 与原生 ttyGS0 getty（不启用上游自动 root shell service）。
+    wants = {
+        "etc/systemd/system/multi-user.target.wants/piano-linux-debug.service":
+            "/usr/lib/systemd/system/piano-linux-debug.service",
+        "etc/systemd/system/getty.target.wants/serial-getty@ttyGS0.service":
+            "/usr/lib/systemd/system/serial-getty@.service",
+    }
+    for name, destination in wants.items():
+        link = safe_destination(root, name)
+        link.parent.mkdir(parents=True, exist_ok=True)
+        if link.is_symlink() and str(link.readlink()) == destination:
+            continue
+        if link.exists() or link.is_symlink():
+            raise ValueError("existing debug enable link differs: " + name)
+        link.symlink_to(destination)
+    return sorted([*files, *wants])
 
 
 def normalize_launcher_links(root):
@@ -87,7 +183,7 @@ def stage_boot_diagnostics(root):
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "scripts/collect-boot-evidence.sh", target)
     target.chmod(0o755)
-    return sorted([*files, "usr/bin/piano-collect-boot"])
+    return sorted([*files, "usr/bin/piano-collect-boot", *stage_linux_debug_handoff(root)])
 
 
 def main():
@@ -126,7 +222,13 @@ def main():
     # 正式 root 的服务及账号在目标树中配置，绝不启动构建机上的设备服务。
     if subprocess.run(["chroot", str(root), "id", "piano"], capture_output=True).returncode:
         chroot(root, "useradd", "--create-home", "--groups", "wheel", "--shell", "/bin/bash", "piano")
-    chroot(root, "usermod", "--password", "!", "piano")
+    # 默认登录口令（上游 1b3c538 同款）；root 仍锁定，wheel 也不加 NOPASSWD。
+    set_login_password(root)
+    piano_field = shadow_password(root, DEFAULT_PIANO_LOGIN)
+    if password_locked(piano_field):
+        raise ValueError("default piano login password was not applied")
+    if not password_locked(shadow_password(root, "root")):
+        raise ValueError("root account must stay locked")
     gdm = root / "etc/gdm/custom.conf"
     gdm.parent.mkdir(parents=True, exist_ok=True)
     gdm.write_text("[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=piano\n")
@@ -182,7 +284,16 @@ def main():
               "root_fstype": "f2fs", "runtime_manifest_sha256": sha256(runtime / "manifest.json"),
               "mesa_manifest_sha256": sha256(mesa_dir / "manifest.json"),
               "packages_sha256": sha256(output / "packages.tsv"), "enabled_services": services,
-              "login": "piano autologin; password locked; owner provisions credentials",
+              "login": (f"{DEFAULT_PIANO_LOGIN} autologin; documented default password set; "
+                        "root locked; no NOPASSWD"),
+              "login_proof": {"user": DEFAULT_PIANO_LOGIN,
+                              "password_set": not password_locked(piano_field),
+                              "password_source": "chpasswd user:documented-default (real newline)",
+                              "password_matches_default_verified_by":
+                                  "tests/check_rootfs_finalize.py (isolated chpasswd + crypt check)",
+                              "root_locked": password_locked(shadow_password(root, "root")),
+                              "nopasswd": False, "autologin": True,
+                              "device_login_tested": False},
               "device_configuration_required": ["/etc/piano/boot-request.json", "active Android slot for sensors"],
               "normalized_launcher_links": normalized_launchers,
               "removed_manpage_links": removed_manpages, "device_tested": False}

@@ -10,6 +10,8 @@
 export PATH=/usr/sbin:/usr/bin:/bin:/sbin
 debug_started=0
 debug_serial_pid=
+boot_evidence_file=${PIANO_BOOT_EVIDENCE_FILE:-/run/piano-boot-evidence.txt}
+boot_collector=${PIANO_COLLECT_BOOT:-/usr/bin/piano-collect-boot}
 log() {
     printf 'piano: %s\n' "$*"
     # 帧缓冲空白时也要留下早期失败记录。mount --move 之后同一个 devtmpfs
@@ -41,6 +43,20 @@ stop_debug_serial() {
     kill -KILL "$debug_serial_pid" 2>/dev/null || :
     debug_serial_pid=
     # gadget 与 NCM 地址保留，真实 Fedora 的 sshd 可接管。
+}
+capture_boot_evidence() {
+    # 只读取证先完整落 RAM 文件，再逐行转 kmsg。
+    # 采集器的 stdout 与 stderr 都进同一个文件，权限 0600。
+    # 采集失败也保留已写入的内容，不因失败丢掉诊断。
+    # 读的是有限普通文件，不无界等待；也不直接写 ttyGS0。
+    ( umask 077; "$boot_collector" >"$boot_evidence_file" 2>&1 )
+    collect_status=$?
+    chmod 600 "$boot_evidence_file" 2>/dev/null || :
+    log "BOOT_EVIDENCE_SAVED: file=$boot_evidence_file collect_status=$collect_status"
+    while IFS= read -r line || [ -n "$line" ]; do
+        log "$line"
+    done <"$boot_evidence_file"
+    return "$collect_status"
 }
 fail() {
     log "DISK_ROOT_REFUSED: $*; remaining in initramfs rescue"
@@ -166,7 +182,7 @@ mount -t f2fs -o ro,norecovery "$rootdev" /sysroot || fail 'Read-only Linux moun
 [ -x /sysroot/usr/lib/piano/piano-disk-hardware-prepare ] || fail 'Hardware preparation is missing'
 log "DISK_ROOT_INSPECTED: device=$rootdev LABEL=$expected PARTNAME=sunuefi_root TYPE=f2fs"
 if [ "$boot_chain" = abl-storage ]; then
-    /usr/bin/piano-collect-boot
+    capture_boot_evidence
     log 'STORAGE_PROBE_PASSED: Fedora root inspected with ro,norecovery; no writable mount or systemd handoff performed'
     umount /sysroot || fail 'Cannot unmount the diagnostic root'
     fail 'Read-only storage probe complete; retained for evidence collection'

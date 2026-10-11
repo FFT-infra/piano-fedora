@@ -8,6 +8,8 @@ Fedora 44/GNOME、A830v1 Mesa、F2FS/SELinux 内核与完整主机构建包已�
 
 启动合同、离线诊断和图形服务取证见 [离线构建与设备验收](docs/offline-bringup.md)。
 
+已有 Linux/ESP 分区使用[更新入口](docs/installation.md)，不执行首次分区 apply。上游更新与实际构建来源见[同步说明](docs/upstream-sync.md)。
+
 ## 用法
 
 ```sh

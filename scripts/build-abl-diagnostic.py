@@ -52,6 +52,8 @@ def build(kernel, initramfs, source, output, dtbo):
         raise ValueError("mkbootimg source has local modifications")
     maker = source / "mkbootimg/mkbootimg.py"
     table = dtbo.read_bytes()
+    dtbo_bytes = len(table)
+    dtbo_sha = hashlib.sha256(table).hexdigest()
     if len(table) < 64 or struct.unpack_from(">I", table)[0] != 0xd7b7ab1e:
         raise ValueError("diagnostic DTBO has no Android DT table")
     magic, total, header, entry, count, table_offset, page, version = struct.unpack_from(">8I", table)
@@ -84,7 +86,23 @@ def build(kernel, initramfs, source, output, dtbo):
                   "kernel_release": m["kernel_release"], "kernel_manifest_sha256": kernel_hash,
                   "initramfs_manifest_sha256": sha256(initramfs / "manifest.json"),
                   "mkbootimg_commit": pin, "mkbootimg_sha256": sha256(maker),
-                  "dtbo_source": "pinned debian-piano boot/dtbo-piano-power.dts",
+                  # 本工具只验证 DTBO 的 Android DT 表结构，不重编也不把传入字节
+                  # 绑定回锁定 dts。这里如实记录：输入是 caller-supplied，
+                  # source_verified 恒为 false；expected 字段仅用于追溯。
+                  "dtbo": {
+                      "input": "caller-supplied",
+                      "android_table_validated": True,
+                      "source_verified": False,
+                      "sha256": dtbo_sha,
+                      "bytes": dtbo_bytes,
+                      "expected_source": {
+                          "repo": "debian-piano",
+                          "commit": json.loads((ROOT / "sources.lock.json").read_text())["sources"]["debian-piano"]["commit"],
+                          "dts": "boot/dtbo-piano-power.dts",
+                          "builder": "scripts/build-dtbo.py",
+                          "note": "build-image.yml 从该 pin 构建；CLI 本身未证明传入二进制来自它",
+                      },
+                  },
                   "verification": {**proof, "boot_payload_roundtrip": True, "lz4_roundtrip": True},
                   "full_desktop_tested": False, "device_tested": False,
                   "requirements": ["confirmed current slot and recoverable original Slot B boot material",

@@ -12,11 +12,18 @@ def api(path):
 
 
 def resolve(repository, workflow, names, run_id=None):
+    # 用官方 workflow_id 比对，display name 可被改名或撞名，不作为身份。
+    workflow_id = api(f"repos/{repository}/actions/workflows/{workflow}")["id"]
     if run_id:
         candidates = [api(f"repos/{repository}/actions/runs/{int(run_id)}")]
     else:
         candidates = api(f"repos/{repository}/actions/workflows/{workflow}/runs?status=success&per_page=50")["workflow_runs"]
     for run in candidates:
+        if run.get("workflow_id") != workflow_id:
+            if run_id:
+                raise ValueError(
+                    f"run {run.get('id')} belongs to workflow {run.get('workflow_id')}, not {workflow}")
+            continue
         if run["status"] != "completed" or run["conclusion"] != "success":
             continue
         artifacts = api(f"repos/{repository}/actions/runs/{run['id']}/artifacts?per_page=100")["artifacts"]

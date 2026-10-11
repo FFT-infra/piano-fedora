@@ -79,6 +79,8 @@ def main():
             stage.CONTEXT_CHECKER: stage.CONTEXT_CHECKER_SHA256,
             stage.HARDWARE_PREPARE: "a171ece910b51b7a9586c58277df78957709a4fff559245c9919d3f8432c925c",
             "linux/userspace/piano-debug-bootstrap": "d201ec73a70f3db8d80a9e424fe88ec4de90a31bf2cba49d1229970ea49427ba",
+            "linux/userspace/piano-debug-stage": "b9f02b68f48d81fa40ca2cbd05e3ed4e3275a489e9d15388dd4fa382251960df",
+            "linux/userspace/piano-linux-debug.service": "f52c5a0dba87318c6f19d92f1c3a24c30d074437ec4d97a32c9d03a5acdde999",
             "linux/userspace/piano-boot-task-snapshot": "fixture",
         }
         for relative in digests:

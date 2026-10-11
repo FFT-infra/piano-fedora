@@ -116,6 +116,12 @@ def stage_hardware(rootfs, sunuefi):
         "usr/local/bin/piano-debug-bootstrap": (
             sunuefi / "linux/userspace/piano-debug-bootstrap",
             "d201ec73a70f3db8d80a9e424fe88ec4de90a31bf2cba49d1229970ea49427ba"),
+        "usr/local/bin/piano-debug-stage": (
+            sunuefi / "linux/userspace/piano-debug-stage",
+            "b9f02b68f48d81fa40ca2cbd05e3ed4e3275a489e9d15388dd4fa382251960df"),
+        "usr/lib/systemd/system/piano-linux-debug.service": (
+            sunuefi / "linux/userspace/piano-linux-debug.service",
+            "f52c5a0dba87318c6f19d92f1c3a24c30d074437ec4d97a32c9d03a5acdde999"),
         "usr/lib/piano/piano-boot-task-snapshot": (
             sunuefi / "linux/userspace/piano-boot-task-snapshot", None),
     }
@@ -134,7 +140,7 @@ def stage_hardware(rootfs, sunuefi):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         # 可执行的是 prepare 本体，两个 .py 是它 import 的模块。
-        target.chmod(0o755 if not relative.endswith(".py") else 0o644)
+        target.chmod(0o644 if relative.endswith((".py", ".service")) else 0o755)
         staged[relative] = actual
     # 引导脚本按 /usr/lib/piano/piano-disk-hardware-prepare 调用它。
     alias = safe_target(rootfs, "usr/lib/piano/piano-disk-hardware-prepare")

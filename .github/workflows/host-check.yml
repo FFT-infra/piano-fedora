@@ -45,7 +45,7 @@ jobs:
           sudo podman run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
             --env PIANO_TEST_SUNUEFI=/workspace/build/test-sources/sunuefi \
             registry.fedoraproject.org/fedora:44 bash -euo pipefail -c '
-              dnf -y install busybox binutils util-linux make git python3
+              dnf -y install busybox binutils util-linux shadow-utils libxcrypt make git python3
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory /workspace/build/test-sources/sunuefi
               make test

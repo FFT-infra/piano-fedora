@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """省略文档时仅清理缺失的手册链接，保留运行时链接与有效手册。"""
 
+import ctypes
+import ctypes.util
 import importlib.util
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -34,6 +39,132 @@ def launcher_fixture(root):
     target.write_bytes(b"weather launcher")
     (binary / "gnome-weather").symlink_to("../../../../../../../usr/share/org.gnome.Weather/org.gnome.Weather")
     return binary, target
+
+
+def check_debug_handoff(root, staged):
+    """debug 交接消费者、unit 关系、NM profile 权限与 MAC 匹配必须精确。"""
+    # 记录进 stage_boot_diagnostics 返回的文件列表。
+    expected = {
+        "etc/systemd/system/serial-getty@ttyGS0.service.d/20-piano-debug.conf",
+        "etc/piano/linux-debug.conf",
+        "etc/NetworkManager/system-connections/piano-debug-ncm.nmconnection",
+        "etc/systemd/system/multi-user.target.wants/piano-linux-debug.service",
+        "etc/systemd/system/getty.target.wants/serial-getty@ttyGS0.service",
+    }
+    assert expected <= set(staged), sorted(set(staged))
+
+    # 串口 getty 实例必须在 piano-linux-debug 之后，且保留账户认证（不启用自动 root shell）。
+    dropin = root / "etc/systemd/system/serial-getty@ttyGS0.service.d/20-piano-debug.conf"
+    text = dropin.read_text()
+    assert "Requires=piano-linux-debug.service" in text
+    assert "After=piano-linux-debug.service" in text
+    assert not (root / "etc/systemd/system/multi-user.target.wants/piano-linux-serial.service").exists()
+
+    # 两个 enable 链接指向正确的上游 unit。
+    debug_link = root / "etc/systemd/system/multi-user.target.wants/piano-linux-debug.service"
+    assert debug_link.is_symlink()
+    assert str(debug_link.readlink()) == "/usr/lib/systemd/system/piano-linux-debug.service"
+    getty_link = root / "etc/systemd/system/getty.target.wants/serial-getty@ttyGS0.service"
+    assert getty_link.is_symlink()
+    assert str(getty_link.readlink()) == "/usr/lib/systemd/system/serial-getty@.service"
+
+    # linux-debug.conf：上游 opt-in acm-ncm、shell=0、固定 ipv4、recovery=0、权限 600。
+    config = root / "etc/piano/linux-debug.conf"
+    body = config.read_text()
+    assert "usb=acm-ncm" in body and "shell=0" in body
+    assert "ipv4=192.168.77.1/30" in body and "recovery_seconds=0" in body
+    assert config.stat().st_mode & 0o777 == 0o600, oct(config.stat().st_mode & 0o777)
+
+    # NM profile：600，按固定 dev MAC 匹配，静态地址、never-default、ipv6 disabled。
+    profile = root / "etc/NetworkManager/system-connections/piano-debug-ncm.nmconnection"
+    assert profile.stat().st_mode & 0o777 == 0o600, oct(profile.stat().st_mode & 0o777)
+    body = profile.read_text()
+    assert "[ethernet]" in body and "[match]" not in body
+    assert "mac-address=02:87:50:00:00:01" in body
+    assert "interface-name=" not in body, "must not bind a renameable interface name"
+    assert "method=manual" in body and "address1=192.168.77.1/30" in body
+    assert "never-default=true" in body
+    assert "method=disabled" in body
+    assert "method=auto" not in body and "method=dhcp" not in body
+
+
+def check_login_password(root):
+    """真实 chpasswd 输入必须非 locked、含真实换行，并能生成匹配默认口令的 shadow。"""
+    user = finalizer.DEFAULT_PIANO_LOGIN
+    password = finalizer.DEFAULT_PIANO_PASSWORD
+    payload = finalizer.login_password_input(user, password)
+    # 输入必须以真实换行结尾，且不能把 "\n" 当成两个字面字符送进 chpasswd。
+    assert payload.endswith("\n") and not payload.endswith("\\n"), repr(payload)
+    assert payload == f"{user}:{password}\n", repr(payload)
+    assert "\n" not in payload[:-1], "payload must carry exactly one trailing newline"
+
+    # 真实 shadow 生成需要 root。host-check 容器里 euid=0 但不装 sudo，直接调用
+    # chpasswd；非 root 才退回 sudo -n。两者都不可用时只验证输入编码。
+    chpasswd = shutil.which("chpasswd") or "/usr/sbin/chpasswd"
+    if not Path(chpasswd).exists():
+        print("SKIP: system chpasswd unavailable; only the encoded input was checked")
+        return
+    if os.geteuid() == 0:
+        prefix = []
+    elif shutil.which("sudo") and subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode == 0:
+        prefix = ["sudo", "-n"]
+    else:
+        print("SKIP: real chpasswd fixture requires root or passwordless sudo")
+        return
+
+    fx = root / "login-shadow"
+    (fx / "etc").mkdir(parents=True)
+    (fx / "etc/passwd").write_text(f"{user}:x:1000:1000::{('/home/' + user)}:/bin/bash\n")
+    (fx / "etc/shadow").write_text(f"{user}:!:20001:0:99999:7:::\n")
+    # 固定 SHA512，避免空 chroot 里没有 PAM/默认加密策略时的差异。
+    subprocess.run([*prefix, chpasswd, "-c", "SHA512", "-R", str(fx)],
+                   input=payload, text=True, check=True)
+    field = None
+    for line in (fx / "etc/shadow").read_text().splitlines():
+        parts = line.split(":")
+        if parts and parts[0] == user:
+            field = parts[1]
+    assert field and not finalizer.password_locked(field), f"chpasswd left the account locked: {field!r}"
+    assert field.startswith("$6$"), f"expected a SHA512 hash, got: {field!r}"
+    # python3.13 已移除 crypt 模块，用标准库 ctypes 绑定系统 libcrypt 的 crypt(3)。
+    crypt = _libcrypt_crypt()
+    if crypt is None:
+        print("SKIP: no working libcrypt found; CI provides shadow-utils/libxcrypt")
+        return
+    assert crypt(password, field) == field, "default password does not reproduce the shadow hash"
+    assert crypt(password + "x", field) != field, "a different password must not match"
+
+
+def _libcrypt_crypt():
+    """返回可用的 libcrypt crypt(3) 绑定；找不到返回 None（CI 由 shadow-utils/libxcrypt 提供）。"""
+    import glob
+    candidates = []
+    found = ctypes.util.find_library("crypt")
+    if found:
+        candidates.append(found)
+    candidates += ["libcrypt.so.2", "libcrypt.so.1", "libcrypt.so",
+                   "/lib64/libcrypt.so.2", "/usr/lib64/libcrypt.so.2",
+                   "/lib64/libcrypt.so.1", "/usr/lib/libcrypt.so.1"]
+    # 一些发行版/容器把 libxcrypt 放在非标准前缀，按真实文件补齐候选。
+    candidates += glob.glob("/nix/store/*libxcrypt*/lib/libcrypt.so.2")
+    candidates += glob.glob(str(Path(sys.prefix) / "lib" / "libcrypt.so*"))
+    for name in candidates:
+        try:
+            lib = ctypes.CDLL(name)
+            lib.crypt.restype = ctypes.c_char_p
+            lib.crypt.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+            # 只有真能算出 crypt 的库才接受，避免选到 ABI 不兼容的 .so。
+            if not lib.crypt(b"probe", b"$6$abcdefgh$"):
+                continue
+        except (OSError, AttributeError):
+            continue
+
+        def crypt(password, salt, _lib=lib):
+            result = _lib.crypt(password.encode(), salt.encode())
+            return result.decode() if result else None
+
+        return crypt
+    return None
 
 
 def main():
@@ -74,7 +205,9 @@ def main():
         assert "StartLimitBurst=3" in camera.read_text()
         assert not (root / "etc/systemd/system/piano-camerad.service").is_symlink()
         assert (root / "usr/bin/piano-collect-boot").stat().st_mode & 0o111
-    print("OK: missing manuals pruned, launcher normalized and runtime path guards preserved")
+        check_debug_handoff(root, staged)
+        check_login_password(root)
+    print("OK: manuals pruned, launcher normalized, runtime guards, debug handoff and default login password preserved")
 
 
 if __name__ == "__main__":

@@ -362,6 +362,28 @@ def verify_archive(archive, kernel_manifest=None, expected_chain=None):
     for name in ("init", "pianoinit", "bin/busybox", "usr/bin/blkid"):
         if not stat.S_ISREG(rows[name]["mode"]) or not rows[name]["mode"] & 0o111:
             raise InitramfsError(f"required program is not executable: {name}")
+    # 引导脚本实际执行的每个 BusyBox applet 必须是链接到已验证 BusyBox 的
+    # bin/<name>。缺一个或换成普通文件，只有在设备第一次调用时才会暴露，
+    # 所以这里按 APPLETS（ABL 另有 devmem）逐个核验，而不是只看 bin/busybox。
+    busybox_row = rows["bin/busybox"]
+    if (not stat.S_ISREG(busybox_row["mode"]) or not busybox_row["mode"] & 0o111
+            or not busybox_row["data"].startswith(b"\x7fELF")):
+        raise InitramfsError("bin/busybox must be the verified executable BusyBox ELF")
+    applets = APPLETS + (("devmem",) if chain == "abl-storage" else ())
+    for applet in applets:
+        link = rows.get(f"bin/{applet}")
+        if link is None:
+            raise InitramfsError(f"missing BusyBox applet link: bin/{applet}")
+        if not stat.S_ISLNK(link["mode"]):
+            raise InitramfsError(f"BusyBox applet is not a symlink: bin/{applet}")
+        target = (Path(f"bin/{applet}").parent / link["data"].decode()).as_posix()
+        if target != "bin/busybox":
+            raise InitramfsError(f"BusyBox applet does not point at the verified BusyBox: bin/{applet}")
+    # debug helper 与 collector 由引导脚本直接执行，必须在归档内存在且可执行。
+    for name in ("usr/local/sbin/piano-debug-bootstrap", "usr/bin/piano-collect-boot"):
+        row = rows.get(name, {})
+        if not stat.S_ISREG(row.get("mode", 0)) or not row["mode"] & 0o111:
+            raise InitramfsError(f"missing or non-executable bootstrap program: {name}")
     for name, identity in (("dev/console", (5, 1)), ("dev/null", (1, 3))):
         row = rows.get(name, {})
         if not stat.S_ISCHR(row.get("mode", 0)) or (row.get("major"), row.get("minor")) != identity:
@@ -397,7 +419,8 @@ def verify_archive(archive, kernel_manifest=None, expected_chain=None):
         raise InitramfsError("bootstrap must call /usr/bin/blkid explicitly")
     return {"entries": len(rows), "elf_closure_verified": True,
             "module_identities_verified": kernel_manifest is not None,
-            "relative_links_verified": True, "canonical_blkid_verified": True}
+            "relative_links_verified": True, "canonical_blkid_verified": True,
+            "busybox_applets_verified": True, "bootstrap_programs_verified": True}
 
 
 def build(rootfs, kernel, output, root_label, root_partname, release_override=None,

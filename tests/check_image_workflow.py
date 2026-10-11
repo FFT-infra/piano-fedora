@@ -2,6 +2,7 @@
 """用没有 Python 的模拟 Fedora 容器执行镜像 workflow 的 RPM 安装入口。"""
 
 import hashlib
+import base64
 import importlib.util
 import io
 import json
@@ -15,6 +16,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+from piano_artifacts import uefi_patch_identities
 
 
 def module(name, path):
@@ -83,7 +85,15 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
              **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
                 for name in ("rootfs", "kernel", "runtime", "mesa", "initramfs")}}
     write("root-image-manifest.json", image)
-    write("source-runs.json", {"kernel_run": "fixture"})
+    write("source-runs.json", {"kernel_run": "fixture", "uefi_run": "12345"})
+    source = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["sunuefi"]["commit"]
+    uefi = {"schema_version": 1, "run_id": "12345", "workflow": ".github/workflows/build-uefi.yml",
+            "producer_commit": "1" * 40, "sunuefi_commit": source,
+            "project_source_sha256": uefi_patch_identities(ROOT),
+            "product": {"sha256": digest(root / "PianoUEFI-product.img"),
+                        "bytes": (root / "PianoUEFI-product.img").stat().st_size},
+            "evidence": {"kind": "successful-actions-build-log", "log_sha256": "2" * 64}}
+    write("uefi-source.json", uefi)
 
     def verify(data=raw):
         with patch.object(bundle.subprocess, "Popen") as spawn:
@@ -94,6 +104,17 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
             return value
 
     assert verify()["device_tested"] is False
+    for changed in ({"sunuefi_commit": "0" * 40}, {"run_id": "12346"},
+                    {"product": {"sha256": "0" * 64, "bytes": 7}},
+                    {"project_source_sha256": {}}):
+        write("uefi-source.json", {**uefi, **changed})
+        try:
+            verify()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("bundle accepted a foreign UEFI source, run, patch set or image")
+    write("uefi-source.json", uefi)
     for name, data in (("mesa", raw), (None, b"wrong raw image payload")):
         write("root-image-manifest.json", {**image, **({name + "_manifest_sha256": "0" * 64} if name else {})})
         try:
@@ -117,6 +138,40 @@ def install_step():
     return "\n".join(body)
 
 
+def check_uefi_sealer(root):
+    sealer = module("uefi_sealer", ROOT / "scripts/seal-uefi-source.py")
+    image = root / "uefi.img"
+    root.mkdir()
+    image.write_bytes(b"sealed UEFI product fixture")
+    expected = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["sunuefi"]["commit"]
+    digest = hashlib.sha256(image.read_bytes()).hexdigest()
+    good_log = "uefi\tClone\t2026-10-11T12:00:00Z sunuefi at " + expected + '\n{"sha256":"' + digest + '"}\n'
+
+    def api(path, tamper=False):
+        if "/actions/runs/" in path:
+            return {"head_sha": "1" * 40}
+        name = path.split("/contents/", 1)[1].split("?ref=", 1)[0]
+        data = b"foreign patches" if tamper else (ROOT / name).read_bytes()
+        return {"encoding": "base64", "content": base64.b64encode(data).decode()}
+
+    def invoke(log=good_log, tamper=False):
+        with patch.object(sealer.runs, "resolve", return_value="12345"), \
+             patch.object(sealer.runs, "api", side_effect=lambda p: api(p, tamper)), \
+             patch.object(sealer.subprocess, "check_output", return_value=log):
+            return sealer.seal("owner/repo", "12345", image)
+
+    good = invoke()
+    assert good["sunuefi_commit"] == expected and good["product"]["sha256"] == digest
+    for log, tamper in ((good_log.replace(expected, "0" * 40), False),
+                        (good_log.replace(digest, "0" * 64), False), (good_log, True)):
+        try:
+            invoke(log, tamper)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("UEFI sealer accepted an unrelated checkout, image or patch producer")
+
+
 def executable(path, text):
     path.write_text("#!/bin/bash\nset -euo pipefail\n" + text)
     path.chmod(0o755)
@@ -127,6 +182,7 @@ def main():
         root = Path(directory)
         check_mesa(root / "mesa")
         check_bundle(root / "bundle")
+        check_uefi_sealer(root / "uefi-source")
         host, container = root / "host", root / "container"
         host.mkdir()
         container.mkdir()

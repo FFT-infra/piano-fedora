@@ -16,7 +16,7 @@ import time
 import uuid
 import zlib
 
-from piano_artifacts import sha256
+from piano_artifacts import sha256, verify_uefi_source
 from piano_sparse import require
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -100,12 +100,16 @@ def checked(path, meta):
     require(path.stat().st_size == meta["bytes"] and sha256(path) == meta["sha256"], "input hash/size differs: " + str(path))
 
 
-def installation_plan(upstream, device, bundle, root_install, boot, stock_boot):
+def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, existing=False):
     require(not any((p / ".incomplete").exists() for p in (bundle, root_install, boot)), "incomplete input package")
     snapshot = device.inspect()
     disk_name = Path(snapshot["identity"]["disk"]).name
     require(device.text("cat /sys/block/" + disk_name + "/queue/physical_block_size") == str(BLOCK), "unexpected physical sector size")
-    layout = partition_plan(snapshot["gpt"])
+    if existing:
+        layout = upstream.plan_gpt(snapshot["gpt"])
+        require(layout["mode"] == "update", "existing root and ESP partitions are required")
+    else:
+        layout = partition_plan(snapshot["gpt"])
     slot = device.text("getprop ro.boot.slot_suffix")
     require(slot in ("_a", "_b"), "unknown active Android slot")
     root = json.loads((root_install / "root-install-manifest.json").read_text())
@@ -113,14 +117,22 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot):
     generic = json.loads((bundle / "bundle-manifest.json").read_text())
     image = json.loads((bundle / "root-image-manifest.json").read_text())
     require(generic.get("status") == "HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED", "generic bundle not verified")
+    source_runs = json.loads((bundle / "source-runs.json").read_text())
+    verify_uefi_source(ROOT, bundle / "PianoUEFI-product.img",
+                       json.loads((bundle / "uefi-source.json").read_text()), source_runs.get("uefi_run"))
     for name in ("esp.img", "boot.img", "PianoUEFI-product.img"):
         checked(bundle / name, generic["files"][name])
     require(root.get("status") == "ROOT_CAPACITY_VERIFIED_NOT_DEVICE_VERIFIED"
             and root["source_bundle_manifest_sha256"] == sha256(bundle / "bundle-manifest.json")
             and root["source_root_manifest_sha256"] == sha256(bundle / "root-image-manifest.json")
             and root["source_root_sha256"] == image["sha256"], "capacity image belongs to another bundle")
-    require(root["target_size_mib"] == layout["capacity"]["linux_root_mib"]
-            and root["expanded_bytes"] == root["target_size_mib"] * 1024**2, "root image does not match the equal partition plan")
+    require(root["expanded_bytes"] == root["target_size_mib"] * 1024**2, "root image capacity fields differ")
+    if existing:
+        targets = {row["name"]: row for row in layout["partitions"]}
+        require(root["expanded_bytes"] == targets["sunuefi_root"]["bytes"], "root image does not match the existing partition capacity")
+        require(generic["files"]["esp.img"]["bytes"] == targets["sunuefi_esp"]["bytes"], "ESP image does not match the existing partition capacity")
+    else:
+        require(root["target_size_mib"] == layout["capacity"]["linux_root_mib"], "root image does not match the equal partition plan")
     require(root["fsck_exit"] == 0 and root["fsck_read_only"] is True
             and root["transport"]["dont_care_chunks"] == 0
             and root["transport"]["zero_policy"] == "explicit-zero-fill", "root capacity/transport verification incomplete")
@@ -129,6 +141,14 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot):
         require(root["metadata_verification"].get(field) is True, "root metadata proof missing: " + field)
     require(root["transport"]["file"] == "pianoroot.f2fs.sparse.img", "unexpected root transport path")
     checked(root_install / "pianoroot.f2fs.sparse.img", root["transport"])
+    with (root_install / "pianoroot.f2fs.sparse.img").open("rb") as stream:
+        header = stream.read(28)
+    require(len(header) == 28, "truncated sparse header")
+    magic, major, minor, fh, ch, block, total, chunks, crc = struct.unpack("<IHHHHIIII", header)
+    require((magic, major, minor, fh, ch, block, crc) == (0xED26FF3A, 1, 0, 28, 12, BLOCK, 0)
+            and 0 < chunks <= total and total * block == root["expanded_bytes"]
+            and root["transport"]["expanded_bytes"] == root["expanded_bytes"]
+            and root["transport"]["expanded_sha256"] == root["expanded_sha256"], "sparse geometry differs from the verified root capacity")
     require(combined.get("status") == "DEVICE_BOOT_FILE_VERIFIED_NOT_DEVICE_BOOTED"
             and combined["byte_equal_restoration"] is True and combined["active_slot"] == slot,
             "combined BOOT does not match the current slot or lacks lossless restore proof")
@@ -143,19 +163,20 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot):
     require(stock_boot.is_file() and not stock_boot.is_symlink() and stock_boot.stat().st_size == 96 * 1024**2
             and sha256(stock_boot) == current_boot, "current original BOOT recovery file is missing or differs")
     # 擦除后 Android 必须能通过自己的 fs_mgr 重建加密 userdata；不在宿主格式化密文分区。
-    fstab = device.text("cat /vendor/etc/fstab.*")
-    rows = [line for line in fstab.splitlines() if re.search(r"\s/data\s", line) and not line.lstrip().startswith("#")]
-    require(rows and all("formattable" in line.split()[-1].split(",") for line in rows),
-            "Android userdata auto-format contract is unverified; do not repartition")
+    if not existing:
+        fstab = device.text("cat /vendor/etc/fstab.*")
+        rows = [line for line in fstab.splitlines() if re.search(r"\s/data\s", line) and not line.lstrip().startswith("#")]
+        require(rows and all("formattable" in line.split()[-1].split(",") for line in rows),
+                "Android userdata auto-format contract is unverified; do not repartition")
     require(device.text("getprop sys.boot_completed") == "1", "normal Android boot must be complete")
-    return {"schema_version": 1, "status": "FIRST_INSTALL_READ_ONLY_PLAN", "device": snapshot["identity"],
+    return {"schema_version": 1, "status": "EXISTING_PARTITIONS_READ_ONLY_PLAN" if existing else "FIRST_INSTALL_READ_ONLY_PLAN", "device": snapshot["identity"],
             "android_slot": slot, "android_build": device.text("getprop ro.build.version.incremental"),
             "gpt_baseline": snapshot["gpt"].baseline(), "partition_plan": layout,
             "source_boot_sha256": current_boot,
             "inputs": {"bundle_manifest_sha256": sha256(bundle / "bundle-manifest.json"),
                        "root_manifest_sha256": sha256(root_install / "root-install-manifest.json"),
                        "boot_manifest_sha256": sha256(boot / "device-boot-manifest.json")},
-            "android_data_preserved": False, "device_writes": False}, snapshot
+            "android_data_preserved": existing, "device_writes": False}, snapshot
 
 
 def sync_file(path):
@@ -214,9 +235,9 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
 
     try:
         stage("inputs_and_current_gpt_validated")
-        # 预检阶段已在真机上完成非持久化内存引导验证（SunUEFI GOP 正常、HyperOS 旁路 9s 完整回弹）
-        stage("temporary_uefi_and_android_return_verified")
-        stage("temporary_combined_boot_android_passthrough_verified")
+        # 不继承历史设备试验；本执行器没有执行临时引导，不能写成已验证。
+        journal["temporary_uefi_verified"] = False
+        journal["temporary_android_passthrough_verified"] = False
         remote = "/data/local/tmp/piano-first-install-" + uuid.uuid4().hex
         device.call(["adb", "-s", device.serial, "push", str(session / "new-gpt.bin"), remote])
         require(device.text("sha256sum " + remote).split()[0] == sha256(session / "new-gpt.bin"), "staged GPT differs")

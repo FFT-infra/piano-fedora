@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import shutil
 
-from piano_artifacts import sha256
+from piano_artifacts import sha256, uefi_patch_identities
 from piano_sparse import require
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,8 +26,12 @@ def main():
     require(not output.exists() and not output.is_symlink(), "installer output already exists")
     (output / "scripts").mkdir(parents=True)
     shutil.copy2(ROOT / "sources.lock.json", output / "sources.lock.json")
-    for name in ("install-f2fs.py", "plan-first-partition.py", "prepare-device-boot.py", "piano_artifacts.py", "piano_sparse.py"):
+    for name in ("install-f2fs.py", "update-f2fs.py", "plan-first-partition.py", "prepare-device-boot.py", "verify-native-boot.py", "apply-patches.py", "piano_artifacts.py", "piano_sparse.py"):
         shutil.copy2(ROOT / "scripts" / name, output / "scripts" / name)
+    for name in uefi_patch_identities(ROOT):
+        target = output / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / name, target)
     tools = output / "sunuefi/tools"
     tools.mkdir(parents=True)
     for name in ("install_piano.py", "provision_piano_bluetooth.py", "provision_piano_ssh.py", "compose_piano_dtb.py"):

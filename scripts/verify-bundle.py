@@ -7,12 +7,14 @@ import json
 import subprocess
 from pathlib import Path
 
-from piano_artifacts import sha256
+from piano_artifacts import sha256, verify_uefi_source
+
+PROJECT = Path(__file__).resolve().parents[1]
 
 REQUIRED = {"esp.img", "boot.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst",
             "root-image-manifest.json", "kernel-manifest.json", "initramfs-manifest.json",
             "esp-manifest.json", "runtime-manifest.json", "mesa-manifest.json",
-            "rootfs-manifest.json", "source-runs.json"}
+            "rootfs-manifest.json", "source-runs.json", "uefi-source.json"}
 
 
 def verify(root):
@@ -20,6 +22,8 @@ def verify(root):
     if missing:
         raise ValueError("bundle is incomplete: " + str(sorted(missing)))
     read = lambda name: json.loads((root / name).read_text())
+    source_runs = read("source-runs.json")
+    verify_uefi_source(PROJECT, root / "PianoUEFI-product.img", read("uefi-source.json"), source_runs.get("uefi_run"))
     kernel = read("kernel-manifest.json")
     kernel_hash = sha256(root / "kernel-manifest.json")
     for name in ("initramfs-manifest.json", "runtime-manifest.json", "rootfs-manifest.json"):
@@ -74,7 +78,7 @@ def verify(root):
             "mesa_manifest_sha256": sha256(root / "mesa-manifest.json"),
             "root_image": {"format": "raw-f2fs", "label": "PIANOROOT", "expanded_sha256": image["sha256"],
                            "bytes": image["bytes"], "verification": proof},
-            "source_runs": read("source-runs.json"), "device_tested": False,
+            "source_runs": source_runs, "uefi_source_verified": True, "device_tested": False,
             "device_operation_performed": False,
             "deployment_requirements": ["recoverable device backup", "userdata/data-handling choice",
                                         "current stock BOOT and slot/generation provisioning"]}

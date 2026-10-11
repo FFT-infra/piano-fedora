@@ -123,6 +123,65 @@ def check_archive(directory):
         pass
     else:
         raise AssertionError("a non-executable init process was accepted")
+
+    # 每个实际需要的 BusyBox applet 必须是链接到已验证 BusyBox 的 bin/<name>；
+    # debug helper 与 collector 必须存在且可执行。缺失、被换成普通文件或断链
+    # 都必须在构建时暴露，不能等到设备上第一次执行才失败。
+    def abl_records(source):
+        release = next(row["data"] for row in source
+                       if row["name"] == "etc/piano/kernel-release").decode().strip()
+        out = []
+        for row in source:
+            if row["name"] == "etc/piano/boot-chain":
+                row = {**row, "data": b"abl-storage\n"}
+            elif row["name"] == "etc/piano/modules-load-order":
+                row = {**row, "data": (
+                    f"phy_qcom_qmp_ufs /lib/modules/{release}/kernel/drivers/phy/qualcomm/phy-qcom-qmp-ufs.ko\n"
+                    f"ufs_qcom /lib/modules/{release}/kernel/drivers/ufs/ufs-qcom.ko\n").encode()}
+            out.append(row)
+        out.append({"name": "usr/bin/piano-qup-smmu", "mode": stat.S_IFREG | 0o755,
+                    "data": b"#!/bin/sh\nexit 0\n"})
+        out.append({"name": "bin/devmem", "mode": stat.S_IFLNK | 0o777, "data": b"busybox"})
+        return out
+
+    abl = abl_records(records)
+    # 该 ABL 归档本身必须通过，才能证明下面的负例确实由被移除的成员触发。
+    builder.verify_archive(builder.make_newc(abl), expected_chain="abl-storage")
+
+    def without(entries, name):
+        return [row for row in entries if row["name"] != name]
+
+    def with_mode(entries, name, mode):
+        return [{**row, "mode": mode} if row["name"] == name else row for row in entries]
+
+    missing_cases = [
+        ("bin/sh", "sunuefi", without(records, "bin/sh")),
+        ("debug helper", "sunuefi", without(records, "usr/local/sbin/piano-debug-bootstrap")),
+        ("collector", "sunuefi", without(records, "usr/bin/piano-collect-boot")),
+        ("ABL devmem", "abl-storage", without(abl, "bin/devmem")),
+        ("ABL collector", "abl-storage", without(abl, "usr/bin/piano-collect-boot")),
+    ]
+    for label, chain, entries in missing_cases:
+        try:
+            builder.verify_archive(builder.make_newc(entries), expected_chain=chain)
+        except builder.InitramfsError:
+            pass
+        else:
+            raise AssertionError(f"archive accepted a missing {label}")
+    substitution_cases = [
+        ("non-executable collector", "sunuefi",
+         with_mode(records, "usr/bin/piano-collect-boot", stat.S_IFREG | 0o644)),
+        ("bin/sh not linked to the verified BusyBox", "sunuefi",
+         with_mode(records, "bin/sh", stat.S_IFREG | 0o755)),
+    ]
+    for label, chain, entries in substitution_cases:
+        try:
+            builder.verify_archive(builder.make_newc(entries), expected_chain=chain)
+        except builder.InitramfsError:
+            pass
+        else:
+            raise AssertionError(f"archive accepted a {label}")
+
     try:
         builder.build(rootfs, kernel, directory / "mixed", "PIANOROOT", "sunuefi_root",
                       boot_chain="sunuefi", abl_source=directory)

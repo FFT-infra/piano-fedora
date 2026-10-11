@@ -1,7 +1,48 @@
-# 首次安装与验收
+# 安装、已有分区更新与验收
 
 安装材料由 `prepare-install.yml` 生成，实际操作由连接平板的 Linux 主机执行。
 Actions 不连接平板。构建成功、传输成功、Linux 启动成功分别记录。
+
+已有 `sunuefi_root` 和 `sunuefi_esp` 时使用下面的更新入口。首次分区的 `install-f2fs.py apply` 会清空 userdata，不能用于更新。
+
+## 已有分区更新
+
+`update-f2fs.py` 复用锁定上游的只读设备/GPT 解析、工厂 Fastboot 身份检查与本仓库的材料校验。它只传输现有 ESP 和 F2FS root，保持 GPT、userdata 与持久 BOOT 的写入操作为零。完整 root 会替换 Linux 文件，已有个人文件须先备份。
+
+先恢复正确 ROM 配套的 B 槽组件，确认原 Android 能完整启动并提供 root ADB；历史 init_boot/DTBO 试验不能作为已恢复的证据。计划核对主备 GPT/CRC、分区类型、当前槽、原 BOOT、源码清单、管理配置和实际 sparse 容量。还会只读取得 Android `/sys/firmware/fdt`，检查 Linux RAM 子集与固定保留区；检查含义见[上游核对](upstream-sync.md)。缺少 FDT 或比较失败时停止，不跳过检查。
+
+在连接平板的 Linux 主机上执行，以下路径指本次已下载的材料，`--serial` 是实际 Android ADB 序列号：
+
+```sh
+python3 boot-tools/installer/scripts/update-f2fs.py plan \
+  --sunuefi boot-tools/installer/sunuefi --serial 12440448 \
+  --bundle deploy-bundle --root-install root-install \
+  --device-boot device-boot --stock-boot stock-recovery/boot.img \
+  --plan update-plan.json
+```
+
+复核计划并备份 Linux 文件后，使用同一组输入：
+
+```sh
+python3 boot-tools/installer/scripts/update-f2fs.py apply \
+  --sunuefi boot-tools/installer/sunuefi --serial 12440448 \
+  --bundle deploy-bundle --root-install root-install \
+  --device-boot device-boot --stock-boot stock-recovery/boot.img \
+  --plan update-plan.json --session update-session \
+  --execute --accept-root-replacement
+```
+
+执行前重新比较设备、完整 GPT 基线、内存描述、槽位和材料，保存 GPT 双副本及原 BOOT；进入原厂 bootloader 后，在第一笔传输前核对两个目标的实时容量，拒绝 fastbootd、错误序列号或槽位。只传输 `sunuefi_esp` 与 `sunuefi_root`，完成后停在 Fastboot，状态为 `UPDATE_TRANSFERRED_FIRST_BOOT_AND_READBACK_PENDING`。
+
+传输不等于读回或启动通过。下一步是临时 `boot_linux.img` 启动与设备读回、GNOME/硬件验收、临时 Android 旁路；通过后才单独安装持久 BOOT。中断时先读取 session 的 result.json 和实际状态，不自动重试或回滚 GPT。
+
+## 登录和诊断
+
+Fedora 的初始桌面用户为 `piano`，默认密码 `piano123456`，与上游新登录策略一致。桌面自动登录；首次使用后运行 `passwd` 修改密码。root 密码保持锁定，管理公钥仍只在 prepare-install 的私有派生镜像内配置。
+
+正常 Fedora 使用需要账户认证的 `serial-getty@ttyGS0.service`；initramfs 救援的串口 shell 与之分开。NCM 使用上游固定设备 MAC，NetworkManager 静态配置为 `192.168.77.1/30`，不添加默认路由；主机可使用 `192.168.77.2/30`。这些是已配置的接管入口，实际 USB 枚举和登录仍需设备验证。
+
+ABL 只读对照把完整取证保存到 RAM 中 `/run/piano-boot-evidence.txt`，进入串口救援后可读取；它不写 Linux 根分区。原生 BOOT 文件检查使用 `verify-native-boot.py`，七项文件 guard 的报告与真实设备的槽位、当前来源及块设备写读回分开保存，不将未完成的 Android 模块标为 ready。
 
 ## 分区与容量
 
@@ -56,8 +97,7 @@ BOOТ 准备使用 Actions 提供的宿主工具。
 执行顺序为：
 
 1. 重新读取设备，确认计划、槽位、原 BOOT 和输入包未变，保存原 GPT/BOOT 恢复材料。
-2. 临时运行产品 UEFI 并核对 USB 协议，再返回同一 Android；临时运行合体 BOOT 的
-   Android 旁路，也必须返回且持久 BOOT/GPT 未变。
+2. 临时 UEFI 和 Android 旁路必须另做并保留本次设备证据；首次安装器本身没有执行这两项，记录保持未验证，不继承历史试验。
 3. 使用 Android 已有 sgdisk 写入按完整二进制 GPT 生成的布局，读回两份 header/table
    并验证 CRC、所有分区记录和固定 Android 分区字节。
 4. 进入原厂 Fastboot，确认新 userdata/root/ESP 容量；擦除 userdata，再传输 ESP、
