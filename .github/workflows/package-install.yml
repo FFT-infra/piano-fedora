@@ -1,0 +1,55 @@
+name: package-install
+
+# 只压缩已校验的安装材料；不重新制作文件系统，不连接设备。
+on:
+  workflow_dispatch:
+    inputs:
+      prepare_run:
+        description: "已经成功的 prepare-install run"
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate the selected completed source run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREPARE_RUN: ${{ inputs.prepare_run }}
+        run: |
+          set -euo pipefail
+          python3 scripts/resolve-artifact-run.py --workflow prepare-install.yml \
+            --artifact root-install --run-id "$PREPARE_RUN"
+      - uses: actions/download-artifact@v4
+        with:
+          name: root-install
+          path: input
+          run-id: ${{ inputs.prepare_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compress and verify byte equality
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq zstd
+          (cd input && sha256sum -c SHA256SUMS)
+          mkdir package
+          zstd -10 -T0 input/pianoroot.f2fs.sparse.img -o package/pianoroot.f2fs.sparse.img.zst
+          original=$(sha256sum input/pianoroot.f2fs.sparse.img | cut -d ' ' -f 1)
+          decoded=$(zstd -dc package/pianoroot.f2fs.sparse.img.zst | sha256sum | cut -d ' ' -f 1)
+          test "$original" = "$decoded"
+          cp input/root-install-manifest.json package/
+          cp input/SHA256SUMS package/original-SHA256SUMS
+          (cd package && sha256sum pianoroot.f2fs.sparse.img.zst root-install-manifest.json original-SHA256SUMS > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: root-install-compressed
+          path: package/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

@@ -45,6 +45,8 @@ build-image 可显式指定 kernel_run_id、runtime_run_id，仍必须通过两�
 
 单独的 build-initramfs 消费完整集成设备 root（root-image-8192），不从尚未包含硬件 helper 和设备运行时的基础 Fedora root 构建。
 
+prepare-install 完成后可运行 package-install，指定其 prepare_run。该步骤仅压缩现有 sparse，校验原始摘要及解压后的相同字节，生成 root-install-compressed。下载后先校验包内 SHA256SUMS，再解压并使用 original-SHA256SUMS 验证原始安装文件；不改变目标容量或文件系统。
+
 ## 取证与图形服务
 
 早期启动先尝试上游 ACM/NCM helper，再执行存储模块或 ABL 存储准备。它使用已绑定 UDC，不扫描寄存器、切 USB 角色或加载硬件模块。冷启动无可用 UDC 时保留物理控制台并记录失败，不虚报网络就绪。
