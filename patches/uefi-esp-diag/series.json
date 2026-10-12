@@ -65,6 +65,14 @@
         "uefi/core/PianoDwc3Device.c": "5832c91e53de56c928f46cff696c0530232083ea446882f44f7abd119adf09e7"
       },
       "creates": []
+    },
+    {
+      "file": "0008-fat-bpb-fields.patch",
+      "summary": "按 FAT_BOOT_SECTOR 布局打印 Fat 实读到的 BPB 字段，并以易失方式把 PlatformLang 写成 en-US 后重问 Fat（只读诊断 + 易失变量，不写设备）",
+      "targets": {
+        "uefi/core/PianoDwc3Device.c": "614d8f539ceed7b40bfbb85b2d058585caec7955f858efb7219441a8c2630ce1"
+      },
+      "creates": []
     }
   ]
 }
