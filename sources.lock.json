@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-10-10",
+  "checked_date": "2026-10-12",
   "note": "只列实际消费的上游。研究用的 75 个仓库不在此列。",
   "sources": {
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "6a8763d010adb00b18911d6d12e6dd02869f98b9",
+      "commit": "e600adaae93cfb9f8783969705ecac639ac44a1c",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器"
     },
     "linux-piano": {
