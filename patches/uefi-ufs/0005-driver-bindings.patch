@@ -1,23 +1,23 @@
-From 611f6456fe6769d01910aa682578b4b8ca30a27a Mon Sep 17 00:00:00 2001
+From 36b117010b2475aa8ef62e15413be001b0d97542 Mon Sep 17 00:00:00 2001
 From: piano-fedora-test <dev@piano.invalid>
-Date: Mon, 12 Oct 2026 23:22:53 +0800
-Subject: [PATCH] =?UTF-8?q?diag(uefi):=20dump=20=E6=AF=8F=E4=B8=AA?=
- =?UTF-8?q?=E9=A9=B1=E5=8A=A8=E9=95=9C=E5=83=8F=E8=AE=BE=E5=A4=87=E8=B7=AF?=
- =?UTF-8?q?=E5=BE=84=E7=9A=84=E6=9C=AB=E8=8A=82=E7=82=B9?=
+Date: Mon, 12 Oct 2026 23:32:27 +0800
+Subject: [PATCH] =?UTF-8?q?diag(uefi):=20dump=20=E9=A9=B1=E5=8A=A8?=
+ =?UTF-8?q?=E9=95=9C=E5=83=8F=E8=AE=BE=E5=A4=87=E8=B7=AF=E5=BE=84=E6=9C=AB?=
+ =?UTF-8?q?=E8=8A=82=E7=82=B9=EF=BC=88=E4=BF=AE=20const=20=E4=B8=8E=20subt?=
+ =?UTF-8?q?ype=20=E5=B8=B8=E9=87=8F=EF=BC=89?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-上一版编译失败：MEDIA_FV_FILEPATH_DP 在 MdePkg 的 DevicePath.h 里并不存在（只有
-MEDIA_FILEPATH_DP 0x04），是我猜的名字。本版不依赖任何 subtype 常量：把每个
-DriverBinding 的 LoadedImage->FilePath 最后一个实际节点原样 dump（type/sub/len/前 24 字节
-十六进制），FV 文件节点里就是该模块的 FFS GUID，离线比对即可认出是哪个驱动。
+两处编译错误都已修：上一版猜的 MEDIA_FV_FILEPATH_DP 在 MdePkg 的 DevicePath.h 里不存在
+（只有 MEDIA_FILEPATH_DP 0x04），本版不依赖任何 subtype 常量、直接 dump 原始字节；
+HandleProtocol 要非 const 的 EFI_GUID *，本地常量需显式 cast。
 ---
  uefi/core/PianoProductCore.c | 39 ++++++++++++++++++++++++++++++++++++
  1 file changed, 39 insertions(+)
 
 diff --git a/uefi/core/PianoProductCore.c b/uefi/core/PianoProductCore.c
-index 0e97563..6e14d72 100644
+index 0e97563..d98e712 100644
 --- a/uefi/core/PianoProductCore.c
 +++ b/uefi/core/PianoProductCore.c
 @@ -26,6 +26,9 @@
@@ -37,14 +37,14 @@ index 0e97563..6e14d72 100644
 +STATIC CONST EFI_GUID mDiagLoadedImageGuid={0x5B1B31A1,0x9562,0x11D2,{0x8E,0x3F,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
  STATIC UINT32 mDiagBlockIo,mDiagDiskIo,mDiagSfs,mDiagDriverBindings,mDiagCollation2;
 +STATIC UINT32 mDiagDriverDumped;
-+// Dump the last real node of a driver image's device path. The firmware-volume
-+// file node carries the module's FFS GUID, so the raw bytes identify the driver
-+// without depending on a subtype constant. Hex only; no behaviour depends on it.
++// Dump the last real node of a driver image device path. The firmware-volume file
++// node carries the module FFS GUID, so the raw bytes identify the driver without
++// depending on a device-path subtype constant. No behaviour depends on this.
 +STATIC VOID DiagDumpImagePath(CONST EFI_DEVICE_PATH_PROTOCOL *P){
 + STATIC CONST CHAR8 D[]="0123456789abcdef";
 + if(mDiagDriverDumped>=24)return;
 + if(P==NULL){DEBUG((DEBUG_WARN,"SUNUEFI_DRIVER %u path=none\n",mDiagDriverDumped++));return;}
-+ CONST UINT8 *B=(CONST UINT8 *)P,*Last=NULL;UINTN LastLen=0;UINT32 LastT=0,LastS=0;
++ CONST UINT8 *B=(CONST UINT8 *)P;CONST UINT8 *Last=NULL;UINTN LastLen=0;UINT32 LastT=0,LastS=0;
 + for(UINTN N=0;N<16;++N){
 +  CONST EFI_DEVICE_PATH_PROTOCOL *Q=(CONST EFI_DEVICE_PATH_PROTOCOL *)B;
 +  UINTN L=(UINTN)(Q->Length[0]|((UINT16)Q->Length[1]<<8));
@@ -67,13 +67,13 @@ index 0e97563..6e14d72 100644
   mDiagCollation2=DiagHandles(&mDiagCollation2Guid);
 + mDiagDriverDumped=0;
 + {EFI_HANDLE *H=NULL;UINTN C=0;
-+  EFI_STATUS S2=gBS->LocateHandleBuffer(ByProtocol,&mDiagDriverBindingGuid,NULL,&C,&H);
++  EFI_STATUS S2=gBS->LocateHandleBuffer(ByProtocol,(EFI_GUID *)&mDiagDriverBindingGuid,NULL,&C,&H);
 +  if(S2==EFI_SUCCESS && H!=NULL){
 +   if(C>64)C=64;
 +   for(UINTN I=0;I<C;++I){
 +    EFI_DRIVER_BINDING_PROTOCOL *DB=NULL;EFI_LOADED_IMAGE_PROTOCOL *LI=NULL;
-+    if(gBS->HandleProtocol(H[I],&mDiagDriverBindingGuid,(VOID **)&DB)!=EFI_SUCCESS||DB==NULL)continue;
-+    if(gBS->HandleProtocol(DB->ImageHandle,&mDiagLoadedImageGuid,(VOID **)&LI)!=EFI_SUCCESS||LI==NULL)continue;
++    if(gBS->HandleProtocol(H[I],(EFI_GUID *)&mDiagDriverBindingGuid,(VOID **)&DB)!=EFI_SUCCESS||DB==NULL)continue;
++    if(gBS->HandleProtocol(DB->ImageHandle,(EFI_GUID *)&mDiagLoadedImageGuid,(VOID **)&LI)!=EFI_SUCCESS||LI==NULL)continue;
 +    DiagDumpImagePath(LI->FilePath);
 +   }
 +   gBS->FreePool(H);
