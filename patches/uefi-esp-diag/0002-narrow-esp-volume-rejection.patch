@@ -1,0 +1,135 @@
+From a0fb2fa7895485ba20d4c948c2da0b3c9489e77b Mon Sep 17 00:00:00 2001
+From: piano-fedora-test <dev@piano.invalid>
+Date: Mon, 12 Oct 2026 19:57:09 +0800
+Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E7=BB=86=E5=88=86=20ESP=20?=
+ =?UTF-8?q?=E5=8D=B7=E8=BA=AB=E4=BB=BD=E6=A3=80=E6=9F=A5=E8=A2=AB=E6=8B=92?=
+ =?UTF-8?q?=E7=9A=84=E6=AD=A5=E9=AA=A4?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+上一个仪表把卡点收到 PianoEspBootLoad 返回 EFI_NOT_FOUND（Matches==0），
+即没有任何 SimpleFileSystem 句柄通过 Volume()。本补丁把 Volume() 的 9 处
+return FALSE 各记一个步骤号，并记录 Parent() 里匹配到的裸父句柄个数，
+再细分到具体是哪一条身份条件被拒。
+
+仍然只读：不改任何判断，加载器自身从不读取这些值。
+---
+ uefi/components/os-boot/PianoEspBootSource.c | 39 ++++++++++++++------
+ uefi/core/PianoDwc3Device.c                  | 15 ++++++++
+ 2 files changed, 43 insertions(+), 11 deletions(-)
+
+diff --git a/uefi/components/os-boot/PianoEspBootSource.c b/uefi/components/os-boot/PianoEspBootSource.c
+index 49bd2e6..61a6cfd 100644
+--- a/uefi/components/os-boot/PianoEspBootSource.c
++++ b/uefi/components/os-boot/PianoEspBootSource.c
+@@ -20,6 +20,17 @@ typedef struct {
+  UINT32 MediaId,ParentMediaId,BlockBytes;UINT64 LastBlock,ParentLastBlock,SfsRevision;
+  BOOLEAN ReadOnly,ParentReadOnly;
+ } ESP_IDENTITY;
++// Diagnostic only. Records how the fixed-ESP identity check treated the last
++// candidate whose GPT partition name was exactly sunuefi_esp, so a host can tell
++// "no such volume" apart from "volume found but one identity field differs".
++// Nothing in the loader consults these values; they never change a decision.
++STATIC UINT32 mDiagEspTypeCount,mDiagEspNameStep,mDiagEspNameSeen,mDiagParentMatches,mDiagVolumeCalls;
++UINT32 PianoEspDiagEspTypeCount(VOID){return mDiagEspTypeCount;}
++UINT32 PianoEspDiagEspNameStep(VOID){return mDiagEspNameStep;}
++UINT32 PianoEspDiagEspNameSeen(VOID){return mDiagEspNameSeen;}
++UINT32 PianoEspDiagParentMatches(VOID){return mDiagParentMatches;}
++UINT32 PianoEspDiagVolumeCalls(VOID){return mDiagVolumeCalls;}
++#define ESPFAIL(N) do{if(NameOk)mDiagEspNameStep=(N);return FALSE;}while(0)
+ STATIC BOOLEAN Node(CONST EFI_DEVICE_PATH_PROTOCOL *P,UINT8 T,UINT8 S,UINTN N){
+  return P&&P->Type==T&&P->SubType==S&&(UINTN)(P->Length[0]|((UINT16)P->Length[1]<<8))==N;
+ }
+@@ -42,38 +53,44 @@ STATIC BOOLEAN Parent(ESP_IDENTITY *Id){
+   Id->Parent=B;Id->ParentMedia=B->Media;Id->ParentPath=D;Id->ParentRead=B->ReadBlocks;
+   Id->ParentMediaId=B->Media->MediaId;Id->ParentLastBlock=B->Media->LastBlock;Id->ParentReadOnly=B->Media->ReadOnly;++Matches;
+  }
+- E=gBS->FreePool(Handles);return E==EFI_SUCCESS&&Matches==1;
++ E=gBS->FreePool(Handles);mDiagParentMatches=E==EFI_SUCCESS?(UINT32)Matches:0xFFFFFFFFU;return E==EFI_SUCCESS&&Matches==1;
+ }
+ STATIC BOOLEAN Volume(EFI_HANDLE H,ESP_IDENTITY *Id){
+  EFI_PARTITION_INFO_PROTOCOL *P=NULL;EFI_BLOCK_IO_PROTOCOL *B=NULL;EFI_DEVICE_PATH_PROTOCOL *D=NULL;
+- ZeroMem(Id,sizeof(*Id));
++ ZeroMem(Id,sizeof(*Id));++mDiagVolumeCalls;
+  if(gBS->HandleProtocol(H,&gEfiPartitionInfoProtocolGuid,(VOID **)&P)!=EFI_SUCCESS||!P||
+     P->Revision<EFI_PARTITION_INFO_PROTOCOL_REVISION||P->Type!=PARTITION_TYPE_GPT||
+     !CompareGuid(&P->Info.Gpt.PartitionTypeGUID,&mEspType))return FALSE;
++ ++mDiagEspTypeCount;
+  STATIC CONST CHAR16 Name[36]=L"sunuefi_esp";
+  STATIC CONST EFI_GUID ZeroGuid={0};
++ BOOLEAN NameOk=!CompareMem(P->Info.Gpt.PartitionName,Name,sizeof(Name));
++ if(NameOk)mDiagEspNameSeen=1;
+  if(CompareMem(P->Info.Gpt.PartitionName,Name,sizeof(Name))||CompareGuid(&P->Info.Gpt.UniquePartitionGUID,&ZeroGuid)||
+-    !P->Info.Gpt.StartingLBA||P->Info.Gpt.EndingLBA<P->Info.Gpt.StartingLBA||P->Info.Gpt.EndingLBA==MAX_UINT64)return FALSE;
++    !P->Info.Gpt.StartingLBA||P->Info.Gpt.EndingLBA<P->Info.Gpt.StartingLBA||P->Info.Gpt.EndingLBA==MAX_UINT64)ESPFAIL(2);
+  UINT64 Blocks=P->Info.Gpt.EndingLBA-P->Info.Gpt.StartingLBA+1;
+  if(gBS->HandleProtocol(H,&gEfiBlockIoProtocolGuid,(VOID **)&B)!=EFI_SUCCESS||!B||!B->ReadBlocks||!B->Media||
+     !B->Media->MediaPresent||!B->Media->LogicalPartition||B->Media->BlockSize!=4096||
+-    Blocks>MAX_UINT64/B->Media->BlockSize||B->Media->LastBlock!=Blocks-1)return FALSE;
+- if(gBS->HandleProtocol(H,&gEfiDevicePathProtocolGuid,(VOID **)&D)!=EFI_SUCCESS||!Node(D,HARDWARE_DEVICE_PATH,HW_VENDOR_DP,sizeof(VENDOR_DEVICE_PATH)))return FALSE;
+- VENDOR_DEVICE_PATH *V=(VOID *)D;if(!CompareGuid(&V->Guid,&mVendor))return FALSE;
++    Blocks>MAX_UINT64/B->Media->BlockSize||B->Media->LastBlock!=Blocks-1)ESPFAIL(3);
++ if(gBS->HandleProtocol(H,&gEfiDevicePathProtocolGuid,(VOID **)&D)!=EFI_SUCCESS||!Node(D,HARDWARE_DEVICE_PATH,HW_VENDOR_DP,sizeof(VENDOR_DEVICE_PATH)))ESPFAIL(4);
++ VENDOR_DEVICE_PATH *V=(VOID *)D;if(!CompareGuid(&V->Guid,&mVendor))ESPFAIL(5);
+  UFS_DEVICE_PATH *U=(VOID *)((UINT8 *)V+sizeof(*V));
+- if(!Node(&U->Header,MESSAGING_DEVICE_PATH,MSG_UFS_DP,sizeof(*U))||U->Pun||U->Lun)return FALSE;
++ if(!Node(&U->Header,MESSAGING_DEVICE_PATH,MSG_UFS_DP,sizeof(*U)))ESPFAIL(6);
++ if(U->Pun||U->Lun)ESPFAIL(60U+U->Lun);
+  HARDDRIVE_DEVICE_PATH *Hd=(VOID *)((UINT8 *)U+sizeof(*U));
+  if(!Node(&Hd->Header,MEDIA_DEVICE_PATH,MEDIA_HARDDRIVE_DP,sizeof(*Hd))||!Hd->PartitionNumber||
+     Hd->MBRType!=MBR_TYPE_EFI_PARTITION_TABLE_HEADER||Hd->SignatureType!=SIGNATURE_TYPE_GUID||
+     CompareMem(Hd->Signature,&P->Info.Gpt.UniquePartitionGUID,sizeof(EFI_GUID))||
+-    Hd->PartitionStart!=P->Info.Gpt.StartingLBA||Hd->PartitionSize!=Blocks)return FALSE;
+- if(!Node((VOID *)((UINT8 *)Hd+sizeof(*Hd)),END_DEVICE_PATH_TYPE,END_ENTIRE_DEVICE_PATH_SUBTYPE,sizeof(EFI_DEVICE_PATH_PROTOCOL)))return FALSE;
++    Hd->PartitionStart!=P->Info.Gpt.StartingLBA||Hd->PartitionSize!=Blocks)ESPFAIL(7);
++ if(!Node((VOID *)((UINT8 *)Hd+sizeof(*Hd)),END_DEVICE_PATH_TYPE,END_ENTIRE_DEVICE_PATH_SUBTYPE,sizeof(EFI_DEVICE_PATH_PROTOCOL)))ESPFAIL(8);
+  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *F=NULL;
+- if(gBS->HandleProtocol(H,&gEfiSimpleFileSystemProtocolGuid,(VOID **)&F)!=EFI_SUCCESS||!F||!F->OpenVolume)return FALSE;
++ if(gBS->HandleProtocol(H,&gEfiSimpleFileSystemProtocolGuid,(VOID **)&F)!=EFI_SUCCESS||!F||!F->OpenVolume)ESPFAIL(9);
+  Id->Partition=P;Id->Block=B;Id->Media=B->Media;Id->Path=D;Id->Sfs=F;Id->Open=F->OpenVolume;Id->SfsRevision=F->Revision;Id->Read=B->ReadBlocks;
+  CopyMem(&Id->Entry,&P->Info.Gpt,sizeof(Id->Entry));CopyMem(&Id->DevicePath,D,sizeof(Id->DevicePath));
+  Id->MediaId=B->Media->MediaId;Id->BlockBytes=B->Media->BlockSize;Id->LastBlock=B->Media->LastBlock;Id->ReadOnly=B->Media->ReadOnly;
+- return Parent(Id);
++ if(!Parent(Id)){if(NameOk)mDiagEspNameStep=10;return FALSE;}
++ if(NameOk)mDiagEspNameStep=0;
++ return TRUE;
+ }
+ EFI_STATUS PianoEspBootLoad(PIANO_ESP_BOOT_SOURCE *S,CONST PIANO_CPU_INPUT_ENV *Cpu){
+  if(!S||!Cpu||!Cpu->BootServicesAlive||!Cpu->ServiceSlice)return EFI_INVALID_PARAMETER;
+diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
+index 84cabdb..a79d4ee 100644
+--- a/uefi/core/PianoDwc3Device.c
++++ b/uefi/core/PianoDwc3Device.c
+@@ -305,6 +305,11 @@ STATIC EFI_STATUS FastbootSend(VOID *Context,CONST VOID *Data,UINTN Bytes) {
+ }
+ EFI_STATUS PianoRawLinuxStableLoadStatus(VOID);
+ UINT32 PianoRawLinuxStableLoadStage(VOID);
++UINT32 PianoEspDiagEspNameStep(VOID);
++UINT32 PianoEspDiagEspNameSeen(VOID);
++UINT32 PianoEspDiagEspTypeCount(VOID);
++UINT32 PianoEspDiagParentMatches(VOID);
++UINT32 PianoEspDiagVolumeCalls(VOID);
+ STATIC VOID FastHex(UINT32 Value,CHAR8 *Out) {
+   STATIC CONST CHAR8 Digits[]="0123456789abcdef";
+   for(UINTN I=0;I<8;++I)Out[I]=Digits[(Value>>((7-I)*4))&15];
+@@ -388,6 +393,16 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
+     CopyMem(Row,"INFOesp-stage:",14);FastHex(PianoRawLinuxStableLoadStage(),Row+14);
+     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
++    CopyMem(Row,"INFOesp-volstep:",15);FastHex(PianoEspDiagEspNameStep(),Row+15);
++    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
++    CopyMem(Row,"INFOesp-name:",13);FastHex(PianoEspDiagEspNameSeen(),Row+13);
++    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
++    CopyMem(Row,"INFOesp-type:",13);FastHex(PianoEspDiagEspTypeCount(),Row+13);
++    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
++    CopyMem(Row,"INFOesp-parent:",15);FastHex(PianoEspDiagParentMatches(),Row+15);
++    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
++    CopyMem(Row,"INFOesp-calls:",14);FastHex(PianoEspDiagVolumeCalls(),Row+14);
++    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
+     return FastbootSend(NULL,"OKAY",4);
+   }
+   return EFI_UNSUPPORTED;
+-- 
+2.54.0
+
