@@ -26,8 +26,8 @@
       "creates": []
     },
     {
-      "file": "0003-bind-storage-before-esp-load.patch",
-      "summary": "ESP 加载取不到 SimpleFileSystem 句柄时补一次存储驱动绑定并重试",
+      "file": "0003-probe-storage-providers.patch",
+      "summary": "一次性盘点 BlockIo/DiskIo/SFS/DriverBinding 句柄数与 ConnectController 结果，并报出 sunuefi_esp 所在的 UFS LUN（只读诊断）",
       "targets": {
         "uefi/components/os-boot/PianoEspBootSource.c": "53dafed327f2e3196c66a16ce12cff320b5d0797565e6f9e5ce7c0e2fa506449",
         "uefi/core/PianoDwc3Device.c": "40f482b612483d70cdafafdd2a6a6537a2bd6559ff2d89a2e8d1c92cbf84b862"
