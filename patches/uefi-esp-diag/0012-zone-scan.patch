@@ -1,6 +1,6 @@
-From 268b7bf7d2dd5c91b8f0977488320511eb4573b4 Mon Sep 17 00:00:00 2001
+From 55412136b8333006f2b09e98409f3a577a9df30d Mon Sep 17 00:00:00 2001
 From: piano-fedora-test <dev@piano.invalid>
-Date: Tue, 13 Oct 2026 01:26:30 +0800
+Date: Tue, 13 Oct 2026 01:33:58 +0800
 Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E7=BA=BF=E6=80=A7=E6=89=AB?=
  =?UTF-8?q?=E6=8F=8F=E6=95=B4=E5=9D=97=202=20MiB=20=E6=8E=A7=E5=88=B6?=
  =?UTF-8?q?=E5=8F=B0=E5=8C=BA=EF=BC=8C=E5=B9=B6=E6=89=93=E5=8D=B0=E5=AE=83?=
@@ -15,16 +15,25 @@ Content-Transfer-Encoding: 8bit
 
 本提交不再假设环形格式：整块 2 MiB 线性读出来扫三类关键串（SUNUEFI_HANDOFF / Linux
 version / Kernel panic），摘录第一处命中的 48 字符，并把区域开头 6 个原始字打出来用于
-判断头部格式。同时删掉已经答完的 bpb/bpb2/lang 三行，回复仍在帧预算内。
+判断头部格式。同时删掉已经答完的 bpb/bpb2/lang/esp1 四行以及随之无用的两个辅助函数，
+回复仍在帧预算内。
 ---
- uefi/core/PianoDwc3Device.c | 72 ++++++++++++++++++++++++++++---------
- 1 file changed, 55 insertions(+), 17 deletions(-)
+ uefi/core/PianoDwc3Device.c | 111 ++++++++++++++++++------------------
+ 1 file changed, 54 insertions(+), 57 deletions(-)
 
 diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
-index a7e9443..504b1a9 100644
+index a7e9443..43a7251 100644
 --- a/uefi/core/PianoDwc3Device.c
 +++ b/uefi/core/PianoDwc3Device.c
-@@ -484,6 +484,35 @@ STATIC UINT32 DiagPrevLog(UINT32 *Hits,CHAR8 *Excerpt,UINTN ExcerptCap){
+@@ -350,7 +350,6 @@ STATIC CONST EFI_GUID mDiagPartitionFvGuid={0x1FA1F39E,0xFEFF,0x4AAE,{0xBD,0x7B,
+ STATIC CONST EFI_GUID mDiagEnglishFvGuid={0xCD3BAFB6,0x50FB,0x4FE8,{0x8E,0x4E,0xAB,0x74,0xD2,0xC1,0xA6,0x00}};
+ STATIC CONST EFI_GUID mDiagPartitionInfoGuid={0x8CF2F62C,0xBC9B,0x4821,{0x80,0x8D,0xEC,0x9E,0xC4,0x21,0xA1,0xA0}};
+ STATIC CONST EFI_GUID mDiagEspTypeGuid={0xC12A7328,0xF81F,0x11D2,{0xBA,0x4B,0x00,0xA0,0xC9,0x3E,0xC9,0x3B}};
+-STATIC CONST EFI_GUID mDiagGlobalVariableGuid={0x8BE4DF61,0x93CA,0x11D2,{0xAA,0x0D,0x00,0xE0,0x98,0x03,0x2B,0x8C}};
+ STATIC UINT32 DiagHandles(CONST EFI_GUID *G){
+  EFI_HANDLE *H=NULL;UINTN C=0;EFI_STATUS S=gBS->LocateHandleBuffer(ByProtocol,(EFI_GUID *)G,NULL,&C,&H);
+  UINT32 R=S==EFI_SUCCESS?(UINT32)C:(S==EFI_NOT_FOUND?0U:0xFFFFFFFFU);
+@@ -484,6 +483,35 @@ STATIC UINT32 DiagPrevLog(UINT32 *Hits,CHAR8 *Excerpt,UINTN ExcerptCap){
   }
   return 0;
  }
@@ -60,7 +69,56 @@ index a7e9443..504b1a9 100644
  // FatDriverBindingStart refuses the whole volume when no UnicodeCollation2
  // instance matches the platform language it reads, and this firmware cannot
  // rewrite that variable (it already exists with NV attributes). Publishing one
-@@ -670,23 +699,6 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+@@ -510,48 +538,9 @@ STATIC UINT32 DiagAddCollation(VOID){
+ // Fat reads sizeof(FAT_BOOT_SECTOR) from offset 0 and then decides on these
+ // fields alone. Reading them here through the same DiskIo protocol shows what
+ // Fat actually sees, instead of what the partition image says it should see.
+-STATIC UINT32 DiagBpbFields(EFI_HANDLE Esp,UINT32 *Fields,UINTN Count){
+- EFI_DISK_IO_PROTOCOL *D=NULL;EFI_BLOCK_IO_PROTOCOL *B=NULL;UINT8 Buf[512];
+- for(UINTN I=0;I<Count;++I)Fields[I]=0xFFFFFFFFU;
+- if(Esp==NULL||Count<10)return 0xFFFFFFFFU;
+- if(gBS->HandleProtocol(Esp,(EFI_GUID *)&mDiagDiskIoGuid,(VOID **)&D)!=EFI_SUCCESS||D==NULL)return 0xFFFFFFFFU;
+- if(gBS->HandleProtocol(Esp,(EFI_GUID *)&mDiagBlockIoGuid,(VOID **)&B)!=EFI_SUCCESS||B==NULL||B->Media==NULL)return 0xFFFFFFFFU;
+- ZeroMem(Buf,sizeof(Buf));
+- EFI_STATUS S=D->ReadDisk(D,B->Media->MediaId,0,sizeof(Buf),Buf);
+- if(!EFI_ERROR(S)){
+-  Fields[0]=(UINT32)(Buf[0x0B]|((UINT16)Buf[0x0C]<<8));
+-  Fields[1]=(UINT32)Buf[0x0D];
+-  Fields[2]=(UINT32)(Buf[0x0E]|((UINT16)Buf[0x0F]<<8));
+-  Fields[3]=(UINT32)Buf[0x10];
+-  Fields[4]=(UINT32)(Buf[0x13]|((UINT16)Buf[0x14]<<8));
+-  Fields[5]=(UINT32)Buf[0x15];
+-  Fields[6]=(UINT32)(Buf[0x16]|((UINT16)Buf[0x17]<<8));
+-  Fields[7]=(UINT32)(Buf[0x20]|((UINT32)Buf[0x21]<<8)|((UINT32)Buf[0x22]<<16)|((UINT32)Buf[0x23]<<24));
+-  Fields[8]=(UINT32)(Buf[0x24]|((UINT32)Buf[0x25]<<8)|((UINT32)Buf[0x26]<<16)|((UINT32)Buf[0x27]<<24));
+-  Fields[9]=(UINT32)(Buf[0x28]|((UINT16)Buf[0x29]<<8));
+- }
+- return (UINT32)S;
+-}
+ // The two strings Fat compares when it decides whether UnicodeCollation2 is
+ // usable: what the protocol declares and what PlatformLang holds. A mismatch
+ // makes FatDriverBindingStart return EFI_UNSUPPORTED before reading any volume.
+-STATIC VOID DiagLang(CHAR8 *Supported,CHAR8 *PlatformLang,UINTN Cap){
+- EFI_HANDLE *H=NULL;UINTN C=0;UINTN Size=0;
+- for(UINTN I=0;I<Cap;++I){Supported[I]=0;PlatformLang[I]=0;}
+- if(gBS->LocateHandleBuffer(ByProtocol,(EFI_GUID *)&mDiagCollation2Guid,NULL,&C,&H)==EFI_SUCCESS&&H!=NULL){
+-  for(UINTN I=0;I<C;++I){
+-   EFI_UNICODE_COLLATION_PROTOCOL *U=NULL;
+-   if(gBS->HandleProtocol(H[I],(EFI_GUID *)&mDiagCollation2Guid,(VOID **)&U)!=EFI_SUCCESS||U==NULL||U->SupportedLanguages==NULL)continue;
+-   for(UINTN N=0;N+1<Cap && U->SupportedLanguages[N]!=0;++N)Supported[N]=U->SupportedLanguages[N];
+-   break;
+-  }
+-  gBS->FreePool(H);
+- }
+- CHAR16 Value[64];Size=sizeof(Value);
+- if(gRT->GetVariable(L"PlatformLang",(EFI_GUID *)&mDiagGlobalVariableGuid,NULL,&Size,Value)==EFI_SUCCESS){
+-  for(UINTN N=0;N+1<Cap && Value[N]!=0;++N)PlatformLang[N]=(CHAR8)(Value[N]<0x80?Value[N]:'?');
+- }
+-}
+ UINT32 PianoEspDiagEspNameStep(VOID);
+ UINT32 PianoEspDiagEspNameSeen(VOID);
+ UINT32 PianoEspDiagEspTypeCount(VOID);
+@@ -670,23 +659,6 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
       P=EspHex(P,DiagHandles(&mDiagSfsGuid));
       *P=0;
       S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
@@ -84,7 +142,7 @@ index a7e9443..504b1a9 100644
      // INFOcoll: <装语言实例的状态> <再问一次 Fat 的 Start> <之后 SFS 数>。
      // No variable and no storage is written; only one protocol instance is added.
      {UINT32 CollStatus=DiagAddCollation();
-@@ -700,6 +712,16 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+@@ -700,6 +672,16 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
       S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
      // INFOprev: <返回> <Linux version 次数> <Kernel panic 次数> <ramoops 次数>
      //           <"[    0." 行数> <环写指针>；INFOprev2 摘一段最像内核日志的原文。
@@ -101,13 +159,12 @@ index a7e9443..504b1a9 100644
      {UINT32 Hits[5];CHAR8 Excerpt[49];
       UINT32 PrevStatus=DiagPrevLog(Hits,Excerpt,sizeof(Excerpt));
       CHAR8 *P=Row;CopyMem(P,"INFOprev:",9);P+=9;P=EspHex(P,PrevStatus);
-@@ -719,6 +741,22 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+@@ -719,6 +701,21 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
       P=EspHex(P,PianoEspDiagParentMatches());
       *P=0;
       S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
-+    // INFOring: 控制台区开头 6 个字（原始），看清头部到底是什么格式。
-+    // INFOfind: <状态> <SUNUEFI_HANDOFF 处数> <Linux version 处数> <Kernel panic 处数>。
-+    // INFOtext: 第一处命中的 48 字符原文（可打印化）。
++    // INFOring: 控制台区开头 6 个字（原始）。INFOfind: <状态> <SUNUEFI_HANDOFF 处数>
++    // <Linux version 处数> <Kernel panic 处数>。INFOtext: 第一处命中的 48 字符原文。
 +    {UINT32 Hits[3],Words[6];CHAR8 Text[49];
 +     UINT32 ZoneStatus=DiagZoneScan(Hits,Words,Text,sizeof(Text));
 +     CHAR8 *P=Row;CopyMem(P,"INFOring:",9);P+=9;
