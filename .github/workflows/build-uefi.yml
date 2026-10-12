@@ -72,8 +72,9 @@ jobs:
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory "/workspace/*"
               python3 -m venv .venv
-              .venv/bin/pip install --quiet --upgrade pip
-              .venv/bin/pip install --quiet -r requirements-build.txt
+              source .venv/bin/activate
+              pip install --quiet --upgrade pip
+              pip install --quiet -r requirements-build.txt
               ./build.sh sources
               ./build.sh uefi
             '
