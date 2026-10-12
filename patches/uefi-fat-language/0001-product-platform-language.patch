@@ -1,0 +1,62 @@
+From 86aa23949c6d8ae27bdb4c32807aa889ea19cb7a Mon Sep 17 00:00:00 2001
+From: piano-fedora-test <dev@piano.invalid>
+Date: Tue, 13 Oct 2026 01:05:20 +0800
+Subject: [PATCH] =?UTF-8?q?fix(uefi):=20=E4=BA=A7=E5=93=81=E5=9B=BA?=
+ =?UTF-8?q?=E4=BB=B6=E7=9A=84=E9=BB=98=E8=AE=A4=E5=B9=B3=E5=8F=B0=E8=AF=AD?=
+ =?UTF-8?q?=E8=A8=80=E6=94=B9=E5=9B=9E=20collation=20=E9=A9=B1=E5=8A=A8?=
+ =?UTF-8?q?=E6=94=AF=E6=8C=81=E7=9A=84=E8=AF=AD=E8=A8=80?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+根因（2026-10-13 实测）：产品 DSC 追加的 SETUP_DSC_ADDITIONS 把
+PcdUefiVariableDefaultPlatformLang 设为 "zh-CN"，而 EnglishDxe 的 UnicodeCollation2
+只声明 SupportedLanguages="en"。FatDriverBindingStart 在读任何卷之前先调
+InitializeUnicodeCollationSupport：它拿 PlatformLang 变量与该 PCD 两个候选去和 "en"
+比对，GetBestLanguage 两轮都不中即返回 NULL，函数返回 EFI_UNSUPPORTED，于是 Fat 退出，
+整机 0 个 SimpleFileSystem 句柄，ESP 里的文件再正常也读不到。
+
+设备实证：blockio=141 diskio=141 sfs=0；Fat 的 Supported=0 而 Start=0x03
+(EFI_UNSUPPORTED)；卷头经 DiskIo 读回 eb58906d、BlockSize=4096、BPB 十个字段全部合法；
+在同一固件里装一个 SupportedLanguages 更宽的同款 collation 实例后，同一个 Start 立刻
+变成 0、sfs 变成 1，ESP 随即加载成功并交接控制权。变量侧：本机 PlatformLang 存的是字节串
+zh-CN（不是规范 UTF-16），改写它需要 NV 属性，产品存储策略禁止持久写。
+
+上游同一处也是 zh-CN（同一常量被 prepare_product.py 复用），他们那台能出 7 个 SFS 卷是
+因为设备上的 PlatformLang 变量恰好是真英文，第一个候选就匹配上了。
+
+改法：只在产品 DSC 里把默认改成 en-US，zh-CN 保留在可选语言码表；GUI profile 界面语言不动。
+---
+ tools/prepare_product.py | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/tools/prepare_product.py b/tools/prepare_product.py
+index d8bac68..9075d7c 100644
+--- a/tools/prepare_product.py
++++ b/tools/prepare_product.py
+@@ -459,6 +459,22 @@ def prepare(root=ROOT):
+   }
+ '''
+     text+=SETUP_DSC_ADDITIONS
++    # The product firmware must not default PlatformLang to a language its own
++    # Unicode collation driver cannot match. FatDxe runs
++    # InitializeUnicodeCollationSupport before it reads any volume, GetBestLanguage
++    # compares the PlatformLang variable and this PCD against EnglishDxe's "en",
++    # and a default outside that set makes FatDriverBindingStart return
++    # EFI_UNSUPPORTED: no SimpleFileSystem handle is ever published, so the ESP
++    # cannot be opened and no Linux can be loaded from it. Chinese stays in the
++    # offered codes; only the default moves to a language the collation driver
++    # actually declares.
++    for old,new in (
++        ('gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultPlatformLangCodes|"zh-CN;en-US;en;fr-FR;fr"',
++         'gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultPlatformLangCodes|"en-US;en;zh-CN;zh;fr-FR;fr"'),
++        ('gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultPlatformLang|"zh-CN"',
++         'gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultPlatformLang|"en-US"')):
++        if text.count(old)!=1:raise ValueError('product DSC language PCD missing or duplicated: '+old)
++        text=text.replace(old,new)
+     # All service flags bind actual product implementations; diagnostics are
+     # not dispatched. FETCH enables the shared live SMMU storage guard.
+     display_test=os.environ.get('SUNUEFI_DISPLAY_DIAGNOSTIC','0')
+-- 
+2.54.0
+
