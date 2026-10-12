@@ -32,6 +32,14 @@
         "uefi/handoff/bootselect/BootSelect.ld": "f6a783ef0e265f218cd367dea1bbf6b08bc3e31d0ceb2957df453263774e9a6e"
       },
       "creates": []
+    },
+    {
+      "file": "0005-diag-earlycon.patch",
+      "summary": "【诊断，勿合并】内核内置命令行追加 earlycon=efifb 与 loglevel=8，用于在黑屏上直接看到内核最早输出",
+      "targets": {
+        "tools/build_piano_full_kernel.py": "f2f65d189cefe4409279acc514c4763e24f6010aa9d08c6576f53565bbaf1bdb"
+      },
+      "creates": []
     }
   ]
 }

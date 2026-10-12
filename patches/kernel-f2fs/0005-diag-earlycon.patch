@@ -1,0 +1,43 @@
+From aabfc428aa6d674cf4312ef3a78d3db440e5f134 Mon Sep 17 00:00:00 2001
+From: piano-fedora-test <dev@piano.invalid>
+Date: Tue, 13 Oct 2026 02:14:58 +0800
+Subject: [PATCH] =?UTF-8?q?diag(kernel):=20=E5=86=85=E7=BD=AE=E5=91=BD?=
+ =?UTF-8?q?=E4=BB=A4=E8=A1=8C=E8=BF=BD=E5=8A=A0=20earlycon=3Defifb=20?=
+ =?UTF-8?q?=E4=B8=8E=20loglevel=3D8=EF=BC=88=E5=8F=AA=E4=B8=BA=E7=9C=8B?=
+ =?UTF-8?q?=E5=86=85=E6=A0=B8=E6=9C=80=E6=97=A9=E8=BE=93=E5=87=BA=EF=BC=8C?=
+ =?UTF-8?q?=E5=8B=BF=E5=90=88=E5=B9=B6=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ tools/build_piano_full_kernel.py | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
+index 33027ef..38c9edf 100644
+--- a/tools/build_piano_full_kernel.py
++++ b/tools/build_piano_full_kernel.py
+@@ -73,6 +73,10 @@ def config_values(raw):
+     return values
+ 
+ 
++# Diagnostic only: force the kernel's earliest console onto the GOP framebuffer so a
++# pre-pstore death is visible on the panel. CONFIG_CMDLINE_FORCE=y means the built-in
++# command line is the only one the kernel uses, so this is the single place to add it.
++DIAG_EARLYCON=' earlycon=efifb earlycon loglevel=8 ignore_loglevel'
+ def command_line(fragment,public,root_policy,root_fstype='ext4'):
+     override=config_values(fragment)
+     if set(override)!={'CONFIG_CMDLINE'}:raise ValueError('Local full fragment may override only CONFIG_CMDLINE')
+@@ -86,7 +90,7 @@ def command_line(fragment,public,root_policy,root_fstype='ext4'):
+     if root_policy!='ram'and not re.fullmatch(r'(UUID=[0-9a-fA-F-]{8,64}|PARTUUID=[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|LABEL=PIANO[A-Za-z0-9_-]{0,48})',root_policy):
+         raise ValueError('External root must be an explicit UUID or PIANO-owned label; Android partition selectors are refused')
+     if root_fstype not in ('ext4','f2fs'):raise ValueError('Only reviewed root filesystem types are supported')
+-    return provided.replace('piano.root=ram','piano.root='+root_policy).replace('rootfstype=ext4','rootfstype='+root_fstype)
++    return provided.replace('piano.root=ram','piano.root='+root_policy).replace('rootfstype=ext4','rootfstype='+root_fstype)+DIAG_EARLYCON
+ 
+ 
+ def module_overrides(fragment,kind='bluetooth'):
+-- 
+2.54.0
+
