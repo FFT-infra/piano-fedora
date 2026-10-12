@@ -1,28 +1,23 @@
-From 19ef0284006726a9bccbc0a917dc69f73db38820 Mon Sep 17 00:00:00 2001
+From 611f6456fe6769d01910aa682578b4b8ca30a27a Mon Sep 17 00:00:00 2001
 From: piano-fedora-test <dev@piano.invalid>
-Date: Mon, 12 Oct 2026 23:15:35 +0800
-Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E6=8A=A5=E5=87=BA=20Fat/DiskIo/P?=
- =?UTF-8?q?artition/English=20=E5=9B=9B=E4=B8=AA=E9=A9=B1=E5=8A=A8?=
- =?UTF-8?q?=E7=9A=84=E7=BB=91=E5=AE=9A=E6=98=AF=E5=90=A6=E5=AD=98=E5=9C=A8?=
+Date: Mon, 12 Oct 2026 23:22:53 +0800
+Subject: [PATCH] =?UTF-8?q?diag(uefi):=20dump=20=E6=AF=8F=E4=B8=AA?=
+ =?UTF-8?q?=E9=A9=B1=E5=8A=A8=E9=95=9C=E5=83=8F=E8=AE=BE=E5=A4=87=E8=B7=AF?=
+ =?UTF-8?q?=E5=BE=84=E7=9A=84=E6=9C=AB=E8=8A=82=E7=82=B9?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-读到 collation2=1：FatDxe 的三个前提（BlockIo 141、DiskIo 141、UnicodeCollation2 1）全部
-到位，sfs 仍是 0。所以只剩「Fat 这个驱动本身没被派发」与「Start 走到 BPB 层才失败」两种。
-
-本补丁遍历 DriverBinding 句柄，取各自的 LoadedImage->FilePath，在设备路径里找 FV 文件
-节点（MEDIA_FV_FILEPATH_DP）的 16 字节 FFS GUID，分别统计 Fat / DiskIoDxe / PartitionDxe /
-EnglishDxe 四个模块。后三个是**对照**：diskio=141、135 个分区子设备、collation2=1 已经
-分别证明它们三个跑了，它们必须出现在统计里——校验这段取 GUID 的代码本身对不对。
-
-只读，不改任何判断。
+上一版编译失败：MEDIA_FV_FILEPATH_DP 在 MdePkg 的 DevicePath.h 里并不存在（只有
+MEDIA_FILEPATH_DP 0x04），是我猜的名字。本版不依赖任何 subtype 常量：把每个
+DriverBinding 的 LoadedImage->FilePath 最后一个实际节点原样 dump（type/sub/len/前 24 字节
+十六进制），FV 文件节点里就是该模块的 FFS GUID，离线比对即可认出是哪个驱动。
 ---
- uefi/core/PianoProductCore.c | 40 ++++++++++++++++++++++++++++++++++++
- 1 file changed, 40 insertions(+)
+ uefi/core/PianoProductCore.c | 39 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
 
 diff --git a/uefi/core/PianoProductCore.c b/uefi/core/PianoProductCore.c
-index 0e97563..3fadd72 100644
+index 0e97563..6e14d72 100644
 --- a/uefi/core/PianoProductCore.c
 +++ b/uefi/core/PianoProductCore.c
 @@ -26,6 +26,9 @@
@@ -35,38 +30,42 @@ index 0e97563..3fadd72 100644
  VOID PianoProbeFoundation(VOID);
  VOID PianoNativeSetObserver(VOID (*Observer)(CONST CHAR8 *,BOOLEAN));
  VOID PianoProbeUfs(CONST VOID *Fdt);
-@@ -49,7 +52,26 @@ STATIC CONST EFI_GUID mDiagDiskIoGuid={0xCE345171,0xBA0B,0x11D2,{0x8E,0x4F,0x00,
+@@ -49,7 +52,30 @@ STATIC CONST EFI_GUID mDiagDiskIoGuid={0xCE345171,0xBA0B,0x11D2,{0x8E,0x4F,0x00,
  STATIC CONST EFI_GUID mDiagSfsGuid={0x964E5B22,0x6459,0x11D2,{0x8E,0x39,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
  STATIC CONST EFI_GUID mDiagDriverBindingGuid={0x18A031AB,0xB443,0x4D1A,{0xA5,0xC0,0x0C,0x09,0x26,0x1E,0x9F,0x71}};
  STATIC CONST EFI_GUID mDiagCollation2Guid={0xA4C751FC,0x23AE,0x4C3E,{0x92,0xE9,0x49,0x64,0xCF,0x63,0xF3,0x49}};
 +STATIC CONST EFI_GUID mDiagLoadedImageGuid={0x5B1B31A1,0x9562,0x11D2,{0x8E,0x3F,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
-+STATIC CONST EFI_GUID mDiagFatFvGuid={0x961578FE,0xB6B7,0x44C3,{0xAF,0x35,0x6B,0xC7,0x05,0xCD,0x2B,0x1F}};
-+STATIC CONST EFI_GUID mDiagDiskIoFvGuid={0x6B38F7B4,0xAD98,0x40E9,{0x90,0x93,0xAC,0xA2,0xB5,0xA2,0x53,0xC4}};
-+STATIC CONST EFI_GUID mDiagPartitionFvGuid={0x1FA1F39E,0xFEFF,0x4AAE,{0xBD,0x7B,0x38,0xA0,0x70,0xA3,0xB6,0x09}};
-+STATIC CONST EFI_GUID mDiagEnglishFvGuid={0xCD3BAFB6,0x50FB,0x4FE8,{0x8E,0x4E,0xAB,0x74,0xD2,0xC1,0xA6,0x00}};
  STATIC UINT32 mDiagBlockIo,mDiagDiskIo,mDiagSfs,mDiagDriverBindings,mDiagCollation2;
-+STATIC UINT32 mDiagFatBound,mDiagDiskIoBound,mDiagPartitionBound,mDiagEnglishBound;
-+// True when the image device path carries the given firmware-volume file GUID.
-+STATIC BOOLEAN DiagFvFile(CONST EFI_DEVICE_PATH_PROTOCOL *P,CONST EFI_GUID *Want){
-+ if(P==NULL)return FALSE;
-+ CONST UINT8 *B=(CONST UINT8 *)P;
-+ for(UINTN N=0;N<8;++N){
++STATIC UINT32 mDiagDriverDumped;
++// Dump the last real node of a driver image's device path. The firmware-volume
++// file node carries the module's FFS GUID, so the raw bytes identify the driver
++// without depending on a subtype constant. Hex only; no behaviour depends on it.
++STATIC VOID DiagDumpImagePath(CONST EFI_DEVICE_PATH_PROTOCOL *P){
++ STATIC CONST CHAR8 D[]="0123456789abcdef";
++ if(mDiagDriverDumped>=24)return;
++ if(P==NULL){DEBUG((DEBUG_WARN,"SUNUEFI_DRIVER %u path=none\n",mDiagDriverDumped++));return;}
++ CONST UINT8 *B=(CONST UINT8 *)P,*Last=NULL;UINTN LastLen=0;UINT32 LastT=0,LastS=0;
++ for(UINTN N=0;N<16;++N){
 +  CONST EFI_DEVICE_PATH_PROTOCOL *Q=(CONST EFI_DEVICE_PATH_PROTOCOL *)B;
 +  UINTN L=(UINTN)(Q->Length[0]|((UINT16)Q->Length[1]<<8));
 +  if(Q->Type==END_DEVICE_PATH_TYPE || L<4)break;
-+  if(Q->Type==MEDIA_DEVICE_PATH && Q->SubType==MEDIA_FV_FILEPATH_DP && L>=20 && !CompareMem(B+4,Want,16))return TRUE;
-+  B+=L;
++  Last=B;LastLen=L;LastT=(UINT32)Q->Type;LastS=(UINT32)Q->SubType;B+=L;
 + }
-+ return FALSE;
++ if(Last==NULL){DEBUG((DEBUG_WARN,"SUNUEFI_DRIVER %u path=empty\n",mDiagDriverDumped++));return;}
++ UINTN M=LastLen-4;if(M>24)M=24;
++ CHAR8 Hex[49];
++ for(UINTN I=0;I<M;++I){Hex[I*2]=D[(Last[4+I]>>4)&15];Hex[I*2+1]=D[Last[4+I]&15];}
++ Hex[M*2]=0;
++ DEBUG((DEBUG_WARN,"SUNUEFI_DRIVER %u type=%u sub=%u len=%u data=%a\n",mDiagDriverDumped++,LastT,LastS,(UINT32)LastLen,Hex));
 +}
  STATIC UINT32 DiagHandles(CONST EFI_GUID *G){
   EFI_HANDLE *H=NULL;UINTN C=0;EFI_STATUS S=gBS->LocateHandleBuffer(ByProtocol,(EFI_GUID *)G,NULL,&C,&H);
   UINT32 R=S==EFI_SUCCESS?(UINT32)C:(S==EFI_NOT_FOUND?0U:0xFFFFFFFFU);
-@@ -61,6 +83,22 @@ STATIC VOID PianoDiagCountProviders(VOID){
+@@ -61,6 +87,19 @@ STATIC VOID PianoDiagCountProviders(VOID){
   mDiagSfs=DiagHandles(&mDiagSfsGuid);
   mDiagDriverBindings=DiagHandles(&mDiagDriverBindingGuid);
   mDiagCollation2=DiagHandles(&mDiagCollation2Guid);
-+ mDiagFatBound=mDiagDiskIoBound=mDiagPartitionBound=mDiagEnglishBound=0;
++ mDiagDriverDumped=0;
 + {EFI_HANDLE *H=NULL;UINTN C=0;
 +  EFI_STATUS S2=gBS->LocateHandleBuffer(ByProtocol,&mDiagDriverBindingGuid,NULL,&C,&H);
 +  if(S2==EFI_SUCCESS && H!=NULL){
@@ -75,25 +74,13 @@ index 0e97563..3fadd72 100644
 +    EFI_DRIVER_BINDING_PROTOCOL *DB=NULL;EFI_LOADED_IMAGE_PROTOCOL *LI=NULL;
 +    if(gBS->HandleProtocol(H[I],&mDiagDriverBindingGuid,(VOID **)&DB)!=EFI_SUCCESS||DB==NULL)continue;
 +    if(gBS->HandleProtocol(DB->ImageHandle,&mDiagLoadedImageGuid,(VOID **)&LI)!=EFI_SUCCESS||LI==NULL)continue;
-+    if(DiagFvFile(LI->FilePath,&mDiagFatFvGuid))++mDiagFatBound;
-+    if(DiagFvFile(LI->FilePath,&mDiagDiskIoFvGuid))++mDiagDiskIoBound;
-+    if(DiagFvFile(LI->FilePath,&mDiagPartitionFvGuid))++mDiagPartitionBound;
-+    if(DiagFvFile(LI->FilePath,&mDiagEnglishFvGuid))++mDiagEnglishBound;
++    DiagDumpImagePath(LI->FilePath);
 +   }
 +   gBS->FreePool(H);
 +  }}
  }
  STATIC PIANO_PRODUCT_DISPLAY_STARTUP_REPORT mDisplayStartup;
  STATIC PIANO_SMMU_RETIRED_USB_PROOF mStartupUsbProof;
-@@ -131,6 +169,8 @@ STATIC EFI_STATUS ProductDebugReplay(VOID *Context) {
-   PianoUfsReemitConnect();
-   DEBUG((DEBUG_WARN,"SUNUEFI_PROVIDERS blockio=%u diskio=%u sfs=%u driverbinding=%u collation2=%u\n",
-     mDiagBlockIo,mDiagDiskIo,mDiagSfs,mDiagDriverBindings,mDiagCollation2));
-+  DEBUG((DEBUG_WARN,"SUNUEFI_DRIVERS fat=%u diskio=%u partition=%u english=%u\n",
-+    mDiagFatBound,mDiagDiskIoBound,mDiagPartitionBound,mDiagEnglishBound));
-   if(!BootLogAlive())return EFI_ABORTED;
-   if(PianoProductDisplayRetained())return Display==EFI_SUCCESS?EFI_COMPROMISED_DATA:Display;
-   if(PianoDisplaySmmuRetained())return Translation==EFI_SUCCESS?EFI_COMPROMISED_DATA:Translation;
 -- 
 2.54.0
 
