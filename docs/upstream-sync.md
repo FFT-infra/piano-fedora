@@ -18,6 +18,30 @@
 
 来源：[固定上游与当前 main 的完整比较](https://github.com/slwyts/Project-SunUEFI/compare/6a8763d010adb00b18911d6d12e6dd02869f98b9...964459705190fb7b83809e5b059e90b9718f619d)、[上游登录策略](https://github.com/slwyts/Project-SunUEFI/blob/964459705190fb7b83809e5b059e90b9718f619d/config/release.json)、[构建说明](https://github.com/slwyts/Project-SunUEFI/blob/964459705190fb7b83809e5b059e90b9718f619d/docs/devel/building.md)。
 
+## 2026-10-12 更正：pin 已从 6a8763d 前移到 e600ada
+
+上一节（2026-10-11 22:14）是当时的状态快照，原文不改。它记录的是 pin `6a8763d`，本轮把 pin 前移到了 `e600adaae93cfb9f8783969705ecac639ac44a1c`。
+
+前移原因：交付包 r2 的 UEFI 核心来自 `6a8763d`，那是显示修复提交 `e600ada` 的祖先，中间隔 12 个提交；`e600ada` 之前的 `6a8763d` 没有延后原厂 ClockDxe 的 CESTA/media 与 DCD 启动初始化。改动同时更新了 `patches/uefi-ufs/series.json` 与 `patches/kernel-f2fs/series.json` 的 `base.sunuefi_commit`。
+
+2026-10-12 15:03（Asia/Shanghai）用 GitHub API 复核：main 为 `158f526ae5cfa58f4707a540f3e59c1f7d4ae46e`（2026-10-11T20:21:34Z），pin 为 `e600ada`，**main 领先 pin 5 个提交**。
+
+| 上游提交 | 内容 | 本仓库处理 |
+| --- | --- | --- |
+| 1423fc2 | 放大设置控制台并加入中文和标准按键输入 | 改的是 `uefi/core/PianoKeys.c` 与新增的 ConsoleScale 组件。**未取**：本仓库 UEFI 核心仍是 pin 的版本，这项实机仍未验证 |
+| 256763f | 允许引导助手重新安装旧版 BOOT 核心 | Android 模块行为，只改 `android/module/manager.sh` 与 `tools/build_android_module.py` |
+| 34b65da | 检查默认桌面和蓝牙触控笔组件完整性 | rootfs 构建期检查；本仓库 rootfs 由 `build-rootfs.yml` 自行组装，不消费该检查 |
+| 55fec45 | 以引导助手为默认安装入口并简化首页 | 文档与首页 |
+| 158f526 | 自动识别单台平板并附带备用安装说明 | `tools/export_installer.py`、`tools/install_piano.py`；本仓库安装入口是 `scripts/install-f2fs.py` / `update-f2fs.py`，不消费上游安装器 |
+
+这 5 个提交没有触及启动核心、交接、Linux DTB、内核输入、内存合同或 Recovery 合同，也没有触及 `uefi/core/PianoUfsReadOnlyDma.c`。因此保持 pin 为 `e600ada`，不因为「main 更新」而改 pin。
+
+补丁 series 的 base 核对：五个 `targets` 摘要（`PianoUfsReadOnlyDma.c`、`build_piano_full_kernel.py` 两处、`piano-ram-hardware-prepare`、`piano-debug-bootstrap`、`BootSelect.ld`）在 `e600ada` 与 `158f526` 上都与上游原文一致，本轮不需要 rebase。
+
+同轮查询确认 linux-piano 的 piano-7.2.6 分支，以及 piano-firmware、piano-mesa、piano-sensors、piano-mipps-auth、debian-piano 的 main 均与 sources.lock.json 中对应 pin 一致。参考仓库 fedora-sheng 的 main 已前移到 `641c991e4fa8`（9 个提交，全部关于 Denial 桌面应用），它不是构建输入，因此不改 pin。
+
+来源：[pin 与当前 main 的比较](https://github.com/slwyts/Project-SunUEFI/compare/e600adaae93cfb9f8783969705ecac639ac44a1c...158f526ae5cfa58f4707a540f3e59c1f7d4ae46e)、[显示定位](https://github.com/slwyts/Project-SunUEFI/blob/158f526ae5cfa58f4707a540f3e59c1f7d4ae46e/docs/devel/uefi-display-checkpoints.md)。
+
 ## 每次跟进上游
 
 1. 先读取远端 main 的完整提交号，并与当前 pin 比较提交、文件和实际代码；发布说明只作索引。

@@ -113,6 +113,8 @@ jobs:
         env:
           SUNUEFI_TOOLCHAIN_ROOT: /usr
           TMPDIR: ${{ github.workspace }}/build/tmp
+          # 交付目录里不留 __pycache__：它不被 SHA256SUMS 覆盖，且会晚于导出时刻。
+          PYTHONDONTWRITEBYTECODE: "1"
         run: |
           set -euo pipefail
           mkdir -p build/product "$TMPDIR"
@@ -129,6 +131,11 @@ jobs:
           python3 build/boot-tools/installer/scripts/install-f2fs.py --help
           (cd build/boot-tools/installer && sha256sum -c SHA256SUMS)
           python3 -m unittest discover -s build/installer-sources/sunuefi/tests/unit -p test_boot_request.py -v
+      - name: Verify the exported installer is unchanged
+        run: |
+          set -euo pipefail
+          # 导出后、上传前复算一次：摘要之外还要求没有文件晚于 SHA256SUMS 的写入时刻。
+          python3 tests/check_installer_export.py build/boot-tools/installer
       - uses: actions/upload-artifact@v4
         with:
           name: boot-tools
