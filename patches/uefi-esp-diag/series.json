@@ -57,6 +57,14 @@
         "uefi/core/PianoDwc3Device.c": "f93f5e7b6341552ee790e1f16e84c785145f2cf03213e784443f70319f3ddbfc"
       },
       "creates": []
+    },
+    {
+      "file": "0007-esp-bpb-and-language.patch",
+      "summary": "打印 ESP 经 DiskIo 读回的头 4 字节、ESP 的 BlockSize、以及 UnicodeCollation2 的 SupportedLanguages 与 PlatformLang，一次覆盖 Fat 早期 EFI_UNSUPPORTED 的三处输入（只读诊断）",
+      "targets": {
+        "uefi/core/PianoDwc3Device.c": "5832c91e53de56c928f46cff696c0530232083ea446882f44f7abd119adf09e7"
+      },
+      "creates": []
     }
   ]
 }
