@@ -1,4 +1,4 @@
-From cb364bd01cec81884a751bd206965c885f48fff9 Mon Sep 17 00:00:00 2001
+From 51e159460341dcd77aecddf4025a769966beed83 Mon Sep 17 00:00:00 2001
 From: piano-fedora-test <dev@piano.invalid>
 Date: Tue, 13 Oct 2026 01:42:05 +0800
 Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E6=91=98=E5=BD=95=E9=94=9A?=
@@ -14,14 +14,63 @@ text 只截到第一行前半（prepare=Success raw=1）。把关键串换成
 并由第二次扫描定位 enter 行覆盖掉摘录，这样一次回复里能同时看到交接后两步的状态与
 Enter 之前打印的 kernel/dtb/initrd 地址。
 ---
- uefi/core/PianoDwc3Device.c | 39 ++++++++++++-------------------------
- 1 file changed, 12 insertions(+), 27 deletions(-)
+ uefi/core/PianoDwc3Device.c | 81 ++++++-------------------------------
+ 1 file changed, 12 insertions(+), 69 deletions(-)
 
 diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
-index 43a7251..6439e8f 100644
+index 43a7251..e733468 100644
 --- a/uefi/core/PianoDwc3Device.c
 +++ b/uefi/core/PianoDwc3Device.c
-@@ -492,16 +492,16 @@ STATIC UINT32 DiagZoneScan(UINT32 *Hits,UINT32 *Words,CHAR8 *Excerpt,UINTN Excer
+@@ -441,48 +441,6 @@ STATIC UINT32 DiagReadBpb(EFI_HANDLE Esp,EFI_DISK_IO_PROTOCOL **DiskIo,CHAR8 *He
+ // the reply even though it is still there. This copies the tail of the ring and
+ // scans only the part *before* the current marker: that is where a previous
+ // kernel's printk would sit if it registered ramoops before it died.
+-STATIC UINT8 *mPrevBuffer;
+-STATIC UINT32 DiagPrevLog(UINT32 *Hits,CHAR8 *Excerpt,UINTN ExcerptCap){
+- STATIC CONST CHAR8 Marker[]="SUNUEFI_RAMLOG_BEGIN";
+- CONST UINTN Capacity=0x200000-12,Want=0x80000;
+- CONST volatile UINT32 *H=(CONST volatile UINT32 *)(UINTN)0xA3500000;
+- for(UINTN I=0;I<5;++I)Hits[I]=0;
+- for(UINTN I=0;I<ExcerptCap;++I)Excerpt[I]=0;
+- UINT32 Sig=H[0],Start=H[1],Size=H[2];MemoryFence();
+- Hits[4]=Start;
+- if(Sig!=0x43474244||Start>=Capacity||Size>Capacity||Start>Size)return 1;
+- if(mPrevBuffer==NULL){mPrevBuffer=AllocatePool(Want);if(mPrevBuffer==NULL)return 3;}
+- UINTN Bytes=MIN((UINTN)Size,(UINTN)Want);
+- UINTN Offset=(Start+Capacity-Bytes)%Capacity;
+- CONST volatile UINT8 *Ring=(CONST volatile UINT8 *)H+12;
+- for(UINTN I=0;I<Bytes;++I)mPrevBuffer[I]=Ring[(Offset+I)%Capacity];
+- MemoryFence();
+- UINTN Begin=0;
+- for(UINTN I=0;I+sizeof(Marker)-1<=Bytes;++I)
+-  if((I==0||mPrevBuffer[I-1]=='\n')&&!CompareMem(mPrevBuffer+I,Marker,sizeof(Marker)-1))Begin=I;
+- UINTN End=Begin?Begin:Bytes;
+- for(UINTN I=0;I+16<End;++I){
+-  if(!CompareMem(mPrevBuffer+I,"Linux version",13))++Hits[0];
+-  if(!CompareMem(mPrevBuffer+I,"Kernel panic",12))++Hits[1];
+-  if(!CompareMem(mPrevBuffer+I,"ramoops",7))++Hits[2];
+-  if(!CompareMem(mPrevBuffer+I,"[    0.",7))++Hits[3];
+- }
+- // Tail view: the bytes immediately before the marker, sanitized. This shows
+- // whatever the previous boot wrote last (for example a handoff status line)
+- // even when it matches none of the counted patterns above.
+- if(End){
+-  UINTN From=(End>64)?End-64:0;
+-  UINTN N=0;for(;N+1<ExcerptCap&&From+N<End;++N){CHAR8 C=(CHAR8)mPrevBuffer[From+N];Excerpt[N]=(C>=0x20&&C<0x7F)?C:'.';}
+-  Excerpt[N]=0;
+- }
+- for(UINTN I=0;I+16<End && Excerpt[0]==0;++I){
+-  if(!CompareMem(mPrevBuffer+I,"Linux version",13)||!CompareMem(mPrevBuffer+I,"Kernel panic",12)){
+-   UINTN N=0;for(;N+1<ExcerptCap&&I+N<End;++N){CHAR8 C=(CHAR8)mPrevBuffer[I+N];Excerpt[N]=(C>=0x20&&C<0x7F)?C:'.';}
+-   Excerpt[N]=0;
+-  }
+- }
+- return 0;
+-}
+ // After a handoff the region no longer carries the firmware's ring header, so
+ // the reader above rejects it. Scan the console zone linearly instead: the
+ // kernel keeps its pstore text in the same reserved region, and the first
+@@ -492,16 +450,16 @@ STATIC UINT32 DiagZoneScan(UINT32 *Hits,UINT32 *Words,CHAR8 *Excerpt,UINTN Excer
   CONST UINTN Want=0x200000;
   CONST volatile UINT32 *Z=(CONST volatile UINT32 *)(UINTN)0xA3500000;
   CONST volatile UINT8 *B=(CONST volatile UINT8 *)Z+12;
@@ -42,7 +91,7 @@ index 43a7251..6439e8f 100644
     UINTN L=AsciiStrLen((CHAR8 *)Keys[K]);
     if(I+L<Want && !CompareMem(mZoneBuffer+I,Keys[K],L)){++Hits[K];if(HitAt==Want)HitAt=I;}
    }
-@@ -509,6 +509,13 @@ STATIC UINT32 DiagZoneScan(UINT32 *Hits,UINT32 *Words,CHAR8 *Excerpt,UINTN Excer
+@@ -509,6 +467,13 @@ STATIC UINT32 DiagZoneScan(UINT32 *Hits,UINT32 *Words,CHAR8 *Excerpt,UINTN Excer
   if(HitAt<Want){
    UINTN N=0;for(;N+1<ExcerptCap&&HitAt+N<Want;++N){CHAR8 C=(CHAR8)mZoneBuffer[HitAt+N];Excerpt[N]=(C>=0x20&&C<0x7F)?C:'.';}
    Excerpt[N]=0;
@@ -56,7 +105,7 @@ index 43a7251..6439e8f 100644
   }
   return 0;
  }
-@@ -670,28 +677,6 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+@@ -670,28 +635,6 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
       P=EspHex(P,DiagHandles(&mDiagSfsGuid));
       *P=0;
       S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
@@ -85,7 +134,7 @@ index 43a7251..6439e8f 100644
      {CHAR8 *P=Row;CopyMem(P,"INFOesp1:",9);P+=9;
       P=EspHex(P,(UINT32)PianoRawLinuxStableLoadStatus());
       P=EspHex(P,PianoRawLinuxStableLoadStage());
-@@ -710,7 +695,7 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+@@ -710,7 +653,7 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
       *P=0;
       S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
       P=Row;CopyMem(P,"INFOfind:",9);P+=9;P=EspHex(P,ZoneStatus);
