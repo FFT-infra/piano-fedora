@@ -19,7 +19,7 @@
       "summary": "重发 UFS ConnectController 的返回码（只读诊断）",
       "targets": {
         "uefi/core/PianoUfsReadOnlyDma.c": "9ba1c8cb1b62ea323ea4490418b5bdfb9f94afa7daba4d0a42c063f718cd6d39",
-        "uefi/core/PianoProductCore.c": "84781a878090b663746dae1f32dbdb7e776c436d66fd9c3ac9cec26d14cb40a8"
+        "uefi/core/PianoProductCore.c": "0cdc1bd1f66a53c416b8f242e1874bc793fc7c1cc4a6b9e1d3bb266a807c5404"
       },
       "creates": []
     },
@@ -27,7 +27,7 @@
       "file": "0003-provider-counts.patch",
       "summary": "报出 BlockIo/DiskIo/SimpleFileSystem/DriverBinding 四种句柄数（只读诊断）",
       "targets": {
-        "uefi/core/PianoProductCore.c": "e2a926055bd0041e75ca78342499011665c5725d960a0e4772d186f91cee4c74"
+        "uefi/core/PianoProductCore.c": "a475aab2da9ffada7c89bd90d9cf7e663beabacabc3406cfdc01ea87cf288273"
       },
       "creates": []
     },
@@ -35,7 +35,7 @@
       "file": "0004-collation-count.patch",
       "summary": "追加 UnicodeCollation2 句柄数（只读诊断）",
       "targets": {
-        "uefi/core/PianoProductCore.c": "a2179268a1e78544584580431c30dc926d3f070b596963dbea5b3d9fb2350bdb"
+        "uefi/core/PianoProductCore.c": "ea6e876a4534e48dca3532dfe36e921009d179abf0f0359a307ecdd08f968dca"
       },
       "creates": []
     },
@@ -43,7 +43,7 @@
       "file": "0005-driver-bindings.patch",
       "summary": "报出 Fat/DiskIo/Partition/English 四个驱动的绑定是否存在（只读诊断）",
       "targets": {
-        "uefi/core/PianoProductCore.c": "343e6a4061d3df384b107c30617e0030b17eb3c1e46655e4a70289f2899c20eb"
+        "uefi/core/PianoProductCore.c": "d7609f434fb17657a0bf092ea3d9a23fa73d6d2e78dacf8372418e06d8344f77"
       },
       "creates": []
     }
