@@ -1,0 +1,109 @@
+From 6eaf1f0f8717eee7eebfdef27421f8a71c05cb42 Mon Sep 17 00:00:00 2001
+From: piano-fedora-test <dev@piano.invalid>
+Date: Mon, 12 Oct 2026 19:44:32 +0800
+Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E6=9A=B4=E9=9C=B2=E8=A2=AB?=
+ =?UTF-8?q?=E9=98=BB=E6=96=AD=E7=9A=84=20ESP=20=E7=A8=B3=E5=AE=9A=E5=8A=A0?=
+ =?UTF-8?q?=E8=BD=BD=E7=8A=B6=E6=80=81=E7=A0=81?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+只读诊断。PianoRawLinuxLoadStable 在每一处失败分支记录 EFI_STATUS 与阶段号，
+通过 oem status 的 INFOesp-load / INFOesp-stage 两行回给主机。
+
+不改任何判断逻辑，加载器自身从不读取这两个值。用于区分「卷/父设备识别失败」
+（0x0e NOT_FOUND）、「GPT 条目身份不一致」（0x21 COMPROMISED_DATA）与
+「读文件过程失败」三类此前无法区分的失败。
+---
+ uefi/core/PianoDwc3Device.c   |  6 ++++++
+ uefi/core/PianoRawLinuxBoot.c | 20 +++++++++++++++-----
+ uefi/core/PianoRawLinuxBoot.h |  4 ++++
+ 3 files changed, 25 insertions(+), 5 deletions(-)
+
+diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
+index 91962a7..84cabdb 100644
+--- a/uefi/core/PianoDwc3Device.c
++++ b/uefi/core/PianoDwc3Device.c
+@@ -303,6 +303,8 @@ STATIC EFI_STATUS FastbootSend(VOID *Context,CONST VOID *Data,UINTN Bytes) {
+   if(mFramesTail!=NULL)mFramesTail->Next=Frame;else mFrames=Frame;
+   mFramesTail=Frame;++mFrameCount;mFrameBytes+=Bytes;return EFI_SUCCESS;
+ }
++EFI_STATUS PianoRawLinuxStableLoadStatus(VOID);
++UINT32 PianoRawLinuxStableLoadStage(VOID);
+ STATIC VOID FastHex(UINT32 Value,CHAR8 *Out) {
+   STATIC CONST CHAR8 Digits[]="0123456789abcdef";
+   for(UINTN I=0;I<8;++I)Out[I]=Digits[(Value>>((7-I)*4))&15];
+@@ -382,6 +384,10 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+     EFI_STATUS S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
+     CopyMem(Row,"INFODCFG:",9);FastHex(Dr(0xC700),Row+9);
+     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
++    CopyMem(Row,"INFOesp-load:",13);FastHex((UINT32)PianoRawLinuxStableLoadStatus(),Row+13);
++    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
++    CopyMem(Row,"INFOesp-stage:",14);FastHex(PianoRawLinuxStableLoadStage(),Row+14);
++    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
+     return FastbootSend(NULL,"OKAY",4);
+   }
+   return EFI_UNSUPPORTED;
+diff --git a/uefi/core/PianoRawLinuxBoot.c b/uefi/core/PianoRawLinuxBoot.c
+index 33fb223..20b5283 100644
+--- a/uefi/core/PianoRawLinuxBoot.c
++++ b/uefi/core/PianoRawLinuxBoot.c
+@@ -117,25 +117,35 @@ STATIC EFI_STATUS FileSlice(VOID *C,UINTN Us){
+  EFI_STATUS E=mRaw.Runtime->Pump(mRaw.Runtime,PIANO_PRODUCT_PUMP_APP,Us);
+  return E==EFI_NOT_READY?EFI_SUCCESS:E;
+ }
++// Diagnostic only. Records which step of the fixed-ESP stable load last
++// failed and with which EFI_STATUS so a host can read it back. Nothing in
++// the loader consults these values; they never change a decision.
++STATIC EFI_STATUS mDiagStableStatus=EFI_NOT_STARTED;
++STATIC UINT32 mDiagStableStage;
++EFI_STATUS PianoRawLinuxStableLoadStatus(VOID){return mDiagStableStatus;}
++UINT32 PianoRawLinuxStableLoadStage(VOID){return mDiagStableStage;}
+ EFI_STATUS PianoRawLinuxLoadStable(PIANO_PRODUCT_RUNTIME_PROTOCOL *Runtime,VOID **Context,VOID **Token){
+- if(!Context||!Token||Context==Token)return EFI_INVALID_PARAMETER;*Context=NULL;*Token=NULL;
++ mDiagStableStage=1;mDiagStableStatus=EFI_NOT_STARTED;
++ if(!Context||!Token||Context==Token){mDiagStableStatus=EFI_INVALID_PARAMETER;return EFI_INVALID_PARAMETER;}*Context=NULL;*Token=NULL;
+  if(Ready(&mRaw)!=EFI_SUCCESS||!Runtime||Runtime->Revision!=PIANO_PRODUCT_RUNTIME_REVISION||
+- !Runtime->Pump||!Runtime->BootServicesAlive||!Runtime->BootServicesAlive(Runtime))return EFI_NOT_READY;
++ !Runtime->Pump||!Runtime->BootServicesAlive||!Runtime->BootServicesAlive(Runtime)){mDiagStableStatus=EFI_NOT_READY;return EFI_NOT_READY;}
+  if(mRaw.File.Released){
+-   if(!PianoEspBootReleased(&mRaw.File)||mRaw.File.File.ServicesLost)return EFI_ACCESS_DENIED;
++   if(!PianoEspBootReleased(&mRaw.File)||mRaw.File.File.ServicesLost){mDiagStableStatus=EFI_ACCESS_DENIED;return EFI_ACCESS_DENIED;}
+    ZeroMem(&mRaw.File,sizeof(mRaw.File));
+  }
+  mRaw.FileQuiet=FALSE;
+  mRaw.Runtime=Runtime;mRaw.FileLoading=TRUE;
+  PIANO_CPU_INPUT_ENV Cpu={.Context=&mRaw,.BootServicesAlive=FileAlive,.ServiceSlice=FileSlice};
++ mDiagStableStage=2;
+  EFI_STATUS E=PianoEspBootLoad(&mRaw.File,&Cpu);
+- if(E==EFI_SUCCESS)E=Parse(&mRaw.File.Reader,&mRaw.Parsed);
++ if(E==EFI_SUCCESS){mDiagStableStage=3;E=Parse(&mRaw.File.Reader,&mRaw.Parsed);}
+  if(E!=EFI_SUCCESS){
+    if(mRaw.File.Loaded){mRaw.FileQuiet=TRUE;EFI_STATUS R=PianoEspBootRelease(&mRaw.File);mRaw.FileQuiet=FALSE;if(R!=EFI_SUCCESS)E=R;}
+-   mRaw.FileLoading=FALSE;return E;
++   mRaw.FileLoading=FALSE;mDiagStableStatus=E;return E;
+  }
+  mRaw.Blob=mRaw.File.Blob;mRaw.Token=mRaw.File.Owner;CopyMem(mRaw.AcceptedSha,mRaw.File.File.Sha256,32);
+  mRaw.AcceptedBytes=mRaw.File.File.Bytes;mRaw.FileMode=TRUE;mRaw.Captured=TRUE;mRaw.FileLoading=FALSE;
++ mDiagStableStage=4;mDiagStableStatus=EFI_SUCCESS;
+  *Context=&mRaw;*Token=mRaw.Token;return EFI_SUCCESS;
+ }
+ BOOLEAN PianoRawLinuxStableRetained(VOID){return mRaw.File.Retained||mRaw.File.File.Retained||mRaw.File.File.ServicesLost;}
+diff --git a/uefi/core/PianoRawLinuxBoot.h b/uefi/core/PianoRawLinuxBoot.h
+index 122c107..604f32b 100644
+--- a/uefi/core/PianoRawLinuxBoot.h
++++ b/uefi/core/PianoRawLinuxBoot.h
+@@ -14,6 +14,10 @@ EFI_STATUS PianoRawLinuxRegister(EFI_HANDLE Image,EFI_SYSTEM_TABLE *SystemTable)
+ // Fixed ESP snapshot, taken from the real FileSource before controller retirement.
+ EFI_STATUS PianoRawLinuxLoadStable(PIANO_PRODUCT_RUNTIME_PROTOCOL *,VOID **Context,VOID **Token);
+ EFI_STATUS PianoRawLinuxDiscardStable(VOID);
++// Diagnostic read-back for the last blocked stable load: stage 1=entry,
++// 2=EspBootLoad, 3=Parse, 4=success. Read-only; no caller may branch on it.
++EFI_STATUS PianoRawLinuxStableLoadStatus(VOID);
++UINT32 PianoRawLinuxStableLoadStage(VOID);
+ BOOLEAN PianoRawLinuxStableRetained(VOID);
+ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *,EFI_HANDLE,CONST PIANO_RAW_LINUX_REPORT **);
+ // CPU-only identity/ownership check, including the actual complete owner ledger.
+-- 
+2.54.0
+
