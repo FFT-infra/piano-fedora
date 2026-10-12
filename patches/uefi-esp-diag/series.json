@@ -33,6 +33,14 @@
         "uefi/core/PianoDwc3Device.c": "40f482b612483d70cdafafdd2a6a6537a2bd6559ff2d89a2e8d1c92cbf84b862"
       },
       "creates": []
+    },
+    {
+      "file": "0004-driver-identity-status.patch",
+      "summary": "oem status 报出 BlockIo/DiskIo/SFS/UnicodeCollation2/DriverBinding 句柄数与四个存储驱动的派发掩码，并把回复压回 16 帧队列内（只读诊断）",
+      "targets": {
+        "uefi/core/PianoDwc3Device.c": "554d5bb3f4d1ce5aba99a1a76d59ef4a6ccd188300b6d063040a9090675fbe59"
+      },
+      "creates": []
     }
   ]
 }
