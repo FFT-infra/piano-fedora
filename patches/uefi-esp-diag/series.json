@@ -73,6 +73,14 @@
         "uefi/core/PianoDwc3Device.c": "614d8f539ceed7b40bfbb85b2d058585caec7955f858efb7219441a8c2630ce1"
       },
       "creates": []
+    },
+    {
+      "file": "0009-extra-collation.patch",
+      "summary": "发布一个 SupportedLanguages 更宽的 UnicodeCollation2 实例（复用原实例函数指针），验证 Fat 的 EFI_UNSUPPORTED 是否来自语言匹配（只加一个协议实例，不写变量与存储）",
+      "targets": {
+        "uefi/core/PianoDwc3Device.c": "9d4a77d708f12986418921e147b57bf5a18b4e565ec675821123dd6e58358fe1"
+      },
+      "creates": []
     }
   ]
 }
