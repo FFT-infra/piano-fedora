@@ -1,0 +1,56 @@
+From 20f38a5e8ec76d0e727ddb5b68125226da227ad2 Mon Sep 17 00:00:00 2001
+From: piano-fedora-test <dev@piano.invalid>
+Date: Mon, 12 Oct 2026 23:06:40 +0800
+Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E8=BF=BD=E5=8A=A0=20UnicodeColla?=
+ =?UTF-8?q?tion2=20=E5=8F=A5=E6=9F=84=E6=95=B0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+上一发读出 blockio=141 diskio=141 sfs=0 driverbinding=16——分区层与 DiskIoDxe 都已排除，
+断点压在 FatDxe 自己身上，而 FatDriverBindingStart 的唯一早期失败点就是
+InitializeUnicodeCollationSupport（Fat.c:379，失败即 goto Exit，不安装 SimpleFileSystem）。
+那一步只找 UnicodeCollation2，没有 v1 回退，而 EnglishDxe 生产它带 FeaturePcd 条件
+（PcdUnicodeCollation2Support，MdeModulePkg.dec:829 默认 TRUE，平台未覆盖）。
+
+本次只多加一个计数，形状不变。
+---
+ uefi/core/PianoProductCore.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/uefi/core/PianoProductCore.c b/uefi/core/PianoProductCore.c
+index eb09982..0e97563 100644
+--- a/uefi/core/PianoProductCore.c
++++ b/uefi/core/PianoProductCore.c
+@@ -48,7 +48,8 @@ STATIC CONST EFI_GUID mDiagBlockIoGuid={0x964E5B21,0x6459,0x11D2,{0x8E,0x39,0x00
+ STATIC CONST EFI_GUID mDiagDiskIoGuid={0xCE345171,0xBA0B,0x11D2,{0x8E,0x4F,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
+ STATIC CONST EFI_GUID mDiagSfsGuid={0x964E5B22,0x6459,0x11D2,{0x8E,0x39,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
+ STATIC CONST EFI_GUID mDiagDriverBindingGuid={0x18A031AB,0xB443,0x4D1A,{0xA5,0xC0,0x0C,0x09,0x26,0x1E,0x9F,0x71}};
+-STATIC UINT32 mDiagBlockIo,mDiagDiskIo,mDiagSfs,mDiagDriverBindings;
++STATIC CONST EFI_GUID mDiagCollation2Guid={0xA4C751FC,0x23AE,0x4C3E,{0x92,0xE9,0x49,0x64,0xCF,0x63,0xF3,0x49}};
++STATIC UINT32 mDiagBlockIo,mDiagDiskIo,mDiagSfs,mDiagDriverBindings,mDiagCollation2;
+ STATIC UINT32 DiagHandles(CONST EFI_GUID *G){
+  EFI_HANDLE *H=NULL;UINTN C=0;EFI_STATUS S=gBS->LocateHandleBuffer(ByProtocol,(EFI_GUID *)G,NULL,&C,&H);
+  UINT32 R=S==EFI_SUCCESS?(UINT32)C:(S==EFI_NOT_FOUND?0U:0xFFFFFFFFU);
+@@ -59,6 +60,7 @@ STATIC VOID PianoDiagCountProviders(VOID){
+  mDiagDiskIo=DiagHandles(&mDiagDiskIoGuid);
+  mDiagSfs=DiagHandles(&mDiagSfsGuid);
+  mDiagDriverBindings=DiagHandles(&mDiagDriverBindingGuid);
++ mDiagCollation2=DiagHandles(&mDiagCollation2Guid);
+ }
+ STATIC PIANO_PRODUCT_DISPLAY_STARTUP_REPORT mDisplayStartup;
+ STATIC PIANO_SMMU_RETIRED_USB_PROOF mStartupUsbProof;
+@@ -127,8 +129,8 @@ STATIC EFI_STATUS ProductDebugReplay(VOID *Context) {
+   EFI_STATUS DisplayOwner=PianoProductDisplayReplay();
+   (VOID)PianoProductBootObjectsReemit(BootLogAlive);
+   PianoUfsReemitConnect();
+-  DEBUG((DEBUG_WARN,"SUNUEFI_PROVIDERS blockio=%u diskio=%u sfs=%u driverbinding=%u\n",
+-    mDiagBlockIo,mDiagDiskIo,mDiagSfs,mDiagDriverBindings));
++  DEBUG((DEBUG_WARN,"SUNUEFI_PROVIDERS blockio=%u diskio=%u sfs=%u driverbinding=%u collation2=%u\n",
++    mDiagBlockIo,mDiagDiskIo,mDiagSfs,mDiagDriverBindings,mDiagCollation2));
+   if(!BootLogAlive())return EFI_ABORTED;
+   if(PianoProductDisplayRetained())return Display==EFI_SUCCESS?EFI_COMPROMISED_DATA:Display;
+   if(PianoDisplaySmmuRetained())return Translation==EFI_SUCCESS?EFI_COMPROMISED_DATA:Translation;
+-- 
+2.54.0
+
