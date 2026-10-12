@@ -41,6 +41,14 @@
         "uefi/core/PianoDwc3Device.c": "554d5bb3f4d1ce5aba99a1a76d59ef4a6ccd188300b6d063040a9090675fbe59"
       },
       "creates": []
+    },
+    {
+      "file": "0005-fat-bind-esp.patch",
+      "summary": "对 ESP 型分区显式做一次 Fat 的 ConnectController，并报回返回码与连接前后的 SFS 句柄数（只读诊断，成功即产出文件系统）",
+      "targets": {
+        "uefi/core/PianoDwc3Device.c": "1edeb87cc5b46d6ff2cf52784c71bab18895173037f45dea9e4120db2c3d8bfd"
+      },
+      "creates": []
     }
   ]
 }
