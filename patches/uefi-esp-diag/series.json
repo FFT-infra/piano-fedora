@@ -24,15 +24,6 @@
         "uefi/core/PianoDwc3Device.c": "5c2dcfaf8613ec3a51f0e15fb533c67f14cf4b4d7b953893ab62e0bd7f625391"
       },
       "creates": []
-    },
-    {
-      "file": "0003-report-storage-inventory.patch",
-      "summary": "实时报出 BlockIo / SimpleFileSystem 句柄数与产品卷状态（只读诊断）",
-      "targets": {
-        "uefi/core/PianoProductCore.c": "84781a878090b663746dae1f32dbdb7e776c436d66fd9c3ac9cec26d14cb40a8",
-        "uefi/core/PianoDwc3Device.c": "40f482b612483d70cdafafdd2a6a6537a2bd6559ff2d89a2e8d1c92cbf84b862"
-      },
-      "creates": []
     }
   ]
 }
