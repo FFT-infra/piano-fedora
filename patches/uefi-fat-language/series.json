@@ -8,7 +8,7 @@
   "patches": [
     {
       "file": "0001-product-platform-language.patch",
-      "summary": "产品 DSC 的默认平台语言由 zh-CN 改为 en-US（zh-CN 保留在语言码表），使 FatDxe 的 collation 语言匹配不再失败",
+      "summary": "只给 FatPkg/EnhancedFatDxe/Fat.inf 配 PcdUefiVariableDefaultPlatformLang=en-US（模块级 PCD 覆盖），使 collation 语言匹配不再失败，中文界面与全局默认不变",
       "targets": {
         "tools/prepare_product.py": "ef01f073b794b2e3c890eb115fe59debdc4cf8c018c95c237265cd7ddb334652"
       },
