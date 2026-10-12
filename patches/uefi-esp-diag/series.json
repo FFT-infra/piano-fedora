@@ -49,6 +49,14 @@
         "uefi/core/PianoDwc3Device.c": "1edeb87cc5b46d6ff2cf52784c71bab18895173037f45dea9e4120db2c3d8bfd"
       },
       "creates": []
+    },
+    {
+      "file": "0006-fat-supported-start.patch",
+      "summary": "直接调用 Fat 的 Supported/Start 并报回各自返回码，指出拒绝 ESP 卷的那一层（只读诊断，成功即产出文件系统）",
+      "targets": {
+        "uefi/core/PianoDwc3Device.c": "f93f5e7b6341552ee790e1f16e84c785145f2cf03213e784443f70319f3ddbfc"
+      },
+      "creates": []
     }
   ]
 }
