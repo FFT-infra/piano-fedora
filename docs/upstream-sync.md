@@ -34,13 +34,13 @@
 | 55fec45 | 以引导助手为默认安装入口并简化首页 | 文档与首页 |
 | 158f526 | 自动识别单台平板并附带备用安装说明 | `tools/export_installer.py`、`tools/install_piano.py`；本仓库安装入口是 `scripts/install-f2fs.py` / `update-f2fs.py`，不消费上游安装器 |
 
-这 5 个提交没有触及启动核心、交接、Linux DTB、内核输入、内存合同或 Recovery 合同，也没有触及 `uefi/core/PianoUfsReadOnlyDma.c`。因此保持 pin 为 `e600ada`，不因为「main 更新」而改 pin。
+## 2026-10-12 更正：pin 已前移到 158f526（SunUEFI main 最新提交）
 
-补丁 series 的 base 核对：五个 `targets` 摘要（`PianoUfsReadOnlyDma.c`、`build_piano_full_kernel.py` 两处、`piano-ram-hardware-prepare`、`piano-debug-bootstrap`、`BootSelect.ld`）在 `e600ada` 与 `158f526` 上都与上游原文一致，本轮不需要 rebase。
+上一轮基于 `e600ada`。用户要求开新分支编译上游最新，经复核 `158f526ae5cfa58f4707a540f3e59c1f7d4ae46e` 相比 `e600ada` 新增了 3K 控制台缩放支持（`1423fc2`）与安装器优化：
+- 五个 `targets` 摘要（`PianoUfsReadOnlyDma.c`、`build_piano_full_kernel.py` 两处、`piano-ram-hardware-prepare`、`piano-debug-bootstrap`、`BootSelect.ld`）在 `158f526` 上与原文完全一致，全部 5 个补丁顺利就绪。
+- 新分支 `sync/sunuefi-158f526` 将 `sources.lock.json` 与各补丁 series 均更新指向 `158f526ae5cfa58f4707a540f3e59c1f7d4ae46e`。
 
-同轮查询确认 linux-piano 的 piano-7.2.6 分支，以及 piano-firmware、piano-mesa、piano-sensors、piano-mipps-auth、debian-piano 的 main 均与 sources.lock.json 中对应 pin 一致。参考仓库 fedora-sheng 的 main 已前移到 `641c991e4fa8`（9 个提交，全部关于 Denial 桌面应用），它不是构建输入，因此不改 pin。
-
-来源：[pin 与当前 main 的比较](https://github.com/slwyts/Project-SunUEFI/compare/e600adaae93cfb9f8783969705ecac639ac44a1c...158f526ae5cfa58f4707a540f3e59c1f7d4ae46e)、[显示定位](https://github.com/slwyts/Project-SunUEFI/blob/158f526ae5cfa58f4707a540f3e59c1f7d4ae46e/docs/devel/uefi-display-checkpoints.md)。
+来源：[158f526 提交历史](https://github.com/slwyts/Project-SunUEFI/commits/158f526ae5cfa58f4707a540f3e59c1f7d4ae46e)。
 
 ## 每次跟进上游
 
