@@ -81,6 +81,14 @@
         "uefi/core/PianoDwc3Device.c": "9d4a77d708f12986418921e147b57bf5a18b4e565ec675821123dd6e58358fe1"
       },
       "creates": []
+    },
+    {
+      "file": "0010-previous-boot-log.patch",
+      "summary": "扫描 RAM 环中当前会话标记之前那段（上一次启动的内容），统计内核日志痕迹并摘录一段（只读）",
+      "targets": {
+        "uefi/core/PianoDwc3Device.c": "d265f4dc575cd3cf4d9606d07c2c5405b62ff072e727efffd58621b08d5e8ba7"
+      },
+      "creates": []
     }
   ]
 }
