@@ -89,6 +89,15 @@
         "uefi/core/PianoDwc3Device.c": "d265f4dc575cd3cf4d9606d07c2c5405b62ff072e727efffd58621b08d5e8ba7"
       },
       "creates": []
+    },
+    {
+      "file": "0011-handoff-steps.patch",
+      "summary": "给固件交接三步（Prepare/Arm/Enter）各加一行状态日志，并把 INFOprev 的摘录改成标记前的尾部视图（诊断）",
+      "targets": {
+        "uefi/core/PianoProductCore.c": "84781a878090b663746dae1f32dbdb7e776c436d66fd9c3ac9cec26d14cb40a8",
+        "uefi/core/PianoDwc3Device.c": "ce39de2a2e85a7bdfb9d5983b14f4b27afd6c0777eb4b2f92f922adc98fa6b5f"
+      },
+      "creates": []
     }
   ]
 }
