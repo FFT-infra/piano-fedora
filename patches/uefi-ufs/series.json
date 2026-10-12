@@ -38,6 +38,14 @@
         "uefi/core/PianoProductCore.c": "a2179268a1e78544584580431c30dc926d3f070b596963dbea5b3d9fb2350bdb"
       },
       "creates": []
+    },
+    {
+      "file": "0005-driver-bindings.patch",
+      "summary": "报出 Fat/DiskIo/Partition/English 四个驱动的绑定是否存在（只读诊断）",
+      "targets": {
+        "uefi/core/PianoProductCore.c": "343e6a4061d3df384b107c30617e0030b17eb3c1e46655e4a70289f2899c20eb"
+      },
+      "creates": []
     }
   ]
 }
