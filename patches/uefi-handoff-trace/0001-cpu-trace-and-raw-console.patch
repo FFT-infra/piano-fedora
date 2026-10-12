@@ -1,0 +1,623 @@
+diff --git a/tests/native/PianoRawLinuxEnterSourceTest.c b/tests/native/PianoRawLinuxEnterSourceTest.c
+new file mode 100644
+index 0000000..bbceef7
+--- /dev/null
++++ b/tests/native/PianoRawLinuxEnterSourceTest.c
+@@ -0,0 +1,168 @@
++#include <assert.h>
++#include <stdarg.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <setjmp.h>
++
++typedef uint8_t UINT8;
++typedef uint32_t UINT32;
++typedef uint64_t UINT64;
++typedef size_t UINTN;
++typedef UINT64 EFI_STATUS;
++typedef char CHAR8;
++typedef const char CONST_CHAR8;
++typedef const UINT8 CONST_UINT8;
++typedef void VOID;
++typedef void *EFI_HANDLE;
++typedef int BOOLEAN;
++#define CONST const
++#define TRUE 1
++#define FALSE 0
++#define MAX_UINTN SIZE_MAX
++#define EFI_SUCCESS 0
++#define EFI_INVALID_PARAMETER 2
++#define EFI_DEVICE_ERROR 7
++#define EFI_OUT_OF_RESOURCES 9
++#define EFI_BUFFER_TOO_SMALL 5
++#define EFI_ACCESS_DENIED 15
++#define EFI_NOT_STARTED 19
++#define EFI_COMPROMISED_DATA 33
++
++typedef struct { UINT64 Opaque[8]; } EFI_MEMORY_DESCRIPTOR;
++typedef struct { VOID *ImageBase; UINT64 ImageSize; } LOADED_IMAGE;
++typedef struct { UINT64 Dtb,Kernel; } PIANO_RAW_LINUX_REPORT;
++typedef struct {
++  UINT64 TraceNonce;
++  BOOLEAN Entered;
++  VOID *Owners;
++  EFI_HANDLE Image;
++  struct { VOID *ImageBase; UINT64 ImageSize; } Loaded;
++} RAW_STATE;
++typedef EFI_STATUS (*GET_MEMORY_MAP)(UINTN *,EFI_MEMORY_DESCRIPTOR *,UINTN *,UINTN *,UINT32 *);
++typedef EFI_STATUS (*EXIT_BOOT_SERVICES)(EFI_HANDLE,UINTN);
++typedef struct { GET_MEMORY_MAP GetMemoryMap; EXIT_BOOT_SERVICES ExitBootServices; } EFI_BOOT_SERVICES;
++
++static RAW_STATE mRaw;
++static EFI_BOOT_SERVICES *gBS;
++static UINT32 mScenario,mMapCalls,mExitCalls,mAllocCalls,mCacheCalls,mBranchCalls;
++static UINTN mBranchTree,mBranchEntry;
++static EFI_STATUS mResult;
++static VOID *mAllocation;
++static BOOLEAN mEbsComplete;
++static CHAR8 mLogs[8192];
++static UINTN mLogsBytes,mTraceCalls;
++static jmp_buf mBranch;
++
++static EFI_STATUS FakeGetMemoryMap(UINTN *,EFI_MEMORY_DESCRIPTOR *,UINTN *,UINTN *,UINT32 *);
++static EFI_STATUS FakeExitBootServices(EFI_HANDLE,UINTN);
++static EFI_BOOT_SERVICES mBootServices={FakeGetMemoryMap,FakeExitBootServices};
++static BOOLEAN PianoRawLinuxPrepared(CONST PIANO_RAW_LINUX_REPORT *R,VOID *O,EFI_HANDLE I){
++  return R!=NULL&&O==mRaw.Owners&&I==mRaw.Image;
++}
++static BOOLEAN Live(VOID){return gBS!=NULL;}
++static UINTN AsciiSPrint(CHAR8 *Buffer,UINTN Capacity,CONST_CHAR8 *Format,...){
++  CHAR8 NativeFormat[256];UINTN In=0,Out=0;
++  while(Format[In]&&Out+2<sizeof(NativeFormat)){
++    if(Format[In]=='%'&&Format[In+1]=='a'){NativeFormat[Out++]='%';NativeFormat[Out++]='s';In+=2;}
++    else NativeFormat[Out++]=Format[In++];
++  }
++  NativeFormat[Out]=0;
++  va_list Args;va_start(Args,Format);int Result=vsnprintf(Buffer,Capacity,NativeFormat,Args);va_end(Args);
++  return Result<0?0:(UINTN)Result;
++}
++static UINTN AsciiStrLen(CONST_CHAR8 *S){return strlen(S);}
++static VOID RamLogWrite(CONST_UINT8 *Buffer,UINTN Length){
++  assert(mLogsBytes+Length<sizeof(mLogs));
++  if(mEbsComplete)assert(gBS==NULL);
++  memcpy(mLogs+mLogsBytes,Buffer,Length);mLogsBytes+=Length;mLogs[mLogsBytes]=0;++mTraceCalls;
++}
++static VOID *AllocatePool(UINTN Bytes){
++  ++mAllocCalls;
++  if(mScenario==2)return NULL;
++  mAllocation=malloc(Bytes);return mAllocation;
++}
++static VOID WriteBackInvalidateDataCacheRange(VOID *Address,UINTN Bytes){
++  assert(Address!=NULL&&Bytes>0&&gBS==NULL);++mCacheCalls;
++}
++static VOID RawEnter(UINT64 Tree,UINT64 Entry) __attribute__((noreturn));
++static VOID RawEnter(UINT64 Tree,UINT64 Entry){
++  assert(gBS==NULL);++mBranchCalls;mBranchTree=(UINTN)Tree;mBranchEntry=(UINTN)Entry;longjmp(mBranch,1);
++}
++
++/* PIANO_RAW_LINUX_TRACE_SOURCE */
++/* PIANO_RAW_LINUX_ENTER_SOURCE */
++
++enum { SC_SIZE_PROBE_FAIL=1,SC_ALLOC_FAIL,SC_FILL_FAIL,SC_EBS_ERROR,SC_DOUBLE_STALE,SC_STALE_SUCCESS,SC_EBS_SUCCESS };
++static EFI_STATUS FakeGetMemoryMap(UINTN *Size,EFI_MEMORY_DESCRIPTOR *Map,UINTN *Key,UINTN *Stride,UINT32 *Version){
++  assert(gBS!=NULL);++mMapCalls;
++  if(mMapCalls==1){
++    *Key=0;*Stride=16;*Version=1;*Size=64;
++    return mScenario==SC_SIZE_PROBE_FAIL?EFI_DEVICE_ERROR:EFI_BUFFER_TOO_SMALL;
++  }
++  *Key=100+mMapCalls;*Stride=16;*Version=1;
++  if(mScenario==SC_FILL_FAIL)return EFI_DEVICE_ERROR;
++  assert(Map!=NULL&&*Size>=64);*Size=64;return EFI_SUCCESS;
++}
++static EFI_STATUS FakeExitBootServices(EFI_HANDLE Image,UINTN Key){
++  assert(gBS!=NULL&&Image==mRaw.Image&&Key==100+mMapCalls);++mExitCalls;
++  if(mScenario==SC_EBS_ERROR)return EFI_DEVICE_ERROR;
++  if(mScenario==SC_DOUBLE_STALE)return EFI_INVALID_PARAMETER;
++  if(mScenario==SC_STALE_SUCCESS&&mExitCalls==1)return EFI_INVALID_PARAMETER;
++  mEbsComplete=TRUE;gBS=NULL;return EFI_SUCCESS;
++}
++static VOID Reset(UINT32 Scenario){
++  free(mAllocation);mAllocation=NULL;memset(&mRaw,0,sizeof(mRaw));mRaw.TraceNonce=0x1234;
++  mRaw.Owners=(VOID *)(uintptr_t)0x2222;mRaw.Image=(EFI_HANDLE)(uintptr_t)0x3333;
++  mRaw.Loaded.ImageBase=(VOID *)(uintptr_t)0x4444;mRaw.Loaded.ImageSize=4096;
++  mScenario=Scenario;mMapCalls=mExitCalls=mAllocCalls=mCacheCalls=mBranchCalls=0;
++  mBranchTree=mBranchEntry=0;mEbsComplete=FALSE;mLogsBytes=mTraceCalls=0;mLogs[0]=0;
++  mResult=EFI_NOT_STARTED;gBS=&mBootServices;
++}
++static EFI_STATUS Invoke(CONST PIANO_RAW_LINUX_REPORT *R){
++  if(setjmp(mBranch)==0)return PianoRawLinuxEnter(R);
++  return EFI_SUCCESS;
++}
++static VOID CheckTraceIdentity(VOID){
++  assert(mTraceCalls>0&&strstr(mLogs,"nonce=0000000000001234")!=NULL);
++  assert(strstr(mLogs,"stage=")!=NULL&&strstr(mLogs,"status=")!=NULL&&strstr(mLogs,"detail=")!=NULL);
++}
++int main(VOID){
++  PIANO_RAW_LINUX_REPORT Report={.Dtb=0xB0000000,.Kernel=0xA8000000};
++  Reset(SC_SIZE_PROBE_FAIL);mResult=Invoke(&Report);
++  assert(mResult==EFI_COMPROMISED_DATA&&mRaw.Entered==FALSE&&mAllocCalls==0);
++  assert(strstr(mLogs,"stage=size-probe")!=NULL);CheckTraceIdentity();
++
++  Reset(SC_ALLOC_FAIL);mResult=Invoke(&Report);
++  assert(mResult==EFI_OUT_OF_RESOURCES&&mRaw.Entered==FALSE&&mAllocCalls==1);
++  assert(strstr(mLogs,"stage=allocation")!=NULL);CheckTraceIdentity();
++
++  Reset(SC_FILL_FAIL);mResult=Invoke(&Report);
++  assert(mResult==EFI_DEVICE_ERROR&&mRaw.Entered==TRUE&&mMapCalls==2&&mExitCalls==0);
++  assert(strstr(mLogs,"stage=map-fill")!=NULL);CheckTraceIdentity();
++
++  Reset(SC_EBS_ERROR);mResult=Invoke(&Report);
++  assert(mResult==EFI_DEVICE_ERROR&&mMapCalls==2&&mExitCalls==1);
++  assert(strstr(mLogs,"stage=ebs-before")&&strstr(mLogs,"stage=ebs-return"));CheckTraceIdentity();
++
++  Reset(SC_DOUBLE_STALE);mResult=Invoke(&Report);
++  assert(mResult==EFI_INVALID_PARAMETER&&mMapCalls==3&&mExitCalls==2);
++  assert(strstr(mLogs,"stage=map-fill")&&strstr(mLogs,"stage=ebs-return"));CheckTraceIdentity();
++
++  Reset(SC_STALE_SUCCESS);mResult=Invoke(&Report);
++  assert(mResult==EFI_SUCCESS&&gBS==NULL&&mEbsComplete==TRUE&&mExitCalls==2&&mMapCalls==3);
++  assert(mCacheCalls==1&&mBranchCalls==1&&mBranchTree==Report.Dtb&&mBranchEntry==Report.Kernel);
++  CONST CHAR8 *Ebs=strstr(mLogs,"stage=ebs-return");
++  CONST CHAR8 *Cache=strstr(mLogs,"stage=cache-refresh-before");
++  CONST CHAR8 *Branch=strstr(mLogs,"stage=branch-before");
++  assert(Ebs&&Cache&&Branch&&Ebs<Cache&&Cache<Branch);
++  assert(strstr(Branch,"status=0000000000000000")!=NULL);
++  assert(mTraceCalls>=8);CheckTraceIdentity();
++
++  Reset(SC_EBS_SUCCESS);mResult=Invoke(&Report);
++  assert(mResult==EFI_SUCCESS&&gBS==NULL&&mExitCalls==1&&mCacheCalls==1&&mBranchCalls==1);
++  CheckTraceIdentity();
++  puts("RawLinux source extraction: all entry outcomes and CPU-only post-EBS trace passed");
++  free(mAllocation);return 0;
++}
+diff --git a/tests/unit/test_raw_console_export.py b/tests/unit/test_raw_console_export.py
+new file mode 100644
+index 0000000..aa9f20a
+--- /dev/null
++++ b/tests/unit/test_raw_console_export.py
+@@ -0,0 +1,125 @@
++"""Compile the actual raw-export helper against bounded host memory fixtures."""
++from pathlib import Path
++import subprocess
++import tempfile
++import unittest
++
++ROOT = Path(__file__).resolve().parents[2]
++
++
++def extract_function(text, marker):
++    start = text.index(marker)
++    opening = text.index("{", start)
++    depth = 1
++    end = opening + 1
++    while depth:
++        depth += (text[end] == "{") - (text[end] == "}")
++        end += 1
++    return text[start:end]
++
++
++FIXTURE = r'''
++#include <assert.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++typedef uint8_t UINT8;
++typedef unsigned long UINTN;
++typedef uint64_t EFI_STATUS;
++typedef struct { int busy; } PIANO_FASTBOOT;
++typedef struct { const char *Name; UINTN Address, Length;
++                 unsigned MemoryType, ResourceType, ArmAttributes; } EFI_MEMORY_REGION_DESCRIPTOR;
++#define STATIC static
++#define CONST const
++#define NULL_MAP 1
++#define EFI_SUCCESS 0
++#define EFI_ACCESS_DENIED 15
++#define EFI_OUT_OF_RESOURCES 9
++#define EFI_NOT_READY 6
++#define EfiReservedMemoryType 0
++#define EFI_RESOURCE_MEMORY_RESERVED 5
++#define UNCACHED_UNBUFFERED_XN 23
++static UINT8 Fixture[0x200000], Captured[0x200000];
++#define PIANO_USB_CONSOLE_BASE ((UINTN)Fixture)
++static EFI_MEMORY_REGION_DESCRIPTOR Maps[2];
++static unsigned ActiveCount=1, NoMap, Oom, Allocations, Frees, Stages, Fences;
++static UINT8 *Allocation;
++static void GetMemoryMap(EFI_MEMORY_REGION_DESCRIPTOR **map, UINT8 *count) {
++  *map=NoMap?NULL:Maps; *count=(UINT8)ActiveCount;
++}
++static int AsciiStrCmp(const char *a, const char *b) { return strcmp(a,b); }
++static void *AllocatePool(UINTN bytes) {
++  assert(bytes==sizeof(Fixture)); ++Allocations;
++  if(Oom)return NULL;
++  Allocation=malloc(bytes);assert(Allocation);return Allocation;
++}
++static void MemoryFence(void) { ++Fences; }
++static EFI_STATUS PianoFastbootStageCopy(PIANO_FASTBOOT *state, const void *copy, UINTN bytes) {
++  assert(bytes==sizeof(Fixture));assert(copy==Allocation);++Stages;
++  if(state->busy)return EFI_NOT_READY;
++  memcpy(Captured,copy,bytes);return EFI_SUCCESS;
++}
++static void ZeroMem(void *copy, UINTN bytes) { memset(copy,0,bytes); }
++static void FreePool(void *copy) {
++  assert(copy==Allocation);
++  for(UINTN i=0;i<sizeof(Fixture);++i)assert(Allocation[i]==0);
++  free(copy);Allocation=NULL;++Frees;
++}
++'''
++
++MAIN = r'''
++int main(int argc, char **argv) {
++  assert(argc==2);int test=atoi(argv[1]);
++  PIANO_FASTBOOT State={0};
++  Maps[0]=(EFI_MEMORY_REGION_DESCRIPTOR){"Piano_Ramoops",PIANO_USB_CONSOLE_BASE,
++    0x400000,EfiReservedMemoryType,EFI_RESOURCE_MEMORY_RESERVED,UNCACHED_UNBUFFERED_XN};
++  EFI_STATUS expected=EFI_ACCESS_DENIED;
++  switch(test) {
++    case 0:expected=EFI_SUCCESS;break;
++    case 1:NoMap=1;break;
++    case 2:ActiveCount=0;break;
++    case 3:Maps[0].Name="Other_Ram";break;
++    case 4:Maps[0].Address+=4096;break;
++    case 5:Maps[0].Length-=4096;break;
++    case 6:Maps[0].MemoryType=7;break;
++    case 7:Maps[0].ResourceType=0;break;
++    case 8:Maps[0].ArmAttributes=99;break;
++    case 9:Maps[1]=Maps[0];ActiveCount=2;break;
++    case 10:Oom=1;expected=EFI_OUT_OF_RESOURCES;break;
++    case 11:State.busy=1;expected=EFI_NOT_READY;break;
++    default:abort();
++  }
++  // The leading words intentionally do not form a DBGC/pstore ring header.
++  for(UINTN i=0;i<sizeof(Fixture);++i)Fixture[i]=(UINT8)(i*17+3);
++  assert(ExportRawConsole(&State)==expected);
++  for(UINTN i=0;i<sizeof(Fixture);++i)assert(Fixture[i]==(UINT8)(i*17+3));
++  if(expected==EFI_SUCCESS)assert(!memcmp(Fixture,Captured,sizeof(Fixture)));
++  if(test<=9&&test!=0)assert(!Allocations&&!Stages&&!Fences&&!Frees);
++  if(test==10)assert(Allocations==1&&!Stages&&!Fences&&!Frees);
++  if(test==0||test==11)assert(Allocations==1&&Stages==1&&Fences==1&&Frees==1);
++  return 0;
++}
++'''
++
++
++class RawConsoleExportTest(unittest.TestCase):
++    def test_actual_native_helper_guards_and_cleanup(self):
++        source = (ROOT / "uefi/core/PianoDwc3Device.c").read_text()
++        actual = extract_function(source, "STATIC EFI_STATUS ExportRawConsole(")
++        temporary = Path.home() / "Lab/Bridge/tmp/trash"
++        temporary.mkdir(parents=True, exist_ok=True)
++        with tempfile.TemporaryDirectory(prefix="piano-raw-export-", dir=temporary) as folder:
++            folder = Path(folder)
++            fixture = folder / "raw-export.c"
++            fixture.write_text(FIXTURE + actual + MAIN)
++            executable = folder / "raw-export"
++            subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-O1", "-g",
++                            "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
++                            str(fixture), "-o", str(executable)], check=True, timeout=60)
++            for case in range(12):
++                subprocess.run([str(executable), str(case)], check=True, timeout=15)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/unit/test_raw_linux_enter_trace.py b/tests/unit/test_raw_linux_enter_trace.py
+new file mode 100644
+index 0000000..f60610b
+--- /dev/null
++++ b/tests/unit/test_raw_linux_enter_trace.py
+@@ -0,0 +1,91 @@
++import os
++import shutil
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[2]
++TRASH = Path.home() / "Lab/Bridge/tmp/trash"
++SOURCE = ROOT / "uefi/core/PianoRawLinuxBoot.c"
++FIXTURE = ROOT / "tests/native/PianoRawLinuxEnterSourceTest.c"
++
++
++def extract_function(source, signature):
++    start = source.index(signature)
++    opening = source.index("{", start)
++    depth = 0
++    state = "code"
++    index = opening
++    while index < len(source):
++        char = source[index]
++        following = source[index + 1] if index + 1 < len(source) else ""
++        if state == "line_comment":
++            if char == "\n":
++                state = "code"
++        elif state == "block_comment":
++            if char == "*" and following == "/":
++                state = "code"
++                index += 1
++        elif state == "string":
++            if char == "\\":
++                index += 1
++            elif char == '"':
++                state = "code"
++        elif state == "character":
++            if char == "\\":
++                index += 1
++            elif char == "'":
++                state = "code"
++        elif char == "/" and following == "/":
++            state = "line_comment"
++            index += 1
++        elif char == "/" and following == "*":
++            state = "block_comment"
++            index += 1
++        elif char == '"':
++            state = "string"
++        elif char == "'":
++            state = "character"
++        elif char == "{":
++            depth += 1
++        elif char == "}":
++            depth -= 1
++            if depth == 0:
++                return source[start:index + 1]
++        index += 1
++    raise AssertionError(f"Unterminated function: {signature}")
++
++
++class RawLinuxEnterTraceTests(unittest.TestCase):
++    def test_extracted_production_functions_against_boot_services_fixture(self):
++        compiler = shutil.which("cc")
++        if not compiler:
++            self.skipTest("host C compiler unavailable")
++        source = SOURCE.read_text()
++        fixture = FIXTURE.read_text()
++        trace = extract_function(source, "VOID PianoRawLinuxTrace(")
++        enter = extract_function(source, "EFI_STATUS PianoRawLinuxEnter(")
++        fixture = fixture.replace("/* PIANO_RAW_LINUX_TRACE_SOURCE */", trace)
++        fixture = fixture.replace("/* PIANO_RAW_LINUX_ENTER_SOURCE */", enter)
++        self.assertNotIn("PIANO_RAW_LINUX_TRACE_SOURCE", fixture)
++        self.assertNotIn("PIANO_RAW_LINUX_ENTER_SOURCE", fixture)
++        TRASH.mkdir(parents=True, exist_ok=True)
++        with tempfile.TemporaryDirectory(dir=TRASH, prefix="raw-linux-trace-") as directory:
++            c_file = Path(directory) / "fixture.c"
++            binary = Path(directory) / "fixture"
++            c_file.write_text(fixture)
++            build = subprocess.run(
++                [compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", str(c_file), "-o", str(binary)],
++                capture_output=True,
++                text=True,
++            )
++            self.assertEqual(0, build.returncode, build.stderr)
++            env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
++            result = subprocess.run([str(binary)], capture_output=True, text=True, env=env, timeout=10)
++            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
++            self.assertIn("CPU-only post-EBS trace passed", result.stdout)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
+index 9fa63ce..bbd9427 100644
+--- a/uefi/core/PianoDwc3Device.c
++++ b/uefi/core/PianoDwc3Device.c
+@@ -30,6 +30,9 @@ typedef EFI_STATUS (*PIANO_USB_STORAGE_CHECK)(VOID *Context,CONST CHAR8 *Phase,B
+ #include <Library/BaseMemoryLib.h>
+ #include <Library/MemoryAllocationLib.h>
+ #include <Library/DebugLib.h>
++#if defined(PIANO_PRODUCT_NATIVE_LATE) && PIANO_PRODUCT_NATIVE_LATE
++#include <Library/MemoryMapLib.h>
++#endif
+ #define DW 0xA600000U
+ // Native UsbfnDwc3Dxe RVAs e988/e9c0 use these exact USB0 QSCRATCH registers.
+ #define USB_SESSION_HS 0xF8810U
+@@ -149,6 +152,32 @@ STATIC UINT32 DiagCrc(CONST UINT8 *P,UINTN Bytes) {
+   }
+   return ~Crc;
+ }
++#if defined(PIANO_PRODUCT_NATIVE_LATE) && PIANO_PRODUCT_NATIVE_LATE
++// Diagnostic-only export of the fixed, native-reserved console region. This
++// deliberately returns raw bytes, including an invalid/changed ring header;
++// it neither initializes the ring nor presents the bytes as validated logs.
++STATIC EFI_STATUS ExportRawConsole(PIANO_FASTBOOT *State) {
++  EFI_MEMORY_REGION_DESCRIPTOR *Map=NULL;UINT8 Count=0;
++  GetMemoryMap(&Map,&Count);UINTN Matches=0;
++  if(Map==NULL)return EFI_ACCESS_DENIED;
++  for(UINTN I=0;I<Count;++I) {
++    if(!AsciiStrCmp(Map[I].Name,"Piano_Ramoops") &&
++       Map[I].Address==PIANO_USB_CONSOLE_BASE && Map[I].Length==0x400000 &&
++       Map[I].MemoryType==EfiReservedMemoryType &&
++       Map[I].ResourceType==EFI_RESOURCE_MEMORY_RESERVED &&
++       Map[I].ArmAttributes==UNCACHED_UNBUFFERED_XN)++Matches;
++  }
++  if(Matches!=1)return EFI_ACCESS_DENIED;
++  CONST UINTN Bytes=0x200000;
++  UINT8 *Copy=AllocatePool(Bytes);if(Copy==NULL)return EFI_OUT_OF_RESOURCES;
++  CONST volatile UINT8 *Source=(CONST volatile UINT8 *)(UINTN)PIANO_USB_CONSOLE_BASE;
++  for(UINTN I=0;I<Bytes;++I)Copy[I]=Source[I];
++  MemoryFence();
++  EFI_STATUS Status=PianoFastbootStageCopy(State,Copy,Bytes);
++  ZeroMem(Copy,Bytes);FreePool(Copy);
++  return Status;
++}
++#endif
+ STATIC EFI_STATUS SnapshotConsole(CONST volatile UINT32 *Header) {
+   CONST UINTN Capacity=0x200000-12;
+   mLogValid=FALSE;
+@@ -344,6 +373,18 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+     CONST CHAR8 *Reply=UiStatus==EFI_SUCCESS?"OKAY":"FAILUI navigation backend unavailable";
+     return FastbootSend(NULL,Reply,AsciiStrLen(Reply));
+   }
++#endif
++#if defined(PIANO_PRODUCT_NATIVE_LATE) && PIANO_PRODUCT_NATIVE_LATE
++  if(!AsciiStrCmp(Cmd,"oem ramlog-raw")) {
++    EFI_STATUS Status=EFI_SUCCESS;
++#if PIANO_USB_SERVICE
++    BOOLEAN ServicesLost=FALSE;Status=ServiceBeforeRamlog(&ServicesLost);
++    if(ServicesLost)return EFI_ABORTED; // Keep the ordinary ramlog EBS fence.
++#endif
++    if(Status==EFI_SUCCESS)Status=ExportRawConsole(State);
++    CONST CHAR8 *Reply=Status==EFI_SUCCESS?"OKAY":"FAILraw console snapshot unavailable";
++    return FastbootSend(NULL,Reply,AsciiStrLen(Reply));
++  }
+ #endif
+   if(!AsciiStrCmp(Cmd,"oem ramlog")) {
+     EFI_STATUS S=EFI_SUCCESS;
+diff --git a/uefi/core/PianoFastboot.c b/uefi/core/PianoFastboot.c
+index a87f73b..d406ee9 100644
+--- a/uefi/core/PianoFastboot.c
++++ b/uefi/core/PianoFastboot.c
+@@ -318,7 +318,7 @@ EFI_STATUS PianoFastbootPacket(PIANO_FASTBOOT *S, CONST VOID *Data, UINTN Bytes)
+     return Reply(S,"FAILcommand disabled by RAM-only policy");
+ #endif
+   }
+-  if(Equal(Cmd,"oem status") || Equal(Cmd,"oem ramlog") || Equal(Cmd,"oem screenshot")) {
++  if(Equal(Cmd,"oem status") || Equal(Cmd,"oem ramlog") || Equal(Cmd,"oem ramlog-raw") || Equal(Cmd,"oem screenshot")) {
+     if(S->Diagnostic==NULL)return Reply(S,"FAILdiagnostic service unavailable");
+     EFI_STATUS Status=S->Diagnostic(S->Context,S,Cmd);
+     return Status==EFI_UNSUPPORTED?Reply(S,"FAILdiagnostic command unavailable"):Status;
+diff --git a/uefi/core/PianoProductCore.c b/uefi/core/PianoProductCore.c
+index ff43f48..99f20a7 100644
+--- a/uefi/core/PianoProductCore.c
++++ b/uefi/core/PianoProductCore.c
+@@ -49,6 +49,16 @@ STATIC UINT64 mBootLogStart;
+ STATIC CONST CHAR8 *mBootLogStage="PAYLOAD";
+ STATIC VOID BootLogReturned(VOID);
+ STATIC VOID FailStop(EFI_STATUS Status);
++STATIC VOID TraceOwnerRetireFailure(BOOLEAN Retry) {
++  CONST PIANO_PRODUCT_OWNERS_REPORT *R=&mOwners.Report;UINT64 Retired=R->RetiredMask;
++  PianoRawLinuxTrace(Retry?"owners-retry-policy":"owners-policy",R->PolicyStatus,Retired);
++  PianoRawLinuxTrace(Retry?"owners-retry-usb":"owners-usb",R->UsbStatus,Retired);
++  PianoRawLinuxTrace(Retry?"owners-retry-ufs-prepare":"owners-ufs-prepare",R->PrepareStatus,Retired);
++  PianoRawLinuxTrace(Retry?"owners-retry-ufs-shutdown":"owners-ufs-shutdown",R->ShutdownStatus,Retired);
++  PianoRawLinuxTrace(Retry?"owners-retry-input":"owners-input",R->InputStatus,Retired);
++  PianoRawLinuxTrace(Retry?"owners-retry-display":"owners-display",R->DisplayStatus,Retired);
++  PianoRawLinuxTrace(Retry?"owners-retry-event":"owners-event",R->EventStatus,Retired);
++}
+ EFI_STATUS PianoRegisterLinuxBootOption(VOID);
+ STATIC BOOLEAN EFIAPI BootLogAlive(VOID) {
+   return !mBootLogExited && !mOwners.Report.ServicesLost && gST!=NULL && gST->BootServices==gBS;
+@@ -378,10 +388,16 @@ EFI_STATUS EFIAPI PianoProductCoreEntry(EFI_HANDLE Image,EFI_SYSTEM_TABLE *Syste
+       if(FileLoaded&&mOwners.Report.Origin!=PianoProductRequestFile) {
+         Status=PianoRawLinuxDiscardStable();if(Status!=EFI_SUCCESS)FailStop(Status);FileLoaded=FALSE;
+       }
++      PianoRawLinuxTrace("owners-retire-before",EFI_NOT_STARTED,mOwners.Report.RetiredMask);
+       Status=PianoProductOwnersRetire(&mOwners);
++      PianoRawLinuxTrace("owners-retire-after",Status,mOwners.Report.RetiredMask);
++      if(Status!=EFI_SUCCESS)TraceOwnerRetireFailure(FALSE);
+       if(Status==EFI_NOT_READY&&FileLoaded&&mOwners.Report.Origin==PianoProductRequestUsb) {
+         Status=PianoRawLinuxDiscardStable();if(Status!=EFI_SUCCESS)FailStop(Status);
++        PianoRawLinuxTrace("owners-retire-retry-before",EFI_NOT_STARTED,mOwners.Report.RetiredMask);
+         Status=PianoProductOwnersRetire(&mOwners);
++        PianoRawLinuxTrace("owners-retire-retry-after",Status,mOwners.Report.RetiredMask);
++        if(Status!=EFI_SUCCESS)TraceOwnerRetireFailure(TRUE);
+       }
+       if(Status!=EFI_SUCCESS || !mOwners.Report.Clean)FailStop(Status);
+       if(mOwners.Report.AllowedAction==PianoUsbServiceActionReboot || mOwners.Report.AllowedAction==PianoUsbServiceActionContinue) {
+@@ -389,8 +405,14 @@ EFI_STATUS EFIAPI PianoProductCoreEntry(EFI_HANDLE Image,EFI_SYSTEM_TABLE *Syste
+       }
+       if(mOwners.Report.AllowedAction==PianoUsbServiceActionBoot){
+         CONST PIANO_RAW_LINUX_REPORT *Raw=NULL;
++        PianoRawLinuxTrace("prepare-before",EFI_NOT_STARTED,(UINT64)FileLoaded);
+         Status=PianoRawLinuxPrepare(&mOwners,Image,&Raw);
+-        if(Status==EFI_SUCCESS)Status=PianoLateHandoffArmRaw(&mLateHandoff,Image,Raw);
++        PianoRawLinuxTrace("prepare-after",Status,(UINT64)FileLoaded);
++        if(Status==EFI_SUCCESS){
++          PianoRawLinuxTrace("late-arm-before",EFI_NOT_STARTED,0);
++          Status=PianoLateHandoffArmRaw(&mLateHandoff,Image,Raw);
++          PianoRawLinuxTrace("late-arm-after",Status,0);
++        }
+         if(Status==EFI_SUCCESS)Status=PianoRawLinuxEnter(Raw);
+         FailStop(Status==EFI_SUCCESS?EFI_ABORTED:Status);
+       }
+diff --git a/uefi/core/PianoRawLinuxBoot.c b/uefi/core/PianoRawLinuxBoot.c
+index 3af5532..8b54f5b 100644
+--- a/uefi/core/PianoRawLinuxBoot.c
++++ b/uefi/core/PianoRawLinuxBoot.c
+@@ -7,6 +7,7 @@
+ #include <Library/BaseLib.h>
+ #include <Library/BaseMemoryLib.h>
+ #include <Library/BaseCryptLib.h>
++#include <Library/PrintLib.h>
+ #include <Library/FdtLib.h>
+ #include <Library/MemoryMapLib.h>
+ #include <Library/MemoryAllocationLib.h>
+@@ -23,6 +24,7 @@ typedef struct {
+   EFI_HANDLE Image;EFI_SYSTEM_TABLE *SystemTable;EFI_LOADED_IMAGE_PROTOCOL *Identity,Loaded;
+   BOOLEAN Registered,InTake,Captured,Prepared,Entered;
+   BOOLEAN FileMode,FileLoading,FileQuiet;
++  UINT64 TraceNonce;
+   PIANO_ESP_BOOT_SOURCE File;
+   PIANO_PRODUCT_RUNTIME_PROTOCOL *Runtime;
+   CONST UINT8 *Accepted;UINTN AcceptedBytes;UINT8 AcceptedSha[32];
+@@ -37,6 +39,13 @@ STATIC EFI_STATUS mStableStatus;
+ STATIC CONST CHAR8 *mStableStage;
+ STATIC UINT64 mStableReplayCounter;
+ VOID PianoReportLinuxBootOption(VOID);
++VOID RamLogWrite (CONST UINT8 *Buffer, UINTN Length);
++VOID PianoRawLinuxTrace(CONST CHAR8 *Stage,EFI_STATUS Status,UINT64 Detail){
++ CHAR8 Line[128];
++ AsciiSPrint(Line,sizeof(Line),"PIANO_RAW_TRACE nonce=%016lx stage=%a status=%016lx detail=%016lx\n",
++  mRaw.TraceNonce,Stage?Stage:"unknown",(UINT64)Status,Detail);
++ RamLogWrite((CONST UINT8 *)Line,AsciiStrLen(Line));
++}
+ VOID PianoRawLinuxReplayStable(VOID) {
+  if(!Live())return;
+  UINT64 First,Last,Now=GetPerformanceCounter();
+@@ -126,6 +135,7 @@ EFI_STATUS PianoRawLinuxRegister(EFI_HANDLE Image,EFI_SYSTEM_TABLE *Table){
+  if(!L||L->Revision<EFI_LOADED_IMAGE_PROTOCOL_REVISION||!L->ImageBase||!L->ImageSize||L->ImageSize>MAX_UINTN-(UINTN)L->ImageBase||
+  L->SystemTable!=Table||L->ImageCodeType!=EfiLoaderCode||L->ImageDataType!=EfiLoaderData)return EFI_COMPROMISED_DATA;
+  mRaw.Image=Image;mRaw.SystemTable=Table;mRaw.Identity=L;mRaw.Loaded=*L;
++ mRaw.TraceNonce=GetPerformanceCounter();
+  PIANO_FB_BOOT Backend={.Context=&mRaw,.MaxImageBytes=PIANO_FASTBOOT_MAX_DOWNLOAD,.Ready=Ready,.Validate=Validate,.TakeAfterAck=Take,.AllowRawLinux=TRUE};
+  E=PianoDwc3SetBootForExperiment(&Backend);if(E==EFI_SUCCESS)mRaw.Registered=TRUE;return E;
+ }
+@@ -247,15 +257,27 @@ STATIC VOID __attribute__((naked,noreturn)) RawEnter(UINT64 Tree,UINT64 Entry){
+ EFI_STATUS PianoRawLinuxEnter(CONST PIANO_RAW_LINUX_REPORT *R){
+  if(!PianoRawLinuxPrepared(R,mRaw.Owners,mRaw.Image)||mRaw.Entered||!Live())return EFI_ACCESS_DENIED;
+  UINTN Size=0,Key,DescriptorSize=0;UINT32 Version;EFI_STATUS E=gBS->GetMemoryMap(&Size,NULL,&Key,&DescriptorSize,&Version);
++ PianoRawLinuxTrace("size-probe",E,(UINT64)Size);
+  if(E!=EFI_BUFFER_TOO_SMALL||!DescriptorSize||DescriptorSize>MAX_UINTN/16||Size>MAX_UINTN-16*DescriptorSize)return EFI_COMPROMISED_DATA;
+- UINTN Capacity=Size+16*DescriptorSize;EFI_MEMORY_DESCRIPTOR *Map=AllocatePool(Capacity);if(!Map)return EFI_OUT_OF_RESOURCES;
++ UINTN Capacity=Size+16*DescriptorSize;EFI_MEMORY_DESCRIPTOR *Map=AllocatePool(Capacity);
++ PianoRawLinuxTrace("allocation",Map?EFI_SUCCESS:EFI_OUT_OF_RESOURCES,(UINT64)Capacity);
++ if(!Map)return EFI_OUT_OF_RESOURCES;
+  mRaw.Entered=TRUE;
+  UINT64 Tree=R->Dtb,Entry=R->Kernel;VOID *Self=mRaw.Loaded.ImageBase;UINTN SelfBytes=(UINTN)mRaw.Loaded.ImageSize;
+  for(UINTN Attempt=0;Attempt<2;++Attempt){
+-   Size=Capacity;E=gBS->GetMemoryMap(&Size,Map,&Key,&DescriptorSize,&Version);if(E!=EFI_SUCCESS)return E;
+-   E=gBS->ExitBootServices(mRaw.Image,Key);if(E==EFI_SUCCESS){
+-     // No calls into BS, logging or stack-based transition after MMU is off.
+-     WriteBackInvalidateDataCacheRange(Self,SelfBytes);RawEnter(Tree,Entry);
++   Size=Capacity;Key=0;DescriptorSize=0;Version=0;
++   E=gBS->GetMemoryMap(&Size,Map,&Key,&DescriptorSize,&Version);
++   PianoRawLinuxTrace("map-fill",E,(UINT64)Key);
++   if(E!=EFI_SUCCESS)return E;
++   PianoRawLinuxTrace("ebs-before",EFI_NOT_STARTED,(UINT64)Key);
++   E=gBS->ExitBootServices(mRaw.Image,Key);
++   PianoRawLinuxTrace("ebs-return",E,(UINT64)Key);
++   if(E==EFI_SUCCESS){
++     // The fixed-ring CPU trace is safe here while this image's MMU and stack remain active.
++     PianoRawLinuxTrace("cache-refresh-before",EFI_SUCCESS,(UINT64)SelfBytes);
++     WriteBackInvalidateDataCacheRange(Self,SelfBytes);
++     PianoRawLinuxTrace("branch-before",EFI_SUCCESS,Entry);
++     RawEnter(Tree,Entry);
+    }
+    if(E!=EFI_INVALID_PARAMETER)return E;
+  }
+diff --git a/uefi/core/PianoRawLinuxBoot.h b/uefi/core/PianoRawLinuxBoot.h
+index e1983ab..4e916c4 100644
+--- a/uefi/core/PianoRawLinuxBoot.h
++++ b/uefi/core/PianoRawLinuxBoot.h
+@@ -11,6 +11,8 @@ typedef struct {
+   UINT8 KernelSha[32],InitrdSha[32],DtbSha[32];
+ } PIANO_RAW_LINUX_REPORT;
+ EFI_STATUS PianoRawLinuxRegister(EFI_HANDLE Image,EFI_SYSTEM_TABLE *SystemTable);
++// CPU-only trace to the pre-existing reserved ramoops ring; safe after EBS.
++VOID PianoRawLinuxTrace(CONST CHAR8 *Stage,EFI_STATUS Status,UINT64 Detail);
+ // Fixed ESP snapshot, taken from the real FileSource before controller retirement.
+ EFI_STATUS PianoRawLinuxLoadStable(PIANO_PRODUCT_RUNTIME_PROTOCOL *,VOID **Context,VOID **Token);
+ EFI_STATUS PianoRawLinuxDiscardStable(VOID);

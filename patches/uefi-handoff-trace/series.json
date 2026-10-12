@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "patches": [
+    {
+      "file": "0001-cpu-trace-and-raw-console.patch",
+      "summary": "诊断专用：记录正式 RawLinux 交接阶段，导出固定保留区的原始 console 字节；不改交接策略",
+      "targets": {
+        "uefi/core/PianoDwc3Device.c": "30964b5ac724f1a6bff4240f5c627ba90b2b27ae3c13f8331809f0f97e2e6743",
+        "uefi/core/PianoFastboot.c": "3a970bbe228d7bf7b0b3dc55734a90d7eb87c92e0d53cc72cfeebb5de7349f34",
+        "uefi/core/PianoProductCore.c": "248b6ea0c88eb23bba717c4351ed6afab2918d576fd9e6f0d1430aab89125a9b",
+        "uefi/core/PianoRawLinuxBoot.c": "2eaa523b7ed822e755c904e8d43a48ca34de7d70b4d06b673ec16b475e13e299",
+        "uefi/core/PianoRawLinuxBoot.h": "fc84cfd558db69e849c569cac04fd23b40d79a8d1622f7e12ee8dc786fda0247"
+      },
+      "creates": [
+        "tests/native/PianoRawLinuxEnterSourceTest.c",
+        "tests/unit/test_raw_linux_enter_trace.py",
+        "tests/unit/test_raw_console_export.py"
+      ]
+    }
+  ]
+}
