@@ -1,0 +1,75 @@
+From 8310dd81be04abc914e66c9fed7a0df012a1602c Mon Sep 17 00:00:00 2001
+From: piano-fedora-test <dev@piano.invalid>
+Date: Mon, 12 Oct 2026 22:56:50 +0800
+Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E6=8A=A5=E5=87=BA=E5=9B=BA?=
+ =?UTF-8?q?=E4=BB=B6=E5=AE=9E=E9=99=85=E5=8F=91=E5=B8=83=E7=9A=84=E5=9B=9B?=
+ =?UTF-8?q?=E4=B8=AA=E6=8F=90=E4=BE=9B=E8=80=85=E5=8F=A5=E6=9F=84=E6=95=B0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ConnectController 对 6 个 LUN 全返回 Success，排除了「驱动没被 dispatch」与「Start 里分配
+失败」。但 Success 只说明有驱动绑上了，不说是哪一个——很可能只是 PartitionDxe。而 FatDxe
+的绑定前提就是句柄上要有 DiskIo。
+
+本补丁在核心上下文数一次 BlockIo / DiskIo / SimpleFileSystem / DriverBinding 四种句柄数，
+在 ProductDebugReplay 里重发——形状与刚验证成功的那发完全一致（零新增 BootServices 调用
+由 oem status 承担、零新增响应行）。
+
+读数直接分岔：diskio=0 → DiskIoDxe 没跑；diskio 有值而 sfs=0 → 卡在 FatDxe；driverbinding
+很小 → 大部分驱动没被派发。
+---
+ uefi/core/PianoProductCore.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/uefi/core/PianoProductCore.c b/uefi/core/PianoProductCore.c
+index 2473558..eb09982 100644
+--- a/uefi/core/PianoProductCore.c
++++ b/uefi/core/PianoProductCore.c
+@@ -40,6 +40,26 @@ STATIC EFI_STATUS mUfsStatus=EFI_NOT_STARTED;
+ STATIC UINT64 mCounterFrequency,mCounterStart,mCounterEnd;
+ STATIC PIANO_RAM_PARTITION_REPORT mRamInventory;
+ STATIC PIANO_UFS_PRODUCT_VOLUME mProductVolume;
++// Diagnostic only. Which providers the firmware actually published. GUID values
++// are carried locally because this module's INF does not declare them. Counted
++// once in core context; re-emitted from ProductDebugReplay, which is known to
++// land inside the RAM console snapshot window. No behaviour depends on these.
++STATIC CONST EFI_GUID mDiagBlockIoGuid={0x964E5B21,0x6459,0x11D2,{0x8E,0x39,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
++STATIC CONST EFI_GUID mDiagDiskIoGuid={0xCE345171,0xBA0B,0x11D2,{0x8E,0x4F,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
++STATIC CONST EFI_GUID mDiagSfsGuid={0x964E5B22,0x6459,0x11D2,{0x8E,0x39,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
++STATIC CONST EFI_GUID mDiagDriverBindingGuid={0x18A031AB,0xB443,0x4D1A,{0xA5,0xC0,0x0C,0x09,0x26,0x1E,0x9F,0x71}};
++STATIC UINT32 mDiagBlockIo,mDiagDiskIo,mDiagSfs,mDiagDriverBindings;
++STATIC UINT32 DiagHandles(CONST EFI_GUID *G){
++ EFI_HANDLE *H=NULL;UINTN C=0;EFI_STATUS S=gBS->LocateHandleBuffer(ByProtocol,(EFI_GUID *)G,NULL,&C,&H);
++ UINT32 R=S==EFI_SUCCESS?(UINT32)C:(S==EFI_NOT_FOUND?0U:0xFFFFFFFFU);
++ if(H!=NULL)gBS->FreePool(H);return R;
++}
++STATIC VOID PianoDiagCountProviders(VOID){
++ mDiagBlockIo=DiagHandles(&mDiagBlockIoGuid);
++ mDiagDiskIo=DiagHandles(&mDiagDiskIoGuid);
++ mDiagSfs=DiagHandles(&mDiagSfsGuid);
++ mDiagDriverBindings=DiagHandles(&mDiagDriverBindingGuid);
++}
+ STATIC PIANO_PRODUCT_DISPLAY_STARTUP_REPORT mDisplayStartup;
+ STATIC PIANO_SMMU_RETIRED_USB_PROOF mStartupUsbProof;
+ STATIC UINT32 mStartupTarget;
+@@ -107,6 +127,8 @@ STATIC EFI_STATUS ProductDebugReplay(VOID *Context) {
+   EFI_STATUS DisplayOwner=PianoProductDisplayReplay();
+   (VOID)PianoProductBootObjectsReemit(BootLogAlive);
+   PianoUfsReemitConnect();
++  DEBUG((DEBUG_WARN,"SUNUEFI_PROVIDERS blockio=%u diskio=%u sfs=%u driverbinding=%u\n",
++    mDiagBlockIo,mDiagDiskIo,mDiagSfs,mDiagDriverBindings));
+   if(!BootLogAlive())return EFI_ABORTED;
+   if(PianoProductDisplayRetained())return Display==EFI_SUCCESS?EFI_COMPROMISED_DATA:Display;
+   if(PianoDisplaySmmuRetained())return Translation==EFI_SUCCESS?EFI_COMPROMISED_DATA:Translation;
+@@ -300,6 +322,7 @@ EFI_STATUS EFIAPI PianoProductCoreEntry(EFI_HANDLE Image,EFI_SYSTEM_TABLE *Syste
+     DEBUG((DEBUG_WARN,"PIANO_PRODUCT_STORAGE_FAT_PUBLISHED writable=1 container_headers_excluded=1 nv_slots_private=1\n"));
+   } else if(Status!=EFI_NOT_FOUND)FailStop(Status);
+   Status=PianoFastbootBlockReadInit();if(Status!=EFI_SUCCESS)FailStop(Status);
++ PianoDiagCountProviders();
+   CONST PIANO_FB_STORAGE *Storage=PianoFastbootBlockReadStorage();
+   if(Storage==NULL || Storage->Ready(Storage->Context)!=EFI_SUCCESS)FailStop(EFI_NOT_READY);
+   mCounterFrequency=GetPerformanceCounterProperties(&mCounterStart,&mCounterEnd);
+-- 
+2.54.0
+

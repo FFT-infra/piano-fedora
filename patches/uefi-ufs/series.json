@@ -22,6 +22,14 @@
         "uefi/core/PianoProductCore.c": "84781a878090b663746dae1f32dbdb7e776c436d66fd9c3ac9cec26d14cb40a8"
       },
       "creates": []
+    },
+    {
+      "file": "0003-provider-counts.patch",
+      "summary": "报出 BlockIo/DiskIo/SimpleFileSystem/DriverBinding 四种句柄数（只读诊断）",
+      "targets": {
+        "uefi/core/PianoProductCore.c": "e2a926055bd0041e75ca78342499011665c5725d960a0e4772d186f91cee4c74"
+      },
+      "creates": []
     }
   ]
 }
