@@ -98,6 +98,14 @@
         "uefi/core/PianoDwc3Device.c": "ce39de2a2e85a7bdfb9d5983b14f4b27afd6c0777eb4b2f92f922adc98fa6b5f"
       },
       "creates": []
+    },
+    {
+      "file": "0012-zone-scan.patch",
+      "summary": "线性扫描整块 2 MiB 控制台区找内核/固件日志痕迹，并打印区头原始字（诊断）",
+      "targets": {
+        "uefi/core/PianoDwc3Device.c": "5ee9fa401640fa5e4bdbd18561bbfe86b096548b7dce2d7c00c96cfe2972be9e"
+      },
+      "creates": []
     }
   ]
 }

@@ -1,0 +1,129 @@
+From 268b7bf7d2dd5c91b8f0977488320511eb4573b4 Mon Sep 17 00:00:00 2001
+From: piano-fedora-test <dev@piano.invalid>
+Date: Tue, 13 Oct 2026 01:26:30 +0800
+Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E7=BA=BF=E6=80=A7=E6=89=AB?=
+ =?UTF-8?q?=E6=8F=8F=E6=95=B4=E5=9D=97=202=20MiB=20=E6=8E=A7=E5=88=B6?=
+ =?UTF-8?q?=E5=8F=B0=E5=8C=BA=EF=BC=8C=E5=B9=B6=E6=89=93=E5=8D=B0=E5=AE=83?=
+ =?UTF-8?q?=E7=9A=84=E5=A4=B4=E9=83=A8=E5=8E=9F=E5=A7=8B=E5=AD=97?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+交接之后那个环的头部已经不满足固件的检查（实测 INFOprev 返回 1、Start=0x10198c5e
+远超 2 MiB 容量），说明这块保留内存的格式被改写成了内核 pstore 的形状，固件原先的环形
+读者再也读不到东西——也就是说内核确实跑到了 ramoops 初始化，但固件此后失去了 RAM 控制台。
+
+本提交不再假设环形格式：整块 2 MiB 线性读出来扫三类关键串（SUNUEFI_HANDOFF / Linux
+version / Kernel panic），摘录第一处命中的 48 字符，并把区域开头 6 个原始字打出来用于
+判断头部格式。同时删掉已经答完的 bpb/bpb2/lang 三行，回复仍在帧预算内。
+---
+ uefi/core/PianoDwc3Device.c | 72 ++++++++++++++++++++++++++++---------
+ 1 file changed, 55 insertions(+), 17 deletions(-)
+
+diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
+index a7e9443..504b1a9 100644
+--- a/uefi/core/PianoDwc3Device.c
++++ b/uefi/core/PianoDwc3Device.c
+@@ -484,6 +484,35 @@ STATIC UINT32 DiagPrevLog(UINT32 *Hits,CHAR8 *Excerpt,UINTN ExcerptCap){
+  }
+  return 0;
+ }
++// After a handoff the region no longer carries the firmware's ring header, so
++// the reader above rejects it. Scan the console zone linearly instead: the
++// kernel keeps its pstore text in the same reserved region, and the first
++// matching line says how far the previous boot got.
++STATIC UINT8 *mZoneBuffer;
++STATIC UINT32 DiagZoneScan(UINT32 *Hits,UINT32 *Words,CHAR8 *Excerpt,UINTN ExcerptCap){
++ CONST UINTN Want=0x200000;
++ CONST volatile UINT32 *Z=(CONST volatile UINT32 *)(UINTN)0xA3500000;
++ CONST volatile UINT8 *B=(CONST volatile UINT8 *)Z+12;
++ STATIC CONST CHAR8 *Keys[3]={"SUNUEFI_HANDOFF","Linux version","Kernel panic"};
++ for(UINTN I=0;I<3;++I)Hits[I]=0;
++ for(UINTN I=0;I<6;++I)Words[I]=Z[I];
++ for(UINTN I=0;I<ExcerptCap;++I)Excerpt[I]=0;
++ if(mZoneBuffer==NULL){mZoneBuffer=AllocatePool(Want);if(mZoneBuffer==NULL)return 3;}
++ for(UINTN I=0;I<Want;++I)mZoneBuffer[I]=B[I];
++ MemoryFence();
++ UINTN HitAt=Want;
++ for(UINTN I=0;I+17<Want;++I){
++  for(UINTN K=0;K<3;++K){
++   UINTN L=AsciiStrLen((CHAR8 *)Keys[K]);
++   if(I+L<Want && !CompareMem(mZoneBuffer+I,Keys[K],L)){++Hits[K];if(HitAt==Want)HitAt=I;}
++  }
++ }
++ if(HitAt<Want){
++  UINTN N=0;for(;N+1<ExcerptCap&&HitAt+N<Want;++N){CHAR8 C=(CHAR8)mZoneBuffer[HitAt+N];Excerpt[N]=(C>=0x20&&C<0x7F)?C:'.';}
++  Excerpt[N]=0;
++ }
++ return 0;
++}
+ // FatDriverBindingStart refuses the whole volume when no UnicodeCollation2
+ // instance matches the platform language it reads, and this firmware cannot
+ // rewrite that variable (it already exists with NV attributes). Publishing one
+@@ -670,23 +699,6 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+      P=EspHex(P,DiagHandles(&mDiagSfsGuid));
+      *P=0;
+      S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
+-    {CHAR8 Lang[13],Plat[13];DiagLang(Lang,Plat,sizeof(Lang));
+-     CHAR8 *P=Row;CopyMem(P,"INFOlang:",9);P+=9;
+-     CopyMem(P,Lang,AsciiStrLen(Lang));P+=AsciiStrLen(Lang);*P++='|';
+-     CopyMem(P,Plat,AsciiStrLen(Plat));P+=AsciiStrLen(Plat);*P=0;
+-     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
+-    // INFObpb / INFObpb2: the fields Fat computes from the 512 bytes it reads.
+-    // Order: SectorSize SectorsPerCluster ReservedSectors NumFats Sectors16 |
+-    //        Media SectorsPerFat16 LargeSectorsPerFat ExtFlags FsVersion.
+-    {UINT32 F[10];UINT32 ReadStatus=DiagBpbFields(Esp,F,10);
+-     CHAR8 *P=Row;CopyMem(P,"INFObpb:",8);P+=8;P=EspHex(P,ReadStatus);
+-     for(UINTN I=0;I<5;++I)P=EspHex(P,F[I]);
+-     *P=0;
+-     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
+-     P=Row;CopyMem(P,"INFObpb2:",9);P+=9;
+-     for(UINTN I=5;I<10;++I)P=EspHex(P,F[I]);
+-     *P=0;
+-     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
+     // INFOcoll: <装语言实例的状态> <再问一次 Fat 的 Start> <之后 SFS 数>。
+     // No variable and no storage is written; only one protocol instance is added.
+     {UINT32 CollStatus=DiagAddCollation();
+@@ -700,6 +712,16 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+      S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
+     // INFOprev: <返回> <Linux version 次数> <Kernel panic 次数> <ramoops 次数>
+     //           <"[    0." 行数> <环写指针>；INFOprev2 摘一段最像内核日志的原文。
++    {UINT32 Hits[5];CHAR8 Excerpt[49];
++     UINT32 PrevStatus=DiagPrevLog(Hits,Excerpt,sizeof(Excerpt));
++     CHAR8 *P=Row;CopyMem(P,"INFOprev:",9);P+=9;P=EspHex(P,PrevStatus);
++     for(UINTN I=0;I<5;++I)P=EspHex(P,Hits[I]);
++     *P=0;
++     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
++     P=Row;CopyMem(P,"INFOprev2:",10);P+=10;
++     CopyMem(P,Excerpt,AsciiStrLen(Excerpt));P+=AsciiStrLen(Excerpt);
++     *P=0;
++     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
+     {UINT32 Hits[5];CHAR8 Excerpt[49];
+      UINT32 PrevStatus=DiagPrevLog(Hits,Excerpt,sizeof(Excerpt));
+      CHAR8 *P=Row;CopyMem(P,"INFOprev:",9);P+=9;P=EspHex(P,PrevStatus);
+@@ -719,6 +741,22 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+      P=EspHex(P,PianoEspDiagParentMatches());
+      *P=0;
+      S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
++    // INFOring: 控制台区开头 6 个字（原始），看清头部到底是什么格式。
++    // INFOfind: <状态> <SUNUEFI_HANDOFF 处数> <Linux version 处数> <Kernel panic 处数>。
++    // INFOtext: 第一处命中的 48 字符原文（可打印化）。
++    {UINT32 Hits[3],Words[6];CHAR8 Text[49];
++     UINT32 ZoneStatus=DiagZoneScan(Hits,Words,Text,sizeof(Text));
++     CHAR8 *P=Row;CopyMem(P,"INFOring:",9);P+=9;
++     for(UINTN I=0;I<6;++I)P=EspHex(P,Words[I]);
++     *P=0;
++     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
++     P=Row;CopyMem(P,"INFOfind:",9);P+=9;P=EspHex(P,ZoneStatus);
++     for(UINTN I=0;I<3;++I)P=EspHex(P,Hits[I]);
++     *P=0;
++     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
++     P=Row;CopyMem(P,"INFOtext:",9);P+=9;
++     CopyMem(P,Text,AsciiStrLen(Text));P+=AsciiStrLen(Text);*P=0;
++     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
+     return FastbootSend(NULL,"OKAY",4);
+   }
+   return EFI_UNSUPPORTED;
+-- 
+2.54.0
+
