@@ -1,25 +1,24 @@
-From e101d6a44db60727e0fca53627b1df08ef26c1e0 Mon Sep 17 00:00:00 2001
+From 6b178d8103731dfeb9e8d88d2e0371a5654fe53e Mon Sep 17 00:00:00 2001
 From: piano-fedora-test <dev@piano.invalid>
-Date: Mon, 12 Oct 2026 21:39:58 +0800
-Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E5=AD=98=E5=82=A8=E6=8F=90?=
- =?UTF-8?q?=E4=BE=9B=E8=80=85=E6=8E=A2=E9=92=88=E6=94=B9=E4=B8=BA=E4=B8=89?=
- =?UTF-8?q?=E5=B8=A7=E6=89=93=E5=8C=85?=
+Date: Mon, 12 Oct 2026 21:42:18 +0800
+Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E6=8E=A2=E9=92=88=E5=8E=8B?=
+ =?UTF-8?q?=E6=88=90=E5=9B=9B=E8=A1=8C=EF=BC=8C=E6=AF=8F=E8=A1=8C=E4=B8=8D?=
+ =?UTF-8?q?=E8=B6=85=2064=20=E5=AD=97=E8=8A=82?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-实机发现：DWC3 的响应队列 FB_QUEUE_FRAMES=16（PianoDwc3Device.c:85），而 oem status
-每一行占一帧。前几版把诊断拆成 17/24 行，超出队列后 FastbootSend 返回
-EFI_OUT_OF_RESOURCES，前 16 帧排着队没人读走，BulkOut 又拒绝在有帧未清空时接收新命令
-（:452），于是整个服务卡死——这解释了 round 3 两次和本探针一次的全部现象，
-与 TPL 和调用位置无关。
+两个硬约束同时满足：
+- DWC3 响应队列 FB_QUEUE_FRAMES=16（PianoDwc3Device.c:85），oem status 每行占一帧
+- fastboot 响应包 64 字节（4 字节状态 + 至多 60 字节负载），超过会让主机把下一条
+  响应的状态头当数据读
 
-现在把 status/stage/volstep/name/type/parent/calls 与 13 个提供者计数压成三行
-（各 65/65/57 字节），运行时共 9 帧。Row 缓冲从 60 扩到 96。语义不变，只读。
+20 个诊断值压成 INFOesp1..4 四行，行长 57/57/57/25，运行时共 10 帧。
+Row 缓冲 60 → 96。语义不变，只读。
 ---
  uefi/components/os-boot/PianoEspBootSource.c | 60 ++++++++++++++++++++
- uefi/core/PianoDwc3Device.c                  | 59 ++++++++++++++-----
- 2 files changed, 104 insertions(+), 15 deletions(-)
+ uefi/core/PianoDwc3Device.c                  | 55 +++++++++++++++++-
+ 2 files changed, 114 insertions(+), 1 deletion(-)
 
 diff --git a/uefi/components/os-boot/PianoEspBootSource.c b/uefi/components/os-boot/PianoEspBootSource.c
 index 61a6cfd..e18d49f 100644
@@ -106,10 +105,10 @@ index 61a6cfd..e18d49f 100644
   if(E!=EFI_SUCCESS)return E;
   if(!Handles||!Count||Count>256){if(Handles)gBS->FreePool(Handles);return EFI_COMPROMISED_DATA;}
 diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
-index a79d4ee..ead02d0 100644
+index a79d4ee..203e33a 100644
 --- a/uefi/core/PianoDwc3Device.c
 +++ b/uefi/core/PianoDwc3Device.c
-@@ -310,6 +310,20 @@ UINT32 PianoEspDiagEspNameSeen(VOID);
+@@ -310,6 +310,25 @@ UINT32 PianoEspDiagEspNameSeen(VOID);
  UINT32 PianoEspDiagEspTypeCount(VOID);
  UINT32 PianoEspDiagParentMatches(VOID);
  UINT32 PianoEspDiagVolumeCalls(VOID);
@@ -127,34 +126,29 @@ index a79d4ee..ead02d0 100644
 +UINT32 PianoEspDiagEspLunSeen(VOID);
 +UINT32 PianoEspDiagConnRuns(VOID);
 +STATIC CHAR8 *EspHex(CHAR8 *Out,UINT32 V){FastHex(V,Out);return Out+8;}
++UINT32 PianoEspDiagEspNameStep(VOID);
++UINT32 PianoEspDiagEspNameSeen(VOID);
++UINT32 PianoEspDiagEspTypeCount(VOID);
++UINT32 PianoEspDiagParentMatches(VOID);
++UINT32 PianoEspDiagVolumeCalls(VOID);
  STATIC VOID FastHex(UINT32 Value,CHAR8 *Out) {
    STATIC CONST CHAR8 Digits[]="0123456789abcdef";
    for(UINTN I=0;I<8;++I)Out[I]=Digits[(Value>>((7-I)*4))&15];
-@@ -385,23 +399,38 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+@@ -385,7 +404,7 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
    if(!AsciiStrCmp(Cmd,"oem status")) {
      CONST CHAR8 *Rows[]={"INFOstorage-policy:no-persistent-writes","INFOtransport:owned-DMA-SMMU-bulk","INFOram-upload:download-or-frozen-log"};
      for(UINTN I=0;I<ARRAY_SIZE(Rows);++I){EFI_STATUS S=FastbootSend(NULL,Rows[I],AsciiStrLen(Rows[I]));if(EFI_ERROR(S))return S;}
 -    CHAR8 Row[60]="INFODSTS:";FastHex(Dr(0xC70C),Row+9);
-+    // 96 bytes: three packed diagnostic rows are 65 chars each.
 +    CHAR8 Row[96]="INFODSTS:";FastHex(Dr(0xC70C),Row+9);
      EFI_STATUS S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
      CopyMem(Row,"INFODCFG:",9);FastHex(Dr(0xC700),Row+9);
--    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
--    CopyMem(Row,"INFOesp-load:",13);FastHex((UINT32)PianoRawLinuxStableLoadStatus(),Row+13);
--    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
--    CopyMem(Row,"INFOesp-stage:",14);FastHex(PianoRawLinuxStableLoadStage(),Row+14);
--    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
--    CopyMem(Row,"INFOesp-volstep:",15);FastHex(PianoEspDiagEspNameStep(),Row+15);
--    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
--    CopyMem(Row,"INFOesp-name:",13);FastHex(PianoEspDiagEspNameSeen(),Row+13);
--    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
--    CopyMem(Row,"INFOesp-type:",13);FastHex(PianoEspDiagEspTypeCount(),Row+13);
--    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
--    CopyMem(Row,"INFOesp-parent:",15);FastHex(PianoEspDiagParentMatches(),Row+15);
--    S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
--    CopyMem(Row,"INFOesp-calls:",14);FastHex(PianoEspDiagVolumeCalls(),Row+14);
-+    // Diagnostic rows packed into three frames: the DWC3 response queue holds
-+    // FB_QUEUE_FRAMES=16 frames and one row per value would overflow it.
+     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
+@@ -402,6 +421,40 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+     CopyMem(Row,"INFOesp-parent:",15);FastHex(PianoEspDiagParentMatches(),Row+15);
+     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
+     CopyMem(Row,"INFOesp-calls:",14);FastHex(PianoEspDiagVolumeCalls(),Row+14);
++    // Diagnostic values packed four rows of at most 64 bytes: the DWC3 response
++    // queue holds FB_QUEUE_FRAMES=16, and a fastboot response packet is 64 bytes.
 +    {CHAR8 *P=Row;CopyMem(P,"INFOesp1:",9);P+=9;
 +     P=EspHex(P,(UINT32)PianoRawLinuxStableLoadStatus());
 +     P=EspHex(P,PianoRawLinuxStableLoadStage());
@@ -162,24 +156,30 @@ index a79d4ee..ead02d0 100644
 +     P=EspHex(P,PianoEspDiagEspNameSeen());
 +     P=EspHex(P,PianoEspDiagEspTypeCount());
 +     P=EspHex(P,PianoEspDiagParentMatches());
-+     P=EspHex(P,PianoEspDiagVolumeCalls());*P=0;
++     *P=0;
 +     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
 +    {CHAR8 *P=Row;CopyMem(P,"INFOesp2:",9);P+=9;
++     P=EspHex(P,PianoEspDiagVolumeCalls());
 +     P=EspHex(P,PianoEspDiagConnRuns());
 +     P=EspHex(P,PianoEspDiagBlk());
 +     P=EspHex(P,PianoEspDiagDiskIo());
 +     P=EspHex(P,PianoEspDiagDiskIoAfter());
 +     P=EspHex(P,PianoEspDiagSfs());
-+     P=EspHex(P,PianoEspDiagSfsAfter());
-+     P=EspHex(P,PianoEspDiagDrvBind());*P=0;
++     *P=0;
 +     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
 +    {CHAR8 *P=Row;CopyMem(P,"INFOesp3:",9);P+=9;
++     P=EspHex(P,PianoEspDiagSfsAfter());
++     P=EspHex(P,PianoEspDiagDrvBind());
 +     P=EspHex(P,PianoEspDiagConnOk());
 +     P=EspHex(P,PianoEspDiagConnNf());
 +     P=EspHex(P,PianoEspDiagConnOther());
 +     P=EspHex(P,PianoEspDiagEspLun());
++     *P=0;
++     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
++    {CHAR8 *P=Row;CopyMem(P,"INFOesp4:",9);P+=9;
 +     P=EspHex(P,PianoEspDiagEspHits());
-+     P=EspHex(P,PianoEspDiagEspLunSeen());*P=0;
++     P=EspHex(P,PianoEspDiagEspLunSeen());
++     *P=0;
 +     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
      S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
      return FastbootSend(NULL,"OKAY",4);
