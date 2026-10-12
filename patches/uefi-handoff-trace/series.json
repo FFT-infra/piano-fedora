@@ -14,7 +14,9 @@
       "creates": [
         "tests/native/PianoRawLinuxEnterSourceTest.c",
         "tests/unit/test_raw_linux_enter_trace.py",
-        "tests/unit/test_raw_console_export.py"
+        "tests/unit/test_raw_console_export.py",
+        "tests/native/PianoInheritedFdtExportTest.c",
+        "tests/unit/test_inherited_fdt_export.py"
       ]
     }
   ]

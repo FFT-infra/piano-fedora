@@ -1,3 +1,214 @@
+diff --git a/tests/native/PianoInheritedFdtExportTest.c b/tests/native/PianoInheritedFdtExportTest.c
+new file mode 100644
+index 0000000..0d1e48e
+--- /dev/null
++++ b/tests/native/PianoInheritedFdtExportTest.c
+@@ -0,0 +1,205 @@
++#include <assert.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++typedef uint8_t UINT8;
++typedef uint32_t UINT32;
++typedef uint64_t UINT64;
++typedef size_t UINTN;
++typedef int64_t EFI_STATUS;
++typedef const void CONST_VOID;
++typedef void VOID;
++typedef int BOOLEAN;
++#define TRUE 1
++#define FALSE 0
++#define CONST const
++#define STATIC static
++#define EFI_SUCCESS 0
++#define EFI_INVALID_PARAMETER 2
++#define EFI_BAD_BUFFER_SIZE 4
++#define EFI_DEVICE_ERROR 7
++#define EFI_NOT_READY 6
++#define EFI_NOT_FOUND 14
++#define EFI_MEDIA_CHANGED 13
++#define EFI_ABORTED 21
++#define EFI_SECURITY_VIOLATION 26
++#define EFI_COMPROMISED_DATA 33
++
++typedef enum {
++  PianoProductOwnersUninitialized=0,
++  PianoProductOwnersRunning,
++  PianoProductOwnersReturnRequested,
++  PianoProductOwnersRetiring,
++  PianoProductOwnersClean,
++  PianoProductOwnersRetained
++} PIANO_PRODUCT_OWNERS_PHASE;
++typedef struct {
++  BOOLEAN Initialized,Busy,ServicesLost,Retained;
++  PIANO_PRODUCT_OWNERS_PHASE Phase;
++} PIANO_PRODUCT_OWNERS_REPORT;
++typedef struct { CONST_VOID *Fdt; } PIANO_PRODUCT_OWNERS_CONFIG;
++typedef struct { PIANO_PRODUCT_OWNERS_CONFIG Config; PIANO_PRODUCT_OWNERS_REPORT Report; } PIANO_PRODUCT_OWNERS;
++typedef struct { UINT8 *Upload; UINTN UploadBytes; BOOLEAN UploadBorrowed; } PIANO_FASTBOOT;
++typedef struct { UINT32 Opaque; } EFI_BOOT_SERVICES;
++typedef struct { EFI_BOOT_SERVICES *BootServices; } EFI_SYSTEM_TABLE;
++
++static PIANO_PRODUCT_OWNERS mOwners;
++static CONST_VOID *mOwnedInheritedFdt;
++static UINT32 mOwnedInheritedFdtBytes;
++static EFI_BOOT_SERVICES *gBS;
++static EFI_SYSTEM_TABLE *gST;
++static BOOLEAN mBootLogExited;
++static UINT8 mFdt[0x200000];
++static UINT8 mHostAddress[64];
++static UINT32 mFdtBytes;
++static int mHeaderError,mHeaderChecks,mFdtSizeReads,mHashCalls,mHashFailAt,mStageCalls,mStageResult;
++static int mMutateSourceDuringCopy,mCorruptUploadDuringCopy,mLoseServicesDuringCopy;
++static int mAllocations,mSendCalls;
++static PIANO_FASTBOOT mState;
++static EFI_BOOT_SERVICES mBootServices={0};
++static EFI_SYSTEM_TABLE mSystemTable={&mBootServices};
++
++static BOOLEAN BootLogAlive(void) {
++  return !mBootLogExited && !mOwners.Report.ServicesLost && gST!=NULL && gST->BootServices==gBS;
++}
++static int FdtCheckHeader(CONST_VOID *Fdt) {
++  assert(Fdt==mOwnedInheritedFdt);
++  ++mHeaderChecks;
++  return mHeaderError;
++}
++static UINT32 FdtTotalSize(CONST_VOID *Fdt) {
++  assert(Fdt==mFdt || Fdt==mOwnedInheritedFdt);
++  ++mFdtSizeReads;
++  return mFdtBytes;
++}
++static int Sha256HashAll(CONST_VOID *Data,UINTN Bytes,UINT8 Digest[32]) {
++  assert(Data!=NULL && Bytes>0);
++  assert(Bytes==mOwnedInheritedFdtBytes);
++  ++mHashCalls;
++  if(mHashCalls==mHashFailAt)return FALSE;
++  memset(Digest,0,32);
++  CONST UINT8 *Input=Data;
++  for(UINTN I=0;I<Bytes;++I) {
++    UINTN Slot=I%32;
++    Digest[Slot]=(UINT8)(((Digest[Slot]^Input[I]^(UINT8)I)*33U)+17U);
++  }
++  return TRUE;
++}
++static int CompareMem(CONST_VOID *A,CONST_VOID *B,UINTN Bytes) {
++  return memcmp(A,B,Bytes);
++}
++static EFI_STATUS PianoFastbootStageCopy(PIANO_FASTBOOT *State,CONST_VOID *Data,UINTN Bytes) {
++  ++mStageCalls;
++  assert(State==&mState);
++  assert(Data==mOwnedInheritedFdt);
++  assert(Data!=(CONST_VOID *)mHostAddress);
++  assert(Bytes==mOwnedInheritedFdtBytes);
++  if(mStageResult!=EFI_SUCCESS)return mStageResult;
++  State->Upload=malloc(Bytes);
++  assert(State->Upload!=NULL);
++  ++mAllocations;
++  memcpy(State->Upload,Data,Bytes);
++  State->UploadBytes=Bytes;
++  State->UploadBorrowed=FALSE;
++  if(mCorruptUploadDuringCopy)State->Upload[Bytes-1]^=0x80;
++  if(mMutateSourceDuringCopy)mFdt[Bytes-1]^=0x40;
++  if(mLoseServicesDuringCopy) {
++    gBS=NULL;
++    gST->BootServices=NULL;
++    mOwners.Report.ServicesLost=TRUE;
++    mBootLogExited=TRUE;
++  }
++  return EFI_SUCCESS;
++}
++
++/* PIANO_INHERITED_FDT_CACHE_SOURCE */
++/* PIANO_INHERITED_FDT_EXPORT_SOURCE */
++
++static VOID Reset(VOID) {
++  free(mState.Upload);
++  memset(&mOwners,0,sizeof(mOwners));
++  memset(&mState,0,sizeof(mState));
++  mOwnedInheritedFdt=NULL;mOwnedInheritedFdtBytes=0;
++  for(UINTN I=0;I<sizeof(mFdt);++I)mFdt[I]=(UINT8)(I*17U+3U);
++  mFdt[0]=0xd0;mFdt[1]=0x0d;mFdt[2]=0xfe;mFdt[3]=0xed;
++  mFdtBytes=128;mHeaderError=mHeaderChecks=mFdtSizeReads=0;mHashCalls=mHashFailAt=0;
++  mStageCalls=mStageResult=0;mMutateSourceDuringCopy=0;
++  mCorruptUploadDuringCopy=mLoseServicesDuringCopy=0;
++  mAllocations=mSendCalls=0;mBootLogExited=FALSE;
++  gBS=&mBootServices;gST=&mSystemTable;gST->BootServices=gBS;
++  mOwners.Config.Fdt=mFdt;
++  mOwners.Report.Initialized=TRUE;
++  mOwners.Report.Phase=PianoProductOwnersRunning;
++}
++static VOID ExpectNoStage(EFI_STATUS Expected) {
++  assert(PianoProductExportInheritedFdt(&mState)==Expected);
++  assert(mStageCalls==0 && mHashCalls==0 && mAllocations==0 && mSendCalls==0);
++}
++static VOID ExpectSuccessfulCopy(UINT32 Bytes) {
++  Reset();mFdtBytes=Bytes;CacheInheritedFdt(mFdt);
++  assert(PianoProductExportInheritedFdt(&mState)==EFI_SUCCESS);
++  assert(mStageCalls==1 && mAllocations==1 && mSendCalls==0);
++  assert(mState.Upload!=NULL && mState.UploadBytes==Bytes && !mState.UploadBorrowed);
++  assert(memcmp(mState.Upload,mFdt,Bytes)==0);
++  assert(mHashCalls==3);
++  free(mState.Upload);mState.Upload=NULL;
++}
++int main(void) {
++  Reset();CacheInheritedFdt(mFdt);assert(mOwnedInheritedFdt==mFdt&&mOwnedInheritedFdtBytes==128);
++  Reset();mFdtBytes=39;CacheInheritedFdt(mFdt);assert(mOwnedInheritedFdt==NULL&&mOwnedInheritedFdtBytes==0);
++  ExpectNoStage(EFI_NOT_FOUND);
++  Reset();mFdtBytes=0x200001;CacheInheritedFdt(mFdt);assert(mOwnedInheritedFdt==NULL&&mOwnedInheritedFdtBytes==0);
++  ExpectNoStage(EFI_NOT_FOUND);
++
++  Reset();ExpectNoStage(EFI_NOT_FOUND);assert(mFdtSizeReads==0);
++  Reset();CacheInheritedFdt(mFdt);mOwners.Config.Fdt=mHostAddress;
++  assert(PianoProductExportInheritedFdt(&mState)==EFI_MEDIA_CHANGED);
++  assert(mHeaderChecks==0&&mFdtSizeReads==1&&mHashCalls==0&&mStageCalls==0);
++  Reset();CacheInheritedFdt(mFdt);mFdtBytes=129;
++  assert(PianoProductExportInheritedFdt(&mState)==EFI_MEDIA_CHANGED);
++  assert(mHeaderChecks==1&&mFdtSizeReads==2&&mHashCalls==0&&mStageCalls==0);
++  Reset();CacheInheritedFdt(mFdt);mFdtBytes=127;
++  assert(PianoProductExportInheritedFdt(&mState)==EFI_MEDIA_CHANGED);
++  assert(mHeaderChecks==1&&mFdtSizeReads==2&&mHashCalls==0&&mStageCalls==0);
++
++  Reset();mOwners.Report.Initialized=FALSE;ExpectNoStage(EFI_NOT_READY);
++  Reset();mOwners.Report.Phase=PianoProductOwnersRetiring;ExpectNoStage(EFI_NOT_READY);
++  Reset();mOwners.Report.Busy=TRUE;ExpectNoStage(EFI_NOT_READY);
++  Reset();mOwners.Report.Retained=TRUE;ExpectNoStage(EFI_NOT_READY);
++  Reset();mOwners.Report.ServicesLost=TRUE;ExpectNoStage(EFI_ABORTED);
++  Reset();gBS=NULL;ExpectNoStage(EFI_ABORTED);
++  Reset();mBootLogExited=TRUE;ExpectNoStage(EFI_ABORTED);
++  Reset();assert(PianoProductExportInheritedFdt(NULL)==EFI_INVALID_PARAMETER);assert(mStageCalls==0&&mHashCalls==0);
++  Reset();mOwners.Config.Fdt=NULL;ExpectNoStage(EFI_NOT_FOUND);
++  Reset();CacheInheritedFdt(mFdt);mHeaderError=1;ExpectNoStage(EFI_COMPROMISED_DATA);
++
++  Reset();CacheInheritedFdt(mFdt);mHashFailAt=1;
++  assert(PianoProductExportInheritedFdt(&mState)==EFI_DEVICE_ERROR);
++  assert(mHashCalls==1&&mStageCalls==0&&mAllocations==0&&mSendCalls==0);
++
++  Reset();CacheInheritedFdt(mFdt);mStageResult=EFI_DEVICE_ERROR;
++  assert(PianoProductExportInheritedFdt(&mState)==EFI_DEVICE_ERROR);
++  assert(mHashCalls==1&&mStageCalls==1&&mAllocations==0&&mSendCalls==0);
++
++  Reset();CacheInheritedFdt(mFdt);mLoseServicesDuringCopy=1;
++  assert(PianoProductExportInheritedFdt(&mState)==EFI_ABORTED);
++  assert(mHashCalls==1&&mStageCalls==1&&mAllocations==1&&mSendCalls==0);
++  free(mState.Upload);mState.Upload=NULL;
++
++  Reset();CacheInheritedFdt(mFdt);mMutateSourceDuringCopy=1;
++  assert(PianoProductExportInheritedFdt(&mState)==EFI_SECURITY_VIOLATION);
++  assert(mHashCalls==3&&mStageCalls==1&&mSendCalls==0);
++  free(mState.Upload);mState.Upload=NULL;
++
++  Reset();CacheInheritedFdt(mFdt);mCorruptUploadDuringCopy=1;
++  assert(PianoProductExportInheritedFdt(&mState)==EFI_SECURITY_VIOLATION);
++  assert(mHashCalls==3&&mStageCalls==1&&mSendCalls==0);
++  free(mState.Upload);mState.Upload=NULL;
++
++  ExpectSuccessfulCopy(40);
++  ExpectSuccessfulCopy(0x200000);
++  puts("Inherited FDT export source extraction passed: guards, bounds, hashes, copy failures, mutation, EBS fence, exact payload");
++  return 0;
++}
 diff --git a/tests/native/PianoRawLinuxEnterSourceTest.c b/tests/native/PianoRawLinuxEnterSourceTest.c
 new file mode 100644
 index 0000000..bbceef7
@@ -172,17 +383,118 @@ index 0000000..bbceef7
 +  puts("RawLinux source extraction: all entry outcomes and CPU-only post-EBS trace passed");
 +  free(mAllocation);return 0;
 +}
+diff --git a/tests/unit/test_inherited_fdt_export.py b/tests/unit/test_inherited_fdt_export.py
+new file mode 100644
+index 0000000..4a531ac
+--- /dev/null
++++ b/tests/unit/test_inherited_fdt_export.py
+@@ -0,0 +1,94 @@
++import os
++import shutil
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[2]
++TRASH = Path.home() / "Lab/Bridge/tmp/trash"
++SOURCE = ROOT / "uefi/core/PianoProductCore.c"
++FIXTURE = ROOT / "tests/native/PianoInheritedFdtExportTest.c"
++
++
++def extract_function(source, signature):
++    start = source.index(signature)
++    opening = source.index("{", start)
++    depth = 0
++    state = "code"
++    index = opening
++    while index < len(source):
++        char = source[index]
++        following = source[index + 1] if index + 1 < len(source) else ""
++        if state == "line_comment":
++            if char == "\n":
++                state = "code"
++        elif state == "block_comment":
++            if char == "*" and following == "/":
++                state = "code"
++                index += 1
++        elif state == "string":
++            if char == "\\":
++                index += 1
++            elif char == '"':
++                state = "code"
++        elif state == "character":
++            if char == "\\":
++                index += 1
++            elif char == "'":
++                state = "code"
++        elif char == "/" and following == "/":
++            state = "line_comment"
++            index += 1
++        elif char == "/" and following == "*":
++            state = "block_comment"
++            index += 1
++        elif char == '"':
++            state = "string"
++        elif char == "'":
++            state = "character"
++        elif char == "{":
++            depth += 1
++        elif char == "}":
++            depth -= 1
++            if depth == 0:
++                return source[start:index + 1]
++        index += 1
++    raise AssertionError(f"Unterminated function: {signature}")
++
++
++class InheritedFdtExportTests(unittest.TestCase):
++    def test_extracted_production_function_against_typed_pointer_fixture(self):
++        compiler = shutil.which("cc")
++        if not compiler:
++            self.skipTest("host C compiler unavailable")
++        source = SOURCE.read_text()
++        fixture = FIXTURE.read_text()
++        cache = extract_function(source, "STATIC VOID CacheInheritedFdt(")
++        function = extract_function(source, "EFI_STATUS PianoProductExportInheritedFdt(")
++        fixture = fixture.replace("/* PIANO_INHERITED_FDT_CACHE_SOURCE */", cache)
++        fixture = fixture.replace("/* PIANO_INHERITED_FDT_EXPORT_SOURCE */", function)
++        self.assertNotIn("PIANO_INHERITED_FDT_CACHE_SOURCE", fixture)
++        self.assertNotIn("PIANO_INHERITED_FDT_EXPORT_SOURCE", fixture)
++        entry = extract_function(source, "EFI_STATUS EFIAPI PianoProductCoreEntry(")
++        self.assertLess(entry.index("PianoProductPayloadGetFdt("), entry.index("CacheInheritedFdt(Fdt)"))
++        self.assertLess(entry.index("CacheInheritedFdt(Fdt)"), entry.index("PianoProductReleaseSimpleInit("))
++        TRASH.mkdir(parents=True, exist_ok=True)
++        with tempfile.TemporaryDirectory(dir=TRASH, prefix="inherited-fdt-export-") as directory:
++            c_file = Path(directory) / "fixture.c"
++            binary = Path(directory) / "fixture"
++            c_file.write_text(fixture)
++            build = subprocess.run(
++                [compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", str(c_file), "-o", str(binary)],
++                capture_output=True,
++                text=True,
++            )
++            self.assertEqual(0, build.returncode, build.stderr)
++            env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
++            result = subprocess.run([str(binary)], capture_output=True, text=True, env=env, timeout=10)
++            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
++            self.assertIn("Inherited FDT export source extraction passed", result.stdout)
++
++
++if __name__ == "__main__":
++    unittest.main()
 diff --git a/tests/unit/test_raw_console_export.py b/tests/unit/test_raw_console_export.py
 new file mode 100644
-index 0000000..aa9f20a
+index 0000000..ea8e0cf
 --- /dev/null
 +++ b/tests/unit/test_raw_console_export.py
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,156 @@
 +"""Compile the actual raw-export helper against bounded host memory fixtures."""
 +from pathlib import Path
 +import subprocess
 +import tempfile
 +import unittest
++import zlib
 +
 +ROOT = Path(__file__).resolve().parents[2]
 +
@@ -205,18 +517,22 @@ index 0000000..aa9f20a
 +#include <stdlib.h>
 +#include <string.h>
 +typedef uint8_t UINT8;
++typedef uint32_t UINT32;
 +typedef unsigned long UINTN;
 +typedef uint64_t EFI_STATUS;
-+typedef struct { int busy; } PIANO_FASTBOOT;
++typedef struct { int busy; UINT8 *Upload; UINTN UploadBytes; int UploadBorrowed; } PIANO_FASTBOOT;
 +typedef struct { const char *Name; UINTN Address, Length;
 +                 unsigned MemoryType, ResourceType, ArmAttributes; } EFI_MEMORY_REGION_DESCRIPTOR;
 +#define STATIC static
 +#define CONST const
++#define VOID void
++#define MAX_UINT32 UINT32_MAX
 +#define NULL_MAP 1
 +#define EFI_SUCCESS 0
 +#define EFI_ACCESS_DENIED 15
 +#define EFI_OUT_OF_RESOURCES 9
 +#define EFI_NOT_READY 6
++#define EFI_COMPROMISED_DATA 33
 +#define EfiReservedMemoryType 0
 +#define EFI_RESOURCE_MEMORY_RESERVED 5
 +#define UNCACHED_UNBUFFERED_XN 23
@@ -225,6 +541,7 @@ index 0000000..aa9f20a
 +static EFI_MEMORY_REGION_DESCRIPTOR Maps[2];
 +static unsigned ActiveCount=1, NoMap, Oom, Allocations, Frees, Stages, Fences;
 +static UINT8 *Allocation;
++static UINT32 mDiagnosticSnapshotKind,mDiagnosticSnapshotBytes,mDiagnosticSnapshotCrc;
 +static void GetMemoryMap(EFI_MEMORY_REGION_DESCRIPTOR **map, UINT8 *count) {
 +  *map=NoMap?NULL:Maps; *count=(UINT8)ActiveCount;
 +}
@@ -237,8 +554,12 @@ index 0000000..aa9f20a
 +static void MemoryFence(void) { ++Fences; }
 +static EFI_STATUS PianoFastbootStageCopy(PIANO_FASTBOOT *state, const void *copy, UINTN bytes) {
 +  assert(bytes==sizeof(Fixture));assert(copy==Allocation);++Stages;
-+  if(state->busy)return EFI_NOT_READY;
-+  memcpy(Captured,copy,bytes);return EFI_SUCCESS;
++  if(state->busy==1)return EFI_NOT_READY;
++  memcpy(Captured,copy,bytes);state->Upload=Captured;state->UploadBytes=bytes;state->UploadBorrowed=0;
++  if(state->busy==2)state->UploadBytes=1;
++  if(state->busy==3)state->UploadBorrowed=1;
++  if(state->busy==4)state->Upload=NULL;
++  return EFI_SUCCESS;
 +}
 +static void ZeroMem(void *copy, UINTN bytes) { memset(copy,0,bytes); }
 +static void FreePool(void *copy) {
@@ -268,16 +589,33 @@ index 0000000..aa9f20a
 +    case 9:Maps[1]=Maps[0];ActiveCount=2;break;
 +    case 10:Oom=1;expected=EFI_OUT_OF_RESOURCES;break;
 +    case 11:State.busy=1;expected=EFI_NOT_READY;break;
++    case 12:State.busy=2;expected=EFI_COMPROMISED_DATA;break;
++    case 13:State.busy=3;expected=EFI_COMPROMISED_DATA;break;
++    case 14:State.busy=4;expected=EFI_COMPROMISED_DATA;break;
++    case 15:case 16:expected=EFI_SUCCESS;break;
 +    default:abort();
 +  }
 +  // The leading words intentionally do not form a DBGC/pstore ring header.
 +  for(UINTN i=0;i<sizeof(Fixture);++i)Fixture[i]=(UINT8)(i*17+3);
 +  assert(ExportRawConsole(&State)==expected);
 +  for(UINTN i=0;i<sizeof(Fixture);++i)assert(Fixture[i]==(UINT8)(i*17+3));
-+  if(expected==EFI_SUCCESS)assert(!memcmp(Fixture,Captured,sizeof(Fixture)));
++  if(expected==EFI_SUCCESS) {
++    assert(!memcmp(Fixture,Captured,sizeof(Fixture)));
++    assert(mDiagnosticSnapshotKind==1&&mDiagnosticSnapshotBytes==sizeof(Fixture));
++    assert(mDiagnosticSnapshotCrc==KNOWN_CRC);
++  } else assert(!mDiagnosticSnapshotKind&&!mDiagnosticSnapshotBytes&&!mDiagnosticSnapshotCrc);
 +  if(test<=9&&test!=0)assert(!Allocations&&!Stages&&!Fences&&!Frees);
 +  if(test==10)assert(Allocations==1&&!Stages&&!Fences&&!Frees);
 +  if(test==0||test==11)assert(Allocations==1&&Stages==1&&Fences==1&&Frees==1);
++  if(test==15) {
++    ClearDiagnosticSnapshot();State.UploadBytes=64;
++    assert(BindDiagnosticSnapshot(&State,2)==EFI_SUCCESS);
++    assert(mDiagnosticSnapshotKind==2&&mDiagnosticSnapshotBytes==64&&mDiagnosticSnapshotCrc==KNOWN_CRC64);
++  }
++  if(test==16) {
++    ClearDiagnosticSnapshot();assert(BindDiagnosticSnapshot(&State,3)==EFI_COMPROMISED_DATA);
++    assert(!mDiagnosticSnapshotKind&&!mDiagnosticSnapshotBytes&&!mDiagnosticSnapshotCrc);
++  }
 +  return 0;
 +}
 +'''
@@ -286,18 +624,22 @@ index 0000000..aa9f20a
 +class RawConsoleExportTest(unittest.TestCase):
 +    def test_actual_native_helper_guards_and_cleanup(self):
 +        source = (ROOT / "uefi/core/PianoDwc3Device.c").read_text()
-+        actual = extract_function(source, "STATIC EFI_STATUS ExportRawConsole(")
++        actual = "\n".join(extract_function(source, marker) for marker in
++                           ("STATIC UINT32 DiagCrc(", "STATIC VOID ClearDiagnosticSnapshot(",
++                            "STATIC EFI_STATUS BindDiagnosticSnapshot(", "STATIC EFI_STATUS ExportRawConsole("))
++        pattern = bytes((index * 17 + 3) & 255 for index in range(0x200000))
++        constants = f"\n#define KNOWN_CRC {zlib.crc32(pattern)}U\n#define KNOWN_CRC64 {zlib.crc32(pattern[:64])}U\n"
 +        temporary = Path.home() / "Lab/Bridge/tmp/trash"
 +        temporary.mkdir(parents=True, exist_ok=True)
 +        with tempfile.TemporaryDirectory(prefix="piano-raw-export-", dir=temporary) as folder:
 +            folder = Path(folder)
 +            fixture = folder / "raw-export.c"
-+            fixture.write_text(FIXTURE + actual + MAIN)
++            fixture.write_text(FIXTURE + constants + actual + MAIN)
 +            executable = folder / "raw-export"
 +            subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-O1", "-g",
 +                            "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
 +                            str(fixture), "-o", str(executable)], check=True, timeout=60)
-+            for case in range(12):
++            for case in range(17):
 +                subprocess.run([str(executable), str(case)], check=True, timeout=15)
 +
 +
@@ -401,7 +743,7 @@ index 0000000..f60610b
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
-index 9fa63ce..bbd9427 100644
+index 9fa63ce..a81491e 100644
 --- a/uefi/core/PianoDwc3Device.c
 +++ b/uefi/core/PianoDwc3Device.c
 @@ -30,6 +30,9 @@ typedef EFI_STATUS (*PIANO_USB_STORAGE_CHECK)(VOID *Context,CONST CHAR8 *Phase,B
@@ -414,15 +756,40 @@ index 9fa63ce..bbd9427 100644
  #define DW 0xA600000U
  // Native UsbfnDwc3Dxe RVAs e988/e9c0 use these exact USB0 QSCRATCH registers.
  #define USB_SESSION_HS 0xF8810U
-@@ -149,6 +152,32 @@ STATIC UINT32 DiagCrc(CONST UINT8 *P,UINTN Bytes) {
+@@ -137,6 +140,10 @@ STATIC UINT32 mLogBytes,mLogCrc,mLogGeneration;
+ STATIC UINT16 mLogFlags;
+ STATIC BOOLEAN mLogValid;
+ STATIC UINT32 mDeviceEvents,mSetupEvents,mDiagReplies;
++#if defined(PIANO_PRODUCT_NATIVE_LATE) && PIANO_PRODUCT_NATIVE_LATE
++STATIC UINT32 mDiagnosticSnapshotKind,mDiagnosticSnapshotBytes,mDiagnosticSnapshotCrc;
++EFI_STATUS PianoProductExportInheritedFdt(PIANO_FASTBOOT *State);
++#endif
+ STATIC UINT32 Dr(UINT32 Offset){return MmioRead32(DW+Offset);}
+ STATIC VOID Dw(UINT32 Offset,UINT32 Value){MmioWrite32(DW+Offset,Value);MemoryFence();}
+ STATIC UINT16 DiagLe16(CONST UINT8 *P){return P[0]|((UINT16)P[1]<<8);}
+@@ -149,6 +156,47 @@ STATIC UINT32 DiagCrc(CONST UINT8 *P,UINTN Bytes) {
    }
    return ~Crc;
  }
 +#if defined(PIANO_PRODUCT_NATIVE_LATE) && PIANO_PRODUCT_NATIVE_LATE
++STATIC VOID ClearDiagnosticSnapshot(VOID) {
++  mDiagnosticSnapshotKind=mDiagnosticSnapshotBytes=mDiagnosticSnapshotCrc=0;
++}
++STATIC EFI_STATUS BindDiagnosticSnapshot(PIANO_FASTBOOT *State,UINT32 Kind) {
++  if(State==NULL || State->Upload==NULL || State->UploadBorrowed ||
++     (Kind!=1 && Kind!=2) ||
++     (Kind==1 && State->UploadBytes!=0x200000) ||
++     (Kind==2 && (State->UploadBytes<40 || State->UploadBytes>0x200000)))
++    return EFI_COMPROMISED_DATA;
++  mDiagnosticSnapshotKind=Kind;mDiagnosticSnapshotBytes=(UINT32)State->UploadBytes;
++  mDiagnosticSnapshotCrc=DiagCrc(State->Upload,State->UploadBytes);
++  return EFI_SUCCESS;
++}
 +// Diagnostic-only export of the fixed, native-reserved console region. This
 +// deliberately returns raw bytes, including an invalid/changed ring header;
 +// it neither initializes the ring nor presents the bytes as validated logs.
 +STATIC EFI_STATUS ExportRawConsole(PIANO_FASTBOOT *State) {
++  ClearDiagnosticSnapshot();
 +  EFI_MEMORY_REGION_DESCRIPTOR *Map=NULL;UINT8 Count=0;
 +  GetMemoryMap(&Map,&Count);UINTN Matches=0;
 +  if(Map==NULL)return EFI_ACCESS_DENIED;
@@ -440,6 +807,7 @@ index 9fa63ce..bbd9427 100644
 +  for(UINTN I=0;I<Bytes;++I)Copy[I]=Source[I];
 +  MemoryFence();
 +  EFI_STATUS Status=PianoFastbootStageCopy(State,Copy,Bytes);
++  if(Status==EFI_SUCCESS)Status=BindDiagnosticSnapshot(State,1);
 +  ZeroMem(Copy,Bytes);FreePool(Copy);
 +  return Status;
 +}
@@ -447,12 +815,35 @@ index 9fa63ce..bbd9427 100644
  STATIC EFI_STATUS SnapshotConsole(CONST volatile UINT32 *Header) {
    CONST UINTN Capacity=0x200000-12;
    mLogValid=FALSE;
-@@ -344,6 +373,18 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+@@ -310,6 +358,14 @@ STATIC VOID FastHex(UINT32 Value,CHAR8 *Out) {
+ }
+ STATIC EFI_STATUS FastbootQuery(VOID *Context,CONST CHAR8 *Name,CHAR8 Value[60]) {
+   (VOID)Context;
++#if defined(PIANO_PRODUCT_NATIVE_LATE) && PIANO_PRODUCT_NATIVE_LATE
++  if(!AsciiStrCmp(Name,"SunUEFI:snapshot-kind")) {
++    CONST CHAR8 *Kind=mDiagnosticSnapshotKind==1?"raw-console":mDiagnosticSnapshotKind==2?"inherited-fdt":"none";
++    CopyMem(Value,Kind,AsciiStrLen(Kind)+1);return EFI_SUCCESS;
++  }
++  if(!AsciiStrCmp(Name,"SunUEFI:snapshot-size")){FastHex(mDiagnosticSnapshotBytes,Value);return EFI_SUCCESS;}
++  if(!AsciiStrCmp(Name,"SunUEFI:snapshot-crc32")){FastHex(mDiagnosticSnapshotCrc,Value);return EFI_SUCCESS;}
++#endif
+   if(!AsciiStrCmp(Name,"SunUEFI:log-size"))FastHex(mFastLogBytes,Value);
+   else if(!AsciiStrCmp(Name,"SunUEFI:log-crc32"))FastHex(mFastLogCrc,Value);
+   else if(!AsciiStrCmp(Name,"SunUEFI:log-generation"))FastHex(mFastLogGeneration,Value);
+@@ -344,8 +400,31 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
      CONST CHAR8 *Reply=UiStatus==EFI_SUCCESS?"OKAY":"FAILUI navigation backend unavailable";
      return FastbootSend(NULL,Reply,AsciiStrLen(Reply));
    }
 +#endif
 +#if defined(PIANO_PRODUCT_NATIVE_LATE) && PIANO_PRODUCT_NATIVE_LATE
++  if(!AsciiStrCmp(Cmd,"oem inherited-fdt")) {
++    ClearDiagnosticSnapshot();
++    EFI_STATUS Status=PianoProductExportInheritedFdt(State);
++    if(Status==EFI_ABORTED)return EFI_ABORTED;
++    if(Status==EFI_SUCCESS)Status=BindDiagnosticSnapshot(State,2);
++    CONST CHAR8 *Reply=Status==EFI_SUCCESS?"OKAY":"FAILinherited FDT snapshot unavailable";
++    return FastbootSend(NULL,Reply,AsciiStrLen(Reply));
++  }
 +  if(!AsciiStrCmp(Cmd,"oem ramlog-raw")) {
 +    EFI_STATUS Status=EFI_SUCCESS;
 +#if PIANO_USB_SERVICE
@@ -465,9 +856,24 @@ index 9fa63ce..bbd9427 100644
 +  }
  #endif
    if(!AsciiStrCmp(Cmd,"oem ramlog")) {
++#if defined(PIANO_PRODUCT_NATIVE_LATE) && PIANO_PRODUCT_NATIVE_LATE
++    ClearDiagnosticSnapshot();
++#endif
      EFI_STATUS S=EFI_SUCCESS;
+ #if PIANO_USB_SERVICE
+     BOOLEAN ServicesLost=FALSE;S=ServiceBeforeRamlog(&ServicesLost);
+@@ -363,6 +442,9 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+   }
+ #if PIANO_USB_SCREENSHOT
+   if(!AsciiStrCmp(Cmd,"oem screenshot")) {
++#if defined(PIANO_PRODUCT_NATIVE_LATE) && PIANO_PRODUCT_NATIVE_LATE
++    ClearDiagnosticSnapshot();
++#endif
+     UINT32 W=0,H=0,Bytes=0,Crc=0;
+     EFI_STATUS S=PianoFastbootCaptureScreen(State,&W,&H,&Bytes,&Crc);
+     if(S!=EFI_SUCCESS || !W || !H || !Bytes || State->Upload==NULL || State->UploadBytes!=Bytes || State->UploadBorrowed) {
 diff --git a/uefi/core/PianoFastboot.c b/uefi/core/PianoFastboot.c
-index a87f73b..d406ee9 100644
+index a87f73b..1e9676d 100644
 --- a/uefi/core/PianoFastboot.c
 +++ b/uefi/core/PianoFastboot.c
 @@ -318,7 +318,7 @@ EFI_STATUS PianoFastbootPacket(PIANO_FASTBOOT *S, CONST VOID *Data, UINTN Bytes)
@@ -475,15 +881,40 @@ index a87f73b..d406ee9 100644
  #endif
    }
 -  if(Equal(Cmd,"oem status") || Equal(Cmd,"oem ramlog") || Equal(Cmd,"oem screenshot")) {
-+  if(Equal(Cmd,"oem status") || Equal(Cmd,"oem ramlog") || Equal(Cmd,"oem ramlog-raw") || Equal(Cmd,"oem screenshot")) {
++  if(Equal(Cmd,"oem status") || Equal(Cmd,"oem ramlog") || Equal(Cmd,"oem ramlog-raw") || Equal(Cmd,"oem inherited-fdt") || Equal(Cmd,"oem screenshot")) {
      if(S->Diagnostic==NULL)return Reply(S,"FAILdiagnostic service unavailable");
      EFI_STATUS Status=S->Diagnostic(S->Context,S,Cmd);
      return Status==EFI_UNSUPPORTED?Reply(S,"FAILdiagnostic command unavailable"):Status;
 diff --git a/uefi/core/PianoProductCore.c b/uefi/core/PianoProductCore.c
-index ff43f48..99f20a7 100644
+index ff43f48..094be28 100644
 --- a/uefi/core/PianoProductCore.c
 +++ b/uefi/core/PianoProductCore.c
-@@ -49,6 +49,16 @@ STATIC UINT64 mBootLogStart;
+@@ -3,6 +3,7 @@
+ #include "PianoProductCore.h"
+ #include "PianoProductPayload.h"
+ #include "PianoProductOwners.h"
++#include "PianoFastboot.h"
+ #include "PianoRawLinuxBoot.h"
+ #include "PianoFastbootBlockRead.h"
+ #include "PianoKeysLifecycle.h"
+@@ -25,6 +26,7 @@
+ #include <Library/DebugLib.h>
+ #include <Library/TimerLib.h>
+ #include <Library/PrintLib.h>
++#include <Library/BaseCryptLib.h>
+ #include <Library/FdtLib.h>
+ VOID PianoProbeFoundation(VOID);
+ VOID PianoNativeSetObserver(VOID (*Observer)(CONST CHAR8 *,BOOLEAN));
+@@ -42,6 +44,8 @@ STATIC PIANO_UFS_PRODUCT_VOLUME mProductVolume;
+ STATIC PIANO_PRODUCT_DISPLAY_STARTUP_REPORT mDisplayStartup;
+ STATIC PIANO_SMMU_RETIRED_USB_PROOF mStartupUsbProof;
+ STATIC UINT32 mStartupTarget;
++STATIC CONST VOID *mOwnedInheritedFdt;
++STATIC UINT32 mOwnedInheritedFdtBytes;
+ STATIC volatile BOOLEAN mBootLogExited;
+ STATIC EFI_EVENT mBootLogExitEvent;
+ STATIC BOOLEAN mBootLogEnabled,mBootLogCounterDown;
+@@ -49,6 +53,16 @@ STATIC UINT64 mBootLogStart;
  STATIC CONST CHAR8 *mBootLogStage="PAYLOAD";
  STATIC VOID BootLogReturned(VOID);
  STATIC VOID FailStop(EFI_STATUS Status);
@@ -500,7 +931,36 @@ index ff43f48..99f20a7 100644
  EFI_STATUS PianoRegisterLinuxBootOption(VOID);
  STATIC BOOLEAN EFIAPI BootLogAlive(VOID) {
    return !mBootLogExited && !mOwners.Report.ServicesLost && gST!=NULL && gST->BootServices==gBS;
-@@ -378,10 +388,16 @@ EFI_STATUS EFIAPI PianoProductCoreEntry(EFI_HANDLE Image,EFI_SYSTEM_TABLE *Syste
+@@ -188,6 +202,14 @@ STATIC EFI_STATUS LateMemoryUnavailable(VOID *Context,PIANO_LINUX_MEMORY_PROOF *
+ STATIC EFI_STATUS LateValidateMemory(VOID *Context,CONST PIANO_LINUX_MEMORY_PROOF *Report) {
+   (VOID)Context;(VOID)Report;return EFI_NOT_READY;
+ }
++STATIC VOID CacheInheritedFdt(CONST VOID *Fdt) {
++  mOwnedInheritedFdt=NULL;mOwnedInheritedFdtBytes=0;
++  if(Fdt==NULL)return;
++  UINT32 Bytes=FdtTotalSize(Fdt);
++  if(Bytes>=40 && Bytes<=0x200000) {
++    mOwnedInheritedFdt=Fdt;mOwnedInheritedFdtBytes=Bytes;
++  }
++}
+ EFI_STATUS PianoProductLateArm(VOID *Context,EFI_HANDLE Image,CONST EFI_LOADED_IMAGE_PROTOCOL *Identity) {
+   (VOID)Context;
+   if(Image==NULL || Identity==NULL)return EFI_INVALID_PARAMETER;
+@@ -224,11 +246,13 @@ STATIC EFI_STATUS StopInput(VOID *Context,PIANO_PRODUCT_INPUT_RETIRE_REPORT *Rep
+ }
+ EFI_STATUS EFIAPI PianoProductCoreEntry(EFI_HANDLE Image,EFI_SYSTEM_TABLE *SystemTable) {
+   if(Image==NULL || SystemTable==NULL)return EFI_INVALID_PARAMETER;
++  CacheInheritedFdt(NULL);
+   BootLogStart();
+   // Obtain a genuinely validated handoff, not an application-supplied FDT.
+   PIANO_PRODUCT_PAYLOAD_VIEW Source={0};CONST VOID *Fdt=NULL;
+   EFI_STATUS Status=PianoProductAcquireSimpleInit(&Source);
+   if(Status==EFI_SUCCESS)Status=PianoProductPayloadGetFdt(&Source,&Fdt);
++  if(Status==EFI_SUCCESS)CacheInheritedFdt(Fdt);
+   if(Status==EFI_SUCCESS)mStartupTarget=PianoProductPayloadBootTarget();
+   if(Source.Lease!=NULL){EFI_STATUS Release=PianoProductReleaseSimpleInit(&Source);if(Release!=EFI_SUCCESS)FailStop(Release);}
+   if(Status==EFI_SUCCESS && Fdt==NULL)Status=EFI_COMPROMISED_DATA;
+@@ -378,10 +402,16 @@ EFI_STATUS EFIAPI PianoProductCoreEntry(EFI_HANDLE Image,EFI_SYSTEM_TABLE *Syste
        if(FileLoaded&&mOwners.Report.Origin!=PianoProductRequestFile) {
          Status=PianoRawLinuxDiscardStable();if(Status!=EFI_SUCCESS)FailStop(Status);FileLoaded=FALSE;
        }
@@ -517,7 +977,7 @@ index ff43f48..99f20a7 100644
        }
        if(Status!=EFI_SUCCESS || !mOwners.Report.Clean)FailStop(Status);
        if(mOwners.Report.AllowedAction==PianoUsbServiceActionReboot || mOwners.Report.AllowedAction==PianoUsbServiceActionContinue) {
-@@ -389,8 +405,14 @@ EFI_STATUS EFIAPI PianoProductCoreEntry(EFI_HANDLE Image,EFI_SYSTEM_TABLE *Syste
+@@ -389,8 +419,14 @@ EFI_STATUS EFIAPI PianoProductCoreEntry(EFI_HANDLE Image,EFI_SYSTEM_TABLE *Syste
        }
        if(mOwners.Report.AllowedAction==PianoUsbServiceActionBoot){
          CONST PIANO_RAW_LINUX_REPORT *Raw=NULL;
@@ -533,6 +993,55 @@ index ff43f48..99f20a7 100644
          if(Status==EFI_SUCCESS)Status=PianoRawLinuxEnter(Raw);
          FailStop(Status==EFI_SUCCESS?EFI_ABORTED:Status);
        }
+@@ -402,3 +438,48 @@ EFI_STATUS EFIAPI PianoProductCoreEntry(EFI_HANDLE Image,EFI_SYSTEM_TABLE *Syste
+     gBS->Stall(1000);
+   }
+ }
++
++EFI_STATUS PianoProductExportInheritedFdt(PIANO_FASTBOOT *State) {
++  CONST VOID *Fdt;
++  UINT32 Bytes,CurrentBytes;
++  UINT8 Before[32],After[32],Staged[32];
++  BOOLEAN Hashed;
++  EFI_STATUS Status;
++
++  if(mOwners.Report.ServicesLost || gBS==NULL || !BootLogAlive())return EFI_ABORTED;
++  if(State==NULL)return EFI_INVALID_PARAMETER;
++  if(!mOwners.Report.Initialized || mOwners.Report.Phase!=PianoProductOwnersRunning ||
++     mOwners.Report.Busy || mOwners.Report.Retained)return EFI_NOT_READY;
++  Fdt=mOwnedInheritedFdt;
++  Bytes=mOwnedInheritedFdtBytes;
++  if(Fdt==NULL || Bytes<40 || Bytes>0x200000)return EFI_NOT_FOUND;
++  if(mOwners.Config.Fdt!=Fdt)return EFI_MEDIA_CHANGED;
++  if(mOwners.Report.ServicesLost || gBS==NULL || !BootLogAlive())return EFI_ABORTED;
++  BOOLEAN HeaderValid=FdtCheckHeader(Fdt)==0;
++  if(mOwners.Report.ServicesLost || gBS==NULL || !BootLogAlive())return EFI_ABORTED;
++  if(!HeaderValid)return EFI_COMPROMISED_DATA;
++  CurrentBytes=FdtTotalSize(Fdt);
++  if(mOwners.Report.ServicesLost || gBS==NULL || !BootLogAlive())return EFI_ABORTED;
++  if(CurrentBytes!=Bytes)return EFI_MEDIA_CHANGED;
++
++  Hashed=Sha256HashAll(Fdt,Bytes,Before);
++  if(mOwners.Report.ServicesLost || gBS==NULL || !BootLogAlive())return EFI_ABORTED;
++  if(!Hashed)return EFI_DEVICE_ERROR;
++
++  Status=PianoFastbootStageCopy(State,Fdt,Bytes);
++  if(mOwners.Report.ServicesLost || gBS==NULL || !BootLogAlive())return EFI_ABORTED;
++  if(Status!=EFI_SUCCESS)return Status;
++  if(mOwners.Config.Fdt!=Fdt || State->Upload==NULL || State->UploadBorrowed ||
++     State->UploadBytes!=Bytes)return EFI_COMPROMISED_DATA;
++
++  Hashed=Sha256HashAll(Fdt,Bytes,After);
++  if(mOwners.Report.ServicesLost || gBS==NULL || !BootLogAlive())return EFI_ABORTED;
++  if(!Hashed)return EFI_DEVICE_ERROR;
++  Hashed=Sha256HashAll(State->Upload,State->UploadBytes,Staged);
++  if(mOwners.Report.ServicesLost || gBS==NULL || !BootLogAlive())return EFI_ABORTED;
++  if(!Hashed)return EFI_DEVICE_ERROR;
++  if(CompareMem(Before,After,sizeof(Before))!=0 ||
++     CompareMem(Before,Staged,sizeof(Before))!=0)return EFI_SECURITY_VIOLATION;
++  if(mOwners.Report.ServicesLost || gBS==NULL || !BootLogAlive())return EFI_ABORTED;
++  return EFI_SUCCESS;
++}
 diff --git a/uefi/core/PianoRawLinuxBoot.c b/uefi/core/PianoRawLinuxBoot.c
 index 3af5532..8b54f5b 100644
 --- a/uefi/core/PianoRawLinuxBoot.c
