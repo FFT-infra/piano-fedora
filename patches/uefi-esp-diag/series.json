@@ -24,6 +24,15 @@
         "uefi/core/PianoDwc3Device.c": "5c2dcfaf8613ec3a51f0e15fb533c67f14cf4b4d7b953893ab62e0bd7f625391"
       },
       "creates": []
+    },
+    {
+      "file": "0003-bind-storage-before-esp-load.patch",
+      "summary": "ESP 加载取不到 SimpleFileSystem 句柄时补一次存储驱动绑定并重试",
+      "targets": {
+        "uefi/components/os-boot/PianoEspBootSource.c": "53dafed327f2e3196c66a16ce12cff320b5d0797565e6f9e5ce7c0e2fa506449",
+        "uefi/core/PianoDwc3Device.c": "40f482b612483d70cdafafdd2a6a6537a2bd6559ff2d89a2e8d1c92cbf84b862"
+      },
+      "creates": []
     }
   ]
 }
