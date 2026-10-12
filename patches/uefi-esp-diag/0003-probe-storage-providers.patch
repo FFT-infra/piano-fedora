@@ -1,38 +1,36 @@
-From 20981b6f23889190d048c073cfbaf92d66ddb6da Mon Sep 17 00:00:00 2001
+From 22e96ebd68d69d02e14cf64e660544aa9dfcb767 Mon Sep 17 00:00:00 2001
 From: piano-fedora-test <dev@piano.invalid>
-Date: Mon, 12 Oct 2026 21:21:10 +0800
+Date: Mon, 12 Oct 2026 21:29:29 +0800
 Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E4=B8=80=E6=AC=A1=E6=80=A7?=
  =?UTF-8?q?=E7=9B=98=E7=82=B9=E5=AD=98=E5=82=A8=E6=8F=90=E4=BE=9B=E8=80=85?=
- =?UTF-8?q?=E7=8A=B6=E6=80=81?=
+ =?UTF-8?q?=E7=8A=B6=E6=80=81=EF=BC=88=E4=BF=AE=20GUID=20=E5=A3=B0?=
+ =?UTF-8?q?=E6=98=8E=EF=BC=89?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-前几发把范围收到「FatDxe 一个卷都不绑」，而离线读 EDK2 源码后已知：
-- DiskIoDxe 的 DriverBindingSupported 只要求句柄上有 BlockIo
-- FatDxe 要求句柄上已有 DiskIo，且 Init.c:280-394 对 BPB 的校验按我们 ESP 的参数全部通过
-  （SectorSize=4096 → BlockAlignment=12 在范围内；MaxCluster=130784 >= 65519）
-- 40 个模块（含 Fat/DiskIoDxe/PartitionDxe/EnglishDxe）都在 FV 里，且两个 INF 都没有 [Depex]
-
-所以断点只可能在运行期。本补丁在 ESP 加载那一刻、核心上下文（普通 TPL）里一次性取：
-BlockIo / DiskIo / SimpleFileSystem / DriverBinding 四种句柄数（连接前后各一次）、
-ConnectController 的返回码归类（成功/EFI_NOT_FOUND/其它）、以及分区名恰好为
-sunuefi_esp 的那个 GPT 项落在哪个 UFS LUN。
-
-只读：不改变任何判断，加载器自身不读取这些值。
+上一版编译失败：PianoEspBootSource.c 用了 gEfiDiskIoProtocolGuid 与
+gEfiDriverBindingProtocolGuid，但模块 INF 的 [Protocols] 只声明了 BlockIo 等
+（prepare_product.py:340），AutoGen.h 因此不声明这两个标识符。改为在文件内自带
+GUID 常量，值取自 MdePkg/MdePkg.dec 的权威定义。其余不变：在 ESP 加载那一刻、
+核心上下文一次性取 BlockIo/DiskIo/SimpleFileSystem/DriverBinding 四种句柄数、
+ConnectController 返回码归类、以及 sunuefi_esp 所在的 UFS LUN。
 ---
- uefi/components/os-boot/PianoEspBootSource.c | 59 ++++++++++++++++++++
- uefi/core/PianoDwc3Device.c                  | 39 +++++++++++++
- 2 files changed, 98 insertions(+)
+ uefi/components/os-boot/PianoEspBootSource.c | 62 ++++++++++++++++++++
+ uefi/core/PianoDwc3Device.c                  | 39 ++++++++++++
+ 2 files changed, 101 insertions(+)
 
 diff --git a/uefi/components/os-boot/PianoEspBootSource.c b/uefi/components/os-boot/PianoEspBootSource.c
-index 61a6cfd..d1da79a 100644
+index 61a6cfd..55a507b 100644
 --- a/uefi/components/os-boot/PianoEspBootSource.c
 +++ b/uefi/components/os-boot/PianoEspBootSource.c
-@@ -25,12 +25,70 @@ typedef struct {
+@@ -25,12 +25,73 @@ typedef struct {
  // "no such volume" apart from "volume found but one identity field differs".
  // Nothing in the loader consults these values; they never change a decision.
  STATIC UINT32 mDiagEspTypeCount,mDiagEspNameStep,mDiagEspNameSeen,mDiagParentMatches,mDiagVolumeCalls;
++// GUID values carried locally: this module's INF does not declare these two protocols.
++STATIC CONST EFI_GUID mDiagDiskIoGuid={0xCE345171,0xBA0B,0x11D2,{0x8E,0x4F,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
++STATIC CONST EFI_GUID mDiagDriverBindingGuid={0x18A031AB,0xB443,0x4D1A,{0xA5,0xC0,0x0C,0x09,0x26,0x1E,0x9F,0x71}};
 +STATIC UINT32 mDiagBlk,mDiagDiskIo,mDiagDiskIoAfter,mDiagSfs,mDiagSfsAfter,mDiagDrvBind;
 +STATIC UINT32 mDiagConnOk,mDiagConnNf,mDiagConnOther,mDiagEspLun,mDiagEspHits,mDiagEspLunSeen,mDiagConnRuns;
 +STATIC UINT32 DiagCount(CONST EFI_GUID *G){
@@ -66,9 +64,9 @@ index 61a6cfd..d1da79a 100644
 + EFI_HANDLE *H=NULL;UINTN C=0;
 + ++mDiagConnRuns;
 + mDiagBlk=DiagCount(&gEfiBlockIoProtocolGuid);
-+ mDiagDiskIo=DiagCount(&gEfiDiskIoProtocolGuid);
++ mDiagDiskIo=DiagCount(&mDiagDiskIoGuid);
 + mDiagSfs=DiagCount(&gEfiSimpleFileSystemProtocolGuid);
-+ mDiagDrvBind=DiagCount(&gEfiDriverBindingProtocolGuid);
++ mDiagDrvBind=DiagCount(&mDiagDriverBindingGuid);
 + EFI_STATUS S=gBS->LocateHandleBuffer(ByProtocol,&gEfiBlockIoProtocolGuid,NULL,&C,&H);
 + if(S!=EFI_SUCCESS || H==NULL)return;
 + if(C>256)C=256;
@@ -94,13 +92,13 @@ index 61a6cfd..d1da79a 100644
 +  if(Q==EFI_SUCCESS)++mDiagConnOk;else if(Q==EFI_NOT_FOUND)++mDiagConnNf;else ++mDiagConnOther;
 + }
 + gBS->FreePool(H);
-+ mDiagDiskIoAfter=DiagCount(&gEfiDiskIoProtocolGuid);
++ mDiagDiskIoAfter=DiagCount(&mDiagDiskIoGuid);
 + mDiagSfsAfter=DiagCount(&gEfiSimpleFileSystemProtocolGuid);
 +}
  STATIC BOOLEAN Node(CONST EFI_DEVICE_PATH_PROTOCOL *P,UINT8 T,UINT8 S,UINTN N){
   return P&&P->Type==T&&P->SubType==S&&(UINTN)(P->Length[0]|((UINT16)P->Length[1]<<8))==N;
  }
-@@ -103,6 +161,7 @@ EFI_STATUS PianoEspBootLoad(PIANO_ESP_BOOT_SOURCE *S,CONST PIANO_CPU_INPUT_ENV *
+@@ -103,6 +164,7 @@ EFI_STATUS PianoEspBootLoad(PIANO_ESP_BOOT_SOURCE *S,CONST PIANO_CPU_INPUT_ENV *
   }
   if(!Cpu->BootServicesAlive(Cpu->Context))return EFI_ABORTED;
   EFI_HANDLE *Handles=NULL,Found=NULL;UINTN Count=0,Matches=0;ESP_IDENTITY Before={0},After;
