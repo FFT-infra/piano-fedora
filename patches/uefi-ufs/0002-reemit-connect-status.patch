@@ -1,19 +1,16 @@
-From 65ec326a116e6eee1a35b3a5514ae59bc7755003 Mon Sep 17 00:00:00 2001
+From 4dfde374f4ff0e43cd93b5f5eb1fd6bd95017574 Mon Sep 17 00:00:00 2001
 From: piano-fedora-test <dev@piano.invalid>
-Date: Mon, 12 Oct 2026 22:39:03 +0800
+Date: Mon, 12 Oct 2026 22:46:20 +0800
 Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E9=87=8D=E5=8F=91=20UFS=20Connec?=
  =?UTF-8?q?tController=20=E7=9A=84=E8=BF=94=E5=9B=9E=E7=A0=81?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-「整机没有任何 SimpleFileSystem 句柄」这条已经用三种方式确认（我们的探针、UEFI Shell
-的映射表、Setup 的文件浏览器）。要知道断在驱动没被 dispatch 还是 Start 里分配失败，
-只有 PublishBlocks 里那 6 个 ConnectController 返回码能回答——而它们永远落在 RAM 控制台
-快照窗口之外：快照只回最新 256 KiB，而每次抓取前 ProductDebugReplay 会先写约 200 KB。
-
-本补丁把那 6 个状态存下来，在同一个 replay 里重发一遍（和现有的时钟/显示观测重发同形），
-于是它们落进窗口。不新增任何 Boot Services 调用，不改变任何判断。
+上一版编译失败：debug 块放在了 <Library/DebugLib.h> 之前（该文件第 77 行才 include）。
+本版把它放到 library includes 之后，其余不变：把 PublishBlocks 里 6 个 ConnectController
+返回码存下来，在既有 ProductDebugReplay 里重发一遍（与能进快照的时钟/显示观测同形）。
+零新增 Boot Services 调用，零判断改变。
 ---
  uefi/core/PianoProductCore.c    |  2 ++
  uefi/core/PianoUfsReadOnlyDma.c | 14 ++++++++++++++
@@ -40,13 +37,13 @@ index f98ca02..2473558 100644
    if(PianoProductDisplayRetained())return Display==EFI_SUCCESS?EFI_COMPROMISED_DATA:Display;
    if(PianoDisplaySmmuRetained())return Translation==EFI_SUCCESS?EFI_COMPROMISED_DATA:Translation;
 diff --git a/uefi/core/PianoUfsReadOnlyDma.c b/uefi/core/PianoUfsReadOnlyDma.c
-index de3b650..b8bb5ec 100644
+index de3b650..73b6166 100644
 --- a/uefi/core/PianoUfsReadOnlyDma.c
 +++ b/uefi/core/PianoUfsReadOnlyDma.c
-@@ -6,6 +6,19 @@
- #include "PianoUfsDmaLayout.h"
- #include "PianoGpt.h"
- #include "PianoUfsProductVolume.h"
+@@ -76,6 +76,19 @@ STATIC EFI_STATUS mWindowTransportStatus=EFI_NOT_STARTED;
+ #include <Library/IoLib.h>
+ #include <Library/DebugLib.h>
+ #include <Library/MemoryAllocationLib.h>
 +// Diagnostic only. Whether the storage drivers bound to the published LUN
 +// handles is only visible in PublishBlocks' ConnectController results, and
 +// those lines are always outside the RAM console snapshot window: the capture
@@ -60,9 +57,9 @@ index de3b650..b8bb5ec 100644
 +  for(UINTN I=0;I<mDiagConnectCount;++I)
 +    DEBUG((DEBUG_WARN,"SUNUEFI_UFS_CONNECT_REEMIT lun=%u status=%r\n",(UINT32)mDiagConnectLun[I],mDiagConnectStatus[I]));
 +}
- #ifndef PIANO_UFS_PRODUCT_STORAGE
- #define PIANO_UFS_PRODUCT_STORAGE 0
- #endif
+ #ifdef PIANO_UFS_BLOCKIO
+ #include "PianoReadOnlyBlock.h"
+ #include "PianoUfsShutdown.h"
 @@ -960,6 +973,7 @@ STATIC EFI_STATUS PublishBlocks(VOID) {
    for(UINTN I=0;I<mLunCount;++I) {
      Status=gBS->ConnectController(mBlockHandles[I],NULL,NULL,TRUE);
