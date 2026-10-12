@@ -106,6 +106,14 @@
         "uefi/core/PianoDwc3Device.c": "5ee9fa401640fa5e4bdbd18561bbfe86b096548b7dce2d7c00c96cfe2972be9e"
       },
       "creates": []
+    },
+    {
+      "file": "0013-handoff-status.patch",
+      "summary": "把环扫描的摘录锚到交接的 arm= 与 enter 两行，读出交接后两步状态（诊断）",
+      "targets": {
+        "uefi/core/PianoDwc3Device.c": "5626745383e3825db244876c81bb9ece12a97036dd6adbaa09fb676c1b7b8b44"
+      },
+      "creates": []
     }
   ]
 }

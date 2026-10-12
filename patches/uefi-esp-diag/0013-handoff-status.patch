@@ -1,0 +1,99 @@
+From cb364bd01cec81884a751bd206965c885f48fff9 Mon Sep 17 00:00:00 2001
+From: piano-fedora-test <dev@piano.invalid>
+Date: Tue, 13 Oct 2026 01:42:05 +0800
+Subject: [PATCH] =?UTF-8?q?diag(uefi):=20=E6=91=98=E5=BD=95=E9=94=9A?=
+ =?UTF-8?q?=E5=88=B0=E4=BA=A4=E6=8E=A5=E7=9A=84=20arm=3D=20=E4=B8=8E=20ent?=
+ =?UTF-8?q?er=20=E4=B8=A4=E8=A1=8C?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+上一发读到 find: SUNUEFI_HANDOFF 命中 2 处、Linux version 与 Kernel panic 都是 0，
+text 只截到第一行前半（prepare=Success raw=1）。把关键串换成
+"SUNUEFI_HANDOFF arm=" 与 "SUNUEFI_HANDOFF enter" 两条，摘录改为从 arm= 行开始、
+并由第二次扫描定位 enter 行覆盖掉摘录，这样一次回复里能同时看到交接后两步的状态与
+Enter 之前打印的 kernel/dtb/initrd 地址。
+---
+ uefi/core/PianoDwc3Device.c | 39 ++++++++++++-------------------------
+ 1 file changed, 12 insertions(+), 27 deletions(-)
+
+diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
+index 43a7251..6439e8f 100644
+--- a/uefi/core/PianoDwc3Device.c
++++ b/uefi/core/PianoDwc3Device.c
+@@ -492,16 +492,16 @@ STATIC UINT32 DiagZoneScan(UINT32 *Hits,UINT32 *Words,CHAR8 *Excerpt,UINTN Excer
+  CONST UINTN Want=0x200000;
+  CONST volatile UINT32 *Z=(CONST volatile UINT32 *)(UINTN)0xA3500000;
+  CONST volatile UINT8 *B=(CONST volatile UINT8 *)Z+12;
+- STATIC CONST CHAR8 *Keys[3]={"SUNUEFI_HANDOFF","Linux version","Kernel panic"};
+- for(UINTN I=0;I<3;++I)Hits[I]=0;
++ STATIC CONST CHAR8 *Keys[4]={"SUNUEFI_HANDOFF arm=","SUNUEFI_HANDOFF enter","Linux version","Kernel panic"};
++ for(UINTN I=0;I<4;++I)Hits[I]=0;
+  for(UINTN I=0;I<6;++I)Words[I]=Z[I];
+  for(UINTN I=0;I<ExcerptCap;++I)Excerpt[I]=0;
+  if(mZoneBuffer==NULL){mZoneBuffer=AllocatePool(Want);if(mZoneBuffer==NULL)return 3;}
+  for(UINTN I=0;I<Want;++I)mZoneBuffer[I]=B[I];
+  MemoryFence();
+  UINTN HitAt=Want;
+- for(UINTN I=0;I+17<Want;++I){
+-  for(UINTN K=0;K<3;++K){
++ for(UINTN I=0;I+20<Want;++I){
++  for(UINTN K=0;K<4;++K){
+    UINTN L=AsciiStrLen((CHAR8 *)Keys[K]);
+    if(I+L<Want && !CompareMem(mZoneBuffer+I,Keys[K],L)){++Hits[K];if(HitAt==Want)HitAt=I;}
+   }
+@@ -509,6 +509,13 @@ STATIC UINT32 DiagZoneScan(UINT32 *Hits,UINT32 *Words,CHAR8 *Excerpt,UINTN Excer
+  if(HitAt<Want){
+   UINTN N=0;for(;N+1<ExcerptCap&&HitAt+N<Want;++N){CHAR8 C=(CHAR8)mZoneBuffer[HitAt+N];Excerpt[N]=(C>=0x20&&C<0x7F)?C:'.';}
+   Excerpt[N]=0;
++  // Second excerpt starts at the enter line, so both handoff status lines are read.
++  CONST CHAR8 *Enter="SUNUEFI_HANDOFF enter";UINTN EL=AsciiStrLen((CHAR8 *)Enter);
++  for(UINTN I=0;I+EL<Want;++I)
++   if(!CompareMem(mZoneBuffer+I,Enter,EL)){
++    UINTN M=0;for(;M+1<ExcerptCap&&I+M<Want;++M){CHAR8 C=(CHAR8)mZoneBuffer[I+M];Excerpt[M]=(C>=0x20&&C<0x7F)?C:'.';}
++    Excerpt[M]=0;break;
++   }
+  }
+  return 0;
+ }
+@@ -670,28 +677,6 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+      P=EspHex(P,DiagHandles(&mDiagSfsGuid));
+      *P=0;
+      S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
+-    // INFOprev: <返回> <Linux version 次数> <Kernel panic 次数> <ramoops 次数>
+-    //           <"[    0." 行数> <环写指针>；INFOprev2 摘一段最像内核日志的原文。
+-    {UINT32 Hits[5];CHAR8 Excerpt[49];
+-     UINT32 PrevStatus=DiagPrevLog(Hits,Excerpt,sizeof(Excerpt));
+-     CHAR8 *P=Row;CopyMem(P,"INFOprev:",9);P+=9;P=EspHex(P,PrevStatus);
+-     for(UINTN I=0;I<5;++I)P=EspHex(P,Hits[I]);
+-     *P=0;
+-     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
+-     P=Row;CopyMem(P,"INFOprev2:",10);P+=10;
+-     CopyMem(P,Excerpt,AsciiStrLen(Excerpt));P+=AsciiStrLen(Excerpt);
+-     *P=0;
+-     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
+-    {UINT32 Hits[5];CHAR8 Excerpt[49];
+-     UINT32 PrevStatus=DiagPrevLog(Hits,Excerpt,sizeof(Excerpt));
+-     CHAR8 *P=Row;CopyMem(P,"INFOprev:",9);P+=9;P=EspHex(P,PrevStatus);
+-     for(UINTN I=0;I<5;++I)P=EspHex(P,Hits[I]);
+-     *P=0;
+-     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
+-     P=Row;CopyMem(P,"INFOprev2:",10);P+=10;
+-     CopyMem(P,Excerpt,AsciiStrLen(Excerpt));P+=AsciiStrLen(Excerpt);
+-     *P=0;
+-     S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;}
+     {CHAR8 *P=Row;CopyMem(P,"INFOesp1:",9);P+=9;
+      P=EspHex(P,(UINT32)PianoRawLinuxStableLoadStatus());
+      P=EspHex(P,PianoRawLinuxStableLoadStage());
+@@ -710,7 +695,7 @@ STATIC EFI_STATUS FastbootDiagnostic(VOID *Context,PIANO_FASTBOOT *State,CONST C
+      *P=0;
+      S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
+      P=Row;CopyMem(P,"INFOfind:",9);P+=9;P=EspHex(P,ZoneStatus);
+-     for(UINTN I=0;I<3;++I)P=EspHex(P,Hits[I]);
++     for(UINTN I=0;I<4;++I)P=EspHex(P,Hits[I]);
+      *P=0;
+      S=FastbootSend(NULL,Row,AsciiStrLen(Row));if(EFI_ERROR(S))return S;
+      P=Row;CopyMem(P,"INFOtext:",9);P+=9;
+-- 
+2.54.0
+
