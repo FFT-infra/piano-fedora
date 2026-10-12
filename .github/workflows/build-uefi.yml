@@ -46,7 +46,11 @@ jobs:
           git clone --depth 1 "${{ steps.pins.outputs.sunuefi_url }}" sunuefi-image
           git -C sunuefi-image fetch --depth 1 origin "${{ steps.pins.outputs.sunuefi_commit }}"
           git -C sunuefi-image checkout FETCH_HEAD
-          docker build -t sunuefi-builder -f sunuefi-image/containers/Dockerfile sunuefi-image
+          if ! docker build -t sunuefi-builder -f sunuefi-image/containers/Dockerfile sunuefi-image; then
+            echo "ECR Public hit rate limits, falling back to Docker Hub with identical digest..."
+            sed -i 's|public.ecr.aws/docker/library/debian@|docker.io/library/debian@|' sunuefi-image/containers/Dockerfile
+            docker build -t sunuefi-builder -f sunuefi-image/containers/Dockerfile sunuefi-image
+          fi
 
       - name: Clone SunUEFI at the pinned commit
         run: |
