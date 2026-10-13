@@ -1,0 +1,127 @@
+From dd8f96ab364d43783ee32452ac875cfd61ca7db3 Mon Sep 17 00:00:00 2001
+From: piano-fedora-test <dev@piano.invalid>
+Date: Tue, 13 Oct 2026 16:50:59 +0800
+Subject: [PATCH] linux: adopt the live memory map from the inherited FDT
+
+The payload boot.img carries a device tree whose /memory was frozen when
+that image was built. Which DRAM banks exist, and how they interleave, is
+a property of this boot's bootloader (ABL): it differs per capacity and
+per firmware build. The frozen map here was taken from a 16 GB unit, so
+on this 24 GB unit it advertises 15.340 GiB while the device really has
+23.273 GiB - and four of its ranges (68 MiB) point at addresses that do
+not exist, which is why the strict interval audit rejects it.
+
+Before handing the tree to Linux, copy /memory reg and ddr_size, plus the
+value-only /ddr-regions properties, from the inherited FDT the product
+already validated (Owners.Config.Fdt). The live description is captured
+before this function's own kernel/initrd/tree copies reuse that RAM, and
+anything absent, unreadable or implausible is refused with a logged
+reason, leaving the payload map in place.
+---
+ uefi/core/PianoRawLinuxBoot.c | 72 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 72 insertions(+)
+
+diff --git a/uefi/core/PianoRawLinuxBoot.c b/uefi/core/PianoRawLinuxBoot.c
+index 3af5532..78a4b9c 100644
+--- a/uefi/core/PianoRawLinuxBoot.c
++++ b/uefi/core/PianoRawLinuxBoot.c
+@@ -19,6 +19,9 @@
+ #define RAW_INITRD 0xB0200000ULL
+ #define RAW_INITRD_MAX 0x1000000U
+ #define RAW_DTB_MAX 0x200000U
++#define RAW_MEMORY_REG_MAX 1024U
++#define RAW_DDR_REGIONS 4U
++#define RAW_DDR_REGION_MAX 64U
+ typedef struct {
+   EFI_HANDLE Image;EFI_SYSTEM_TABLE *SystemTable;EFI_LOADED_IMAGE_PROTOCOL *Identity,Loaded;
+   BOOLEAN Registered,InTake,Captured,Prepared,Entered;
+@@ -182,6 +185,73 @@ STATIC BOOLEAN Destination(UINT64 A,UINT64 N){
+  return FALSE;
+ }
+ STATIC BOOLEAN Hash(CONST VOID *P,UINTN N,UINT8 Out[32]){return Sha256HashAll(P,N,Out);}
++// The payload's DTB carries a /memory frozen when that image was built; which
++// banks exist and how they interleave is a property of this boot's bootloader
++// (ABL), per capacity and firmware build. A stale map hands Linux RAM that the
++// device does not have. Capture the live description from the validated
++// inherited FDT before our own copies reuse that RAM, then apply it to the tree
++// handed over. Absent, unreadable or implausible input stays refused and
++// logged, and the payload map then keeps its place: never guess memory here.
++typedef struct {
++  BOOLEAN Present;UINT64 Total;UINT32 Banks,RegBytes,DdrBytes;
++  UINT8 Reg[RAW_MEMORY_REG_MAX],Ddr[4];
++  UINT32 RegionBytes[RAW_DDR_REGIONS];UINT8 Regions[RAW_DDR_REGIONS][RAW_DDR_REGION_MAX];
++} LIVE_MEMORY;
++STATIC CONST CHAR8 *CONST mDdrRegionNames[RAW_DDR_REGIONS]={"region0","region1","region2","region3"};
++// Big-endian #address-cells/#size-cells pairs; zero-length entries are the
++// placeholders the vendor DT keeps and contribute nothing.
++STATIC UINT64 RegTotal(CONST UINT8 *Reg,INT32 Bytes,UINT32 *Banks){
++  UINT64 Total=0;UINT32 Count=0;
++  if(Reg==NULL||Bytes<16||(Bytes%16))return 0;
++  for(INT32 At=0;At<Bytes;At+=16){
++    UINT64 Base=SwapBytes64(ReadUnaligned64((CONST UINT64 *)(Reg+At)));
++    UINT64 Size=SwapBytes64(ReadUnaligned64((CONST UINT64 *)(Reg+At+8)));
++    if(!Size)continue;
++    if(Base>MAX_UINT64-Size)return 0;
++    Total+=Size;++Count;
++  }
++  if(Banks)*Banks=Count;
++  return Total;
++}
++STATIC VOID CaptureLiveMemory(LIVE_MEMORY *Out,CONST VOID *Inherited){
++  ZeroMem(Out,sizeof(*Out));
++  if(Inherited==NULL||FdtCheckHeader(Inherited)||FdtTotalSize(Inherited)>RAW_DTB_MAX){
++    DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_MEMORY inherited=absent\n"));return;}
++  INT32 Node=FdtPathOffset((VOID *)(UINTN)Inherited,"/memory");
++  if(Node<0){DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_MEMORY inherited=no-memory-node\n"));return;}
++  INT32 Len=0;CONST UINT8 *Reg=FdtGetProp((VOID *)(UINTN)Inherited,Node,"reg",&Len);
++  UINT32 Banks=0;UINT64 Total=RegTotal(Reg,Len,&Banks);
++  if(!Banks||Len>(INT32)RAW_MEMORY_REG_MAX||Total<(1ULL<<28)||Total>(1ULL<<40)){
++    DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_MEMORY inherited=implausible bytes=%d total=%lu\n",Len,Total));return;}
++  CopyMem(Out->Reg,Reg,(UINTN)Len);Out->RegBytes=(UINT32)Len;Out->Total=Total;Out->Banks=Banks;
++  Len=0;CONST UINT8 *Ddr=FdtGetProp((VOID *)(UINTN)Inherited,Node,"ddr_size",&Len);
++  if(Ddr!=NULL&&Len==4){CopyMem(Out->Ddr,Ddr,4);Out->DdrBytes=4;}
++  INT32 Source=FdtPathOffset((VOID *)(UINTN)Inherited,"/ddr-regions");
++  if(Source>=0)for(UINTN I=0;I<RAW_DDR_REGIONS;++I){
++    Len=0;CONST UINT8 *Region=FdtGetProp((VOID *)(UINTN)Inherited,Source,mDdrRegionNames[I],&Len);
++    if(Region!=NULL&&Len>0&&Len<=(INT32)RAW_DDR_REGION_MAX){CopyMem(Out->Regions[I],Region,(UINTN)Len);Out->RegionBytes[I]=(UINT32)Len;}
++  }
++  Out->Present=TRUE;
++  DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_MEMORY captured=1 total=%lu banks=%u bytes=%u\n",Total,Banks,Out->RegBytes));
++}
++STATIC EFI_STATUS ApplyLiveMemory(VOID *Tree,CONST LIVE_MEMORY *In){
++  if(!In->Present)return EFI_SUCCESS;
++  INT32 Node=FdtPathOffset(Tree,"/memory");if(Node<0)return EFI_COMPROMISED_DATA;
++  INT32 Len=0;CONST UINT8 *Was=FdtGetProp(Tree,Node,"reg",&Len);UINT64 Before=RegTotal(Was,Len,NULL);
++  if(FdtSetProp(Tree,Node,"reg",In->Reg,In->RegBytes))return EFI_COMPROMISED_DATA;
++  if(In->DdrBytes&&FdtSetProp(Tree,Node,"ddr_size",In->Ddr,In->DdrBytes))return EFI_COMPROMISED_DATA;
++  INT32 Regions=FdtPathOffset(Tree,"/ddr-regions");
++  // Values only, never the shape: a target property of another length is kept
++  // and reported rather than rewritten into something this boot never audited.
++  if(Regions>=0)for(UINTN I=0;I<RAW_DDR_REGIONS;++I){
++    if(!In->RegionBytes[I])continue;Len=0;
++    if(FdtGetProp(Tree,Regions,mDdrRegionNames[I],&Len)==NULL||Len<0||(UINT32)Len!=In->RegionBytes[I]){
++      DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_MEMORY region=%a shape=kept\n",mDdrRegionNames[I]));continue;}
++    if(FdtSetProp(Tree,Regions,mDdrRegionNames[I],In->Regions[I],In->RegionBytes[I]))return EFI_COMPROMISED_DATA;
++  }
++  DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_MEMORY adopted=1 was=%lu now=%lu banks=%u\n",Before,In->Total,In->Banks));
++  return EFI_SUCCESS;
++}
+ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST PIANO_RAW_LINUX_REPORT **Out){
+  if(!Out)return EFI_INVALID_PARAMETER;*Out=NULL;
+  if(!mRaw.Captured||mRaw.Prepared||Image!=mRaw.Image||!Live()||!SameImage()||!Clean(O))return EFI_ACCESS_DENIED;
+@@ -205,10 +275,12 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST P
+  PIANO_RAW_LINUX_REPORT R={.Revision=1,.Epoch=1,.Kernel=Address,.KernelBytes=P->Kernel.Bytes,.KernelSpan=Span,
+  .Dtb=RAW_DTB,.Initrd=RAW_INITRD,.InitrdBytes=P->Ramdisk.Bytes,.Image=Image,.Identity=mRaw.Identity,.Token=mRaw.Token};
+  if(!Hash(Kernel,(UINTN)P->Kernel.Bytes,R.KernelSha)||!Hash(Bytes+P->Ramdisk.Offset,(UINTN)P->Ramdisk.Bytes,R.InitrdSha))return EFI_DEVICE_ERROR;
++ LIVE_MEMORY Live;CaptureLiveMemory(&Live,O->Config.Fdt);
+  CopyMem((VOID *)(UINTN)Address,Kernel,(UINTN)P->Kernel.Bytes);
+  if(Span>P->Kernel.Bytes)ZeroMem((VOID *)(UINTN)(Address+P->Kernel.Bytes),(UINTN)(Span-P->Kernel.Bytes));
+  CopyMem((VOID *)(UINTN)RAW_INITRD,Bytes+P->Ramdisk.Offset,(UINTN)P->Ramdisk.Bytes);
+  VOID *Tree=(VOID *)(UINTN)RAW_DTB;if(FdtOpenInto(InputDtb,Tree,(INT32)Capacity))return EFI_COMPROMISED_DATA;
++ E=ApplyLiveMemory(Tree,&Live);if(E!=EFI_SUCCESS)return E;
+  E=PianoPanelSelectDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
+  INT32 Chosen=FdtPathOffset(Tree,"/chosen");if(Chosen<0)return EFI_COMPROMISED_DATA;
+  UINT64 Start=SwapBytes64(RAW_INITRD),End=SwapBytes64(RAW_INITRD+P->Ramdisk.Bytes);
+-- 
+2.54.0
+
