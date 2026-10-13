@@ -23,6 +23,8 @@ permissions:
 
 jobs:
   kernel:
+    # 指定实验 run 时只跑实验档；正式档与实验档不同时构建，避免白跑一遍长构建。
+    if: inputs.experimental_kernel_run_id == ''
     # 原生 arm64：内核交叉编译在 x86 上也能做，但原生更快，且与上游一致。
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 300
