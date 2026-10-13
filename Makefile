@@ -2,6 +2,7 @@
 
 test:
 	python3 tests/check_sources.py
+	python3 tests/check_upstreams.py
 	python3 tests/check_artifact_run.py
 	python3 tests/check_product.py
 	python3 tests/check_links.py
@@ -17,6 +18,8 @@ test:
 	python3 tests/check_update_memory.py
 	python3 tests/check_esp_image.py
 	python3 tests/check_patches.py
+	python3 tests/check_fedora_kernel.py
+	python3 tests/check_fastrpc_runtime.py
 	python3 tests/check_initramfs.py
 	python3 tests/check_bootstrap_contract.py
 	python3 tests/check_boot_evidence.py

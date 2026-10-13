@@ -10,6 +10,11 @@ Fedora 44/GNOME、A830v1 Mesa、F2FS/SELinux 内核与完整主机构建包已�
 
 已有 Linux/ESP 分区使用[更新入口](docs/installation.md)，不执行首次分区 apply。上游更新与实际构建来源见[同步说明](docs/upstream-sync.md)。
 
+相关上游的去重索引见 [upstreams.json](docs/upstreams.json)，包含构建消费源、同设备
+移植、厂商驱动与虚拟化参考；当前提交通过 `python3 scripts/audit-upstreams.py
+--execute` 重新核验，结果写入 `build/`，不会自动更换构建 pin。
+VM 的两条公开实现与未完成门槛见[虚拟化记录](docs/virtualization.md)。
+
 ## 用法
 
 ```sh

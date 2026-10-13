@@ -2,6 +2,36 @@
 
 构建来源由 sources.lock.json 固定。上游 main 的进展用于审阅；更新文档不改变已构建镜像的来源，也不使旧二进制自动获得新实现。
 
+## 2026-10-13 晚间复核与 Fedora 缺口
+
+去重研究索引扩为 [88 个仓库](upstreams.json)，补入 code002-2 的 piano-linux、
+librevm、视频加速、调度器与 UEFI fork，以及真正消费的 Qualcomm FastRPC。
+本轮对每个所选 ref 执行 GitHub API 查询：最终 88 项中 85 个取得完整提交号；CrabApple、
+llfzs/8pro、runesign/mipad-6s-pro-linux 返回 404，记为未核验，不推断不存在
+其他公开替代。命令为 `python3 scripts/audit-upstreams.py --execute`，逐仓库
+证据在本机 `build/upstream-audit-20261013-expanded.json`，不把生成输出当源码提交。
+后续补入完整 Gunyah 源码镜像、GGLK 客体内核与 S25 Ultra 客体运行记录，
+再次全量核验；它们仍为研究入口，不自动成为本机构建输入。
+
+SunUEFI main 仍为 `1b0e201e3e7fb0737d73c41624a855482a4df7c5`，没有新增启动
+核心修复；消费 pin 仍为 `17537522`。fedora-sheng 的差异仍为 Denial 打包，
+其余原有消费上游与固定提交一致。新增 FastRPC 消费源固定 v1.0.8 的
+`d247519650fe5cb16de6c78edaa95bcc4be25073`，仅构建 Fedora RPM 没有安装的
+adsprpcd 守护进程，继续使用 Fedora 提供的 listener 共享库。
+
+当前真机 `nft list ruleset` 报 Netlink Protocol not supported，配置也没有
+NF_TABLES。新增 `0005-fedora-nftables.patch` 将 18 项配置纳入完整 Fedora
+策略；对固定 piano 内核执行原生 olddefconfig 后，这 18 项全部保留。
+这不是已运行内核的能力，仍需新 Image/模块/运行时重新构建与设备验收。
+
+相机本次启动被临时配置禁用，移除该配置后既有 oneshot 仍保持已完成状态。
+重启上游相机服务后，CAMSS 与前后传感器绑定，前后 loopback 节点各完成三帧
+GStreamer 读取。尚未验证 GNOME 相机界面与冷启动，不把节点存在视为完整通过。
+
+补装 adsprpcd 后服务稳定运行、重启计数为 0，SSC registry 可响应；但 accel
+仍未枚举，iio-sensor-proxy 仍退出，传感器功能尚未修复完成。
+VM 源码与配套 QEMU 的重新核验见[虚拟化记录](virtualization.md)。
+
 ## 2026-10-13 核对（含补丁去重评估）
 
 `git fetch` 后逐个比对八个消费上游：
