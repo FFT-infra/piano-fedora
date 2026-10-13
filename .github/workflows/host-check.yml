@@ -39,15 +39,16 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq podman
       - name: Prepare the pinned source for real staging and patch checks
-        run: python3 scripts/checkout-sources.py --output build/test-sources --mode check
+        run: python3 scripts/checkout-sources.py --output build/test-sources --mode boot
       - name: Run all checks with the actual Fedora bootstrap tools
         run: |
           sudo podman run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
             --env PIANO_TEST_SUNUEFI=/workspace/build/test-sources/sunuefi \
             registry.fedoraproject.org/fedora:44 bash -euo pipefail -c '
-              dnf -y install busybox binutils util-linux shadow-utils libxcrypt make git python3 gcc
+              dnf -y install busybox binutils util-linux shadow-utils libxcrypt make git python3 gcc patch
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory /workspace/build/test-sources/sunuefi
+              git config --global --add safe.directory /workspace/build/test-sources/sunuefi/upstream/debian-piano-current
               make test
             '
       - name: Verify no device-write commands in workflows

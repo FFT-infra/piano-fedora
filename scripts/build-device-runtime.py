@@ -14,6 +14,10 @@ from pathlib import Path
 
 from piano_artifacts import inspect_kernel, sha256
 
+# SunUEFI 17537522 includes the static camera helper's local-video-group fix.
+# Reversing that one upstream patch reproduces the previous 1b5f1eee input.
+CAMERAD_ADAPTER_INPUT_SHA256 = "e5cfcb2a71834a9031e730e258d4035c45670d340994e700b44ff79d89b2f7ba"
+
 
 def run(command, **kw):
     subprocess.run([str(x) for x in command], check=True, **kw)
@@ -102,6 +106,17 @@ def build_fastrpc_daemon(source, payload, build):
             "binary_sha256": sha256(executable), "listener": "libadsp_default_listener.so.1"}
 
 
+def adapt_camerad_for_fedora(camera, proof):
+    """只向已核对的上游适配输出应用 GCC 修复，保持输入摘要门槛。"""
+    if (proof.get("effective_source_sha256") != CAMERAD_ADAPTER_INPUT_SHA256
+            or sha256(camera) != CAMERAD_ADAPTER_INPUT_SHA256):
+        raise ValueError("camera adapter input changed; review the GCC patch")
+    gcc_patch = Path(__file__).resolve().parents[1] / "patches/runtime/camerad-gcc-bounds.patch"
+    run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", gcc_patch], cwd=camera.parent.parent)
+    proof["fedora_patch_sha256"] = sha256(gcc_patch)
+    proof["fedora_effective_source_sha256"] = sha256(camera)
+
+
 def build_sensors(sun, output):
     """取固定源码而非 Debian 二进制，在 Fedora 库 ABI 上构建。"""
     sensor = output / "sensor-source"
@@ -161,12 +176,7 @@ def build(args):
     flags = [compiler, "-O2", "-Wall", "-Wextra", "-Werror"]
     touch, touch_proof = runtime.derive_touch_source(public, build)
     camera, camera_proof = runtime.derive_camerad_source(public, build)
-    if camera_proof['effective_source_sha256'] != '1b5f1eee73d4cad6d91791c4d384b53f15b96518d15d75b2e446f02309982eb2':
-        raise ValueError('camera adapter input changed; review the GCC patch')
-    gcc_patch = Path(__file__).resolve().parents[1] / 'patches/runtime/camerad-gcc-bounds.patch'
-    run(['patch', '--batch', '--forward', '--fuzz=0', '-p1', '-i', gcc_patch], cwd=camera.parent.parent)
-    camera_proof['fedora_patch_sha256'] = sha256(gcc_patch)
-    camera_proof['fedora_effective_source_sha256'] = sha256(camera)
+    adapt_camerad_for_fedora(camera, camera_proof)
     pen_files, pen_proof = runtime.build_pen_core(build, flags)
     helpers = dict(pen_files)
     for name, (relative, pin, destination) in (runtime.PUBLIC_SOURCES | runtime.BSP_SOURCES).items():
