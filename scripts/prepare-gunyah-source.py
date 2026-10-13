@@ -120,6 +120,24 @@ def fix_remove(text):
     return text.replace(".remove_new", ".remove")
 
 
+def fix_folio_index(text):
+    """7.2 已删除 folio_index()：改用 folio->index。
+
+    厂商 6.6 版本靠 folio_index() 处理 hugetlb 的索引换算，这条借出路径取的是
+    用户普通页，设备也没有预留 hugepage，按 7.2 内核自己用的 folio->index 改写。
+    """
+    if text.count("folio_index(folio)") != 2:
+        raise ValueError("vm_mgr.h must contain exactly two folio_index(folio)")
+    return text.replace("folio_index(folio)", "folio->index")
+
+
+def fix_of_node_to_fwnode(text):
+    """7.2 用 of_fwnode_handle() 取代了 of_node_to_fwnode()。"""
+    if text.count("of_node_to_fwnode(") != 1:
+        raise ValueError("rsc_mgr.c must contain exactly one of_node_to_fwnode")
+    return text.replace("of_node_to_fwnode(", "of_fwnode_handle(")
+
+
 def transformed(path, data):
     if path == "drivers/virt/gunyah/Kconfig":
         return common_kconfig(data.decode()).encode()
@@ -128,7 +146,9 @@ def transformed(path, data):
     if path == "arch/arm64/gunyah/Makefile":
         return arch_makefile(data.decode()).encode()
     if path == "drivers/virt/gunyah/rsc_mgr.c":
-        return fix_remove(data.decode()).encode()
+        return fix_of_node_to_fwnode(fix_remove(data.decode())).encode()
+    if path == "drivers/virt/gunyah/vm_mgr.h":
+        return fix_folio_index(data.decode()).encode()
     return data
 
 

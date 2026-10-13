@@ -46,9 +46,17 @@ VENDOR_FILES = {
         "obj-$(CONFIG_GH_ARM64_DRV)\t += gh_arm_drv.o\n"
         "obj-$(CONFIG_GUNYAH) += gunyah_hypercall.o\n"
     ),
-    "drivers/virt/gunyah/rsc_mgr.c": "static void f(void)\n{\n\t.remove_new = g,\n}\n",
+    "drivers/virt/gunyah/rsc_mgr.c": (
+        "static void f(void)\n{\n\t.remove_new = g,\n}\n"
+        "static void h(void)\n{\n\tx = of_node_to_fwnode(y);\n}\n"
+    ),
+    "drivers/virt/gunyah/vm_mgr.h": (
+        "/* fixture vm_mgr.h */\n"
+        "vma_interval_tree_foreach(v, &mapping->i_mmap, folio_index(folio),\n"
+        "                          folio_index(folio) + folio_nr_pages(folio)) {\n"
+    ),
 }
-for _name in ("gunyah.c", "rsc_mgr.h", "rsc_mgr_rpc.c", "vm_mgr.c", "vm_mgr.h",
+for _name in ("gunyah.c", "rsc_mgr.h", "rsc_mgr_rpc.c", "vm_mgr.c",
               "vm_mgr_mem.c", "gunyah_platform_hooks.c", "gunyah_qcom.c",
               "gunyah_vcpu.c", "gunyah_irqfd.c", "gunyah_ioeventfd.c"):
     VENDOR_FILES["drivers/virt/gunyah/" + _name] = "/* fixture " + _name + " */\n"
@@ -135,7 +143,7 @@ def main():
         before_source = {p: (source / p).read_bytes() for p in INTEGRATION_FILES}
         before_vendor = {p: (vendor / p).read_bytes() for p in VENDOR_FILES}
 
-        # 纯函数：Kconfig/Makefile 段裁剪与 .remove_new 改写。
+        # 纯函数：Kconfig/Makefile 段裁剪与 6.6→7.2 的四处 API 改写。
         kc = prep.common_kconfig(VENDOR_FILES["drivers/virt/gunyah/Kconfig"])
         check("menuconfig GUNYAH_DRIVERS" not in kc and "GH_VIRT_WATCHDOG" not in kc
               and "config GUNYAH\n" in kc, "Kconfig common 段裁剪错误", failures)
@@ -147,6 +155,14 @@ def main():
         check(prep.fix_remove("a\n.remove_new = g,\n").count(".remove = g,") == 1,
               ".remove_new 改写错误", failures)
         expect_failure(lambda: prep.fix_remove("no marker"), "重复/缺失 .remove_new 未被拒绝", failures)
+        check(prep.fix_folio_index("a folio_index(folio) b folio_index(folio) c")
+              == "a folio->index b folio->index c", "folio_index 改写错误", failures)
+        expect_failure(lambda: prep.fix_folio_index("folio_index(folio)"),
+                       "重复/缺失 folio_index 未被拒绝", failures)
+        check(prep.fix_of_node_to_fwnode("x = of_node_to_fwnode(y);")
+              == "x = of_fwnode_handle(y);", "of_node_to_fwnode 改写错误", failures)
+        expect_failure(lambda: prep.fix_of_node_to_fwnode("nothing here"),
+                       "重复/缺失 of_node_to_fwnode 未被拒绝", failures)
 
         # 默认 plan 零写入。
         out1 = project / "build" / "kernel-worktrees" / "gunyah-a"
@@ -175,6 +191,10 @@ def main():
             "obj-$(CONFIG_GUNYAH) += gunyah/\n"), "arch/arm64/Kbuild 未接入", failures)
         check(".remove_new" not in (out1 / "drivers/virt/gunyah/rsc_mgr.c").read_text(),
               "rsc_mgr.c .remove_new 未改写", failures)
+        check("of_node_to_fwnode" not in (out1 / "drivers/virt/gunyah/rsc_mgr.c").read_text(),
+              "rsc_mgr.c of_node_to_fwnode 未改写", failures)
+        check("folio_index" not in (out1 / "drivers/virt/gunyah/vm_mgr.h").read_text(),
+              "vm_mgr.h folio_index 未改写", failures)
 
         # manifest 落在输出旁边、不进内核 git 树。
         mpath = Path(r1["manifest_path"]) if isinstance(r1, dict) else Path(plan["manifest_path"])
