@@ -19,6 +19,7 @@ test:
 	python3 tests/check_esp_image.py
 	python3 tests/check_patches.py
 	python3 tests/check_fedora_kernel.py
+	python3 tests/check_gunyah_source.py
 	python3 tests/check_fastrpc_runtime.py
 	python3 tests/check_camerad_adapter.py
 	python3 tests/check_initramfs.py

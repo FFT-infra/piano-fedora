@@ -13,6 +13,10 @@ on:
         description: "SunUEFI ref（留空则用 sources.lock.json 的 commit）"
         required: false
         default: ""
+      experimental_kernel_run_id:
+        description: "实验 Gunyah 内核：复用哪次成功的内核 run 作为封存输入；留空则只构建正式档"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -172,3 +176,98 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+  # 实验档：把官方厂商内核里的 Gunyah VMM 子集导入我们内核源码的独立派生树，
+  # 用显式的 --experimental-gunyah 配置单独构建一份。正式内核与其 pin 不受影响；
+  # 派生树是新 worktree 的 detached HEAD，输入 checkout 不被修改。
+  # 需要一次成功的内核 run 作为封存输入（--kernel 要的是已构建产物）。
+  gunyah-kernel:
+    if: inputs.experimental_kernel_run_id != ''
+    needs: kernel
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the sealed kernel inputs from the selected run
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-release-7.2.9
+          run-id: ${{ inputs.experimental_kernel_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: sealed
+
+      - name: Install tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zstd
+
+      - name: Clone SunUEFI at the pinned commit and apply project patches
+        run: |
+          set -euo pipefail
+          python3 scripts/checkout-sources.py --mode check --output build/sources
+          python3 scripts/apply-patches.py --sunuefi build/sources/sunuefi
+
+      - name: Fetch the pinned vendor kernel for the Gunyah subset
+        run: python3 scripts/checkout-sources.py --mode gunyah --kernel --output build/sources
+
+      - name: Prepare the release kernel source
+        working-directory: build/sources/sunuefi
+        run: python3 tools/prepare_release_kernel.py --refresh
+
+      - name: Derive the Gunyah experiment worktree
+        run: |
+          set -euo pipefail
+          mkdir -p sealed/artifacts
+          tar -I zstd -xf sealed/kernel-release-7.2.9.tar.zst -C sealed/artifacts
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          record = json.loads((Path('build/sources/sunuefi/build/release-7.2.9/source-manifest.json')).read_text())
+          subprocess.run([
+              'python3', 'scripts/prepare-gunyah-source.py',
+              '--kernel', 'sealed/artifacts',
+              '--kernel-source', record['worktree'],
+              '--vendor', 'build/sources/piano-vendor-kernel',
+              '--output', 'build/kernel-worktrees/gunyah-experiment', '--execute',
+          ], check=True)
+          PY
+
+      - name: Build the experimental Gunyah kernel
+        working-directory: build/sources/sunuefi
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          workspace = Path(os.environ['GITHUB_WORKSPACE'])
+          manifest = json.loads((workspace / 'build/kernel-worktrees/gunyah-experiment.manifest.json').read_text())
+          assert manifest['status'] == 'PREPARED_NOT_BUILT_NOT_DEVICE_VERIFIED', manifest['status']
+          subprocess.run([
+              'python3', 'tools/build_piano_full_kernel.py',
+              '--worktree', str(workspace / 'build/kernel-worktrees/gunyah-experiment'),
+              '--commit', manifest['derived']['commit'],
+              '--root', 'LABEL=PIANOROOT', '--root-fstype', 'f2fs',
+              '--fedora-policy', '--experimental-gunyah',
+              '--rebuild',
+              '--build-dir', 'build/kernels/experimental-gunyah',
+              '--artifacts', 'artifacts/kernels/experimental-gunyah',
+          ], check=True)
+          PY
+
+      - name: Package the experimental kernel
+        working-directory: build/sources/sunuefi
+        run: |
+          set -euo pipefail
+          tar -I 'zstd -10 -T0' -cf "$GITHUB_WORKSPACE/kernel-experimental-gunyah.tar.zst" \
+            -C artifacts/kernels/experimental-gunyah .
+          cp "$GITHUB_WORKSPACE/build/kernel-worktrees/gunyah-experiment.manifest.json" \
+             "$GITHUB_WORKSPACE/kernel-experimental-gunyah-source.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kernel-experimental-gunyah
+          path: |
+            kernel-experimental-gunyah.tar.zst
+            kernel-experimental-gunyah-source.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 1
