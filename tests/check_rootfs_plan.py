@@ -47,6 +47,15 @@ def main():
         check(data["device_tested"] is False, "plan must not claim device testing")
         check(len(data["packages"]) > 10, "plan should list packages")
 
+        # 这两个子包谁都拉不进来，必须显式列出，否则真机上桌面起不来：
+        #   dbus-daemon 提供 /usr/bin/dbus-daemon，GDM 用它起会话总线；
+        #   systemd-pam 提供 pam_systemd.so，logind 靠它注册会话。
+        # 实测（Fedora 44 aarch64）：install_weak_deps 开或关，解析这份包集合都得不到
+        # dbus-daemon；关掉弱依赖时 systemd-pam 也被丢掉。
+        for required in ("dbus-daemon", "systemd-pam"):
+            check(required in data["packages"],
+                  f"{required} must be listed explicitly; no dependency pulls it in")
+
     # 非数字版本：拒绝。
     check(run("--plan", "--releasever", "rawhide").returncode == 2, "rawhide should be rejected")
 
