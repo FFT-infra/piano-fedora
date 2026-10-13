@@ -211,8 +211,17 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: sealed
 
-      - name: Install tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq zstd
+      - name: Install kernel build tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            clang lld llvm make bison flex bc \
+            libssl-dev libelf-dev cpio zstd xz-utils \
+            python3 python3-venv git rsync ccache device-tree-compiler kmod
+          for tool in clang ld.lld llvm-ar llvm-nm llvm-objcopy llvm-strip make bison flex bc; do
+            printf '%-14s %s\n' "$tool" "$(command -v "$tool" || echo MISSING)"
+          done
 
       - name: Clone SunUEFI at the pinned commit
         run: |
