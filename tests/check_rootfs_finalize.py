@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -252,6 +253,34 @@ def main():
 def check_piano_hardware_fixes(root):
     """真机修复必须成套出现：脚本可执行、单元被启用、模块随镜像走。"""
     staged = finalizer.stage_piano_hardware_fixes(root)
+    clock_stamp = root / "var/lib/piano-clock/last"
+    assert clock_stamp.is_file(), "fresh image has no usable offline clock floor"
+    seed = int(clock_stamp.read_text().strip())
+    assert seed > 1735689600, "build clock floor is not a usable date"
+    # 实际执行镜像中的 restore 脚本；只将绝对状态路径改到 fixture，并隔离 date/logger。
+    fake_bin = root / "clock-fixture-bin"
+    fake_bin.mkdir()
+    date = fake_bin / "date"
+    date.write_text('#!/bin/sh\ncase "$*" in\n'
+                    '  "-u +%s") printf "%s\\n" "$PIANO_FIXTURE_NOW" ;;\n'
+                    '  -u\\ -s\\ @*) printf "%s\\n" "$3" > "$PIANO_FIXTURE_SET" ;;\n'
+                    '  *) printf "fixture time\\n" ;;\nesac\n')
+    date.chmod(0o755)
+    logger = fake_bin / "logger"
+    logger.write_text("#!/bin/sh\nexit 0\n")
+    logger.chmod(0o755)
+    script = root / "clock-fixture-restore"
+    script.write_text((root / "usr/libexec/piano-clock-restore").read_text().replace(
+        "STAMP=/var/lib/piano-clock/last", "STAMP=" + shlex.quote(str(clock_stamp))))
+    capture = root / "clock-fixture-set"
+    environment = {**os.environ, "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"],
+                   "PIANO_FIXTURE_NOW": "0", "PIANO_FIXTURE_SET": str(capture)}
+    subprocess.run(["/bin/sh", script], env=environment, check=True, capture_output=True)
+    assert capture.read_text().strip() == "@" + str(seed), "offline 1970 boot was not corrected"
+    capture.unlink()
+    subprocess.run(["/bin/sh", script], env={**environment, "PIANO_FIXTURE_NOW": str(seed + 3600)},
+                   check=True, capture_output=True)
+    assert not capture.exists(), "a sane running clock was overwritten"
     expected = {
         "usr/libexec/piano-clock-restore",
         "usr/libexec/piano-clock-save",

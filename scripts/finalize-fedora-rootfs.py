@@ -7,6 +7,7 @@ import os
 import posixpath
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from piano_artifacts import guest_resolve, inspect_kernel, safe_destination, safe_relative, sha256
@@ -279,6 +280,25 @@ lock-enabled=false
 """
 
 
+def seed_clock_floor(root):
+    """新镜像离线启动也有时间下限；保留已存在的有效保存时间。"""
+    name = "var/lib/piano-clock/last"
+    stamp = safe_destination(root, name)
+    if stamp.exists():
+        saved = stamp.read_text().strip()
+        if not saved.isascii() or not saved.isdigit() or int(saved) <= 1735689600:
+            raise ValueError("existing Piano clock floor is invalid")
+        return name
+    epoch = int(time.time())
+    if epoch <= 1735689600:
+        raise ValueError("builder clock is too old to seed the offline clock floor")
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    with stamp.open("x") as output:
+        output.write(str(epoch) + "\n")
+    stamp.chmod(0o644)
+    return name
+
+
 def stage_piano_hardware_fixes(root):
     """真机验证过的平台修复：时钟兜底、SELinux 策略、电源键与会话默认。"""
     scripts = {
@@ -307,7 +327,7 @@ def stage_piano_hardware_fixes(root):
     module = safe_destination(root, "usr/share/piano/selinux/piano_hardware.pp")
     module.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "rootfs/selinux/piano_hardware.pp", module)
-    return sorted([*files, "usr/share/piano/selinux/piano_hardware.pp"])
+    return sorted([*files, "usr/share/piano/selinux/piano_hardware.pp", seed_clock_floor(root)])
 
 
 def verify_fastrpc_daemon(root, runtime_meta):
