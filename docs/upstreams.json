@@ -462,9 +462,8 @@
       "ref": "piano-w-oss",
       "category": "官方内核",
       "role": "官方内核",
-      "decision": "consume",
-      "reason": "仅独立 Gunyah 实验构建消费官方宿主驱动；正式内核不自动替换",
-      "lock_key": "piano-vendor-kernel"
+      "decision": "reference",
+      "reason": "保留为研究来源；Gunyah 实验构建改用已适配主线 7.2 的上游驱动分支"
     },
     {
       "repo": "mumuxiao722/fedora-sheng",
@@ -716,6 +715,15 @@
       "role": "`blu-sharky/linux-piano` 的 fork，★3",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+    },
+    {
+      "repo": "SuperTurtleDev/iceland-mainline-kernel-linux",
+      "ref": "pr/gunyah",
+      "category": "Gunyah 驱动",
+      "role": "从 android17-6.18 导入并适配主线 7.2 的完整 /dev/gunyah 驱动，含 gh_vmtest 冒烟测试",
+      "decision": "consume",
+      "reason": "独立 Gunyah 实验内核的驱动来源；正式 Fedora 内核不自动导入",
+      "lock_key": "gunyah-driver"
     }
   ]
 }

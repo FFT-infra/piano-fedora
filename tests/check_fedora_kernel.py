@@ -67,9 +67,11 @@ def main():
     assert len(branches) == 1 and any(isinstance(node, ast.Name) and node.id == "FEDORA_OVERRIDES"
                                     for node in ast.walk(branches[0])), "main does not consume Fedora policy"
     gunyah = namespace["GUNYAH_OVERRIDES"]
-    assert gunyah == {"CONFIG_GUNYAH": "y", "CONFIG_GUNYAH_PLATFORM_HOOKS": "y",
-                      "CONFIG_GUNYAH_QCOM_PLATFORM": "y", "CONFIG_GUNYAH_IRQFD": "y",
-                      "CONFIG_GUNYAH_IOEVENTFD": "y"}, "experimental VM profile changed"
+    assert gunyah == {"CONFIG_GUNYAH": "y", "CONFIG_GUNYAH_HYPERCALLS": "y",
+                      "CONFIG_GUNYAH_TIMER": "y", "CONFIG_GUNYAH_PLATFORM_HOOKS": "y",
+                      "CONFIG_GUNYAH_QCOM_PLATFORM": "y", "CONFIG_GUNYAH_QCOM_TRUSTED_VM": "y",
+                      "CONFIG_GUNYAH_IRQFD": "y", "CONFIG_GUNYAH_IOEVENTFD": "y"}, \
+        "experimental VM profile changed"
     assert validate(gunyah) == gunyah
     for symbol in gunyah:
         partial = dict(gunyah)

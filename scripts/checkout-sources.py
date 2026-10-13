@@ -78,11 +78,14 @@ def main():
         fastrpc = lock["fastrpc"]
         checkout(fastrpc["url"], fastrpc["commit"], output / "fastrpc")
     if args.mode == "gunyah":
-        vendor = lock["piano-vendor-kernel"]
-        checkout(vendor["url"], vendor["commit"], output / "piano-vendor-kernel", sparse_paths=(
+        driver = lock["gunyah-driver"]
+        checkout(driver["url"], driver["commit"], output / "gunyah-driver", sparse_paths=(
             "/drivers/virt/gunyah/", "/arch/arm64/gunyah/",
             "/arch/arm64/include/asm/gunyah.h", "/include/linux/gunyah.h",
-            "/include/uapi/linux/gunyah.h"))
+            "/include/linux/gunyah_qtvm.h", "/include/uapi/linux/gunyah.h",
+            "/tools/virt/gunyah/", "/Documentation/virt/gunyah/",
+            "/Documentation/devicetree/bindings/firmware/gunyah-cma-mem.yaml",
+            "/Documentation/devicetree/bindings/firmware/gunyah-hypervisor.yaml"))
     subprocess.run(["python3", str(ROOT / "scripts/apply-patches.py"), "--sunuefi", str(sun)], check=True)
     print(json.dumps({"sunuefi": str(sun), "dependencies": names, "pins": {
         name: upstream[name]["commit"] for name in names}}, indent=2))

@@ -2,6 +2,31 @@
 
 构建来源由 sources.lock.json 固定。上游 main 的进展用于审阅；更新文档不改变已构建镜像的来源，也不使旧二进制自动获得新实现。
 
+## 2026-10-14 复核：登记表本身不会报"谁更新了"
+
+`python3 scripts/audit-upstreams.py --execute` 对 88 个登记仓库取证：85 个拿到完整
+提交号，CrabApple、llfzs/8pro、runesign/mipad-6s-pro-linux 仍是 404。这份审计报
+不出更新——88 行里只有 fedora-sheng 一行填了 `reference_commit`，而
+`inspect_repository()` 只读 `lock_key`（9 个消费源），该字段写了没人用。79 个
+reference 上游因此只能拍快照，下次运行不会提示任何一个变了。这是待补的缺口。
+
+手工比对补上了这次遗漏：`code002-2/librevm` 在 2026-10-13T15:10Z 新增提交
+`9833d43c`，加进 `packaging/gunyah-driver-7.2/`——从 Android common kernel
+`android17-6.18` 导入、且已适配主线 7.2 的完整 Gunyah 驱动，附 `gh_vmtest.py`
+冒烟测试与 OnePlus Pad 4 上的验证记录。
+
+据此 Gunyah 实验档改为消费上游现成驱动，本仓库不再移植：
+
+| 项 | 旧 | 新 |
+| --- | --- | --- |
+| 锁 | `piano-vendor-kernel`：MiCode piano-w-oss `45fb9bd6`（6.6.57 基线） | `gunyah-driver`：`SuperTurtleDev/iceland-mainline-kernel-linux@fd503a49`（分支 `pr/gunyah`） |
+| 派生 | 19 个文件导入 + 四处 API 改写 | 32 个文件原样搬运，零改写 |
+| 配置 | 五个 Gunyah 符号 | 八个，按上游 Kconfig 全选 |
+
+旧线为什么停：6.6→7.2 是一条逐处移除的 API，手工移植每轮只暴露一处。整核那轮
+在第 51 分钟撞上 `folio_index()` 与 `of_node_to_fwnode()`，十分钟预检里又撞上
+`PageSwapBacked()`。细节见[虚拟化记录](virtualization.md)。
+
 ## 2026-10-13 晚间复核与 Fedora 缺口
 
 去重研究索引扩为 [88 个仓库](upstreams.json)，补入 code002-2 的 piano-linux、

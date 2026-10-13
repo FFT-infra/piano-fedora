@@ -57,32 +57,39 @@ nitro_enclaves、vboxguest、vmgenid.c；固定的 7.2.6 树里唯一带 gunyah 
 Qualcomm 两项及 `simple-bus`，未包含通用 `gunyah-hypervisor`；仍需核对
 父初始化、版本探测与已有平台子设备的注册路径，不盲目覆盖 compatible。
 
-另已在小米官方 `piano-w-oss@45fb9bd6ae5ba2942fc1d53e4b6b46ef76992f71`
-找到完整宿主驱动，而非只在通用提案树中找。其 UAPI 明确包含
-`GH_VM_SET_USER_MEM_REGION`、`GH_VM_ANDROID_LEND_USER_MEM` 和
-`GH_VM_ANDROID_SET_FW_CONFIG`，与 Droid-VM/crosvm 的 Android Gunyah 路径
-更接近；它使用自己的 pin-user-pages 内存实现，不依赖上述通用 guest_memfd 库。
-下一步优先核对这条官方来源的最小驱动闭包、目标内核导出符号、平台回调与
-实际 RM 描述，再决定外部模块或独立实验内核的构建方式。尚未编译或加载。
+小米官方 `piano-w-oss@45fb9bd6ae5ba2942fc1d53e4b6b46ef76992f71` 里也有完整
+宿主驱动，其 UAPI 包含 `GH_VM_SET_USER_MEM_REGION`、`GH_VM_ANDROID_LEND_USER_MEM`
+和 `GH_VM_ANDROID_SET_FW_CONFIG`，自带 pin-user-pages、不依赖通用 guest_memfd。
+2026-10-13 到 10-14 曾按它做过一版导入，结果是 6.6.57 → 7.2 的逐处 API 漂移：
+51 分钟那轮撞上 `folio_index()` 与 `of_node_to_fwnode()`，改写后在十分钟的预检里
+又撞上 `vm_mgr_mem.c` 的 `PageSwapBacked()`。这条线不再继续手工移植，改为直接
+消费上游已适配的驱动（见下），小米树降为研究来源。
+
+已适配主线 7.2 的现成驱动在 `SuperTurtleDev/iceland-mainline-kernel-linux` 的
+`pr/gunyah` 分支：驱动来自 Android common kernel `android17-6.18`，分支上三个提交
+分别是导入、适配主线 7.2、以及 `tools/virt/gunyah/gh_vmtest.py` 冒烟测试与验证
+记录。其 `Documentation/virt/gunyah/port_adaptations.md` 记录五处适配，其中
+`of_node_to_fwnode()`→`of_fwnode_handle()` 与上面撞到的是同一类。分支作者在
+OnePlus Pad 4（SM8850）上记录 `gunyah: Running under Gunyah hypervisor 51/v1`、
+`/dev/gunyah` 出现、VM_START 约 2 ms；这是作者记录，未在本机复现。
 
 ## 执行入口（2026-10-14 现状）
 
-源码、配置与构建这三段都接上了，内核编到 `drivers/virt/gunyah` 才失败：
+驱动改为**原样搬运上游已适配的源码**，本仓库不再改写驱动字节：
 
 | 环节 | 入口 | 边界 |
 | --- | --- | --- |
-| 厂商源码 | `sources.lock.json` 的 `piano-vendor-kernel`（MiCode piano-w-oss `45fb9bd6`） | 只有独立实验构建消费；正式内核不自动替换 |
-| 派生源码 | `scripts/prepare-gunyah-source.py --kernel <封存内核> --kernel-source <源码树> --vendor <厂商树> --output build/kernel-worktrees/gunyah-experiment --execute` | 默认只打印计划；19 个导入文件逐个核对厂商摘要；输出锁在 `build/` 下；提交只落在新 worktree 的 detached HEAD |
-| 移植改写 | 同一脚本的 `transformed()`，与 `.remove_new`→`.remove` 同一处：`folio_index()`→`folio->index`、`of_node_to_fwnode()`→`of_fwnode_handle()` | 厂商驱动是 6.6.57 基线；每处改写都断言出现次数，多了少了都拒绝 |
-| 检查 | `tests/check_gunyah_source.py`（已进 `make test`） | 覆盖 22 个文件的隐藏修改拒绝与两次派生结果一致 |
-| 配置 | `patches/kernel-gunyah`（`GUNYAH_OVERRIDES` + `--experimental-gunyah`） | 显式旗标才选；正式档不带该配置 |
+| 驱动源码 | `sources.lock.json` 的 `gunyah-driver`（`SuperTurtleDev/iceland-mainline-kernel-linux@fd503a49`，分支 `pr/gunyah`） | 只有独立实验构建消费；正式内核不自动替换 |
+| 派生源码 | `scripts/prepare-gunyah-source.py --kernel <封存内核> --kernel-source <源码树> --driver-source <驱动 checkout> --output build/kernel-worktrees/gunyah-experiment --execute` | 默认只打印计划；32 个导入文件逐个与锁定提交逐字节比对；不改写任何字节；输出锁在 `build/` 下；提交只落在新 worktree 的 detached HEAD |
+| 检查 | `tests/check_gunyah_source.py`（已进 `make test`） | 覆盖隐藏修改拒绝、两次派生结果一致、导入文件与上游逐字节相同 |
+| 配置 | `patches/kernel-gunyah`（`GUNYAH_OVERRIDES` + `--experimental-gunyah`） | 八个符号按上游 Kconfig 全选；显式旗标才选；正式档不带该配置 |
 | 构建 | `build-kernel.yml` 的 `gunyah-kernel` job，输入 `experimental_kernel_run_id`（取该 run 的封存内核产物） | 与正式 `kernel` job 互斥；留空即不构建实验档；先单编驱动目录的预检，再整核构建 |
 
-run `38432662314` 跑了 51 分钟后停在 `drivers/virt/gunyah/rsc_mgr.o`：厂商驱动
-用了 7.2 已移除的 `folio_index()` 与 `of_node_to_fwnode()`，两处改写补上后由
-run `38442792879` 重跑。派生清单状态仍是
-`PREPARED_NOT_BUILT_NOT_DEVICE_VERIFIED`——**还没有编译成功、更没有真机证据**，
-所以本文件开头的"当前没有完成 VM 支持"依然成立。
+预检这一步在 2026-10-14 首次生效：整核构建要五十多分钟，而驱动目录的问题
+在配置完成后十分钟内就能判死。
+
+派生清单状态仍是 `PREPARED_NOT_BUILT_NOT_DEVICE_VERIFIED`——**还没有编译成功、
+更没有真机证据**，所以本文件开头的"当前没有完成 VM 支持"依然成立。
 
 ## 完成需要的证据
 
@@ -98,6 +105,8 @@ run `38442792879` 重跑。派生清单状态仍是
 ## 实读来源
 
 - [Qualcomm v17 完整提案](https://lore.kernel.org/lkml/20240222-gunyah-v17-0-1e9da6763d38@quicinc.com/)
+- [已适配主线 7.2 的 Gunyah 驱动分支](https://github.com/SuperTurtleDev/iceland-mainline-kernel-linux/tree/fd503a492d381687c143b7085ea79ebce58dcdc7/drivers/virt/gunyah)
+- [librevm 对该驱动的打包与移植说明](https://github.com/code002-2/librevm/tree/9833d43c7caadfdfb8439306cd10641921d58e90/packaging/gunyah-driver-7.2)
 - [小米 piano 官方 Gunyah 驱动](https://github.com/MiCode/Xiaomi_Kernel_OpenSource/tree/45fb9bd6ae5ba2942fc1d53e4b6b46ef76992f71/drivers/virt/gunyah)
 - [完整 VMM 源码树](https://github.com/CodeLinaro-mirror/linux-kernel_gunyah-linux/tree/a73f08e03671eed3c2e3917637eacff764feef90/drivers/virt/gunyah)
 - [公开 VM Manager 与 UAPI 补丁](https://lists.infradead.org/pipermail/linux-arm-kernel/2024-January/894121.html)

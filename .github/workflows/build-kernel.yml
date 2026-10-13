@@ -179,9 +179,9 @@ jobs:
           retention-days: 14
           compression-level: 0
 
-  # 实验档：把官方厂商内核里的 Gunyah VMM 子集导入我们内核源码的独立派生树，
-  # 用显式的 --experimental-gunyah 配置单独构建一份。正式内核与其 pin 不受影响；
-  # 派生树是新 worktree 的 detached HEAD，输入 checkout 不被修改。
+  # 实验档：把锁定上游分支里已适配主线 7.2 的 Gunyah 驱动原样导入我们内核源码的
+  # 独立派生树，用显式的 --experimental-gunyah 配置单独构建一份。正式内核与其 pin
+  # 不受影响；派生树是新 worktree 的 detached HEAD，输入 checkout 不被修改。
   # 需要一次成功的内核 run 作为封存输入（--kernel 要的是已构建产物）。
   gunyah-kernel:
     if: inputs.experimental_kernel_run_id != ''
@@ -201,6 +201,9 @@ jobs:
           print("sunuefi_commit=" + lock["sunuefi"]["commit"])
           print("kernel_url=" + lock["linux-piano"]["url"])
           print("kernel_commit=" + lock["linux-piano"]["commit"])
+          print("gunyah_url=" + lock["gunyah-driver"]["url"])
+          print("gunyah_ref=" + lock["gunyah-driver"]["ref"])
+          print("gunyah_commit=" + lock["gunyah-driver"]["commit"])
           PY
 
       - name: Download the sealed kernel inputs from the selected run
@@ -230,20 +233,18 @@ jobs:
           git -C sunuefi checkout "${{ steps.pins.outputs.sunuefi_commit }}"
           echo "sunuefi at $(git -C sunuefi rev-parse HEAD)"
 
-      - name: Clone kernel and pinned vendor kernel
+      - name: Clone kernel and the pinned Gunyah driver source
         run: |
           set -euo pipefail
           mkdir -p sunuefi/upstream
           git clone --filter=blob:none "${{ steps.pins.outputs.kernel_url }}" sunuefi/upstream/linux-piano
           git -C sunuefi/upstream/linux-piano checkout "${{ steps.pins.outputs.kernel_commit }}"
-          python3 - <<'PY'
-          import json, subprocess
-          from pathlib import Path
-          entry = json.loads(Path('sources.lock.json').read_text())['sources']['piano-vendor-kernel']
-          target = Path('sunuefi/upstream/piano-vendor-kernel')
-          subprocess.run(['git', 'clone', '--filter=blob:none', entry['url'], str(target)], check=True)
-          subprocess.run(['git', '-C', str(target), 'checkout', entry['commit']], check=True)
-          PY
+          # 驱动分支是一棵 7.2 基线的完整内核树，只取该分支的一个提交；驱动文件
+          # 由 prepare-gunyah-source.py 按锁定提交逐字节核验后原样搬运。
+          git clone --filter=blob:none --depth 1 --branch "${{ steps.pins.outputs.gunyah_ref }}" \
+            "${{ steps.pins.outputs.gunyah_url }}" sunuefi/upstream/gunyah-driver
+          git -C sunuefi/upstream/gunyah-driver checkout "${{ steps.pins.outputs.gunyah_commit }}"
+          test "$(git -C sunuefi/upstream/gunyah-driver rev-parse HEAD)" = "${{ steps.pins.outputs.gunyah_commit }}"
 
       - name: Apply project patches to SunUEFI
         run: python3 scripts/apply-patches.py --sunuefi sunuefi
@@ -265,7 +266,7 @@ jobs:
               'python3', 'scripts/prepare-gunyah-source.py',
               '--kernel', 'sealed/artifacts',
               '--kernel-source', record['worktree'],
-              '--vendor', 'sunuefi/upstream/piano-vendor-kernel',
+              '--driver-source', 'sunuefi/upstream/gunyah-driver',
               '--output', 'build/kernel-worktrees/gunyah-experiment', '--execute',
           ], check=True)
           PY
@@ -274,9 +275,9 @@ jobs:
         working-directory: sunuefi
         run: |
           set -euo pipefail
-          # 厂商驱动是 6.6.57 基线，导入 7.2 内核后有 API 漂移。先只配置、再单编
-          # Gunyah 目录，让漂移在十分钟内暴露，而不是等整核编到第 51 分钟。
-          # 参数与下面的整核构建一致；配置结果会被下一步重新生成。
+          # 先只配置、再单编 Gunyah 目录：驱动目录若有构建问题，十分钟内暴露，
+          # 而不是等整核编到第 51 分钟。参数与下面的整核构建一致；配置结果会被
+          # 下一步重新生成。
           python3 - <<'PY'
           import json, os, subprocess
           from pathlib import Path
