@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import re
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -39,4 +40,28 @@ with patch.object(audit, "github", side_effect=[metadata, commit]) as fetch:
     result = audit.inspect_repository(consumer, {"kernel": {"ref": "piano/v2", "commit": "b" * 40}})
     assert fetch.call_args.args[0].endswith("/commits/piano%2Fv2"), "catalog must not override the build lock"
     assert result["matches_pin"] is False
+# 没有基线的行只拍快照；有基线才谈得上发现上游更新。
+with patch.object(audit, "github", side_effect=[metadata, commit]):
+    assert "updated" not in audit.inspect_repository(fixture, {}), "unbaselined row must not claim drift"
+with patch.object(audit, "github", side_effect=[metadata, commit, metadata, commit]):
+    assert audit.inspect_repository({**fixture, "reference_commit": "a" * 40}, {})["updated"] is False
+    drifted = audit.inspect_repository({**fixture, "reference_commit": "b" * 40}, {})
+    assert drifted["updated"] is True and drifted["reference_commit"] == "b" * 40
+# 基线回写只碰已核验的行，且写进 reference_commit/reference_date。
+registry = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+json.dump({"schema_version": 1, "checked_date": "2026-10-13",
+           "repositories": [{"repo": "example/linux", "decision": "reference"},
+                            {"repo": "example/gone", "decision": "reference"}]}, registry)
+registry.close()
+written = audit.record_baseline(Path(registry.name), [
+    {"repo": "example/linux", "status": "verified", "commit": "a" * 40,
+     "commit_date": "2026-10-13T00:00:00Z"},
+    {"repo": "example/gone", "status": "unverified", "error": "HTTP 404"}])
+after = json.loads(Path(registry.name).read_text())
+rows_after = {row["repo"]: row for row in after["repositories"]}
+assert written == 1, written
+assert rows_after["example/linux"]["reference_commit"] == "a" * 40
+assert rows_after["example/linux"]["reference_date"] == "2026-10-13"
+assert "reference_commit" not in rows_after["example/gone"], "unverified row gained a baseline"
+Path(registry.name).unlink()
 print(f"OK: {len(rows)} unique upstreams, locked consumers, selected-ref and failure evidence")

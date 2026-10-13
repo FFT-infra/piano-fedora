@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "imported_date": "2026-10-13",
-  "note": "历史研究清单与当前消费源的去重索引；远端当前状态由 audit-upstreams.py 独立取证。reference 不等于已审阅或可用于本机。",
+  "note": "历史研究清单与当前消费源的去重索引；reference_commit/reference_date 是上次复核记下的提交，audit-upstreams.py 逐行比对并在结果里报 updated。reference 不等于已审阅或可用于本机。",
   "repositories": [
     {
       "repo": "CodeLinaro-mirror/linux-kernel_gunyah-linux",
@@ -9,7 +9,9 @@
       "category": "virtualization",
       "role": "完整 Gunyah VMM 驱动对照；当前所选分支基于 Linux 6.10-rc7",
       "decision": "reference",
-      "reason": "提供 VM Manager、guest_memfd、vCPU、irqfd、ioeventfd；仍需移植到 piano 内核并验证 ABI"
+      "reason": "提供 VM Manager、guest_memfd、vCPU、irqfd、ioeventfd；仍需移植到 piano 内核并验证 ABI",
+      "reference_commit": "a73f08e03671eed3c2e3917637eacff764feef90",
+      "reference_date": "2024-07-22"
     },
     {
       "repo": "AnyLaySys/GGLK",
@@ -17,7 +19,9 @@
       "category": "virtualization",
       "role": "Gunyah 客体 Linux 内核参考",
       "decision": "reference",
-      "reason": "客体内核与 Fedora 宿主 Gunyah 驱动分别判断，不直接替换宿主"
+      "reason": "客体内核与 Fedora 宿主 Gunyah 驱动分别判断，不直接替换宿主",
+      "reference_commit": "c497f0c188b6ca62ca874f087f8baa511489ee47",
+      "reference_date": "2026-05-30"
     },
     {
       "repo": "roobtx/s25u-native-linux",
@@ -25,7 +29,9 @@
       "category": "virtualization",
       "role": "同 SoC 的 Android Gunyah 客体运行记录",
       "decision": "reference",
-      "reason": "作者设备运行记录；不能证明 piano Fedora 宿主已具备 VM 接口"
+      "reason": "作者设备运行记录；不能证明 piano Fedora 宿主已具备 VM 接口",
+      "reference_commit": "5c2143106735b34ddc8892121a6b00aa4f178cc9",
+      "reference_date": "2026-09-01"
     },
     {
       "repo": "0xLnxi/Choccy-DroidSpaces",
@@ -33,7 +39,9 @@
       "category": "reference",
       "role": "Droidspaces 分支，社区设备表含 piano",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "9326d1cb1c0f610151d496c2bd7bfd2ed80f4edb",
+      "reference_date": "2026-09-21"
     },
     {
       "repo": "18xjul08/xiaomi_ubl",
@@ -41,7 +49,9 @@
       "category": "解锁",
       "role": "解锁",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "7bde56dcb0a0aefd7807c76d28c0044e78aa6b60",
+      "reference_date": "2026-05-28"
     },
     {
       "repo": "2278535805/MiPad8ProAudio",
@@ -49,7 +59,9 @@
       "category": "音频",
       "role": "音频",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "6f00c2a54e19adc50fb508929809387c63716ca1",
+      "reference_date": "2026-08-14"
     },
     {
       "repo": "404-GCross/Droidspaces_GKI_Buildin_Local",
@@ -57,7 +69,9 @@
       "category": "reference",
       "role": "Droidspaces 用 GKI 内核本地编译脚本，★20，piano 内核来源",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "65f28534fe2c672ad41d1a7261f84d9c560be1df",
+      "reference_date": "2026-08-20"
     },
     {
       "repo": "ALXP-DANIEL/ANDROID_DEVICE_XIAOMI_PIANO",
@@ -65,7 +79,9 @@
       "category": "reference",
       "role": "LineageOS 24/23 + TWRP + OrangeFox 设备树，分支最全，★10",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "1b04acc120ce0151dc52452434aaa0b7f65aa646",
+      "reference_date": "2026-10-13"
     },
     {
       "repo": "AnyLaySys/qemu-gunyah",
@@ -73,7 +89,9 @@
       "category": "虚拟化",
       "role": "虚拟化",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "668118b0cbd89d453da7552e06d213de16e964f1",
+      "reference_date": "2026-09-07"
     },
     {
       "repo": "armbian/firmware",
@@ -81,7 +99,9 @@
       "category": "固件",
       "role": "固件",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "91392831029a0ad20b3dd1b2cd08235a9f523e44",
+      "reference_date": "2026-10-13"
     },
     {
       "repo": "AviderMin/ofrp_device_xiaomi_piano",
@@ -89,7 +109,9 @@
       "category": "recovery",
       "role": "recovery",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "509ad968f435480ca555c84b8ab6eec7baab94ff",
+      "reference_date": "2026-08-04"
     },
     {
       "repo": "AviderMin/ofrp_device_xiaomi_piano_dev",
@@ -97,7 +119,9 @@
       "category": "reference",
       "role": "同上的早期版本（fox_14.1）",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "33aef0c4a5ffdc6038921e6b009fdd1123e4088a",
+      "reference_date": "2026-08-04"
     },
     {
       "repo": "BigfootACA/linux",
@@ -105,7 +129,9 @@
       "category": "内核",
       "role": "内核",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "469998695964bc26493861cd11f8c17aa764f2e5",
+      "reference_date": "2026-09-30"
     },
     {
       "repo": "BigfootACA/simple-init",
@@ -113,7 +139,9 @@
       "category": "UEFI 菜单",
       "role": "UEFI 菜单",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "3d66a6e78d519dd050fbebde4db6c5ac933f9aa4",
+      "reference_date": "2025-04-13"
     },
     {
       "repo": "blu-sharky/CrabApple",
@@ -130,7 +158,9 @@
       "role": "rootfs",
       "decision": "consume",
       "reason": "Debian rootfs 与 boot 打包，作对照参考",
-      "lock_key": "debian-piano"
+      "lock_key": "debian-piano",
+      "reference_commit": "a75f8c5d5fa099d65c171ac839c2e3bb6c63ec45",
+      "reference_date": "2026-10-08"
     },
     {
       "repo": "blu-sharky/linux-piano",
@@ -139,7 +169,9 @@
       "role": "内核",
       "decision": "consume",
       "reason": "内核基线。SunUEFI 的完整 Stable 公开基线，非分支 HEAD",
-      "lock_key": "linux-piano"
+      "lock_key": "linux-piano",
+      "reference_commit": "453bb567f2fc12423ab3338953ca8938a2f06e16",
+      "reference_date": "2026-10-08"
     },
     {
       "repo": "blu-sharky/piano-firmware",
@@ -148,7 +180,9 @@
       "role": "固件",
       "decision": "consume",
       "reason": "设备固件。许可不明，构建时取用，不入库",
-      "lock_key": "piano-firmware"
+      "lock_key": "piano-firmware",
+      "reference_commit": "05fc37c09ca8146eecfc4920f8485479db140ae5",
+      "reference_date": "2026-10-01"
     },
     {
       "repo": "blu-sharky/piano-mesa",
@@ -157,7 +191,9 @@
       "role": "GPU 用户态",
       "decision": "consume",
       "reason": "Adreno 830 用户态 Mesa 补丁",
-      "lock_key": "piano-mesa"
+      "lock_key": "piano-mesa",
+      "reference_commit": "a89c1e46eef3e161520b084479928aaa5a8e8732",
+      "reference_date": "2026-09-27"
     },
     {
       "repo": "blu-sharky/piano-mipps-auth",
@@ -166,7 +202,9 @@
       "role": "MiPPS 充电认证，SunUEFI 构建链依赖，ianchb 版的浅 fork",
       "decision": "consume",
       "reason": "MiPPS 充电认证。SunUEFI 构建链依赖",
-      "lock_key": "piano-mipps-auth"
+      "lock_key": "piano-mipps-auth",
+      "reference_commit": "ccdc3ce7f5200ef736d7d552eb7b387ea3bb6fd9",
+      "reference_date": "2026-10-04"
     },
     {
       "repo": "blu-sharky/piano-sensors",
@@ -175,7 +213,9 @@
       "role": "传感器",
       "decision": "consume",
       "reason": "传感器用户态栈",
-      "lock_key": "piano-sensors"
+      "lock_key": "piano-sensors",
+      "reference_commit": "65a92202db65ad13493b43fbf15d6abb3b7bcf92",
+      "reference_date": "2026-10-01"
     },
     {
       "repo": "blu-sharky/piano-uefi",
@@ -183,7 +223,9 @@
       "category": "UEFI",
       "role": "UEFI",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "317140c3b72ec51eeaa914516fbdebdbce5d46c3",
+      "reference_date": "2026-10-08"
     },
     {
       "repo": "blu-sharky/xiaomi-piano-linux",
@@ -191,7 +233,9 @@
       "category": "内核总览",
       "role": "内核总览",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "603c560ad073703540613b9a6b0fb5d2084d9070",
+      "reference_date": "2026-10-08"
     },
     {
       "repo": "BrotherFPV/android_device_xiaomi_piano",
@@ -199,7 +243,9 @@
       "category": "reference",
       "role": "极简设备树 + xiaomi.zip",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "b5064f0df567a9f9f325b95172fa32d6d31f99cc",
+      "reference_date": "2026-08-28"
     },
     {
       "repo": "BrotherFPV/TWRP_piano",
@@ -207,7 +253,9 @@
       "category": "reference",
       "role": "TWRP 设备树（描述写 miro，实为 piano）",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "3b8d14f39842cd460742ce50dccc4a3b2798343b",
+      "reference_date": "2026-08-25"
     },
     {
       "repo": "code002-2/librevm",
@@ -215,7 +263,9 @@
       "category": "Gunyah 虚拟机管理器与模块安装脚本",
       "role": "Gunyah 虚拟机管理器与模块安装脚本",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "9833d43c7caadfdfb8439306cd10641921d58e90",
+      "reference_date": "2026-10-13"
     },
     {
       "repo": "code002-2/linux",
@@ -223,7 +273,9 @@
       "category": "内核",
       "role": "内核",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "628c0d9d719cecc2a358491c252f4d7eb1bdf0aa",
+      "reference_date": "2026-10-06"
     },
     {
       "repo": "code002-2/mu_aloha_platforms",
@@ -231,7 +283,9 @@
       "category": "UEFI 平台参考",
       "role": "UEFI 平台参考",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "fd6806a000fb12d07bef404613c860812b39972f",
+      "reference_date": "2026-06-29"
     },
     {
       "repo": "code002-2/Mu-Silicium",
@@ -239,7 +293,9 @@
       "category": "UEFI 基础 fork",
       "role": "UEFI 基础 fork",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "23c9ee86f3735498c969131296433fea9537b69c",
+      "reference_date": "2026-07-07"
     },
     {
       "repo": "code002-2/piano-linux",
@@ -247,7 +303,9 @@
       "category": "piano 主线用户态与启动整合",
       "role": "piano 主线用户态与启动整合",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "f1589d9b499a44998fd97bfbd500789d14622397",
+      "reference_date": "2026-10-09"
     },
     {
       "repo": "code002-2/sm8750-video-accel",
@@ -255,7 +313,9 @@
       "category": "Iris VA-API 硬件视频链路参考",
       "role": "Iris VA-API 硬件视频链路参考",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "8437bcc932e137e8df61f2196fa6fcb5fa9c316c",
+      "reference_date": "2026-10-09"
     },
     {
       "repo": "code002-2/uperf-linux",
@@ -263,7 +323,9 @@
       "category": "用户态性能调度参考",
       "role": "用户态性能调度参考",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "edfb14a235c3708b4e9627c819dc28c68596d0f1",
+      "reference_date": "2026-10-10"
     },
     {
       "repo": "Droid-VM/crosvm",
@@ -271,7 +333,9 @@
       "category": "虚拟化",
       "role": "虚拟化",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "849e05f12d5c8d4c36af8e15763986d242cd43b5",
+      "reference_date": "2026-10-10"
     },
     {
       "repo": "Droid-VM/DroidVM",
@@ -279,7 +343,9 @@
       "category": "虚拟化",
       "role": "虚拟化",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "33488301c902124d9ddb09fa04b8126443d83230",
+      "reference_date": "2026-10-12"
     },
     {
       "repo": "Droid-VM/edk2-gunyah",
@@ -287,7 +353,9 @@
       "category": "虚拟化",
       "role": "虚拟化",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "90c4d52c7d11485318bbb4fb9291a15ea1550ab2",
+      "reference_date": "2026-10-10"
     },
     {
       "repo": "Goldzxcbug/Droidspaces-kernel",
@@ -295,7 +363,9 @@
       "category": "reference",
       "role": "Droidspaces 测试内核，piano AnyKernel3 包来源",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "3a7177a67b563833c03a2035edf10077a50caf24",
+      "reference_date": "2026-07-27"
     },
     {
       "repo": "Goldzxcbug/sm8750_Droidspaces",
@@ -303,7 +373,9 @@
       "category": "reference",
       "role": "上面 `cctv18/oppo_oplus_realme_sm8750` 的 fork",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "2837a957e8c2e570004e150536b159441cc5b02f",
+      "reference_date": "2026-10-12"
     },
     {
       "repo": "GUF296/xiaomi-pad-8-pro-linux",
@@ -311,7 +383,9 @@
       "category": "reference",
       "role": "Ubuntu 24.04 GNOME + 内核/DTB 的完整 CI 产物，内核锁 BigfootACA 4699986",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "a462c9940c22bfd3de0a88091add28b4b52ec621",
+      "reference_date": "2026-10-01"
     },
     {
       "repo": "HMQYHM/FocusPenProX",
@@ -319,7 +393,9 @@
       "category": "笔",
       "role": "笔",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "a45f65ef675bb6ff351c53c19c72625adb027078",
+      "reference_date": "2026-08-20"
     },
     {
       "repo": "karim-manaouil/linux-next",
@@ -327,7 +403,9 @@
       "category": "内核/虚拟化",
       "role": "内核/虚拟化",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "81e88bfca90c73cb2d754672b4b538e7e09edea8",
+      "reference_date": "2025-04-23"
     },
     {
       "repo": "karim-manaouil/qemu-for-gunyah",
@@ -335,7 +413,9 @@
       "category": "虚拟化",
       "role": "虚拟化",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "9248d80ced293fdee0a84d2780808c30c2d0dfba",
+      "reference_date": "2025-02-25"
     },
     {
       "repo": "liisoya/pad8pro-kernel-build",
@@ -343,7 +423,9 @@
       "category": "内核构建",
       "role": "内核构建",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "9e5a964393dbab8a2bb03ec409600b85700c8911",
+      "reference_date": "2026-10-08"
     },
     {
       "repo": "linux-msm/audioreach-topology",
@@ -351,7 +433,9 @@
       "category": "音频拓扑",
       "role": "音频拓扑",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "b4c1510fe6686ab8053715a02c34bec875ca5c6c",
+      "reference_date": "2026-09-30"
     },
     {
       "repo": "Linuxoid-cn/Mi8E-Unlocker",
@@ -359,7 +443,9 @@
       "category": "解锁",
       "role": "解锁",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "d0b602cb9790ccb6a6061a8103dd5a0d0300edc9",
+      "reference_date": "2026-07-12"
     },
     {
       "repo": "llfzs/8pro",
@@ -375,7 +461,9 @@
       "category": "虚拟化",
       "role": "虚拟化",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "24a8bf273793f01e7665b9f5624b2ec8201bc11b",
+      "reference_date": "2026-10-12"
     },
     {
       "repo": "MiCode/kernel_build",
@@ -383,7 +471,9 @@
       "category": "官方构建",
       "role": "官方构建",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "67e26c81bcf57db8635538e441af1a9c90b5d2c3",
+      "reference_date": "2026-04-20"
     },
     {
       "repo": "MiCode/kernel_devicetree",
@@ -391,7 +481,9 @@
       "category": "官方 DTS",
       "role": "官方 DTS",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "7333e86a6e64060ba1c9e93678fc75b5f591c3aa",
+      "reference_date": "2026-04-20"
     },
     {
       "repo": "MiCode/vendor_opensource_display-drivers",
@@ -399,7 +491,9 @@
       "category": "官方显示",
       "role": "官方显示",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "aa06fd1757c28dce96fbe4e04d4530ec21b52aac",
+      "reference_date": "2026-04-20"
     },
     {
       "repo": "MiCode/vendor_qcom_opensource_audio-kernel",
@@ -407,7 +501,9 @@
       "category": "官方音频",
       "role": "官方音频",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "baeb7389997a6f6074dae31ec26565d6c286986e",
+      "reference_date": "2026-04-20"
     },
     {
       "repo": "MiCode/vendor_qcom_opensource_camera-kernel",
@@ -415,7 +511,9 @@
       "category": "官方相机",
       "role": "官方相机",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "ffb4f2bb56d41fc882682ece737e552c1a09ea65",
+      "reference_date": "2026-04-20"
     },
     {
       "repo": "MiCode/vendor_qcom_opensource_display-devicetree",
@@ -423,7 +521,9 @@
       "category": "官方显示 DT",
       "role": "官方显示 DT",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "cc4e65ad4bd54e26b60f5a8ee76bbc3cca6821b9",
+      "reference_date": "2026-04-20"
     },
     {
       "repo": "MiCode/vendor_qcom_opensource_wlan",
@@ -431,7 +531,9 @@
       "category": "官方 WLAN",
       "role": "官方 WLAN",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "130c020d4fc8912b3119b169270cccd4d496680c",
+      "reference_date": "2026-04-21"
     },
     {
       "repo": "MiCode/vendor_qcom_proprietary_camera-devicetree",
@@ -439,7 +541,9 @@
       "category": "官方相机 DT",
       "role": "官方相机 DT",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "7d336101ac4dfde0ca21afeffc25507e9d247a5d",
+      "reference_date": "2026-04-20"
     },
     {
       "repo": "MiCode/vendor_qcom_proprietary_display-devicetree",
@@ -447,7 +551,9 @@
       "category": "官方显示 DT",
       "role": "官方显示 DT",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "13a4869992938620760e170d9a1df1f238455b43",
+      "reference_date": "2026-04-20"
     },
     {
       "repo": "MiCode/vendor_xiaomi_proprietary_touch-driver",
@@ -455,7 +561,9 @@
       "category": "官方触控",
       "role": "官方触控",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "6957f6b646d1c919e175e6f9000eb50c8635273c",
+      "reference_date": "2026-04-20"
     },
     {
       "repo": "MiCode/Xiaomi_Kernel_OpenSource",
@@ -463,7 +571,9 @@
       "category": "官方内核",
       "role": "官方内核",
       "decision": "reference",
-      "reason": "保留为研究来源；Gunyah 实验构建改用已适配主线 7.2 的上游驱动分支"
+      "reason": "保留为研究来源；Gunyah 实验构建改用已适配主线 7.2 的上游驱动分支",
+      "reference_commit": "45fb9bd6ae5ba2942fc1d53e4b6b46ef76992f71",
+      "reference_date": "2026-04-20"
     },
     {
       "repo": "mumuxiao722/fedora-sheng",
@@ -472,7 +582,8 @@
       "role": "Fedora 发行版配方参考",
       "decision": "reference",
       "reason": "Fedora 后端参考（sheng/SM8550，GPL-3.0）。提供 RPM spec、Actions 参数化、dual(linux) 分区模式。硬件与启动链不可复用",
-      "reference_commit": "3bd197feb71f1d38b4ee7544fe3d5ee47c000cb4"
+      "reference_commit": "641c991e4fa86067a4362da1c1ae76881eb6358f",
+      "reference_date": "2026-10-11"
     },
     {
       "repo": "nekoztx/android_device_xiaomi_piano",
@@ -480,7 +591,9 @@
       "category": "recovery",
       "role": "recovery",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "cdd1a2640bb19b867d3d67c312af2beace703573",
+      "reference_date": "2026-08-16"
     },
     {
       "repo": "nekoztx/xiaomi-pad8pro-ai-recovery",
@@ -488,7 +601,9 @@
       "category": "recovery",
       "role": "recovery",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "f22c101a26da3134fe41cee810a73f035ba8f67f",
+      "reference_date": "2026-08-16"
     },
     {
       "repo": "phxinyang/waydroid-pen-bridge",
@@ -496,7 +611,9 @@
       "category": "笔桥接",
       "role": "笔桥接",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "10a03e57a1cb178826e6e0a2ba6870b85942b60d",
+      "reference_date": "2026-07-26"
     },
     {
       "repo": "piano-LAB/android_kernel_xiaomi_sm8750",
@@ -504,7 +621,9 @@
       "category": "reference",
       "role": "专门组织的 Android GKI 内核，lineage-22.2",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "81c6b8712d6a3e79adc355425df0c7ac89e678c9",
+      "reference_date": "2026-08-05"
     },
     {
       "repo": "piano-LAB/android_kernel_xiaomi_sm8750-devicetrees",
@@ -512,7 +631,9 @@
       "category": "reference",
       "role": "同上组织的设备树",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "623d33f1d07e950d12699e43db52220f53f685d0",
+      "reference_date": "2026-07-07"
     },
     {
       "repo": "piano-LAB/android_kernel_xiaomi_sm8750-modules",
@@ -520,7 +641,9 @@
       "category": "reference",
       "role": "同上组织的内核模块",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "09037d31e562e4335ac53064c376dfbe4744d8e2",
+      "reference_date": "2026-07-18"
     },
     {
       "repo": "polygraphene/gunyah-on-sd-guide",
@@ -528,7 +651,9 @@
       "category": "虚拟化指南",
       "role": "虚拟化指南",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "61ac570c2d467274d1d7d73605dcc685af6945b8",
+      "reference_date": "2026-06-20"
     },
     {
       "repo": "Project-Aloha/UEFIFirmwareBackup",
@@ -536,7 +661,9 @@
       "category": "reference",
       "role": "原厂 XBL/UEFI 提取物，含 `xiaomi-piano/BOOT.MXF...PAKALA`，★14",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "b603f9b535325a7ec6b6562f265aa003202aec21",
+      "reference_date": "2026-10-08"
     },
     {
       "repo": "Project-Silicium/Mu-Silicium",
@@ -544,7 +671,9 @@
       "category": "UEFI 基础",
       "role": "UEFI 基础",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "3aa95a72d469234755e2bcf2841ec6c0e83863e9",
+      "reference_date": "2026-10-13"
     },
     {
       "repo": "qemu-gunyah/qemu-android-gunyah",
@@ -552,7 +681,9 @@
       "category": "虚拟化",
       "role": "虚拟化",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "1eee442b71731ad8bbec9635e579a847f1dead64",
+      "reference_date": "2026-04-02"
     },
     {
       "repo": "qualcomm/fastrpc",
@@ -561,7 +692,9 @@
       "role": "adsprpcd 源码",
       "decision": "consume",
       "reason": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd",
-      "lock_key": "fastrpc"
+      "lock_key": "fastrpc",
+      "reference_commit": "d247519650fe5cb16de6c78edaa95bcc4be25073",
+      "reference_date": "2026-09-11"
     },
     {
       "repo": "ravindu644/Droidspaces-OSS",
@@ -569,7 +702,9 @@
       "category": "reference",
       "role": "LXC 式容器运行时，★2288；社区设备表明确列 25091RP04C",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "51f16c2a3d9cc979023583b9c4eb9d1efeb5325e",
+      "reference_date": "2026-10-13"
     },
     {
       "repo": "renhiyama/pagani-linux",
@@ -577,7 +712,9 @@
       "category": "同 SoC 参考",
       "role": "同 SoC 参考",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "2635bc17978b5e0eaff7ad67cb85f3fa22d37d64",
+      "reference_date": "2026-06-19"
     },
     {
       "repo": "runesign/mipad-6s-pro-linux",
@@ -593,7 +730,9 @@
       "category": "同 SoC 参考",
       "role": "同 SoC 参考",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "1bc596dc166f320c012e6f4883d7fba041e82504",
+      "reference_date": "2026-07-03"
     },
     {
       "repo": "slwyts/Project-SunUEFI",
@@ -602,7 +741,9 @@
       "role": "引导整合",
       "decision": "consume",
       "reason": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
-      "lock_key": "sunuefi"
+      "lock_key": "sunuefi",
+      "reference_commit": "1b0e201e3e7fb0737d73c41624a855482a4df7c5",
+      "reference_date": "2026-10-12"
     },
     {
       "repo": "sm8750-mainline/linux",
@@ -610,7 +751,9 @@
       "category": "同 SoC 参考",
       "role": "同 SoC 参考",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "16cf517b278155b0b8b5df6d876f840e5e9885f6",
+      "reference_date": "2025-09-15"
     },
     {
       "repo": "sunflower2333/mu_wide_platforms",
@@ -618,7 +761,9 @@
       "category": "reference",
       "role": "Mu UEFI 平台集合，含 `sm8750_xiaomi_pad8p.yml` 工作流与 `xiaomi-piano` 平台",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "3e1d052064beb6e59cda3cfba87d50e6cc088174",
+      "reference_date": "2026-10-01"
     },
     {
       "repo": "Taaloy/postmarketos-wiki-doc",
@@ -626,7 +771,9 @@
       "category": "reference",
       "role": "postmarketOS wiki 镜像，含 `Xiaomi_Pad_8_Pro.html`",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "bebb752333b6e6ad037a91cc1952e34fe200fdf2",
+      "reference_date": "2026-10-01"
     },
     {
       "repo": "tinhyeunhobe1-eng/pad8pro-kernel",
@@ -634,7 +781,9 @@
       "category": "reference",
       "role": "只有 1 个空壳 workflow，无实际内容",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "e265e6d76286aa111fc07173ebb4d1759ea7c6ab",
+      "reference_date": "2026-09-09"
     },
     {
       "repo": "torvalds/linux",
@@ -642,7 +791,9 @@
       "category": "主线补丁吸收比较",
       "role": "主线补丁吸收比较",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "24a19b953e2a3d0ea5a8c4951a0ab8f32720c907",
+      "reference_date": "2026-10-12"
     },
     {
       "repo": "twrpdtgen/android_device_xiaomi_piano",
@@ -650,7 +801,9 @@
       "category": "reference",
       "role": "TWRP 自动生成器产物，最早期",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "d11f60af1badc6b1bf17f6a7703b1b13be602d77",
+      "reference_date": "2026-06-20"
     },
     {
       "repo": "v4l2loopback/v4l2loopback",
@@ -658,7 +811,9 @@
       "category": "通用工具",
       "role": "通用工具",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "e27cd86c924112ab1fb5e792a7ea43a37ab2903f",
+      "reference_date": "2026-08-18"
     },
     {
       "repo": "xiakehelper/sm8750-mainline",
@@ -666,7 +821,9 @@
       "category": "同 SoC 参考",
       "role": "同 SoC 参考",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "16cf517b278155b0b8b5df6d876f840e5e9885f6",
+      "reference_date": "2025-09-15"
     },
     {
       "repo": "xiaohuang0527/piano-twrp-build",
@@ -674,7 +831,9 @@
       "category": "reference",
       "role": "OrangeFox/TWRP 设备树，中文 README，结构复刻 adontoo",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "fbae63716a448792bf10f48f01890f3764f40f16",
+      "reference_date": "2026-09-18"
     },
     {
       "repo": "XiaomiFirmwareUpdaterReleases/firmware_xiaomi_piano",
@@ -682,7 +841,9 @@
       "category": "reference",
       "role": "官方固件发布通道，README 占位",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "80969635228ee96c9fa2998cf7836df1eb3d5d19",
+      "reference_date": "2025-09-24"
     },
     {
       "repo": "Yizhou147/droid-audio-bridge",
@@ -690,7 +851,9 @@
       "category": "reference",
       "role": "DRM 接管下的 vendor 音频 HAL binder 客户端，MIT",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "65783085ec3c6007f660858f6138d581f096a9b1",
+      "reference_date": "2026-10-01"
     },
     {
       "repo": "Yizhou147/droid-drm-takeover",
@@ -698,7 +861,9 @@
       "category": "DRM 接管",
       "role": "DRM 接管",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "88aa03bcf1e6130e425b00d22d3611b4896d2e6f",
+      "reference_date": "2026-10-03"
     },
     {
       "repo": "Yizhou147/droid-monitor-sensors",
@@ -706,7 +871,9 @@
       "category": "reference",
       "role": "KDE 系统监视器的 kgsl GPU 传感器后端，GPL-3.0",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "ec87607d3caa7c2a7331d03e5bdd23653840a582",
+      "reference_date": "2026-09-30"
     },
     {
       "repo": "Yizhou147/linux-piano",
@@ -714,7 +881,9 @@
       "category": "reference",
       "role": "`blu-sharky/linux-piano` 的 fork，★3",
       "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "reference_commit": "352508459733d3e6d349ea5581a8dd2fd8bb4180",
+      "reference_date": "2026-10-05"
     },
     {
       "repo": "SuperTurtleDev/iceland-mainline-kernel-linux",
@@ -723,7 +892,10 @@
       "role": "从 android17-6.18 导入并适配主线 7.2 的完整 /dev/gunyah 驱动，含 gh_vmtest 冒烟测试",
       "decision": "consume",
       "reason": "独立 Gunyah 实验内核的驱动来源；正式 Fedora 内核不自动导入",
-      "lock_key": "gunyah-driver"
+      "lock_key": "gunyah-driver",
+      "reference_commit": "fd503a492d381687c143b7085ea79ebce58dcdc7",
+      "reference_date": "2026-10-07"
     }
-  ]
+  ],
+  "checked_date": "2026-10-14"
 }

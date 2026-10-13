@@ -4,11 +4,19 @@
 
 ## 2026-10-14 复核：登记表本身不会报"谁更新了"
 
-`python3 scripts/audit-upstreams.py --execute` 对 88 个登记仓库取证：85 个拿到完整
-提交号，CrabApple、llfzs/8pro、runesign/mipad-6s-pro-linux 仍是 404。这份审计报
-不出更新——88 行里只有 fedora-sheng 一行填了 `reference_commit`，而
-`inspect_repository()` 只读 `lock_key`（9 个消费源），该字段写了没人用。79 个
-reference 上游因此只能拍快照，下次运行不会提示任何一个变了。这是待补的缺口。
+`python3 scripts/audit-upstreams.py --execute` 对 89 个登记仓库取证：86 个拿到完整
+提交号，CrabApple、llfzs/8pro、runesign/mipad-6s-pro-linux 仍是 404。
+
+审计原先报不出更新：89 行里只有 fedora-sheng 一行填了 `reference_commit`，而
+`inspect_repository()` 只读 `lock_key`（9 个消费源），该字段写了没人用，79 个
+reference 上游只能拍快照。现在每行都带上次复核的 `reference_commit` 与
+`reference_date`，审计逐行比对，摘要给 `updated` 计数，并逐条打印
+`UPDATED <repo> <旧> -> <新> <subject>`；`--record-baseline` 才写回登记表，
+未核验的行保持原样。回填基线后第一次运行就报出一条：`mumuxiao722/fedora-sheng
+3bd197fe -> 641c991e`（Denial 的 ARM64 补丁集加 Arch 支持）。
+
+消费源 9 个里 8 个与 pin 一致，只有 `slwyts/Project-SunUEFI` 的 main 领先
+（`1b0e201e` 对 pin `17537522`）——该差异只动 Nyarch 打包三行，是否提 pin 仍待评审。
 
 手工比对补上了这次遗漏：`code002-2/librevm` 在 2026-10-13T15:10Z 新增提交
 `9833d43c`，加进 `packaging/gunyah-driver-7.2/`——从 Android common kernel
