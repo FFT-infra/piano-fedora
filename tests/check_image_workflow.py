@@ -93,6 +93,9 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
             "product": {"sha256": digest(root / "PianoUEFI-product.img"),
                         "bytes": (root / "PianoUEFI-product.img").stat().st_size},
             "evidence": {"kind": "successful-actions-build-log", "log_sha256": "2" * 64}}
+    memory_sources = {"patches/uefi-live-memory/series.json",
+                      "patches/uefi-live-memory/0001-adopt-live-memory-map.patch"}
+    assert memory_sources <= set(uefi["project_source_sha256"]), "UEFI memory patch is not bound to the product"
     write("uefi-source.json", uefi)
 
     def verify(data=raw):
@@ -106,7 +109,11 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     assert verify()["device_tested"] is False
     for changed in ({"sunuefi_commit": "0" * 40}, {"run_id": "12346"},
                     {"product": {"sha256": "0" * 64, "bytes": 7}},
-                    {"project_source_sha256": {}}):
+                    {"project_source_sha256": {}},
+                    {"project_source_sha256": {key: value for key, value in uefi["project_source_sha256"].items()
+                                                if key not in memory_sources}},
+                    {"project_source_sha256": {**uefi["project_source_sha256"],
+                                               "patches/uefi-live-memory/series.json": "0" * 64}}):
         write("uefi-source.json", {**uefi, **changed})
         try:
             verify()

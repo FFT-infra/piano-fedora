@@ -30,14 +30,18 @@ def sha256(path):
 def uefi_patch_identities(project):
     """UEFI 实际消费的项目补丁和应用入口，不绑定无关 Linux 补丁。"""
     project = Path(project)
-    series = "patches/uefi-ufs/series.json"
-    metadata = json.loads((project / series).read_text())
-    names = ["scripts/apply-patches.py", series]
-    for row in metadata["patches"]:
-        name = row["file"]
-        if not name or Path(name).name != name or name in (".", ".."):
-            raise ValueError("invalid UEFI patch path")
-        names.append("patches/uefi-ufs/" + name)
+    manifests = sorted((project / "patches").glob("uefi-*/series.json"))
+    if not manifests:
+        raise ValueError("UEFI patch series missing")
+    names = ["scripts/apply-patches.py"]
+    for manifest in manifests:
+        metadata = json.loads(manifest.read_text())
+        names.append(manifest.relative_to(project).as_posix())
+        for row in metadata["patches"]:
+            name = row["file"]
+            if not name or Path(name).name != name or name in (".", ".."):
+                raise ValueError("invalid UEFI patch path")
+            names.append((manifest.parent / name).relative_to(project).as_posix())
     return {name: sha256(project / name) for name in names}
 
 
