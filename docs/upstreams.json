@@ -462,8 +462,9 @@
       "ref": "piano-w-oss",
       "category": "官方内核",
       "role": "官方内核",
-      "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
+      "decision": "consume",
+      "reason": "仅独立 Gunyah 实验构建消费官方宿主驱动；正式内核不自动替换",
+      "lock_key": "piano-vendor-kernel"
     },
     {
       "repo": "mumuxiao722/fedora-sheng",

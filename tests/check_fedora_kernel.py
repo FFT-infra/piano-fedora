@@ -66,6 +66,35 @@ def main():
                 and isinstance(node.test, ast.Attribute) and node.test.attr == "fedora_policy"]
     assert len(branches) == 1 and any(isinstance(node, ast.Name) and node.id == "FEDORA_OVERRIDES"
                                     for node in ast.walk(branches[0])), "main does not consume Fedora policy"
+    gunyah = namespace["GUNYAH_OVERRIDES"]
+    assert gunyah == {"CONFIG_GUNYAH": "y", "CONFIG_GUNYAH_PLATFORM_HOOKS": "y",
+                      "CONFIG_GUNYAH_QCOM_PLATFORM": "y", "CONFIG_GUNYAH_IRQFD": "y",
+                      "CONFIG_GUNYAH_IOEVENTFD": "y"}, "experimental VM profile changed"
+    assert validate(gunyah) == gunyah
+    for symbol in gunyah:
+        partial = dict(gunyah)
+        partial.pop(symbol)
+        try:
+            validate(partial)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("incomplete Gunyah profile accepted: " + symbol)
+    experimental = {**policy, **gunyah}
+    configured.update(gunyah)
+    validate_config(serialize(configured), "CONFIG_MODULES=y\n", command, experimental)
+    for symbol in gunyah:
+        dropped = dict(configured)
+        dropped.pop(symbol)
+        try:
+            validate_config(serialize(dropped), "CONFIG_MODULES=y\n", command, experimental)
+        except ValueError as exc:
+            assert symbol in str(exc), str(exc)
+        else:
+            raise AssertionError("configured Gunyah option lost without rejection: " + symbol)
+    vm_branches = [node for node in ast.walk(main_node) if isinstance(node, ast.If)
+                   and isinstance(node.test, ast.Attribute) and node.test.attr == "experimental_gunyah"]
+    assert len(vm_branches) == 1, "experimental profile must require an explicit flag"
     print("OK: all 18 nftables options, actual configured-result rejection and policy consumption")
     return 0
 

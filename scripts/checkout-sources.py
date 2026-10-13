@@ -13,7 +13,7 @@ def git(path, *args):
     return subprocess.check_output(["git", "-C", str(path), *args], text=True).strip()
 
 
-def checkout(url, commit, destination, full_history=False):
+def checkout(url, commit, destination, full_history=False, sparse_paths=()):
     if destination.exists():
         # Git checkout 会为未初始化的 gitlink 留一个空目录。
         if destination.is_dir() and not any(destination.iterdir()):
@@ -29,6 +29,9 @@ def checkout(url, commit, destination, full_history=False):
                         "origin", commit], check=True)
     else:
         subprocess.run([*command, url, str(destination)], check=True)
+    if sparse_paths:
+        subprocess.run(["git", "-C", str(destination), "sparse-checkout", "set", "--no-cone",
+                        *sparse_paths], check=True)
     subprocess.run(["git", "-C", str(destination), "checkout", "--detach", commit], check=True)
     if git(destination, "rev-parse", "HEAD") != commit or git(destination, "status", "--porcelain"):
         raise ValueError(f"source identity/cleanliness mismatch: {destination}")
@@ -37,9 +40,11 @@ def checkout(url, commit, destination, full_history=False):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--output", type=Path, required=True)
-    ap.add_argument("--mode", choices=("check", "boot", "device", "graphics", "installer"), default="check")
+    ap.add_argument("--mode", choices=("check", "boot", "device", "graphics", "installer", "gunyah"), default="check")
     ap.add_argument("--kernel", action="store_true")
     args = ap.parse_args()
+    if args.mode == "gunyah" and not args.kernel:
+        ap.error("the Gunyah source mode requires --kernel")
     output = args.output.resolve()
     if not output.is_relative_to(ROOT / "build"):
         raise ValueError("source outputs must stay in the ignored build directory")
@@ -47,7 +52,7 @@ def main():
     sun = output / "sunuefi"
     checkout(lock["sunuefi"]["url"], lock["sunuefi"]["commit"], sun)
     upstream = json.loads((sun / "sources.lock.json").read_text())
-    names = [] if args.mode == "check" else ["debian-piano-current"]
+    names = [] if args.mode in ("check", "gunyah") else ["debian-piano-current"]
     if args.mode == "graphics":
         names = ["piano-mesa-current"]
     if args.mode == "installer":
@@ -72,6 +77,12 @@ def main():
         checkout(mipps["url"], mipps["commit"], output / "piano-mipps-auth")
         fastrpc = lock["fastrpc"]
         checkout(fastrpc["url"], fastrpc["commit"], output / "fastrpc")
+    if args.mode == "gunyah":
+        vendor = lock["piano-vendor-kernel"]
+        checkout(vendor["url"], vendor["commit"], output / "piano-vendor-kernel", sparse_paths=(
+            "/drivers/virt/gunyah/", "/arch/arm64/gunyah/",
+            "/arch/arm64/include/asm/gunyah.h", "/include/linux/gunyah.h",
+            "/include/uapi/linux/gunyah.h"))
     subprocess.run(["python3", str(ROOT / "scripts/apply-patches.py"), "--sunuefi", str(sun)], check=True)
     print(json.dumps({"sunuefi": str(sun), "dependencies": names, "pins": {
         name: upstream[name]["commit"] for name in names}}, indent=2))

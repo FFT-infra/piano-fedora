@@ -45,6 +45,12 @@
       "commit": "a75f8c5d5fa099d65c171ac839c2e3bb6c63ec45",
       "role": "Debian rootfs 与 boot 打包，作对照参考"
     },
+    "piano-vendor-kernel": {
+      "url": "https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git",
+      "ref": "piano-w-oss",
+      "commit": "45fb9bd6ae5ba2942fc1d53e4b6b46ef76992f71",
+      "role": "独立 Gunyah 实验内核的官方宿主驱动来源；正式 Fedora 内核不自动导入"
+    },
     "fastrpc": {
       "url": "https://github.com/qualcomm/fastrpc.git",
       "ref": "v1.0.8",
