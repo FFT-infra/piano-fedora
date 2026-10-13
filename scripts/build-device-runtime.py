@@ -46,7 +46,7 @@ def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0"
         "%global debug_package %{nil}\n%global _build_id_links none\n"
         f"Name: {name}\nVersion: {version}\nRelease: 1%{{?dist}}\n"
         "Summary: Piano native runtime built from locked sources\n"
-        "License: MIT AND Apache-2.0 AND BSD-2-Clause-Patent AND GPL-2.0-only\n"
+        "License: MIT AND Apache-2.0 AND BSD-2-Clause-Patent AND BSD-3-Clause AND GPL-2.0-only\n"
         f"Source0: {name}-{version}.tar.gz\n"
         + "".join("Requires: " + r + "\n" for r in requires)
         + "".join("Provides: " + r + "\n" for r in provides)
@@ -80,6 +80,26 @@ def sensors_source(output, name, version, archive_name, digest):
     if len(roots) != 1 or not (roots[0] / "meson.build").is_file():
         raise ValueError("unexpected sensor source layout: " + name)
     return roots[0]
+
+
+def build_fastrpc_daemon(source, payload, build):
+    """Fedora 的 fastrpc RPM 只有库；从同版上游构建 dlopen listener 的守护进程。"""
+    lock = json.loads((Path(__file__).resolve().parents[1] / "sources.lock.json").read_text())["sources"]["fastrpc"]
+    head = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+    dirty = subprocess.check_output(["git", "-C", str(source), "status", "--porcelain"], text=True).strip()
+    if head != lock["commit"] or dirty:
+        raise ValueError("FastRPC daemon source identity/cleanliness mismatch")
+    executable = build / "adsprpcd"
+    # 与上游 src/Makefile.am 的 adsprpcd_CFLAGS/LDADD 一致。共享库由 Fedora
+    # 拥有，不再编译或覆盖另一套 libadsprpc/libadsp_default_listener。
+    run(["gcc", "-O2", "-Wall", "-Wextra", "-I", source / "inc",
+         "-DDEFAULT_DOMAIN_ID=0", "-DUSE_SYSLOG", "-DUSE_ADSP",
+         source / "src/dsprpcd.c", "-ldl", "-o", executable])
+    run([executable, "--help"], timeout=10)
+    put(executable, payload / "usr/bin/adsprpcd", True)
+    put(source / "LICENSE.txt", payload / "usr/share/licenses/piano-runtime/fastrpc-LICENSE.txt")
+    return {"commit": head, "source_sha256": sha256(source / "src/dsprpcd.c"),
+            "binary_sha256": sha256(executable), "listener": "libadsp_default_listener.so.1"}
 
 
 def build_sensors(sun, output):
@@ -214,6 +234,7 @@ def build(args):
                        ("90-xiaomi-mipps-auth.rules", "usr/lib/udev/rules.d/90-xiaomi-mipps-auth.rules")):
         put(mipps / name, payload / path, name == "xiaomi-mipps-auth")
     sensor_proof = build_sensors(sun, output)
+    fastrpc_proof = build_fastrpc_daemon(sun.parent / "fastrpc", payload, build)
     sensor = output / "sensor-source"
     integration = output / "piano-sensors"
     shutil.copytree(sensor / "piano-sensors", integration)
@@ -222,18 +243,27 @@ def build(args):
         put(integration / name, payload / "usr/libexec/piano-sensors" / name, True)
     for name in ("adsprpcd-sensorspd.service", "piano-sensors-import.service"):
         put(integration / "debian" / ("piano-sensors." + name), payload / "usr/lib/systemd/system" / name)
+    # Fedora merged-usr 的 canonical 路径；不要依赖 Debian 的 /usr/sbin 布局。
+    dropin = payload / "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf"
+    dropin.parent.mkdir(parents=True, exist_ok=True)
+    dropin.write_text("[Service]\nExecStart=\nExecStart=/usr/bin/adsprpcd sensorspd\n")
+    fastrpc_proof["service_sha256"] = {
+        name: sha256(payload / name) for name in (
+            "usr/lib/systemd/system/adsprpcd-sensorspd.service",
+            "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf")}
     put(integration / "debian/piano-sensors.udev", payload / "usr/lib/udev/rules.d/70-piano-sensors.rules")
     put(integration / "59-fastrpc-remoteproc.rules", payload / "etc/udev/rules.d/59-fastrpc-remoteproc.rules")
     put(integration / "iio-sensor-proxy-piano.conf", payload / "etc/systemd/system/iio-sensor-proxy.service.d/piano.conf")
     provenance = {"status": "FEDORA_RUNTIME_BUILT_NOT_DEVICE_VERIFIED",
                   "kernel_release": record["kernel_release"], "kernel_manifest_sha256": kernel_hash,
                   "touch": touch_proof, "camera": camera_proof, "boot_request": request,
-                  "sensor_sources": sensor_proof, "device_tested": False}
+                  "sensor_sources": sensor_proof, "fastrpc_daemon": fastrpc_proof, "device_tested": False}
     dest = payload / "usr/share/piano-provenance/fedora-runtime.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(provenance, indent=2) + "\n")
     rpm_package("piano-runtime", payload, output,
-                requires=("python3", "busybox", "kmod", "util-linux", "fastrpc", "qrtr", "rmtfs", "tqftpserv", "alsa-utils"))
+                requires=("python3", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
+                          "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils"))
     provenance["rpms"] = {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
                           for p in (output / "rpms").glob("*.rpm")}
     (output / "manifest.json").write_text(json.dumps(provenance, indent=2) + "\n")

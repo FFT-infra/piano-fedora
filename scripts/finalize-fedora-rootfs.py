@@ -310,6 +310,26 @@ def stage_piano_hardware_fixes(root):
     return sorted([*files, "usr/share/piano/selinux/piano_hardware.pp"])
 
 
+def verify_fastrpc_daemon(root, runtime_meta):
+    """拒绝只装 FastRPC 库、漏掉服务实际执行文件的集成镜像。"""
+    expected = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["fastrpc"]["commit"]
+    proof = runtime_meta.get("fastrpc_daemon", {})
+    executable = guest_resolve(root, "/usr/bin/adsprpcd")
+    if (proof.get("commit") != expected or not executable.is_file()
+            or not os.access(executable, os.X_OK)
+            or sha256(executable) != proof.get("binary_sha256")):
+        raise ValueError("installed FastRPC daemon differs from the runtime manifest")
+    services = proof.get("service_sha256", {})
+    expected_services = {"usr/lib/systemd/system/adsprpcd-sensorspd.service",
+                         "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf"}
+    if set(services) != expected_services:
+        raise ValueError("FastRPC service assembly is missing from the runtime manifest")
+    for name, digest in services.items():
+        unit = guest_resolve(root, "/" + name)
+        if not unit.is_file() or sha256(unit) != digest:
+            raise ValueError("installed FastRPC service differs: " + name)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     for name in ("rootfs", "kernel", "runtime", "mesa", "output"):
@@ -322,6 +342,7 @@ def main():
     runtime_meta = json.loads((runtime / "manifest.json").read_text())
     if runtime_meta["kernel_manifest_sha256"] != kernel_hash:
         raise ValueError("runtime and rootfs select different kernel builds")
+    verify_fastrpc_daemon(root, runtime_meta)
     mesa_dir = args.mesa.resolve()
     mesa = json.loads((mesa_dir / "manifest.json").read_text())
     if (mesa.get("status"), mesa.get("releasever"), mesa.get("arch"), mesa.get("chip_id")) != (

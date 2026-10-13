@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-10-12",
-  "note": "只列实际消费的上游。研究用的 75 个仓库不在此列。",
+  "checked_date": "2026-10-13",
+  "note": "只列构建实际消费的上游；研究与后端参考单独记录在 docs/upstreams.json。",
   "sources": {
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
@@ -45,11 +45,11 @@
       "commit": "a75f8c5d5fa099d65c171ac839c2e3bb6c63ec45",
       "role": "Debian rootfs 与 boot 打包，作对照参考"
     },
-    "fedora-sheng": {
-      "url": "https://github.com/mumuxiao722/fedora-sheng.git",
-      "ref": "main",
-      "commit": "3bd197feb71f1d38b4ee7544fe3d5ee47c000cb4",
-      "role": "Fedora 后端参考（sheng/SM8550，GPL-3.0）。提供 RPM spec、Actions 参数化、dual(linux) 分区模式。硬件与启动链不可复用"
+    "fastrpc": {
+      "url": "https://github.com/qualcomm/fastrpc.git",
+      "ref": "v1.0.8",
+      "commit": "d247519650fe5cb16de6c78edaa95bcc4be25073",
+      "role": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd"
     }
   }
 }

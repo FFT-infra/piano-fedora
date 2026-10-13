@@ -70,6 +70,8 @@ def main():
     if args.mode == "device":
         mipps = lock["piano-mipps-auth"]
         checkout(mipps["url"], mipps["commit"], output / "piano-mipps-auth")
+        fastrpc = lock["fastrpc"]
+        checkout(fastrpc["url"], fastrpc["commit"], output / "fastrpc")
     subprocess.run(["python3", str(ROOT / "scripts/apply-patches.py"), "--sunuefi", str(sun)], check=True)
     print(json.dumps({"sunuefi": str(sun), "dependencies": names, "pins": {
         name: upstream[name]["commit"] for name in names}}, indent=2))

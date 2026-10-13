@@ -4,6 +4,7 @@
 import ctypes
 import ctypes.util
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -208,6 +209,42 @@ def main():
         check_debug_handoff(root, staged)
         check_piano_hardware_fixes(root)
         check_login_password(root)
+        daemon = root / "usr/bin/adsprpcd"
+        daemon.write_bytes(b"daemon fixture")
+        daemon.chmod(0o755)
+        services = {}
+        for name in ("usr/lib/systemd/system/adsprpcd-sensorspd.service",
+                     "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf"):
+            unit = root / name
+            unit.parent.mkdir(parents=True, exist_ok=True)
+            unit.write_text("[Service]\nExecStart=/usr/bin/adsprpcd sensorspd\n")
+            services[name] = finalizer.sha256(unit)
+        proof = {"fastrpc_daemon": {
+            "commit": json.loads((ROOT / "sources.lock.json").read_text())["sources"]["fastrpc"]["commit"],
+            "binary_sha256": finalizer.sha256(daemon), "service_sha256": services}}
+        finalizer.verify_fastrpc_daemon(root, proof)
+        unit.write_text("[Service]\nExecStart=/usr/bin/false\n")
+        try:
+            finalizer.verify_fastrpc_daemon(root, proof)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("modified FastRPC service accepted")
+        unit.write_text("[Service]\nExecStart=/usr/bin/adsprpcd sensorspd\n")
+        daemon.write_bytes(b"changed daemon fixture")
+        try:
+            finalizer.verify_fastrpc_daemon(root, proof)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("modified FastRPC daemon accepted")
+        daemon.unlink()
+        try:
+            finalizer.verify_fastrpc_daemon(root, proof)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("missing FastRPC daemon accepted")
     print("OK: manuals pruned, launcher normalized, runtime guards, debug handoff, "
           "device hardware fixes and default login password preserved")
 
