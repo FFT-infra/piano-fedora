@@ -14,7 +14,7 @@ VM 创建或客体执行成功证据。
 
 | 路线 | 源码和实际接口 | 当前取舍 |
 | --- | --- | --- |
-| 直接 Gunyah VMM | Qualcomm v17 驱动提案、`/dev/gunyah`、crosvm/相应 QEMU | 优先核对：接近 code002-2 的 librevm 实测路线，但须补齐完整宿主驱动及 ABI |
+| 直接 Gunyah VMM | 小米 piano-w-oss 厂商驱动、Qualcomm 公开提案、`/dev/gunyah`、crosvm/相应 QEMU | 优先核对本机官方驱动的 ABI 与移植依赖，公开提案作对照 |
 | KVM ABI 到 Gunyah 的桥 | Karim 的 34 补丁系列、配套 QEMU、`/dev/kvm` | 保留实验对照；原提案尚无 virtio/SMP，不能直接满足普通 libvirt/Incus VM |
 
 `code002-2/librevm@4be3e42b963e95a7753e600613a46059ebdfcd04` 的获取脚本默认
@@ -37,6 +37,25 @@ deb 与对应摘要，没有宿主驱动。点击安装按钮并不构成可复�
 这推翻“公开驱动源码找不到”的旧结论；仍需审阅系列基线、SCM/内存接口与
 本机 RM compatible，不能直接把旧树驱动复制成当前 7.2.9 的外部模块。
 
+逐符号核对已确认：该 VMM 使用通用 `include/linux/guest_memfd.h` 与
+`mm/guest_memfd.c` 的 `guest_memfd_alloc/grab_folio/make_inaccessible` 接口，
+并选择 `CONFIG_GUEST_MEMFD`。当前固定内核只有 KVM 内部的
+`virt/kvm/guest_memfd.c` 与 `CONFIG_KVM_GUEST_MEMFD`，不提供这些通用 API。
+移植还需 arm64 hypercall/Kbuild 和驱动接入。真机读取后更正：节点名虽然为
+`qcom,resource-manager-rpc@…`，其 compatible 列表已经包含
+`gunyah-resource-manager`，并提供两个 64 位 capability ID 与两项 IRQ。
+不能从节点名直接断言驱动不匹配。父 hypervisor 的 compatible 列表为
+Qualcomm 两项及 `simple-bus`，未包含通用 `gunyah-hypervisor`；仍需核对
+父初始化、版本探测与已有平台子设备的注册路径，不盲目覆盖 compatible。
+
+另已在小米官方 `piano-w-oss@45fb9bd6ae5ba2942fc1d53e4b6b46ef76992f71`
+找到完整宿主驱动，而非只在通用提案树中找。其 UAPI 明确包含
+`GH_VM_SET_USER_MEM_REGION`、`GH_VM_ANDROID_LEND_USER_MEM` 和
+`GH_VM_ANDROID_SET_FW_CONFIG`，与 Droid-VM/crosvm 的 Android Gunyah 路径
+更接近；它使用自己的 pin-user-pages 内存实现，不依赖上述通用 guest_memfd 库。
+下一步优先核对这条官方来源的最小驱动闭包、目标内核导出符号、平台回调与
+实际 RM 描述，再决定外部模块或独立实验内核的构建方式。尚未编译或加载。
+
 ## 完成需要的证据
 
 1. 固定完整宿主驱动源码，记录相对现有 piano 内核的差异和移植补丁；核对
@@ -51,6 +70,7 @@ deb 与对应摘要，没有宿主驱动。点击安装按钮并不构成可复�
 ## 实读来源
 
 - [Qualcomm v17 完整提案](https://lore.kernel.org/lkml/20240222-gunyah-v17-0-1e9da6763d38@quicinc.com/)
+- [小米 piano 官方 Gunyah 驱动](https://github.com/MiCode/Xiaomi_Kernel_OpenSource/tree/45fb9bd6ae5ba2942fc1d53e4b6b46ef76992f71/drivers/virt/gunyah)
 - [完整 VMM 源码树](https://github.com/CodeLinaro-mirror/linux-kernel_gunyah-linux/tree/a73f08e03671eed3c2e3917637eacff764feef90/drivers/virt/gunyah)
 - [公开 VM Manager 与 UAPI 补丁](https://lists.infradead.org/pipermail/linux-arm-kernel/2024-January/894121.html)
 - [KVM 桥接系列及作者限制说明](https://patchew.org/linux/20250424141341.841734-1-karim.manaouil@linaro.org/)
