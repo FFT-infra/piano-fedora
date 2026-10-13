@@ -293,6 +293,10 @@ def stage_piano_hardware_fixes(root):
         "usr/lib/systemd/system/piano-selinux-policy.service": PIANO_SELINUX_UNIT,
         "etc/systemd/logind.conf.d/10-piano-powerkey.conf": PIANO_LOGIND_POWERKEY,
         "etc/dconf/db/local.d/00-piano-session": PIANO_DCONF_SESSION,
+        # sysinit 阶段那次在真机上没有留下痕迹（单元显示成功但时钟仍是 1970），
+        # 所以在 multi-user 阶段再校正一次：两条路都走，任一条生效即可。
+        "etc/systemd/system/piano-clock-save.service.d/restore-first.conf":
+            "[Service]\nExecStartPre=/usr/libexec/piano-clock-restore\n",
     }
     for name, text in files.items():
         target = safe_destination(root, name)

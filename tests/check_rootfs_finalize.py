@@ -223,9 +223,13 @@ def check_piano_hardware_fixes(root):
         "usr/lib/systemd/system/piano-clock-save.timer",
         "usr/lib/systemd/system/piano-selinux-policy.service",
         "etc/systemd/logind.conf.d/10-piano-powerkey.conf",
+        "etc/systemd/system/piano-clock-save.service.d/restore-first.conf",
         "etc/dconf/db/local.d/00-piano-session",
         "usr/share/piano/selinux/piano_hardware.pp",
     }
+    # 第二道校正：即使 sysinit 那次没生效，multi-user 也会再设一次。
+    dropin = (root / "etc/systemd/system/piano-clock-save.service.d/restore-first.conf").read_text()
+    assert "ExecStartPre=/usr/libexec/piano-clock-restore" in dropin
     assert expected <= set(staged), sorted(set(staged))
     for name in ("piano-clock-restore", "piano-clock-save"):
         assert (root / "usr/libexec" / name).stat().st_mode & 0o111, name
