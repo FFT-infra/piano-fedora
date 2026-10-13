@@ -292,6 +292,19 @@ jobs:
           ], check=True)
           PY
 
+      - name: Export the matching module build inputs
+        working-directory: sunuefi
+        run: |
+          set -euo pipefail
+          # 真机侧要用同一内核的 SDK 重建配套 initramfs（换掉归档里的早期模块），
+          # 否则 vermagic 不匹配、initramfs 挂不上根。与正式档导出同样的路径集合。
+          OUT=build/kernels/experimental-gunyah
+          test -s "$OUT/Module.symvers"
+          test -s "$OUT/.config"
+          tar -I 'zstd -6 -T0' -cf "$GITHUB_WORKSPACE/kernel-experimental-gunyah-sdk.tar.zst" \
+            -C "$OUT" .config Module.symvers include/config include/generated \
+            arch/arm64/include/generated
+
       - name: Package the experimental kernel
         working-directory: sunuefi
         run: |
@@ -306,6 +319,7 @@ jobs:
           name: kernel-experimental-gunyah
           path: |
             kernel-experimental-gunyah.tar.zst
+            kernel-experimental-gunyah-sdk.tar.zst
             kernel-experimental-gunyah-source.json
           if-no-files-found: error
           retention-days: 14
