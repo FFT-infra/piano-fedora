@@ -108,9 +108,19 @@ def build_fastrpc_daemon(source, payload, build):
 
 def adapt_camerad_for_fedora(camera, proof):
     """只向已核对的上游适配输出应用 GCC 修复，保持输入摘要门槛。"""
+    actual = sha256(camera)
     if (proof.get("effective_source_sha256") != CAMERAD_ADAPTER_INPUT_SHA256
-            or sha256(camera) != CAMERAD_ADAPTER_INPUT_SHA256):
-        raise ValueError("camera adapter input changed; review the GCC patch")
+            or actual != CAMERAD_ADAPTER_INPUT_SHA256):
+        # 门槛拒绝的是"没核对过的适配输出"，不是"GCC 补丁坏了"。它也会在
+        # --sunuefi 指向非锁定 commit 时触发：那种 checkout 的适配器只有 5 个
+        # 相机补丁（缺 piano-camerad-local-video-group），摘要自然不同，看起来
+        # 却像补丁失配。锁定 commit 的适配器有 6 个补丁，摘要逐位等于这个常量
+        # （2026-10-13 用锁定树实测复现）。摘要一起打出来，好判断是哪一端变了。
+        raise ValueError(
+            "camera adapter input changed; review the GCC patch against the pinned "
+            f"SunUEFI commit: expected {CAMERAD_ADAPTER_INPUT_SHA256[:12]}…, "
+            f"got {actual[:12]}…, adapter proof "
+            f"{str(proof.get('effective_source_sha256'))[:12]}…")
     gcc_patch = Path(__file__).resolve().parents[1] / "patches/runtime/camerad-gcc-bounds.patch"
     run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", gcc_patch], cwd=camera.parent.parent)
     proof["fedora_patch_sha256"] = sha256(gcc_patch)
