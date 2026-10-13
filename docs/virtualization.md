@@ -37,6 +37,15 @@ deb 与对应摘要，没有宿主驱动。点击安装按钮并不构成可复�
 这推翻“公开驱动源码找不到”的旧结论；仍需审阅系列基线、SCM/内存接口与
 本机 RM compatible，不能直接把旧树驱动复制成当前 7.2.9 的外部模块。
 
+2026-10-14 核对“换上游最新一份”是否可行：**主线至今没有合并 Gunyah 驱动**。
+`torvalds/linux` master 的 `drivers/virt/` 是 acrn、coco、fsl_hypervisor.c、
+nitro_enclaves、vboxguest、vmgenid.c；固定的 7.2.6 树里唯一带 gunyah 的文件是
+`drivers/watchdog/gunyah_wdt.c`。两份公开源码反而更难用：v17 提案基于 ~6.8，
+`eberman/gunyah` 基于 6.10-rc7，都要通用 guest_memfd（`include/linux/guest_memfd.h`
+与 `mm/guest_memfd.c`），而 7.2.6 只有 KVM 内部的 `virt/kvm/guest_memfd.c`。
+小米厂商驱动是 6.6.57 基线，但自带 pin-user-pages、不依赖 guest_memfd，且是
+唯一对得上本机 RM 的官方实现，所以维持从它导入。
+
 逐符号核对已确认：该 VMM 使用通用 `include/linux/guest_memfd.h` 与
 `mm/guest_memfd.c` 的 `guest_memfd_alloc/grab_folio/make_inaccessible` 接口，
 并选择 `CONFIG_GUEST_MEMFD`。当前固定内核只有 KVM 内部的
@@ -56,20 +65,22 @@ Qualcomm 两项及 `simple-bus`，未包含通用 `gunyah-hypervisor`；仍需�
 下一步优先核对这条官方来源的最小驱动闭包、目标内核导出符号、平台回调与
 实际 RM 描述，再决定外部模块或独立实验内核的构建方式。尚未编译或加载。
 
-## 执行入口（2026-10-13 现状）
+## 执行入口（2026-10-14 现状）
 
-源码与配置这条支线已经接上，内核还没编过：
+源码、配置与构建这三段都接上了，内核编到 `drivers/virt/gunyah` 才失败：
 
 | 环节 | 入口 | 边界 |
 | --- | --- | --- |
 | 厂商源码 | `sources.lock.json` 的 `piano-vendor-kernel`（MiCode piano-w-oss `45fb9bd6`） | 只有独立实验构建消费；正式内核不自动替换 |
 | 派生源码 | `scripts/prepare-gunyah-source.py --kernel <封存内核> --kernel-source <源码树> --vendor <厂商树> --output build/kernel-worktrees/gunyah-experiment --execute` | 默认只打印计划；19 个导入文件逐个核对厂商摘要；输出锁在 `build/` 下；提交只落在新 worktree 的 detached HEAD |
+| 移植改写 | 同一脚本的 `transformed()`，与 `.remove_new`→`.remove` 同一处：`folio_index()`→`folio->index`、`of_node_to_fwnode()`→`of_fwnode_handle()` | 厂商驱动是 6.6.57 基线；每处改写都断言出现次数，多了少了都拒绝 |
 | 检查 | `tests/check_gunyah_source.py`（已进 `make test`） | 覆盖 22 个文件的隐藏修改拒绝与两次派生结果一致 |
 | 配置 | `patches/kernel-gunyah`（`GUNYAH_OVERRIDES` + `--experimental-gunyah`） | 显式旗标才选；正式档不带该配置 |
-| 构建 | `build-kernel.yml` 的 `gunyah-kernel` job，输入 `experimental_kernel_run_id`（取该 run 的封存内核产物） | 与正式 `kernel` job 互斥；留空即不构建实验档 |
+| 构建 | `build-kernel.yml` 的 `gunyah-kernel` job，输入 `experimental_kernel_run_id`（取该 run 的封存内核产物） | 与正式 `kernel` job 互斥；留空即不构建实验档；先单编驱动目录的预检，再整核构建 |
 
-本轮已触发一次：run `38425963366`，封存输入取 run `38407594802`，产物名
-`kernel-experimental-gunyah`。派生清单状态是
+run `38432662314` 跑了 51 分钟后停在 `drivers/virt/gunyah/rsc_mgr.o`：厂商驱动
+用了 7.2 已移除的 `folio_index()` 与 `of_node_to_fwnode()`，两处改写补上后由
+run `38442792879` 重跑。派生清单状态仍是
 `PREPARED_NOT_BUILT_NOT_DEVICE_VERIFIED`——**还没有编译成功、更没有真机证据**，
 所以本文件开头的"当前没有完成 VM 支持"依然成立。
 
