@@ -25,7 +25,7 @@ diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
      return values
  
  
-@@ -219,6 +226,7 @@
+@@ -219,10 +226,16 @@
      parser.add_argument('--rebuild',action='store_true',help='Replace generated candidate artifacts with an incremental build')
      parser.add_argument('--root-fstype',choices=('ext4','f2fs'),default='ext4')
      parser.add_argument('--fedora-policy',action='store_true')
@@ -33,7 +33,17 @@ diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
      args=parser.parse_args()
      if not 1<=args.jobs<=8:raise SystemExit('Full candidate jobs must be 1..8')
      work,out,artifacts=(path.resolve()for path in (args.worktree,args.build_dir,args.artifacts));commit=args.commit
-@@ -239,6 +247,10 @@
+-    if not work.is_relative_to(ROOT/'build/kernel-worktrees')or not out.is_relative_to(ROOT/'build/kernels')or not artifacts.is_relative_to(ROOT/'artifacts/kernels'):
++    # The isolated Gunyah experiment worktree is created by the workspace's
++    # prepare-gunyah-source.py, whose own guard keeps its output under the
++    # workspace build/. That is one level above this checkout, and still inside
++    # the same CI workspace. Only this worktree root is added back.
++    worktree_roots=(ROOT/'build/kernel-worktrees',ROOT.parent/'build/kernel-worktrees')
++    if not any(work.is_relative_to(root)for root in worktree_roots)or not out.is_relative_to(ROOT/'build/kernels')or not artifacts.is_relative_to(ROOT/'artifacts/kernels'):
+         raise ValueError('Explicit full kernel paths must stay in the workspace build/artifact directories')
+     compiler=ROOT/'build/kernel-worktrees'/(out.name+'-compiler-'+hashlib.sha256(str(out).encode()).hexdigest()[:12])
+     if compiler==work or compiler.resolve()!=compiler:
+@@ -239,6 +252,10 @@
               **module_overrides(f2fs.read_text(),'f2fs')}
      if args.fedora_policy:
          modules={**modules,**FEDORA_OVERRIDES}
