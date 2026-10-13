@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "target": "sunuefi",
+  "note": "只添加显式选择的独立 Gunyah 实验配置；正式内核默认路径不选择该配置。所有驱动必须来自 prepare-gunyah-source.py 生成的干净派生 worktree，不删除内存所有权检查，不临时导出私有 MM 接口。",
+  "base": {
+    "sunuefi_commit": "17537522e2e6a0a3bb5e5d995a6983947b0e6aab"
+  },
+  "patches": [
+    {
+      "file": "0001-isolated-gunyah-profile.patch",
+      "summary": "增加完整的 built-in Gunyah 配置与独立源码检查，默认不启用",
+      "targets": {
+        "tools/build_piano_full_kernel.py": "36178477f6d4591ec69875453961a02739d84ac9763d577517eb31339976afda"
+      },
+      "creates": []
+    }
+  ]
+}
