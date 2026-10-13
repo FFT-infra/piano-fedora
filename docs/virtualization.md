@@ -56,6 +56,23 @@ Qualcomm 两项及 `simple-bus`，未包含通用 `gunyah-hypervisor`；仍需�
 下一步优先核对这条官方来源的最小驱动闭包、目标内核导出符号、平台回调与
 实际 RM 描述，再决定外部模块或独立实验内核的构建方式。尚未编译或加载。
 
+## 执行入口（2026-10-13 现状）
+
+源码与配置这条支线已经接上，内核还没编过：
+
+| 环节 | 入口 | 边界 |
+| --- | --- | --- |
+| 厂商源码 | `sources.lock.json` 的 `piano-vendor-kernel`（MiCode piano-w-oss `45fb9bd6`） | 只有独立实验构建消费；正式内核不自动替换 |
+| 派生源码 | `scripts/prepare-gunyah-source.py --kernel <封存内核> --kernel-source <源码树> --vendor <厂商树> --output build/kernel-worktrees/gunyah-experiment --execute` | 默认只打印计划；19 个导入文件逐个核对厂商摘要；输出锁在 `build/` 下；提交只落在新 worktree 的 detached HEAD |
+| 检查 | `tests/check_gunyah_source.py`（已进 `make test`） | 覆盖 22 个文件的隐藏修改拒绝与两次派生结果一致 |
+| 配置 | `patches/kernel-gunyah`（`GUNYAH_OVERRIDES` + `--experimental-gunyah`） | 显式旗标才选；正式档不带该配置 |
+| 构建 | `build-kernel.yml` 的 `gunyah-kernel` job，输入 `experimental_kernel_run_id`（取该 run 的封存内核产物） | 与正式 `kernel` job 互斥；留空即不构建实验档 |
+
+本轮已触发一次：run `38425963366`，封存输入取 run `38407594802`，产物名
+`kernel-experimental-gunyah`。派生清单状态是
+`PREPARED_NOT_BUILT_NOT_DEVICE_VERIFIED`——**还没有编译成功、更没有真机证据**，
+所以本文件开头的"当前没有完成 VM 支持"依然成立。
+
 ## 完成需要的证据
 
 1. 固定完整宿主驱动源码，记录相对现有 piano 内核的差异和移植补丁；核对
