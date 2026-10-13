@@ -183,7 +183,6 @@ jobs:
   # 需要一次成功的内核 run 作为封存输入（--kernel 要的是已构建产物）。
   gunyah-kernel:
     if: inputs.experimental_kernel_run_id != ''
-    needs: kernel
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 300
     steps:
