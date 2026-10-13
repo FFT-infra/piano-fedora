@@ -1,5 +1,6 @@
 """比较两个 rootfs 的内容、身份、链接关系和全部扩展属性。"""
 
+import errno
 import os
 import stat
 from collections import defaultdict
@@ -16,9 +17,20 @@ def inventory(root):
         s = p.lstat()
         row = {"type": stat.S_IFMT(s.st_mode), "mode": stat.S_IMODE(s.st_mode),
                "uid": s.st_uid, "gid": s.st_gid, "mtime_ns": s.st_mtime_ns}
-        # ACL、capability、SELinux 与 user.* 都逐个读取。读取错误必须失败。
-        row["xattrs"] = {key: os.getxattr(p, key, follow_symlinks=False).hex()
-                        for key in sorted(os.listxattr(p, follow_symlinks=False))}
+        # ACL、capability、SELinux 与 user.* 都逐个读取。读取错误必须失败，
+        # 但"列到过的属性在读取时已不存在"不是差异：宿主（OrbStack/VirtioFS 注入的
+        # com.apple.provenance）会在 listxattr 与 getxattr 之间把它清掉，旧行为会
+        # 因此中断构建与比对。ENODATA/ENOATTR 视为该属性不存在，其余错误照旧抛出。
+        def read_xattr(key):
+            try:
+                return os.getxattr(p, key, follow_symlinks=False).hex()
+            except OSError as error:
+                gone = {errno.ENODATA, getattr(errno, "ENOATTR", errno.ENODATA)}
+                if error.errno in gone:
+                    return None
+                raise
+        row["xattrs"] = {key: value for key in sorted(os.listxattr(p, follow_symlinks=False))
+                         if (value := read_xattr(key)) is not None}
         if stat.S_ISREG(s.st_mode):
             row.update(bytes=s.st_size, sha256=sha256(p))
             links[s.st_dev, s.st_ino].append(name)
