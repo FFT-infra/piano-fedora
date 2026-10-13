@@ -190,6 +190,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read pinned commits
+        id: pins
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          lock = json.load(open("sources.lock.json"))["sources"]
+          print("sunuefi_url=" + lock["sunuefi"]["url"])
+          print("sunuefi_commit=" + lock["sunuefi"]["commit"])
+          print("kernel_url=" + lock["linux-piano"]["url"])
+          print("kernel_commit=" + lock["linux-piano"]["commit"])
+          PY
+
       - name: Download the sealed kernel inputs from the selected run
         uses: actions/download-artifact@v4
         with:
@@ -201,17 +214,33 @@ jobs:
       - name: Install tools
         run: sudo apt-get update -qq && sudo apt-get install -y -qq zstd
 
-      - name: Clone SunUEFI at the pinned commit and apply project patches
+      - name: Clone SunUEFI at the pinned commit
         run: |
           set -euo pipefail
-          python3 scripts/checkout-sources.py --mode check --output build/sources
-          python3 scripts/apply-patches.py --sunuefi build/sources/sunuefi
+          git clone --filter=blob:none "${{ steps.pins.outputs.sunuefi_url }}" sunuefi
+          git -C sunuefi checkout "${{ steps.pins.outputs.sunuefi_commit }}"
+          echo "sunuefi at $(git -C sunuefi rev-parse HEAD)"
 
-      - name: Fetch the pinned vendor kernel for the Gunyah subset
-        run: python3 scripts/checkout-sources.py --mode gunyah --kernel --output build/sources
+      - name: Clone kernel and pinned vendor kernel
+        run: |
+          set -euo pipefail
+          mkdir -p sunuefi/upstream
+          git clone --filter=blob:none "${{ steps.pins.outputs.kernel_url }}" sunuefi/upstream/linux-piano
+          git -C sunuefi/upstream/linux-piano checkout "${{ steps.pins.outputs.kernel_commit }}"
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          entry = json.loads(Path('sources.lock.json').read_text())['sources']['piano-vendor-kernel']
+          target = Path('sunuefi/upstream/piano-vendor-kernel')
+          subprocess.run(['git', 'clone', '--filter=blob:none', entry['url'], str(target)], check=True)
+          subprocess.run(['git', '-C', str(target), 'checkout', entry['commit']], check=True)
+          PY
+
+      - name: Apply project patches to SunUEFI
+        run: python3 scripts/apply-patches.py --sunuefi sunuefi
 
       - name: Prepare the release kernel source
-        working-directory: build/sources/sunuefi
+        working-directory: sunuefi
         run: python3 tools/prepare_release_kernel.py --refresh
 
       - name: Derive the Gunyah experiment worktree
@@ -222,12 +251,12 @@ jobs:
           python3 - <<'PY'
           import json, subprocess
           from pathlib import Path
-          record = json.loads((Path('build/sources/sunuefi/build/release-7.2.9/source-manifest.json')).read_text())
+          record = json.loads(Path('sunuefi/build/release-7.2.9/source-manifest.json').read_text())
           subprocess.run([
               'python3', 'scripts/prepare-gunyah-source.py',
               '--kernel', 'sealed/artifacts',
               '--kernel-source', record['worktree'],
-              '--vendor', 'build/sources/piano-vendor-kernel',
+              '--vendor', 'sunuefi/upstream/piano-vendor-kernel',
               '--output', 'build/kernel-worktrees/gunyah-experiment', '--execute',
           ], check=True)
           PY
