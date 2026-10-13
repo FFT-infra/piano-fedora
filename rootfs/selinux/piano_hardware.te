@@ -1,0 +1,33 @@
+module piano_hardware 1.0;
+
+# Policy for the piano port's own services. They run in init_t (no dedicated
+# domain yet: the image has no selinux-policy-devel, so no domain macros).
+# Each rule maps to an AVC observed on the device; nothing else is granted.
+# Follow-up: give these binaries their own domain once devel is available.
+
+require {
+	type init_t;
+	type v4l_device_t;
+	type proc_t;
+	type unlabeled_t;
+	type iiosensorproxy_t;
+	type syslogd_t;
+	class chr_file { open read write ioctl };
+	class file { create write open getattr };
+	class dir { add_name write };
+	class unix_dgram_socket { sendto };
+}
+
+# piano-camerad writes ISP frames into the v4l2loopback cameras (video40/41).
+allow init_t v4l_device_t:chr_file { open read write ioctl };
+
+# touch-input toggles the stylus interface through /proc/nvt_thp_stylus.
+allow init_t proc_t:file { create write open getattr };
+
+# Piano bring-up scripts write their bytecode cache next to their own files,
+# which live on an unlabeled path in the image.
+allow init_t unlabeled_t:dir { add_name write };
+allow init_t unlabeled_t:file { create write open getattr };
+
+# iio-sensor-proxy logs to the journal.
+allow iiosensorproxy_t syslogd_t:unix_dgram_socket { sendto };

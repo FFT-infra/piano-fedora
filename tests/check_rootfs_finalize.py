@@ -206,8 +206,43 @@ def main():
         assert not (root / "etc/systemd/system/piano-camerad.service").is_symlink()
         assert (root / "usr/bin/piano-collect-boot").stat().st_mode & 0o111
         check_debug_handoff(root, staged)
+        check_piano_hardware_fixes(root)
         check_login_password(root)
-    print("OK: manuals pruned, launcher normalized, runtime guards, debug handoff and default login password preserved")
+    print("OK: manuals pruned, launcher normalized, runtime guards, debug handoff, "
+          "device hardware fixes and default login password preserved")
+
+
+def check_piano_hardware_fixes(root):
+    """真机修复必须成套出现：脚本可执行、单元被启用、模块随镜像走。"""
+    staged = finalizer.stage_piano_hardware_fixes(root)
+    expected = {
+        "usr/libexec/piano-clock-restore",
+        "usr/libexec/piano-clock-save",
+        "usr/lib/systemd/system/piano-clock-restore.service",
+        "usr/lib/systemd/system/piano-clock-save.service",
+        "usr/lib/systemd/system/piano-clock-save.timer",
+        "usr/lib/systemd/system/piano-selinux-policy.service",
+        "etc/systemd/logind.conf.d/10-piano-powerkey.conf",
+        "etc/dconf/db/local.d/00-piano-session",
+        "usr/share/piano/selinux/piano_hardware.pp",
+    }
+    assert expected <= set(staged), sorted(set(staged))
+    for name in ("piano-clock-restore", "piano-clock-save"):
+        assert (root / "usr/libexec" / name).stat().st_mode & 0o111, name
+    # 兜底脚本本身不能把坏时间写回去，也不该在没有戳时动手。
+    save = (root / "usr/libexec/piano-clock-save").read_text()
+    assert "1735689600" in save and ".last.tmp" in save
+    restore = (root / "usr/libexec/piano-clock-restore").read_text()
+    assert "1735689600" in restore and '"$saved" -gt "$now"' in restore
+    # 短按电源键不能再关机（默认动作是 poweroff，这台机器又不支持挂起）。
+    logind = (root / "etc/systemd/logind.conf.d/10-piano-powerkey.conf").read_text()
+    assert "HandlePowerKey=ignore" in logind
+    # 策略模块必须与 .te 源码一起在镜像里，且有安装单元兜底。
+    assert (root / "usr/share/piano/selinux/piano_hardware.pp").stat().st_size > 0
+    unit = (root / "usr/lib/systemd/system/piano-selinux-policy.service").read_text()
+    assert "semodule -i /usr/share/piano/selinux/piano_hardware.pp" in unit
+    dconf = (root / "etc/dconf/db/local.d/00-piano-session").read_text()
+    assert "idle-delay=uint32 0" in dconf and "lock-enabled=false" in dconf
 
 
 if __name__ == "__main__":

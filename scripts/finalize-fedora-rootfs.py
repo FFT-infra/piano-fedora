@@ -186,6 +186,126 @@ def stage_boot_diagnostics(root):
     return sorted([*files, "usr/bin/piano-collect-boot", *stage_linux_debug_handoff(root)])
 
 
+# 真机上逐条验过的平台修复。每一条都对应一个已经发生的故障，不是预防性配置。
+PIANO_CLOCK_RESTORE = """#!/bin/sh
+# Boot-time clock floor. This device's PMIC RTC reads 1970 and refuses set_time
+# (rtc-pm8xxx gates writes behind the allow-set-time DT property), so the clock
+# starts in the past and rpm/dnf signature checks fail before NTP can help.
+set -eu
+STAMP=/var/lib/piano-clock/last
+[ -r "$STAMP" ] || exit 0
+saved=$(cat "$STAMP" 2>/dev/null || echo 0)
+case "$saved" in ''|*[!0-9]*) exit 0 ;; esac
+now=$(date -u +%s)
+if [ "$now" -lt 1735689600 ] && [ "$saved" -gt "$now" ]; then
+  date -u -s "@$saved"
+  logger -t piano-clock "restored clock floor to $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fi
+"""
+
+PIANO_CLOCK_SAVE = """#!/bin/sh
+# Persist the current time for piano-clock-restore. Never persist a bogus past
+# time: a device that boots in 1970 must not overwrite a good stamp.
+set -eu
+now=$(date -u +%s)
+[ "$now" -gt 1735689600 ] || exit 0
+mkdir -p /var/lib/piano-clock
+printf '%s\\n' "$now" > /var/lib/piano-clock/.last.tmp
+mv /var/lib/piano-clock/.last.tmp /var/lib/piano-clock/last
+"""
+
+PIANO_CLOCK_RESTORE_UNIT = """[Unit]
+Description=Piano clock floor from the last saved time
+DefaultDependencies=no
+After=systemd-remount-fs.service
+Before=sysinit.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/piano-clock-restore
+[Install]
+WantedBy=sysinit.target
+"""
+
+PIANO_CLOCK_SAVE_UNIT = """[Unit]
+Description=Save the current time for the next boot
+DefaultDependencies=no
+Before=shutdown.target
+After=local-fs.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/piano-clock-save
+ExecStop=/usr/libexec/piano-clock-save
+[Install]
+WantedBy=multi-user.target
+"""
+
+PIANO_CLOCK_SAVE_TIMER = """[Unit]
+Description=Periodic clock save
+[Timer]
+OnCalendar=hourly
+Persistent=false
+[Install]
+WantedBy=timers.target
+"""
+
+# 自建服务跑在 init_t，没有域宏可用（镜像里没有 selinux-policy-devel），
+# 所以策略模块是手写的定向 allow；每条规则对应真机上一条 AVC。
+PIANO_SELINUX_UNIT = """[Unit]
+Description=Install the piano SELinux policy module
+DefaultDependencies=no
+After=systemd-remount-fs.service
+Before=sysinit.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'semodule -l | grep -q "^piano_hardware" || semodule -i /usr/share/piano/selinux/piano_hardware.pp'
+[Install]
+WantedBy=sysinit.target
+"""
+
+# logind 的默认短按动作是 poweroff，而这台机器还不支持挂起：息屏后按一下电源键
+# 就是一次干净关机，看起来像崩溃（真机上发生过三次）。
+PIANO_LOGIND_POWERKEY = """[Login]
+HandlePowerKey=ignore
+"""
+
+# 会话默认：bring-up 期间不要息屏、不要锁屏，否则黑屏会被误判成宕机。
+PIANO_DCONF_SESSION = """[org/gnome/desktop/session]
+idle-delay=uint32 0
+[org/gnome/desktop/screensaver]
+lock-enabled=false
+"""
+
+
+def stage_piano_hardware_fixes(root):
+    """真机验证过的平台修复：时钟兜底、SELinux 策略、电源键与会话默认。"""
+    scripts = {
+        "usr/libexec/piano-clock-restore": PIANO_CLOCK_RESTORE,
+        "usr/libexec/piano-clock-save": PIANO_CLOCK_SAVE,
+    }
+    files = {
+        **scripts,
+        "usr/lib/systemd/system/piano-clock-restore.service": PIANO_CLOCK_RESTORE_UNIT,
+        "usr/lib/systemd/system/piano-clock-save.service": PIANO_CLOCK_SAVE_UNIT,
+        "usr/lib/systemd/system/piano-clock-save.timer": PIANO_CLOCK_SAVE_TIMER,
+        "usr/lib/systemd/system/piano-selinux-policy.service": PIANO_SELINUX_UNIT,
+        "etc/systemd/logind.conf.d/10-piano-powerkey.conf": PIANO_LOGIND_POWERKEY,
+        "etc/dconf/db/local.d/00-piano-session": PIANO_DCONF_SESSION,
+    }
+    for name, text in files.items():
+        target = safe_destination(root, name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+        if name in scripts:
+            target.chmod(0o755)
+    module = safe_destination(root, "usr/share/piano/selinux/piano_hardware.pp")
+    module.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / "rootfs/selinux/piano_hardware.pp", module)
+    return sorted([*files, "usr/share/piano/selinux/piano_hardware.pp"])
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     for name in ("rootfs", "kernel", "runtime", "mesa", "output"):
@@ -236,8 +356,13 @@ def main():
                 "piano-display.service", "piano-touch.service", "piano-radio.service",
                 "piano-adsp.service", "piano-audio.service", "piano-keyboard.service",
                 "piano-cpufreq.service", "piano-video.service", "piano-camera.service",
-                "piano-camerad.service", "adsprpcd-sensorspd.service"]
+                "piano-camerad.service", "adsprpcd-sensorspd.service",
+                "piano-clock-restore.service", "piano-clock-save.service",
+                "piano-clock-save.timer", "piano-selinux-policy.service"]
     chroot(root, "systemctl", "enable", *services)
+    hardware_files = stage_piano_hardware_fixes(root)
+    if shutil.which("dconf") or (root / "usr/bin/dconf").exists():
+        chroot(root, "dconf", "update")
     diagnostic_files = stage_boot_diagnostics(root)
     # FastRPC 的默认 root/audio PD 自动启动与 piano 的顺序服务冲突。
     for unit in ("adsprpcd.service", "adsprpcd_audiopd.service", "adsprpcd-audiopd.service"):
@@ -298,6 +423,7 @@ def main():
               "normalized_launcher_links": normalized_launchers,
               "removed_manpage_links": removed_manpages, "device_tested": False}
     result["boot_diagnostic_files"] = diagnostic_files
+    result["device_hardware_fix_files"] = hardware_files
     (output / "manifest.json").write_text(json.dumps(result, indent=2) + "\n")
 
 
