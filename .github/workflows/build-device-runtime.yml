@@ -78,6 +78,7 @@ jobs:
                 glib2-devel libqmi-devel libmbim-devel protobuf-c-devel \
                 protobuf-c-compiler protobuf-compiler gobject-introspection-devel \
                 vala gtk-doc systemd systemd-devel libgudev-devel polkit-devel
+              git config --global --add safe.directory /workspace/build/sources/sunuefi
               git config --global --add safe.directory /workspace/build/sources/sunuefi/upstream/debian-piano-current
               python3 scripts/build-device-runtime.py --sunuefi build/sources/sunuefi \
                 --kernel build/in/kernel --uapi build/kernel-runtime/uapi \
