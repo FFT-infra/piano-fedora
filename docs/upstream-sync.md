@@ -2,6 +2,29 @@
 
 构建来源由 sources.lock.json 固定。上游 main 的进展用于审阅；更新文档不改变已构建镜像的来源，也不使旧二进制自动获得新实现。
 
+## 2026-10-13 核对（含补丁去重评估）
+
+`git fetch` 后逐个比对八个消费上游：
+
+| 上游 | pin | 远端 | 差异 |
+| --- | --- | --- | --- |
+| sunuefi | `17537522` | `1b0e201` | 1 个提交，只动 Nyarch 打包三行文件（`linux/bsp/arch/chromium-flags.conf`、`tools/build_nyarch_apps.py`、`tools/stage_arch_piano.py`），与启动、交接、内存无关 |
+| fedora-sheng | `3bd197fe` | `641c991e` | 9 个提交，全部是 Denial 合成器打包（v0.5.0、ARM64 补丁扩到 Arch/openSUSE/Debian/Ubuntu、构建加 libpolkit-agent-1-dev、去掉 RPM 后缀环境变量） |
+| linux-piano(`piano-7.2.6`)、piano-firmware、piano-mesa、piano-sensors、piano-mipps-auth、debian-piano | 不变 | 与 pin 一致 | — |
+
+**补丁去重评估**：对上游 HEAD 逐条核对，结论是四条系列都要保留，没有一条已被吸收。
+
+| 系列 | 上游现状 | 结论 |
+| --- | --- | --- |
+| kernel-f2fs（3 条） | `tools/build_piano_full_kernel.py` 没有 F2FS/SELinux 配置；选择器 `.rodata`/`.data` 只有段首 `ALIGN(16)`，没有段尾对齐 | 保留 |
+| uefi-ufs（1 条） | 上游有 `PianoUfsBuildResumeActive`，但只在描述符读失败（`EFI_DEVICE_ERROR`）时调用 | 保留：本机 1 TB UFS 睡眠态也能读成功，那个闸门不触发 |
+| uefi-live-memory（1 条，本轮新增） | 全部远端分支 `grep ddr_size` 为空，raw 交接不碰 `/memory` | 保留：24 GB 采纳，真机 `MemTotal` 22.57 GiB |
+| runtime/camerad-gcc-bounds | 上游无 | 保留 |
+
+**pin 是否移动**：`sunuefi` 提到 `1b0e201` 已在本地重放验证（补丁干净应用、`check_patches` 通过），但该提交只改 Nyarch 打包，不改变任何启动或内核产物，因此本轮不动 pin；与其它输入一起评审时再决定。`fedora-sheng` 只作后端参照，不消费其代码。
+
+**不改变的事**：本轮核对不让任何已构建镜像获得新实现；新部署包仍须记录 UEFI run、生产提交、实际 checkout、项目补丁与产品摘要。
+
 ## 本轮核对
 
 2026-10-11 22:14（Asia/Shanghai），GitHub API 与 git ls-remote 对 main 的结果一致：`964459705190fb7b83809e5b059e90b9718f619d`，领先本仓库 pin `6a8763d010adb00b18911d6d12e6dd02869f98b9` 三个提交。
