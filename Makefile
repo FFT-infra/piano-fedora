@@ -1,4 +1,9 @@
-.PHONY: test plan clean
+.PHONY: test test-runtime-camera plan clean
+
+RUNTIME_CAMERA_SUNUEFI ?= build/sources/sunuefi
+RUNTIME_CAMERA_PUBLIC_SOURCE ?= $(RUNTIME_CAMERA_SUNUEFI)/upstream/debian-piano-current
+RUNTIME_CAMERA_UAPI ?= build/kernel-runtime/uapi
+RUNTIME_CAMERA_OUTPUT ?= build/runtime-camera-test
 
 test:
 	python3 tests/check_sources.py
@@ -24,6 +29,13 @@ test:
 	python3 tests/check_stage_payload.py
 	python3 tests/check_image_workflow.py
 	python3 tests/check_rootfs_finalize.py
+
+test-runtime-camera:
+	python3 tests/check_runtime_camera.py \
+		--sunuefi "$(RUNTIME_CAMERA_SUNUEFI)" \
+		--public-source "$(RUNTIME_CAMERA_PUBLIC_SOURCE)" \
+		--uapi "$(RUNTIME_CAMERA_UAPI)" \
+		--output "$(RUNTIME_CAMERA_OUTPUT)"
 
 RELEASEVER ?= 44
 plan:

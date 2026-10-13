@@ -14,6 +14,11 @@ from pathlib import Path
 
 from piano_artifacts import inspect_kernel, sha256
 
+# SourcePin 1753752 adds piano-camerad-local-video-group.patch to the five
+# earlier adapters; the same public source therefore hashes to e5cf..., not
+# the pre-1753752 effective-source hash 1b5....
+EXPECTED_CAMERA_EFFECTIVE_SOURCE_SHA256 = "e5cfcb2a71834a9031e730e258d4035c45670d340994e700b44ff79d89b2f7ba"
+
 
 def run(command, **kw):
     subprocess.run([str(x) for x in command], check=True, **kw)
@@ -131,7 +136,9 @@ def build(args):
     import build_piano_runtime_helpers as runtime
     import stage_piano_ram_hardware as hardware
     import build_boot_request
-    public = sun / "upstream/debian-piano-current"
+    public_source = getattr(args, "public_source", None)
+    public = (public_source.resolve() if public_source else
+              sun / "upstream/debian-piano-current")
     runtime.repository(public, runtime.PUBLIC_COMMIT)
     payload = output / "piano-payload"
     payload.mkdir()
@@ -139,10 +146,18 @@ def build(args):
     build.mkdir()
     compiler = shutil.which("gcc")
     flags = [compiler, "-O2", "-Wall", "-Wextra", "-Werror"]
+    camera_test = Path(__file__).resolve().parents[1] / "tests/check_runtime_camera.py"
+    subprocess.run([
+        sys.executable, camera_test,
+        "--sunuefi", sun,
+        "--public-source", public,
+        "--uapi", args.uapi.resolve(),
+        "--output", build / "camera-regression",
+    ], check=True)
     touch, touch_proof = runtime.derive_touch_source(public, build)
     camera, camera_proof = runtime.derive_camerad_source(public, build)
-    if camera_proof['effective_source_sha256'] != '1b5f1eee73d4cad6d91791c4d384b53f15b96518d15d75b2e446f02309982eb2':
-        raise ValueError('camera adapter input changed; review the GCC patch')
+    if camera_proof['effective_source_sha256'] != EXPECTED_CAMERA_EFFECTIVE_SOURCE_SHA256:
+        raise ValueError('effective camera source changed; review upstream adapters and the GCC patch')
     gcc_patch = Path(__file__).resolve().parents[1] / 'patches/runtime/camerad-gcc-bounds.patch'
     run(['patch', '--batch', '--forward', '--fuzz=0', '-p1', '-i', gcc_patch], cwd=camera.parent.parent)
     camera_proof['fedora_patch_sha256'] = sha256(gcc_patch)
@@ -243,6 +258,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     for name in ("sunuefi", "kernel", "uapi", "output"):
         ap.add_argument("--" + name, type=Path, required=True)
+    ap.add_argument("--public-source", type=Path,
+                    help="optional clean Debian-Piano checkout; defaults to the SunUEFI submodule")
     ap.add_argument("--loopback", type=Path, required=True)
     build(ap.parse_args())
 
