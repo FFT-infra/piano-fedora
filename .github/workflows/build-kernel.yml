@@ -262,7 +262,7 @@ jobs:
           PY
 
       - name: Build the experimental Gunyah kernel
-        working-directory: build/sources/sunuefi
+        working-directory: sunuefi
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -284,7 +284,7 @@ jobs:
           PY
 
       - name: Package the experimental kernel
-        working-directory: build/sources/sunuefi
+        working-directory: sunuefi
         run: |
           set -euo pipefail
           tar -I 'zstd -10 -T0' -cf "$GITHUB_WORKSPACE/kernel-experimental-gunyah.tar.zst" \
