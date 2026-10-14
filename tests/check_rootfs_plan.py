@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """离线检查 Fedora 后端的 plan 与拒绝路径。不执行构建。"""
 
+import fnmatch
 import json
 import subprocess
 import sys
@@ -46,6 +47,15 @@ def main():
         check(data["arch"] == "aarch64", "arch should be aarch64")
         check(data["device_tested"] is False, "plan must not claim device testing")
         check(len(data["packages"]) > 10, "plan should list packages")
+        excluded = [pattern for option in data["dnf_options"]
+                    if option.startswith("--exclude=")
+                    for pattern in option.partition("=")[2].split(",")]
+        conflicts = [name for name in data["packages"]
+                     if any(fnmatch.fnmatchcase(name, pattern) for pattern in excluded)]
+        check(not conflicts, f"explicit packages are also excluded: {conflicts}")
+        # 正面控制：排除检查确实能认出发行版 kernel-core，而非空列表永远通过。
+        check(any(fnmatch.fnmatchcase("kernel-core", pattern) for pattern in excluded),
+              "the distro kernel must remain excluded")
 
     # 非数字版本：拒绝。
     check(run("--plan", "--releasever", "rawhide").returncode == 2, "rawhide should be rejected")

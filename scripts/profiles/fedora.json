@@ -82,8 +82,6 @@
     "cifs-utils-info",
     "hdparm",
     "less-color",
-    "kernel-tools",
-    "kernel-tools-libs",
     "kpartx",
     "nilfs-utils",
     "ntfs-3g-system-compression",
