@@ -149,7 +149,7 @@ def build_fastrpc_daemon(source, payload, build):
 
 
 def adapt_camerad_for_fedora(camera, proof):
-    """只向已核对的上游适配输出应用 GCC 修复，保持输入摘要门槛。"""
+    """向已核对的上游输出应用 GCC 和真机管线修复，保持输入摘要门槛。"""
     actual = sha256(camera)
     if (proof.get("effective_source_sha256") != CAMERAD_ADAPTER_INPUT_SHA256
             or actual != CAMERAD_ADAPTER_INPUT_SHA256):
@@ -166,6 +166,9 @@ def adapt_camerad_for_fedora(camera, proof):
     gcc_patch = Path(__file__).resolve().parents[1] / "patches/runtime/camerad-gcc-bounds.patch"
     run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", gcc_patch], cwd=camera.parent.parent)
     proof["fedora_patch_sha256"] = sha256(gcc_patch)
+    route_patch = gcc_patch.with_name("camerad-owned-pix-route.patch")
+    run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", route_patch], cwd=camera.parent.parent)
+    proof["fedora_route_patch_sha256"] = sha256(route_patch)
     proof["fedora_effective_source_sha256"] = sha256(camera)
 
 
