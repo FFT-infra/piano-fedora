@@ -122,6 +122,48 @@ def main():
         check((rootfs / "usr/local/sbin/piano-debug-bootstrap").samefile(rescue),
               "the upstream rescue path must resolve to the installed helper")
 
+        # 实际 staging 流程必须把新模块、脚本、unit 和 provenance 一起交给标签恢复。
+        # 来源在 home 下时 copy2/copytree 会保留 user_home_t；仅检查摘要看不出它。
+        original_sha = stage.sha256
+        labelled = make_rootfs(tmp / "labelled")
+        def source_sha(path):
+            path = Path(path)
+            return digests[path.relative_to(preflight_source).as_posix()] if path.is_relative_to(preflight_source) else original_sha(path)
+        with patch.object(stage, "sha256", side_effect=source_sha), \
+             patch.object(stage, "relabel_live_payload", create=True,
+                          return_value={"status": "TARGET_POLICY_APPLIED"}) as relabel:
+            labelled_result = stage.stage(labelled, kernel, preflight_source)
+            check(relabel.call_count == 1, "successful staging omitted SELinux label restoration")
+            if relabel.call_count:
+                label_root, targets = relabel.call_args.args
+                check(label_root == labelled.resolve(), "SELinux relabel used the wrong root")
+                check(set(targets) == {
+                    f"usr/lib/modules/{RELEASE}", "usr/lib/piano",
+                    "usr/local/bin/piano-debug-bootstrap", "usr/local/bin/piano-debug-stage",
+                    "usr/lib/systemd/system/piano-linux-debug.service",
+                    "usr/share/piano-provenance/kernel-modules.json",
+                }, "SELinux relabel omitted a staged surface or exceeded the payload scope")
+                check(labelled_result.get("selinux", {}).get("status") == "TARGET_POLICY_APPLIED",
+                      "staging result omitted SELinux evidence")
+
+        if hasattr(stage, "relabel_live_payload"):
+            with patch.object(stage.subprocess, "run") as command:
+                offline = stage.relabel_live_payload(labelled, [f"usr/lib/modules/{RELEASE}"])
+                check(not command.called and offline["status"] == "DEFERRED_TO_IMAGE_LABELING",
+                      "offline staging must defer to the image workflow's complete target-policy labelling")
+            with patch.object(stage.subprocess, "run") as command:
+                stage.relabel_live_payload(Path("/"), [f"usr/lib/modules/{RELEASE}"])
+                check(command.call_count == 1 and command.call_args.args[0] == [
+                    "/usr/sbin/setfiles", "-F", "/etc/selinux/targeted/contexts/files/file_contexts",
+                    f"/usr/lib/modules/{RELEASE}"], "live staging must apply the target's policy with setfiles")
+            with patch.object(stage.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "setfiles")):
+                try:
+                    stage.relabel_live_payload(Path("/"), [f"usr/lib/modules/{RELEASE}"])
+                except stage.StageError:
+                    pass
+                else:
+                    check(False, "failed SELinux labelling was accepted as successful staging")
+
         # 空目录不算系统树。
         empty = tmp / "empty"
         empty.mkdir()

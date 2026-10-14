@@ -151,6 +151,26 @@ def stage_hardware(rootfs, sunuefi):
     return staged
 
 
+def relabel_live_payload(rootfs, targets):
+    """copy2/copytree 会带入来源 xattr；真机更新必须恢复目标策略标签。
+
+    离线 rootfs 由 build-image 的完整 setfiles 阶段统一标记。真机不能等到
+    重启后再修：user_home_t 会使 kmod、systemd 和 USB 诊断入口被拒绝。
+    使用 setfiles，避免未加载 SELinux 的环境中 restorecon 静默不做事。
+    """
+    if rootfs != Path("/"):
+        return {"status": "DEFERRED_TO_IMAGE_LABELING"}
+    command = ["/usr/sbin/setfiles", "-F",
+               "/etc/selinux/targeted/contexts/files/file_contexts",
+               *("/" + str(path) for path in targets)]
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        detail = getattr(exc, "stderr", None) or str(exc)
+        raise StageError("SELinux payload labelling failed: " + detail) from exc
+    return {"status": "TARGET_POLICY_APPLIED", "targets": list(targets)}
+
+
 def stage(rootfs, kernel, sunuefi):
     rootfs = Path(rootfs).resolve()
     kernel = Path(kernel).resolve()
@@ -187,6 +207,13 @@ def stage(rootfs, kernel, sunuefi):
         "device_tested": False,
     }, indent=2) + "\n", encoding="utf-8")
 
+    selinux = relabel_live_payload(rootfs, [
+        str(destination.relative_to(rootfs)), "usr/lib/piano",
+        "usr/local/bin/piano-debug-bootstrap", "usr/local/bin/piano-debug-stage",
+        "usr/lib/systemd/system/piano-linux-debug.service",
+        str(provenance.relative_to(rootfs)),
+    ])
+
     return {
         "status": "ROOTFS_PAYLOAD_STAGED_NOT_BOOT_VERIFIED",
         "rootfs": str(rootfs),
@@ -196,6 +223,7 @@ def stage(rootfs, kernel, sunuefi):
         "modules_path": str(destination.relative_to(rootfs)),
         "hardware_prepare": sorted(staged),
         "hardware_prepare_alias": "usr/lib/piano/piano-disk-hardware-prepare",
+        "selinux": selinux,
         "device_tested": False,
     }
 
