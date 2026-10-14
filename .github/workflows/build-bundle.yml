@@ -132,6 +132,8 @@ jobs:
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-audio-dmic-clock.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-flash.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-privacy-led.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-touch-panel.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-pen-dock.dtso \
             --initramfs build/initramfs/initramfs.cpio.gz \
             --rootfs build/device-root/rootfs --rootfs-manifest build/device-root/manifest.json \
             --root-selector LABEL=PIANOROOT --esp-size-mib 512 --output build/packaged

@@ -1,23 +1,23 @@
 diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
+index fcc1174..a1f9bdd 100644
 --- a/tools/build_piano_full_kernel.py
 +++ b/tools/build_piano_full_kernel.py
-@@ -65,8 +65,14 @@ FEDORA_OVERRIDES.update({
+@@ -65,8 +65,13 @@ FEDORA_OVERRIDES.update({
   'CONFIG_NFT_FIB_IPV4':'y','CONFIG_NFT_FIB_IPV6':'y','CONFIG_NFT_MASQ':'y',
   'CONFIG_NFT_NAT':'y','CONFIG_NFT_REDIR':'y',
  })
-+# Built-in only in a separate prepared source snapshot imported verbatim from the
-+# pinned upstream branch; never weaken ownership checks to link external modules.
++# Import the unchanged upstream VMM only in an isolated, explicit built-in profile.
 +GUNYAH_OVERRIDES={'CONFIG_GUNYAH':'y','CONFIG_GUNYAH_HYPERCALLS':'y',
 +                  'CONFIG_GUNYAH_TIMER':'y','CONFIG_GUNYAH_PLATFORM_HOOKS':'y',
 +                  'CONFIG_GUNYAH_QCOM_PLATFORM':'y','CONFIG_GUNYAH_QCOM_TRUSTED_VM':'y',
 +                  'CONFIG_GUNYAH_IRQFD':'y','CONFIG_GUNYAH_IOEVENTFD':'y'}
- ALLOWED_OVERRIDES={**BLUETOOTH_OVERRIDES,**FLASH_OVERRIDES,**EARLY_CPUCP_OVERRIDES,
--                   **USERSPACE_SECURITY_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES}
-+                   **USERSPACE_SECURITY_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES,**GUNYAH_OVERRIDES}
+ ALLOWED_OVERRIDES={**BLUETOOTH_OVERRIDES,**PEN_DOCK_OVERRIDES,**FLASH_OVERRIDES,**EARLY_CPUCP_OVERRIDES,
+-                   **USERSPACE_SECURITY_OVERRIDES,**PM_DEBUG_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES}
++                   **USERSPACE_SECURITY_OVERRIDES,**PM_DEBUG_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES,**GUNYAH_OVERRIDES}
  
  
  def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
-@@ -113,6 +119,8 @@ def validate_module_overrides(values):
+@@ -113,6 +118,8 @@ def validate_module_overrides(values):
      if flash and flash!=set(FLASH_OVERRIDES):raise ValueError('Flash requires all four reviewed options')
      fedora=set(values)&set(FEDORA_OVERRIDES)
      if fedora and fedora!=set(FEDORA_OVERRIDES):raise ValueError('Fedora requires the complete reviewed SELinux policy')
@@ -26,25 +26,24 @@ diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
      return values
  
  
-@@ -219,10 +227,16 @@ def main():
+@@ -219,12 +226,15 @@ def main():
      parser.add_argument('--rebuild',action='store_true',help='Replace generated candidate artifacts with an incremental build')
      parser.add_argument('--root-fstype',choices=('ext4','f2fs'),default='ext4')
      parser.add_argument('--fedora-policy',action='store_true')
 +    parser.add_argument('--experimental-gunyah',action='store_true',help='Build the isolated prepared Gunyah VMM source')
+     parser.add_argument('--pm-debug',action='store_true',
+                         help='Enable kernel PM stage tests for suspend diagnostics; disabled in normal builds')
      args=parser.parse_args()
      if not 1<=args.jobs<=8:raise SystemExit('Full candidate jobs must be 1..8')
      work,out,artifacts=(path.resolve()for path in (args.worktree,args.build_dir,args.artifacts));commit=args.commit
 -    if not work.is_relative_to(ROOT/'build/kernel-worktrees')or not out.is_relative_to(ROOT/'build/kernels')or not artifacts.is_relative_to(ROOT/'artifacts/kernels'):
-+    # The isolated Gunyah experiment worktree is created by the workspace's
-+    # prepare-gunyah-source.py, whose own guard keeps its output under the
-+    # workspace build/. That is one level above this checkout, and still inside
-+    # the same CI workspace. Only this worktree root is added back.
++    # The source-preparation tool also owns worktrees one level above this checkout.
 +    worktree_roots=(ROOT/'build/kernel-worktrees',ROOT.parent/'build/kernel-worktrees')
 +    if not any(work.is_relative_to(root)for root in worktree_roots)or not out.is_relative_to(ROOT/'build/kernels')or not artifacts.is_relative_to(ROOT/'artifacts/kernels'):
          raise ValueError('Explicit full kernel paths must stay in the workspace build/artifact directories')
      compiler=ROOT/'build/kernel-worktrees'/(out.name+'-compiler-'+hashlib.sha256(str(out).encode()).hexdigest()[:12])
      if compiler==work or compiler.resolve()!=compiler:
-@@ -239,6 +253,10 @@ def main():
+@@ -243,6 +253,10 @@ def main():
               **module_overrides(f2fs.read_text(),'f2fs')}
      if args.fedora_policy:
          modules={**modules,**FEDORA_OVERRIDES}
@@ -52,6 +51,6 @@ diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
 +        if not (work/'drivers/virt/gunyah/Kconfig').is_file():
 +            raise ValueError('Gunyah requires the isolated prepared source snapshot')
 +        modules={**modules,**GUNYAH_OVERRIDES}
+     if args.pm_debug:
+         modules.update(PM_DEBUG_OVERRIDES)
      env,tools=toolchain();out.mkdir(parents=True,exist_ok=True);artifacts.mkdir(parents=True,exist_ok=True)
-     build_locks=[]
-     lock_root=ROOT/'build/locks';lock_root.mkdir(parents=True,exist_ok=True)

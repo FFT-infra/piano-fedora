@@ -2,6 +2,30 @@
 
 构建来源由 sources.lock.json 固定。上游 main 的进展用于审阅；更新文档不改变已构建镜像的来源，也不使旧二进制自动获得新实现。
 
+## 2026-10-14 消费 pin 升到 SunUEFI a485cc01
+
+全量审计 89 个登记仓库（`scripts/audit-upstreams.py --execute`）后，9 个实际消费源里
+只有 SunUEFI main 领先 pin：`17537522 -> a485cc01c6394866f0d07567d1ebf6ff6114fafb`，
+26 个提交。其余 8 个消费源与 pin 逐字一致；3 个 404 的仓库仍是研究登记，不参与构建。
+
+这 26 个提交含实际硬件修复：双路显示从路时钟恢复、DSI PLL 注册延迟、
+DPU 停机顺序、面板恢复后触控中断重开、触控笔磁吸唤醒与蓝牙扫描重连、
+SM8750 PCIe 活跃链路供电、蓝牙 RFCOMM/PAN 模块、麦克风 +40 dB 增益、
+电源键与合盖锁屏熄屏。上游同时明确：默认自动睡眠仍未启用，桌面睡眠请求后的
+用户进程恢复仍在定位，所以本仓库不启用自动睡眠，只跟随上游已进默认内核的部分。
+
+配套改动：
+
+| 项 | 说明 |
+| --- | --- |
+| 五组补丁 | F2FS/Fedora SELinux、nftables、Gunyah 实验档、UEFI 内存地图、1TB UFS，全部在 a485 上重新生成并真实重放通过 |
+| `piano-boot-task-snapshot` | 上游内容更新；staging 对该文件不设写死摘要，继续跟随上游 |
+| 打包 overlays | `build-bundle` 同步上游新增的 `piano-touch-panel.dtso` 与 `piano-pen-dock.dtso`，共 7 个 |
+| 相机适配 | 上游相机补丁集未变，`CAMERAD_ADAPTER_INPUT_SHA256` 仍为 `e5cfcb2a`，无需 rebase |
+
+`make test` 在 a485 上全绿（含相机适配的真实 GCC 编译）。这一步只证明源码与补丁可构建；
+新内核、UEFI、镜像与部署包仍需各自重新构建并在设备上验收。
+
 ## 2026-10-14 复核：登记表本身不会报"谁更新了"
 
 `python3 scripts/audit-upstreams.py --execute` 对 89 个登记仓库取证：86 个拿到完整

@@ -24,7 +24,7 @@ SSC_DRIVER_MARKERS = ("ssc-accel", "ssc-proximity", "ssc-light", "ssc-compass")
 # 构建机已装 binutils；用它的 readelf 读 DT_NEEDED，不自己解析 ELF。
 SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]")
 
-# SunUEFI 17537522 includes the static camera helper's local-video-group fix.
+# The locked SunUEFI includes the static camera helper's local-video-group fix.
 # Reversing that one upstream patch reproduces the previous 1b5f1eee input.
 CAMERAD_ADAPTER_INPUT_SHA256 = "e5cfcb2a71834a9031e730e258d4035c45670d340994e700b44ff79d89b2f7ba"
 

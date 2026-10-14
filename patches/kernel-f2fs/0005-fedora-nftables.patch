@@ -1,12 +1,12 @@
 diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
+index cd2c353..fcc1174 100644
 --- a/tools/build_piano_full_kernel.py
 +++ b/tools/build_piano_full_kernel.py
-@@ -54,6 +54,17 @@
+@@ -55,6 +55,16 @@ F2FS_OVERRIDES={'CONFIG_F2FS_FS':'y','CONFIG_F2FS_FS_XATTR':'y',
                  'CONFIG_F2FS_FS_POSIX_ACL':'y','CONFIG_F2FS_FS_SECURITY':'y'}
  FEDORA_OVERRIDES={'CONFIG_SECURITY_NETWORK':'y','CONFIG_SECURITY_SELINUX':'y',
                    'CONFIG_LSM':'"selinux"'}
-+# Fedora firewalld and libvirt use the nftables netlink API. The public
-+# piano profile has NETFILTER but no NF_TABLES; userspace alone cannot fix it.
++# Fedora firewalld and libvirt need the complete nftables netlink API.
 +FEDORA_OVERRIDES.update({
 + 'CONFIG_NETFILTER':'y','CONFIG_NETFILTER_ADVANCED':'y',
 + 'CONFIG_NF_CONNTRACK':'y','CONFIG_NF_NAT':'y','CONFIG_NF_TABLES':'y',
@@ -16,6 +16,6 @@ diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
 + 'CONFIG_NFT_FIB_IPV4':'y','CONFIG_NFT_FIB_IPV6':'y','CONFIG_NFT_MASQ':'y',
 + 'CONFIG_NFT_NAT':'y','CONFIG_NFT_REDIR':'y',
 +})
- ALLOWED_OVERRIDES={**BLUETOOTH_OVERRIDES,**FLASH_OVERRIDES,**EARLY_CPUCP_OVERRIDES,
-                    **USERSPACE_SECURITY_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES}
+ ALLOWED_OVERRIDES={**BLUETOOTH_OVERRIDES,**PEN_DOCK_OVERRIDES,**FLASH_OVERRIDES,**EARLY_CPUCP_OVERRIDES,
+                    **USERSPACE_SECURITY_OVERRIDES,**PM_DEBUG_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES}
  
