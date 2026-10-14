@@ -17,6 +17,7 @@ test:
 	python3 tests/check_update_installer.py
 	python3 tests/check_update_memory.py
 	python3 tests/check_esp_image.py
+	python3 tests/check_bundle_overlays.py
 	python3 tests/check_patches.py
 	python3 tests/check_fedora_kernel.py
 	python3 tests/check_gunyah_source.py

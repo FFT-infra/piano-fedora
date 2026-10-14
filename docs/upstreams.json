@@ -4,6 +4,15 @@
   "note": "历史研究清单与当前消费源的去重索引；reference_commit/reference_date 是上次复核记下的提交，audit-upstreams.py 逐行比对并在结果里报 updated。reference 不等于已审阅或可用于本机。",
   "repositories": [
     {
+      "repo": "dgibson/dtc",
+      "ref": "v1.8.1",
+      "category": "build",
+      "role": "设备树覆盖层打包工具",
+      "decision": "consume",
+      "lock_key": "dtc",
+      "reason": "libfdt 1.6.1 会覆盖触屏关联覆盖层目标节点的既有 phandle；锁定 1.8.1"
+    },
+    {
       "repo": "CodeLinaro-mirror/linux-kernel_gunyah-linux",
       "ref": "eberman/gunyah",
       "category": "virtualization",

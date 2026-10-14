@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq zstd dosfstools mtools device-tree-compiler python3 git
+          sudo apt-get install -y -qq zstd dosfstools mtools device-tree-compiler python3 git gcc make flex bison
 
       - name: Resolve complete image and UEFI inputs
         id: src
@@ -121,8 +121,15 @@ jobs:
       - name: Create the upstream-compatible ESP and Linux boot payload
         run: |
           set -euo pipefail
+          # Ubuntu 24.04 的 libfdt 1.6.1 会覆盖已存在的 panel phandle。
+          # 使用锁定上游 1.8.1，sudo 下显式传递工具和动态库路径。
+          make -C build/sources/dtc -j2 NO_PYTHON=1 NO_YAML=1 dtc fdtoverlay
+          export PATH="$PWD/build/sources/dtc:$PATH"
+          export LD_LIBRARY_PATH="$PWD/build/sources/dtc/libfdt"
+          PIANO_TEST_SUNUEFI=build/sources/sunuefi python3 tests/check_bundle_overlays.py
           # stock Android BOOT 包装仍要求本机当前 BOOT，通用包不冒充已部署合体 BOOT。
-          sudo python3 build/sources/sunuefi/tools/package_release.py \
+          sudo env "PATH=$PATH" "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+            python3 build/sources/sunuefi/tools/package_release.py \
             --uefi build/uefi/PianoUEFI-product.img --kernel build/kernel \
             --dtb build/sources/sunuefi/vendor/piano-linux/board.dtb \
             --cpu-model-overlay build/sources/sunuefi/linux/dts/piano-cpu-model.dtso \
@@ -159,6 +166,9 @@ jobs:
           record = json.loads(path.read_text())
           record.update(uefi_run=os.environ['UEFI_RUN'], image_run=os.environ['ROOT_RUN'],
                         bundle_source_commit=os.environ['GITHUB_SHA'])
+          pins = json.loads(Path('sources.lock.json').read_text())['sources']
+          record['dtc_commit'] = pins['dtc']['commit']
+          record['dt_bindings_commit'] = pins['linux-piano']['commit']
           path.write_text(json.dumps(record, indent=2) + '\n')
           PY
           cp build/initramfs/manifest.json bundle/initramfs-manifest.json

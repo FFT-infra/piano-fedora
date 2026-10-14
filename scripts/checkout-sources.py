@@ -72,6 +72,13 @@ def main():
     if args.kernel:
         kernel = lock["linux-piano"]
         checkout(kernel["url"], kernel["commit"], sun / "upstream/linux-piano", True)
+    elif args.mode == "boot":
+        kernel = lock["linux-piano"]
+        checkout(kernel["url"], kernel["commit"], sun / "upstream/linux-piano",
+                 sparse_paths=("/include/dt-bindings/",))
+    if args.mode == "boot":
+        dtc = lock["dtc"]
+        checkout(dtc["url"], dtc["commit"], output / "dtc")
     if args.mode == "device":
         mipps = lock["piano-mipps-auth"]
         checkout(mipps["url"], mipps["commit"], output / "piano-mipps-auth")

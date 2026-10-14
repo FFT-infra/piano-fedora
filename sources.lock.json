@@ -3,6 +3,12 @@
   "checked_date": "2026-10-14",
   "note": "只列构建实际消费的上游；研究与后端参考单独记录在 docs/upstreams.json。",
   "sources": {
+    "dtc": {
+      "url": "https://github.com/dgibson/dtc.git",
+      "ref": "v1.8.1",
+      "commit": "8f48565e5cfedc74d3f7512f1e0188e9d85dc1de",
+      "role": "设备树打包工具：保留覆盖层目标节点已有 phandle 的 libfdt 1.8.1"
+    },
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
