@@ -71,3 +71,20 @@ jobs:
           path: rootfs-*.tar.zst
           if-no-files-found: error
           retention-days: 14
+
+      - name: Show the actual rootfs failure
+        if: failure()
+        run: |
+          set -euo pipefail
+          for log in build/distros/*/build.log; do
+            if [ -f "$log" ]; then sudo tail -n 80 "$log"; fi
+          done
+
+      - name: Preserve rootfs build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rootfs-diagnostics
+          path: build/distros/*/build.log
+          if-no-files-found: warn
+          retention-days: 7
