@@ -44,6 +44,25 @@ def put(source, destination, executable=False):
         destination.chmod(0o755 if executable else 0o644)
 
 
+def stage_power_overlay(sunuefi, payload):
+    """Install only the hardware/session-owned files from GNOME's power overlay."""
+    overlay = Path(sunuefi) / "linux/desktops/gnome/power-overlay"
+    payload = Path(payload)
+    relatives = (
+        "usr/lib/piano/power-button",
+        "usr/lib/systemd/user/piano-power-button.service",
+        "etc/udev/rules.d/70-piano-power-button.rules",
+        "etc/systemd/logind.conf.d/piano.conf",
+        "etc/dconf/db/local.d/00-power",
+    )
+    for relative in relatives:
+        source = overlay / relative
+        if not source.is_file():
+            raise FileNotFoundError("locked power overlay file is missing: " + str(source))
+        put(source, payload / relative, relative == "usr/lib/piano/power-button")
+    return list(relatives)
+
+
 def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0"):
     """自有 RPM 只拥有实际载荷文件，不声明拥有整个 /usr 或系统目录。"""
     top = output / (name + "-rpmbuild")
@@ -273,6 +292,7 @@ def build(args):
     for p in (sun / "linux/bsp/common").rglob("*"):
         if p.is_file() or p.is_symlink():
             put(p, payload / p.relative_to(sun / "linux/bsp/common"), p.stat().st_mode & 0o111)
+    stage_power_overlay(sun, payload)
     for name in ("cpufreq-start", "pstore-save"):
         put(public / "rootfs/overlay/usr/lib/piano" / name, payload / "usr/lib/piano" / name, True)
     put(Path(shutil.which("busybox")), payload / "usr/lib/piano/busybox", True)
