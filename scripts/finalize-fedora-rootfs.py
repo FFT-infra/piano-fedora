@@ -203,7 +203,7 @@ STAMP=/var/lib/piano-clock/last
 saved=$(cat "$STAMP" 2>/dev/null || echo 0)
 case "$saved" in ''|*[!0-9]*) exit 0 ;; esac
 now=$(date -u +%s)
-if [ "$now" -lt 1735689600 ] && [ "$saved" -gt "$now" ]; then
+if [ "$saved" -gt 1735689600 ] && [ "$saved" -gt "$now" ]; then
   date -u -s "@$saved"
   logger -t piano-clock "restored clock floor to $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 fi

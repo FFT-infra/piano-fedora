@@ -320,6 +320,12 @@ def check_piano_hardware_fixes(root):
     subprocess.run(["/bin/sh", script], env=environment, check=True, capture_output=True)
     assert capture.read_text().strip() == "@" + str(seed), "offline 1970 boot was not corrected"
     capture.unlink()
+    # systemd 的镜像 epoch 已把 1970 提到构建日，仍须继续恢复更晚的保存时间。
+    subprocess.run(["/bin/sh", script], env={**environment, "PIANO_FIXTURE_NOW": str(seed - 3600)},
+                   check=True, capture_output=True)
+    assert capture.is_file() and capture.read_text().strip() == "@" + str(seed), \
+        "an image-epoch clock newer than 2025 bypassed the saved clock floor"
+    capture.unlink()
     subprocess.run(["/bin/sh", script], env={**environment, "PIANO_FIXTURE_NOW": str(seed + 3600)},
                    check=True, capture_output=True)
     assert not capture.exists(), "a sane running clock was overwritten"
