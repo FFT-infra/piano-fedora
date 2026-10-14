@@ -20,7 +20,9 @@ test:
 	python3 tests/check_patches.py
 	python3 tests/check_fedora_kernel.py
 	python3 tests/check_gunyah_source.py
+	python3 tests/check_runtime_kernel_source.py
 	python3 tests/check_fastrpc_runtime.py
+	python3 tests/check_sensor_runtime.py
 	python3 tests/check_camerad_adapter.py
 	python3 tests/check_initramfs.py
 	python3 tests/check_bootstrap_contract.py

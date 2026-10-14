@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,15 @@ import urllib.request
 from pathlib import Path
 
 from piano_artifacts import inspect_kernel, sha256
+
+# iio-sensor-proxy 3.9 的 meson_options.txt 把 ssc-support 声明为 feature/auto，
+# 而 src/meson.build 用 get_option('ssc-support').enabled() 决定是否编入
+# drv-ssc-*。auto 在 libssc 存在时仍是 not enabled（auto≠enabled），SSC 后端
+# 会被静默跳过：ELF 不链接 libssc，设备上 service 因拿不到 sensor 而秒退。
+# Debian 的 debian/rules 在 arm64 显式传 -Dssc-support=enabled，Fedora 侧必须同样显式。
+SSC_DRIVER_MARKERS = ("ssc-accel", "ssc-proximity", "ssc-light", "ssc-compass")
+# 构建机已装 binutils；用它的 readelf 读 DT_NEEDED，不自己解析 ELF。
+SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]")
 
 # SunUEFI 17537522 includes the static camera helper's local-video-group fix.
 # Reversing that one upstream patch reproduces the previous 1b5f1eee input.
@@ -86,6 +96,38 @@ def sensors_source(output, name, version, archive_name, digest):
     return roots[0]
 
 
+def verify_ssc_runtime(binary):
+    """确认产物真的链接了 libssc 且编入 SSC 驱动，而不是配置被静默跳过。
+
+    用构建机 binutils 的 readelf -dW 读 DT_NEEDED，只看产物本身；meson 的 log 或
+    config.h 在后端被跳过或链接失败时都可能仍是"配置成功"。源码标记读整文件即可，
+    .rodata 里的 udev 类型字面量与动态节无关。"""
+    readelf = shutil.which("readelf")
+    if readelf is None:
+        raise ValueError("binutils readelf unavailable; cannot verify libssc linkage")
+    completed = subprocess.run([readelf, "-dW", str(binary)],
+                               capture_output=True, text=True)
+    if completed.returncode != 0:
+        raise ValueError("readelf cannot read iio-sensor-proxy output: " + completed.stderr.strip())
+    output = completed.stdout
+    linked = SSC_NEEDED.findall(output)
+    if not linked:
+        raise ValueError(
+            "iio-sensor-proxy ELF does not link libssc; meson ssc-support was not "
+            "enabled (needs -Dssc-support=enabled)")
+    raw = Path(binary).read_bytes()
+    missing = [m for m in SSC_DRIVER_MARKERS if m.encode() not in raw]
+    if missing:
+        raise ValueError("iio-sensor-proxy ELF is missing SSC driver markers " + repr(missing))
+    return {"libssc": sorted(set(linked)), "ssc_driver_markers": list(SSC_DRIVER_MARKERS),
+            "sha256": sha256(binary), "bytes": Path(binary).stat().st_size}
+
+
+def sensor_meson_options(name):
+    """iio-sensor-proxy 必须显式 -Dssc-support=enabled，否则 feature/auto 静默跳过 SSC。"""
+    return ["-Dssc-support=enabled"] if name == "iio-sensor-proxy" else []
+
+
 def build_fastrpc_daemon(source, payload, build):
     """Fedora 的 fastrpc RPM 只有库；从同版上游构建 dlopen listener 的守护进程。"""
     lock = json.loads((Path(__file__).resolve().parents[1] / "sources.lock.json").read_text())["sources"]["fastrpc"]
@@ -149,9 +191,13 @@ def build_sensors(sun, output):
         for patch in sorted(patches):
             run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", patch], cwd=source)
         build = output / (name + "-build")
-        run(["meson", "setup", build, source, "--prefix=/usr", "--libdir=lib64",
-             "--buildtype=release"])
+        setup = ["meson", "setup", build, source, "--prefix=/usr", "--libdir=lib64",
+                 "--buildtype=release", *sensor_meson_options(name)]
+        run(setup)
         run(["meson", "compile", "-C", build, "-j", "4"])
+        elf_proof = None
+        if name == "iio-sensor-proxy":
+            elf_proof = verify_ssc_runtime(build / "src" / "iio-sensor-proxy")
         payload = output / (name + "-payload")
         run(["meson", "install", "-C", build], env={**os.environ, "DESTDIR": str(payload)})
         rpm_package(name, payload, output, version=version)
@@ -160,6 +206,8 @@ def build_sensors(sun, output):
              "--setopt=localpkg_gpgcheck=0"])
         source_records[name] = {"version": version, "archive_sha256": digest,
                                 "patches": {p.name: sha256(p) for p in patches}}
+        if elf_proof is not None:
+            source_records[name]["elf"] = elf_proof
     return source_records
 
 

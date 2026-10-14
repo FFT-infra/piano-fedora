@@ -84,12 +84,17 @@ OnePlus Pad 4（SM8850）上记录 `gunyah: Running under Gunyah hypervisor 51/v
 | 检查 | `tests/check_gunyah_source.py`（已进 `make test`） | 覆盖隐藏修改拒绝、两次派生结果一致、导入文件与上游逐字节相同 |
 | 配置 | `patches/kernel-gunyah`（`GUNYAH_OVERRIDES` + `--experimental-gunyah`） | 八个符号按上游 Kconfig 全选；显式旗标才选；正式档不带该配置 |
 | 构建 | `build-kernel.yml` 的 `gunyah-kernel` job，输入 `experimental_kernel_run_id`（取该 run 的封存内核产物） | 与正式 `kernel` job 互斥；留空即不构建实验档；先单编驱动目录的预检，再整核构建 |
+| 配套 runtime | `build-device-runtime.yml` 的 `experimental_kernel_run_id` | 与标准 `kernel_run_id` 互斥；从同一实验 artifact 取 Image 清单与 SDK，重放派生源码并比较全部来源清单后编译外部模块；不混用标准内核模块 |
 
 预检这一步在 2026-10-14 首次生效：整核构建要五十多分钟，而驱动目录的问题
 在配置完成后十分钟内就能判死。
 
-派生清单状态仍是 `PREPARED_NOT_BUILT_NOT_DEVICE_VERIFIED`——**还没有编译成功、
-更没有真机证据**，所以本文件开头的"当前没有完成 VM 支持"依然成立。
+2026-10-14，Actions run `38445077854` 的驱动预检、整核构建和 SDK 导出均成功。
+本地对下载产物执行 `piano_artifacts.inspect_kernel`，校验 Image、配置、1636 个
+模块及索引通过，内核为 `7.2.9-piano-gnome-gd770d520df28`。派生清单的
+`PREPARED_NOT_BUILT_NOT_DEVICE_VERIFIED` 只描述源码准备步骤；构建结果另由内核
+清单与这次 CI 证明。实验内核尚未部署，RM 握手和客体执行仍未验证，不能据此
+声明 VM 可用。
 
 ## 完成需要的证据
 

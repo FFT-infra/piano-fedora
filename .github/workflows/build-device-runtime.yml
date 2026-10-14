@@ -9,6 +9,10 @@ on:
         description: "同时产出 kernel 与 SDK 的成功 run；留空解析最新完整 run"
         required: false
         default: ""
+      experimental_kernel_run_id:
+        description: "实验 Gunyah 成功 run；与 kernel_run_id 互斥，显式选择实验档"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -33,14 +37,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KERNEL_RUN: ${{ inputs.kernel_run_id }}
+          EXPERIMENTAL_RUN: ${{ inputs.experimental_kernel_run_id }}
         run: |
           set -euo pipefail
+          if [ -n "$EXPERIMENTAL_RUN" ]; then
+            test -z "$KERNEL_RUN"
+            python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml \
+              --artifact kernel-experimental-gunyah --run-id "$EXPERIMENTAL_RUN"
+            echo "experimental=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           args=()
           if [ -n "$KERNEL_RUN" ]; then args+=(--run-id "$KERNEL_RUN"); fi
           python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml \
             --artifact kernel-release-7.2.9 --artifact kernel-sdk-7.2.9 "${args[@]}"
 
       - uses: actions/download-artifact@v4
+        if: steps.kernel.outputs.experimental != 'true'
         with:
           name: kernel-release-7.2.9
           path: build/in/kernel
@@ -48,23 +61,65 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/download-artifact@v4
+        if: steps.kernel.outputs.experimental != 'true'
         with:
           name: kernel-sdk-7.2.9
           path: build/in/sdk
           run-id: ${{ steps.kernel.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/download-artifact@v4
+        if: steps.kernel.outputs.experimental == 'true'
+        with:
+          name: kernel-experimental-gunyah
+          path: build/in/experimental
+          run-id: ${{ steps.kernel.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Fetch and verify the locked device sources
+        env:
+          EXPERIMENTAL: ${{ steps.kernel.outputs.experimental }}
         run: |
           set -euo pipefail
           python3 scripts/checkout-sources.py --output build/sources --mode device --kernel
-          tar -I zstd -xf build/in/kernel/kernel-release-7.2.9.tar.zst -C build/in/kernel
+          if [ "$EXPERIMENTAL" = true ]; then
+            mkdir -p build/in/kernel build/in/sdk
+            tar -I zstd -xf build/in/experimental/kernel-experimental-gunyah.tar.zst -C build/in/kernel
+            cp build/in/experimental/kernel-experimental-gunyah-sdk.tar.zst build/in/sdk/kernel-sdk-experimental.tar.zst
+            cp build/in/kernel/manifest.json build/in/sdk/kernel-sdk-manifest.json
+            python3 - <<'PY'
+          import importlib.util, json, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('scripts').resolve()))
+          lock = json.loads(Path('sources.lock.json').read_text())['sources']['gunyah-driver']
+          source = 'build/sources/sunuefi/upstream/gunyah-driver'
+          spec = importlib.util.spec_from_file_location('gunyah_source', 'scripts/prepare-gunyah-source.py')
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          commands = [
+              ['git', 'init', '-q', source],
+              ['git', '-C', source, 'fetch', '--depth=1', '--filter=blob:none', lock['url'], lock['commit']],
+              ['git', '-C', source, 'sparse-checkout', 'set', '--no-cone', *['/' + p for p in module.IMPORT_FILES]],
+              ['git', '-C', source, 'checkout', '--detach', lock['commit']],
+          ]
+          for command in commands:
+              subprocess.run(command, check=True)
+          PY
+          else
+            tar -I zstd -xf build/in/kernel/kernel-release-7.2.9.tar.zst -C build/in/kernel
+          fi
 
       - name: Compile the matching external module
+        env:
+          EXPERIMENTAL: ${{ steps.kernel.outputs.experimental }}
         run: |
           set -euo pipefail
+          args=()
+          if [ "$EXPERIMENTAL" = true ]; then
+            args+=(--gunyah-source-proof build/in/experimental/kernel-experimental-gunyah-source.json)
+          fi
           python3 scripts/prepare-runtime-kernel.py --sunuefi build/sources/sunuefi \
-            --kernel build/in/kernel --sdk build/in/sdk --output build/kernel-runtime
+            --kernel build/in/kernel --sdk build/in/sdk --output build/kernel-runtime "${args[@]}"
 
       - name: Compile and package the Fedora runtime
         run: |
@@ -97,7 +152,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: piano-fedora-runtime
+          name: ${{ steps.kernel.outputs.experimental == 'true' && 'piano-fedora-runtime-gunyah' || 'piano-fedora-runtime' }}
           path: piano-fedora-runtime.tar.zst
           if-no-files-found: error
           compression-level: 0
