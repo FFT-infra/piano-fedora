@@ -2,6 +2,21 @@
 
 构建来源由 sources.lock.json 固定。上游 main 的进展用于审阅；更新文档不改变已构建镜像的来源，也不使旧二进制自动获得新实现。
 
+## 2026-10-15 消费 pin 升到 SunUEFI 50f29a92
+
+全量审计 90 个登记仓库后，SunUEFI main 领先 pin 8 个提交：`a485cc01 -> 50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73`。
+
+这 8 个提交含实际硬件与驱动改进：
+1. `0030-soc-qcom-smp2p-sleepstate.patch`：DSP 睡眠通知（防止 ADSP 看门狗 bite）。
+2. `0031-hid-nanosic-piano-backlight-default.patch`：键盘保护套背光默认 80% 亮度。
+3. `0032-asoc-q6apm-clear-global-on-remove.patch`：ASoC Q6APM 卸载竞态清理。
+4. `0033-fastrpc-freeze-inflight-invoke.patch`：睡眠时冻结在途 FastRPC 用户态等待线程。
+5. `0034-dsi-phy-runtime-interface-clock.patch`：DSI PHY 运行时接口时钟动态管理（解决唤醒时短暂红色虚影）。
+6. `linux/dts/piano-pen-dock.dtso`：支持标准 dtc 打包入口。
+7. `tools/package_sparse_images.py`：支持 Fastboot 稀疏镜像导出。
+
+五组自有补丁在 50f29a92 上全部重放并校验通过，33 项离线/真实环境测试全绿。
+
 ## 2026-10-14 消费 pin 升到 SunUEFI a485cc01
 
 全量审计 89 个登记仓库（`scripts/audit-upstreams.py --execute`）后，9 个实际消费源里

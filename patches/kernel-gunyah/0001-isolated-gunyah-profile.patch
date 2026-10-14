@@ -1,8 +1,8 @@
 diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
-index fcc1174..a1f9bdd 100644
+index 1739af9..7f5bc45 100644
 --- a/tools/build_piano_full_kernel.py
 +++ b/tools/build_piano_full_kernel.py
-@@ -65,8 +65,13 @@ FEDORA_OVERRIDES.update({
+@@ -66,8 +66,13 @@ FEDORA_OVERRIDES.update({
   'CONFIG_NFT_FIB_IPV4':'y','CONFIG_NFT_FIB_IPV6':'y','CONFIG_NFT_MASQ':'y',
   'CONFIG_NFT_NAT':'y','CONFIG_NFT_REDIR':'y',
  })
@@ -12,12 +12,12 @@ index fcc1174..a1f9bdd 100644
 +                  'CONFIG_GUNYAH_QCOM_PLATFORM':'y','CONFIG_GUNYAH_QCOM_TRUSTED_VM':'y',
 +                  'CONFIG_GUNYAH_IRQFD':'y','CONFIG_GUNYAH_IOEVENTFD':'y'}
  ALLOWED_OVERRIDES={**BLUETOOTH_OVERRIDES,**PEN_DOCK_OVERRIDES,**FLASH_OVERRIDES,**EARLY_CPUCP_OVERRIDES,
--                   **USERSPACE_SECURITY_OVERRIDES,**PM_DEBUG_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES}
-+                   **USERSPACE_SECURITY_OVERRIDES,**PM_DEBUG_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES,**GUNYAH_OVERRIDES}
+-                   **USERSPACE_SECURITY_OVERRIDES,**SLEEP_OVERRIDES,**PM_DEBUG_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES}
++                   **USERSPACE_SECURITY_OVERRIDES,**SLEEP_OVERRIDES,**PM_DEBUG_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES,**GUNYAH_OVERRIDES}
  
  
  def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
-@@ -113,6 +118,8 @@ def validate_module_overrides(values):
+@@ -114,6 +119,8 @@ def validate_module_overrides(values):
      if flash and flash!=set(FLASH_OVERRIDES):raise ValueError('Flash requires all four reviewed options')
      fedora=set(values)&set(FEDORA_OVERRIDES)
      if fedora and fedora!=set(FEDORA_OVERRIDES):raise ValueError('Fedora requires the complete reviewed SELinux policy')
@@ -26,7 +26,7 @@ index fcc1174..a1f9bdd 100644
      return values
  
  
-@@ -219,12 +226,15 @@ def main():
+@@ -220,12 +227,15 @@ def main():
      parser.add_argument('--rebuild',action='store_true',help='Replace generated candidate artifacts with an incremental build')
      parser.add_argument('--root-fstype',choices=('ext4','f2fs'),default='ext4')
      parser.add_argument('--fedora-policy',action='store_true')
@@ -43,7 +43,7 @@ index fcc1174..a1f9bdd 100644
          raise ValueError('Explicit full kernel paths must stay in the workspace build/artifact directories')
      compiler=ROOT/'build/kernel-worktrees'/(out.name+'-compiler-'+hashlib.sha256(str(out).encode()).hexdigest()[:12])
      if compiler==work or compiler.resolve()!=compiler:
-@@ -243,6 +253,10 @@ def main():
+@@ -246,6 +256,10 @@ def main():
               **module_overrides(f2fs.read_text(),'f2fs')}
      if args.fedora_policy:
          modules={**modules,**FEDORA_OVERRIDES}

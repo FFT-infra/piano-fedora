@@ -1,8 +1,8 @@
 diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
-index cd2c353..fcc1174 100644
+index 171285d..1739af9 100644
 --- a/tools/build_piano_full_kernel.py
 +++ b/tools/build_piano_full_kernel.py
-@@ -55,6 +55,16 @@ F2FS_OVERRIDES={'CONFIG_F2FS_FS':'y','CONFIG_F2FS_FS_XATTR':'y',
+@@ -56,6 +56,16 @@ F2FS_OVERRIDES={'CONFIG_F2FS_FS':'y','CONFIG_F2FS_FS_XATTR':'y',
                  'CONFIG_F2FS_FS_POSIX_ACL':'y','CONFIG_F2FS_FS_SECURITY':'y'}
  FEDORA_OVERRIDES={'CONFIG_SECURITY_NETWORK':'y','CONFIG_SECURITY_SELINUX':'y',
                    'CONFIG_LSM':'"selinux"'}
@@ -17,5 +17,5 @@ index cd2c353..fcc1174 100644
 + 'CONFIG_NFT_NAT':'y','CONFIG_NFT_REDIR':'y',
 +})
  ALLOWED_OVERRIDES={**BLUETOOTH_OVERRIDES,**PEN_DOCK_OVERRIDES,**FLASH_OVERRIDES,**EARLY_CPUCP_OVERRIDES,
-                    **USERSPACE_SECURITY_OVERRIDES,**PM_DEBUG_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES}
+                    **USERSPACE_SECURITY_OVERRIDES,**SLEEP_OVERRIDES,**PM_DEBUG_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES}
  

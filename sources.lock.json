@@ -12,7 +12,7 @@
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "a485cc01c6394866f0d07567d1ebf6ff6114fafb",
+      "commit": "50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器"
     },
     "linux-piano": {
