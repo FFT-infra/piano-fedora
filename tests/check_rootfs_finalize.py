@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """省略文档时仅清理缺失的手册链接，保留运行时链接与有效手册。"""
 
+import ast
 import ctypes
 import ctypes.util
 import importlib.util
@@ -169,6 +170,46 @@ def _libcrypt_crypt():
     return None
 
 
+def check_service_staging_order(root):
+    """在空树执行 main 的真实服务准备顺序，enable 时必须已有自建单元。"""
+    root.mkdir()
+    tree = ast.parse((ROOT / "scripts/finalize-fedora-rootfs.py").read_text())
+    main_node = next(node for node in tree.body
+                     if isinstance(node, ast.FunctionDef) and node.name == "main")
+    selected = []
+    for node in main_node.body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id in
+                {"services", "hardware_files", "diagnostic_files"} for target in node.targets):
+            selected.append(node)
+        elif (isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+              and isinstance(node.value.func, ast.Name) and node.value.func.id == "chroot"
+              and len(node.value.args) > 2
+              and isinstance(node.value.args[1], ast.Constant)
+              and node.value.args[1].value == "systemctl"
+              and isinstance(node.value.args[2], ast.Constant)
+              and node.value.args[2].value == "enable"):
+            selected.append(node)
+    assert len(selected) == 4, "service setup execution path changed; review this test"
+    required = {"piano-clock-restore.service", "piano-clock-save.service",
+                "piano-clock-save.timer", "piano-selinux-policy.service"}
+    enabled = []
+
+    def enable(guest, *command):
+        assert guest == root and command[:2] == ("systemctl", "enable")
+        assert required <= set(command[2:]), "enable path omitted required custom units"
+        for name in required:
+            unit = root / "usr/lib/systemd/system" / name
+            assert unit.is_file(), "enable called before the unit was staged: " + name
+        enabled.extend(command[2:])
+
+    namespace = {"root": root, "chroot": enable,
+                 "stage_piano_hardware_fixes": finalizer.stage_piano_hardware_fixes,
+                 "stage_boot_diagnostics": finalizer.stage_boot_diagnostics}
+    exec(compile(ast.Module(body=selected, type_ignores=[]), "service-setup", "exec"), namespace)
+    assert required <= set(enabled), "service enable path was never exercised"
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
@@ -209,6 +250,7 @@ def main():
         assert (root / "usr/bin/piano-collect-boot").stat().st_mode & 0o111
         check_debug_handoff(root, staged)
         check_piano_hardware_fixes(root)
+        check_service_staging_order(root / "service-order-fixture")
         check_login_password(root)
         daemon = root / "usr/bin/adsprpcd"
         daemon.write_bytes(b"daemon fixture")

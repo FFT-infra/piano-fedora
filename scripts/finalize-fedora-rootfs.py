@@ -432,6 +432,9 @@ def main():
     gdm = root / "etc/gdm/custom.conf"
     gdm.parent.mkdir(parents=True, exist_ok=True)
     gdm.write_text("[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=piano\n")
+    # 先写入自建时钟/策略单元及依赖配置，再让 systemctl 查找并启用它们。
+    hardware_files = stage_piano_hardware_fixes(root)
+    diagnostic_files = stage_boot_diagnostics(root)
     services = ["NetworkManager.service", "sshd.service", "gdm.service", "bluetooth.service",
                 "piano-display.service", "piano-touch.service", "piano-radio.service",
                 "piano-adsp.service", "piano-audio.service", "piano-keyboard.service",
@@ -440,10 +443,8 @@ def main():
                 "piano-clock-restore.service", "piano-clock-save.service",
                 "piano-clock-save.timer", "piano-selinux-policy.service"]
     chroot(root, "systemctl", "enable", *services)
-    hardware_files = stage_piano_hardware_fixes(root)
     if shutil.which("dconf") or (root / "usr/bin/dconf").exists():
         chroot(root, "dconf", "update")
-    diagnostic_files = stage_boot_diagnostics(root)
     # FastRPC 的默认 root/audio PD 自动启动与 piano 的顺序服务冲突。
     for unit in ("adsprpcd.service", "adsprpcd_audiopd.service", "adsprpcd-audiopd.service"):
         p = root / "etc/systemd/system" / unit
