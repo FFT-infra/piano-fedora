@@ -8,17 +8,18 @@
 | Image、完整模块、SDK | build-kernel.yml | 内建 F2FS/SELinux，强制 rootfstype=f2fs；SDK 绑定同一配置和 Module.symvers |
 | Fedora 基础树 | build-rootfs.yml | 原生 DNF installroot，记录容器 ID 和实际 RPM，排除发行版 kernel |
 | A830v1 Mesa RPM | build-mesa.yml | 固定 Fedora 源 RPM 与 piano 补丁，复用 Fedora 配方；从实际 RPM 核对 Gallium/Turnip 芯片表 |
+| FFmpeg RPM | host-check 调用的 build-ffmpeg.yml | 固定 Fedora 源 RPM，沿用 SunUEFI BSP 补丁启用 H.264/HEVC v4l2m2m 解码器；build-ffmpeg 是 workflow_call 复用件，实际 run 的 workflow_id 是 host-check；原生构建及设备解码仍待验证 |
 | 设备运行时 RPM | build-device-runtime.yml | Fedora 原生触控/笔、相机程序、传感器、BOOT 请求工具、拓扑与设备配置；外部模块匹配 SDK |
-| 设备 rootfs、initramfs、F2FS raw 镜像 | build-image.yml | 同一 job 安装设备与 Mesa RPM，运行上游完整 rootfs 检查，配置服务、清理身份、设置 SELinux 标签并完整读回验证 |
+| 设备 rootfs、initramfs、F2FS raw 镜像 | build-image.yml | 同一 job 安装设备、Mesa 与 FFmpeg RPM，核对已安装包及解码器注册，运行上游完整 rootfs 检查，配置服务、清理身份、设置 SELinux 标签并完整读回验证 |
 | ESP、Linux boot.img、交付集合 | build-bundle.yml | 从集成记录取得准确内核，调用上游 DTB/mkbootimg/ESP 包装，核对全部文件和展开 root 镜像 |
 
 ## 一致性要求
 
 每份 initramfs、运行时和最终 rootfs manifest 都引用完整 kernel manifest 的 SHA256。kernel release 相同不足以证明配置相同；最终组合必须匹配这份摘要。
 
-F2FS 镜像同时绑定 rootfs、内核、运行时、Mesa 和 initramfs 五份清单的 SHA256。rootfs 清单引用实际消费的运行时与 Mesa 清单，并记录实际 RPM 清单的摘要。
+F2FS 镜像同时绑定 rootfs、内核、运行时、Mesa、FFmpeg 和 initramfs 六份清单的 SHA256。rootfs 清单引用实际消费的运行时、Mesa 与 FFmpeg 清单，并记录实际 RPM 清单的摘要。
 
-组件分目录解包。基础树、内核、UEFI、运行时、Mesa 和 initramfs 不共享 manifest 路径。跨 run 查找仅接受成功且未过期的 artifact；SDK 与内核从同一次 run 获取。镜像产物中的 source-runs.json 决定 bundle 使用哪个内核。
+组件分目录解包。基础树、内核、UEFI、运行时、Mesa、FFmpeg 和 initramfs 不共享 manifest 路径。跨 run 查找仅接受成功且未过期的 artifact；SDK 与内核从同一次 run 获取。内核档位只允许 kernel-release-7.2.9 与 kernel-experimental-gunyah 两档：正式档的 SDK 是独立 artifact，实验档的内核与 SDK 同在一个 artifact，因此镜像与 bundle 只解与档位同名的内核 archive，不用 glob 带上 SDK。实验档必须显式钉住 kernel_run_id 与 runtime_run_id，且 runtime artifact 名要与内核档位配对（正式 piano-fedora-runtime，实验 piano-fedora-runtime-gunyah）。镜像产物中的 source-runs.json 记录 kernel_run 与 kernel_artifact，bundle 按记录下载同名 artifact；旧记录没有该字段时默认正式档。
 
 ## F2FS 验证
 

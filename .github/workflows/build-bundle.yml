@@ -75,21 +75,33 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          run=$(python3 -c 'import json;print(json.load(open("build/in/image/source-runs.json"))["kernel_run"])')
-          python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml --artifact kernel-release-7.2.9 --run-id "$run"
+          # 镜像记录里写明了它消费的内核 artifact；旧记录没有这个字段时默认正式档。
+          # 只允许两档，避免记录被改写后下载到无关 artifact。
+          record=build/in/image/source-runs.json
+          kernel_artifact=$(python3 -c 'import json;print(json.load(open("'"$record"'")).get("kernel_artifact","kernel-release-7.2.9"))')
+          case "$kernel_artifact" in
+            kernel-release-7.2.9|kernel-experimental-gunyah) ;;
+            *) echo "recorded kernel_artifact is not allowed: $kernel_artifact" >&2; exit 2 ;;
+          esac
+          run=$(python3 -c 'import json;print(json.load(open("'"$record"'"))["kernel_run"])')
+          echo "kernel_artifact=$kernel_artifact" >> "$GITHUB_OUTPUT"
+          python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml --artifact "$kernel_artifact" --run-id "$run"
 
       - uses: actions/download-artifact@v4
         with:
-          name: kernel-release-7.2.9
+          name: ${{ steps.kernel.outputs.kernel_artifact }}
           path: build/in/kernel
           run-id: ${{ steps.kernel.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Unpack the isolated components and verify identity
+        env:
+          KERNEL_ARTIFACT: ${{ steps.kernel.outputs.kernel_artifact }}
         run: |
           set -euo pipefail
           mkdir -p build/kernel build/uefi build/initramfs build/device-root
-          tar -I zstd -xf build/in/kernel/*.tar.zst -C build/kernel
+          # 实验 artifact 同时带内核 tar 与 SDK tar，只解与记录同名的那一个。
+          tar -I zstd -xf "build/in/kernel/$KERNEL_ARTIFACT.tar.zst" -C build/kernel
           tar -I zstd -xf build/in/uefi/*.tar.zst -C build/uefi
           tar -I zstd -xf build/in/image/initramfs.tar.zst -C build/initramfs
           sudo tar -I zstd --numeric-owner --xattrs --xattrs-include='*' --acls --selinux -xf build/in/image/device-root.tar.zst -C build/device-root
@@ -135,7 +147,7 @@ jobs:
           cp build/in/image/pianoroot.f2fs.img.zst bundle/
           cp build/in/image/diagnostic-abl-storage.tar.zst bundle/
           cp build/in/image/root-image-manifest.json build/in/image/source-runs.json build/in/image/runtime-manifest.json bundle/
-          cp build/in/image/mesa-manifest.json build/in/image/rootfs-manifest.json bundle/
+          cp build/in/image/mesa-manifest.json build/in/image/ffmpeg-manifest.json build/in/image/rootfs-manifest.json bundle/
           cp build/kernel/manifest.json bundle/kernel-manifest.json
           cp build/uefi-source.json bundle/
           python3 - <<'PY'

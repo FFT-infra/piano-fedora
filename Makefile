@@ -24,6 +24,8 @@ test:
 	python3 tests/check_fastrpc_runtime.py
 	python3 tests/check_sensor_runtime.py
 	python3 tests/check_camerad_adapter.py
+	python3 tests/check_ffmpeg_port.py
+	python3 tests/check_ffmpeg_install.py
 	python3 tests/check_initramfs.py
 	python3 tests/check_bootstrap_contract.py
 	python3 tests/check_boot_evidence.py

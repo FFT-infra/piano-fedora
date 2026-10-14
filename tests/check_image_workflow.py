@@ -71,8 +71,12 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     for name in ("runtime", "initramfs"):
         write(name + "-manifest.json", identity)
     write("mesa-manifest.json", {"status": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED", "chip_id": "0xffff44050001"})
+    write("ffmpeg-manifest.json", {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED",
+                                   "releasever": "44", "arch": "aarch64",
+                                   "decoders": {"h264_v4l2m2m": " V..... h264_v4l2m2m",
+                                                "hevc_v4l2m2m": " V..... hevc_v4l2m2m"}})
     write("rootfs-manifest.json", {**identity, **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
-                                                for name in ("runtime", "mesa")}})
+                                                for name in ("runtime", "mesa", "ffmpeg")}})
     write("esp-manifest.json", {"kernel_manifest_sha256": kernel,
           "esp_files": ["/EFI/Piano/stable/" + name for name in ("Image", "board.dtb", "initramfs", "boot.img")],
           "files": {name: {"sha256": digest(root / name), "bytes": (root / name).stat().st_size}
@@ -83,7 +87,7 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     image = {"status": "IMAGE_VERIFIED", "format": "raw-f2fs", "label": "PIANOROOT", "verify": proof,
              "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(),
              **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
-                for name in ("rootfs", "kernel", "runtime", "mesa", "initramfs")}}
+                for name in ("rootfs", "kernel", "runtime", "mesa", "ffmpeg", "initramfs")}}
     write("root-image-manifest.json", image)
     write("source-runs.json", {"kernel_run": "fixture", "uefi_run": "12345"})
     source = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["sunuefi"]["commit"]
@@ -122,7 +126,7 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
         else:
             raise AssertionError("bundle accepted a foreign UEFI source, run, patch set or image")
     write("uefi-source.json", uefi)
-    for name, data in (("mesa", raw), (None, b"wrong raw image payload")):
+    for name, data in (("mesa", raw), ("ffmpeg", raw), (None, b"wrong raw image payload")):
         write("root-image-manifest.json", {**image, **({name + "_manifest_sha256": "0" * 64} if name else {})})
         try:
             verify(data)
@@ -130,6 +134,41 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
             pass
         else:
             raise AssertionError("bundle accepted mixed component metadata or corrupted raw bytes")
+    write("root-image-manifest.json", image)
+    # 缺 FFmpeg 身份或解码器证明的 bundle 必须拒绝：来源闭包不能只靠 manifest 名字。
+    for changed in ({"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "arch": "x86_64"},
+                    {"decoders": {"h264_v4l2m2m": " V..... h264_v4l2m2m"}}):
+        write("ffmpeg-manifest.json", {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED",
+                                       "releasever": "44", "arch": "aarch64",
+                                       "decoders": {"h264_v4l2m2m": " V..... h264_v4l2m2m",
+                                                    "hevc_v4l2m2m": " V..... hevc_v4l2m2m"},
+                                       **changed})
+        write("root-image-manifest.json", {**image, "ffmpeg_manifest_sha256": digest(root / "ffmpeg-manifest.json")})
+        write("rootfs-manifest.json", {**identity, **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
+                                                    for name in ("runtime", "mesa", "ffmpeg")}})
+        try:
+            verify()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("bundle accepted an unverified FFmpeg manifest: " + str(changed))
+    # FFmpeg manifest 缺失时 bundle 必须判为不完整（REQUIRED 必须含它）。
+    write("ffmpeg-manifest.json", {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED",
+                                   "releasever": "44", "arch": "aarch64",
+                                   "decoders": {"h264_v4l2m2m": " V..... h264_v4l2m2m",
+                                                "hevc_v4l2m2m": " V..... hevc_v4l2m2m"}})
+    write("root-image-manifest.json", {**image, "ffmpeg_manifest_sha256": digest(root / "ffmpeg-manifest.json")})
+    write("rootfs-manifest.json", {**identity, **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
+                                                for name in ("runtime", "mesa", "ffmpeg")}})
+    saved = (root / "ffmpeg-manifest.json").read_bytes()
+    (root / "ffmpeg-manifest.json").unlink()
+    try:
+        verify()
+    except ValueError as error:
+        assert "incomplete" in str(error), error
+    else:
+        raise AssertionError("bundle missing the FFmpeg manifest was accepted")
+    (root / "ffmpeg-manifest.json").write_bytes(saved)
 
 
 def install_step():
@@ -143,6 +182,212 @@ def install_step():
         body.append(line[10:])
     assert body, "RPM installation step is empty"
     return "\n".join(body)
+
+
+def step_body(workflow, name):
+    """取出某个 step 的 run 脚本体，缩进去掉一层。env 块在 run 之前，不混入。"""
+    lines = (ROOT / workflow).read_text().splitlines()
+    start = lines.index("      - name: " + name)
+    run = lines.index("        run: |", start) + 1
+    body = []
+    for line in lines[run:]:
+        if line.strip() and not line.startswith("          "):
+            break
+        body.append(line[10:])
+    assert body, f"{name} step is empty"
+    return "\n".join(body)
+
+
+def executable(path, text):
+    path.write_text("#!/bin/bash\nset -euo pipefail\n" + text)
+    path.chmod(0o755)
+
+
+GH_STUB = r'''
+import json, os, re, sys
+path = sys.argv[2]
+workflows = json.load(open(os.environ['PIANO_GH_WORKFLOWS']))
+artifacts = json.load(open(os.environ['PIANO_GH_ARTIFACTS']))
+runs = json.load(open(os.environ['PIANO_GH_RUNS']))
+ids = {name: 1000 + index for index, name in enumerate(sorted(workflows))}
+m = re.search(r'/actions/runs/(\d+)/artifacts', path)
+if m:
+    print(json.dumps({'artifacts': [{'name': name, 'expired': False} for name in artifacts]})); sys.exit(0)
+m = re.match(r'.*/actions/runs/(\d+)$', path)
+if m:
+    rid = m.group(1)
+    print(json.dumps({'id': int(rid), 'workflow_id': ids[runs[rid]], 'status': 'completed',
+                      'conclusion': 'success'})); sys.exit(0)
+m = re.match(r'.*/actions/workflows/([^/]+)/runs', path)
+if m:
+    wf = m.group(1)
+    print(json.dumps({'workflow_runs': [{'id': 5000 + ids[wf], 'workflow_id': ids[wf],
+                                         'status': 'completed', 'conclusion': 'success'}]})); sys.exit(0)
+m = re.match(r'.*/actions/workflows/([^/]+)$', path)
+if m:
+    print(json.dumps({'id': ids[m.group(1)]})); sys.exit(0)
+raise SystemExit('unexpected gh path: ' + path)
+'''
+
+
+def resolve_step_env(root, workflows, artifacts, runs):
+    """构造跑 resolve step 所需的环境：PATH 带 gh 桩，fixture 指向临时文件。"""
+    binary = root / "bin"
+    binary.mkdir(parents=True, exist_ok=True)
+    executable(binary / "gh", 'exec python3 "$PIANO_GH_STUB" "$@"\n')
+    (root / "gh_stub.py").write_text(GH_STUB)
+    (root / "workflows.json").write_text(json.dumps(workflows))
+    (root / "artifacts.json").write_text(json.dumps(artifacts))
+    (root / "runs.json").write_text(json.dumps(runs))
+    output = root / "github-output"
+    output.write_text("")
+    env = {**os.environ, "PATH": str(binary) + os.pathsep + os.environ["PATH"],
+           "PIANO_GH_STUB": str(root / "gh_stub.py"),
+           "PIANO_GH_WORKFLOWS": str(root / "workflows.json"),
+           "PIANO_GH_ARTIFACTS": str(root / "artifacts.json"),
+           "PIANO_GH_RUNS": str(root / "runs.json"),
+           "GITHUB_REPOSITORY": "owner/repo", "GITHUB_OUTPUT": str(output)}
+    return env, output
+
+
+def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_run=""):
+    workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
+                 "build-mesa.yml", "host-check.yml"]
+    artifacts = ["rootfs-44-gnome", "kernel-release-7.2.9", "kernel-sdk-7.2.9",
+                 "kernel-experimental-gunyah", "piano-fedora-runtime",
+                 "piano-fedora-runtime-gunyah", "piano-fedora-mesa", "piano-fedora-ffmpeg"]
+    runs = {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml"}
+    env, output = resolve_step_env(root, workflows, artifacts, runs)
+    env.update(ROOTFS_ARTIFACT="rootfs-44-gnome", KERNEL_ARTIFACT=kernel_artifact,
+               RUNTIME_ARTIFACT=runtime_artifact,
+               KERNEL_RUN=kernel_run, RUNTIME_RUN=runtime_run)
+    result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
+                             step_body(".github/workflows/build-image.yml", "Resolve successful input runs")],
+                            cwd=ROOT, env=env, capture_output=True, text=True)
+    return result, output.read_text()
+
+
+def check_image_kernel_tiers(root):
+    """实际跑 resolve step：档位选择、配对、实验必须钉 run，且不会误取另一档。"""
+    root.mkdir()
+    # 正式档：不钉 run，动态解析；必须落 standard。
+    result, output = run_resolve(root / "std", "kernel-release-7.2.9", "piano-fedora-runtime")
+    assert result.returncode == 0, result.stderr
+    assert "kernel_tier=standard" in output, output
+    # 实验档：必须钉 kernel/runtime run；必须落 experimental。
+    result, output = run_resolve(root / "exp", "kernel-experimental-gunyah",
+                                 "piano-fedora-runtime-gunyah", "7001", "7002")
+    assert result.returncode == 0, result.stderr
+    assert "kernel_tier=experimental" in output, output
+    # 只放标准 artifact、却选实验档：必须失败，证明真的请求实验 artifact 而非静默回退。
+    workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
+                 "build-mesa.yml", "host-check.yml"]
+    env, _ = resolve_step_env(root / "onlystd",
+                              workflows,
+                              ["rootfs-44-gnome", "kernel-release-7.2.9", "kernel-sdk-7.2.9",
+                               "piano-fedora-runtime", "piano-fedora-mesa", "piano-fedora-ffmpeg"],
+                              {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml"})
+    env.update(KERNEL_ARTIFACT="kernel-experimental-gunyah",
+               ROOTFS_ARTIFACT="rootfs-44-gnome",
+               RUNTIME_ARTIFACT="piano-fedora-runtime-gunyah", KERNEL_RUN="7001", RUNTIME_RUN="7002")
+    result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
+                             step_body(".github/workflows/build-image.yml", "Resolve successful input runs")],
+                            cwd=ROOT, env=env, capture_output=True, text=True)
+    assert result.returncode != 0, "an experimental selection fell back to the standard kernel"
+    # 拒绝：未知 kernel_artifact、runtime 与档位不配对、实验缺 run id。
+    for kernel, runtime, krun, rrun, why in (
+            ("kernel-foo", "piano-fedora-runtime", "", "", "unknown kernel artifact"),
+            ("kernel-release-7.2.9", "piano-fedora-runtime-gunyah", "", "", "runtime/kernel tier mismatch"),
+            ("kernel-experimental-gunyah", "piano-fedora-runtime-gunyah", "", "7002", "missing kernel run"),
+            ("kernel-experimental-gunyah", "piano-fedora-runtime-gunyah", "7001", "", "missing runtime run")):
+        result, _ = run_resolve(root / ("reject-" + why.replace(" ", "-")), kernel, runtime, krun, rrun)
+        assert result.returncode != 0, "accepted a bad selection: " + why
+
+
+def make_tar(path, member, content):
+    src = path.parent / (path.name + ".src")
+    src.mkdir(parents=True, exist_ok=True)
+    (src / member).write_text(content)
+    subprocess.run(["tar", "-I", "zstd -6 -T0", "-cf", str(path), "-C", str(src), "."], check=True)
+
+
+def run_bundle_resolve(root, record):
+    """实际跑 bundle 的解析 step：从记录读 kernel_artifact，旧记录默认正式档。"""
+    root.mkdir(parents=True)
+    image = root / "build/in/image"
+    image.mkdir(parents=True)
+    (image / "source-runs.json").write_text(json.dumps(record))
+    (root / "scripts").symlink_to(ROOT / "scripts")
+    binary = root / "bin"
+    binary.mkdir()
+    executable(binary / "gh", 'exec python3 "$PIANO_GH_STUB" "$@"\n')
+    (root / "gh_stub.py").write_text(GH_STUB)
+    (root / "workflows.json").write_text(json.dumps(["build-kernel.yml"]))
+    (root / "artifacts.json").write_text(json.dumps(
+        ["kernel-release-7.2.9", "kernel-experimental-gunyah"]))
+    (root / "runs.json").write_text(json.dumps({"7001": "build-kernel.yml"}))
+    output = root / "github-output"
+    output.write_text("")
+    env = {**os.environ, "PATH": str(binary) + os.pathsep + os.environ["PATH"],
+           "PIANO_GH_STUB": str(root / "gh_stub.py"),
+           "PIANO_GH_WORKFLOWS": str(root / "workflows.json"),
+           "PIANO_GH_ARTIFACTS": str(root / "artifacts.json"),
+           "PIANO_GH_RUNS": str(root / "runs.json"),
+           "GITHUB_REPOSITORY": "owner/repo", "GITHUB_OUTPUT": str(output)}
+    result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
+                             step_body(".github/workflows/build-bundle.yml", "Resolve the exact integrated kernel")],
+                            cwd=root, env=env, capture_output=True, text=True)
+    return result, output.read_text()
+
+
+def check_bundle_kernel_resolution(root):
+    root.mkdir()
+    # 显式实验记录：解析实验 artifact 并把它写进 output。
+    result, output = run_bundle_resolve(root / "exp",
+                                        {"kernel_run": "7001", "kernel_artifact": "kernel-experimental-gunyah"})
+    assert result.returncode == 0, result.stderr
+    assert "kernel_artifact=kernel-experimental-gunyah" in output, output
+    # 旧记录没有 kernel_artifact：默认正式档，保持向后兼容。
+    result, output = run_bundle_resolve(root / "legacy", {"kernel_run": "7001"})
+    assert result.returncode == 0, result.stderr
+    assert "kernel_artifact=kernel-release-7.2.9" in output, output
+    # 记录被改写成无关 artifact：必须拒绝，不能下载任意名字。
+    result, _ = run_bundle_resolve(root / "bad", {"kernel_run": "7001", "kernel_artifact": "kernel-foo"})
+    assert result.returncode != 0, "bundle accepted an out-of-allowlist kernel_artifact"
+
+
+def check_kernel_unpack(root):
+    """实际跑 unpack step：实验 artifact 里的 SDK tar 不能被 glob 解进 build/kernel。"""
+    root.mkdir()
+    work = root / "work"
+    (work / "build/in/kernel").mkdir(parents=True)
+    (work / "build/in/base").mkdir(parents=True)
+    (work / "build/in/runtime").mkdir(parents=True)
+    (work / "build/in/mesa").mkdir(parents=True)
+    (work / "build/in/ffmpeg").mkdir(parents=True)
+    make_tar(work / "build/in/kernel/kernel-experimental-gunyah.tar.zst", "KERNEL-MARKER", "kernel")
+    make_tar(work / "build/in/kernel/kernel-experimental-gunyah-sdk.tar.zst", "SDK-MARKER", "sdk")
+    make_tar(work / "build/in/base/rootfs.tar.zst", "rootfs.txt", "root")
+    make_tar(work / "build/in/runtime/runtime.tar.zst", "runtime.txt", "rt")
+    make_tar(work / "build/in/mesa/mesa.tar.zst", "mesa.txt", "mesa")
+    make_tar(work / "build/in/ffmpeg/ffmpeg.tar.zst", "ffmpeg.txt", "ff")
+    binary = root / "bin"
+    binary.mkdir()
+    executable(binary / "sudo", 'exec "$@"\n')
+    # 只有 checkout-sources.py 这一步被桩掉；其余 python 调用走真实解释器。
+    executable(binary / "python3",
+               'for arg in "$@"; do case "$arg" in *checkout-sources.py) exit 0 ;; esac; done\n'
+               'exec "$PIANO_REAL_PYTHON" "$@"\n')
+    env = {**os.environ, "PATH": str(binary) + os.pathsep + os.environ["PATH"],
+           "PIANO_REAL_PYTHON": sys.executable,
+           "KERNEL_ARTIFACT": "kernel-experimental-gunyah"}
+    result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
+                             step_body(".github/workflows/build-image.yml", "Unpack into separate component directories")],
+                            cwd=work, env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert (work / "build/kernel/KERNEL-MARKER").is_file(), "the kernel archive was not extracted"
+    assert not (work / "build/kernel/SDK-MARKER").exists(), \
+        "the SDK tar leaked into build/kernel (glob instead of exact archive)"
 
 
 def check_uefi_sealer(root):
@@ -190,6 +435,9 @@ def main():
         check_mesa(root / "mesa")
         check_bundle(root / "bundle")
         check_uefi_sealer(root / "uefi-source")
+        check_image_kernel_tiers(root / "tiers")
+        check_bundle_kernel_resolution(root / "bundle-kernel")
+        check_kernel_unpack(root / "unpack")
         host, container = root / "host", root / "container"
         host.mkdir()
         container.mkdir()

@@ -14,7 +14,7 @@ PROJECT = Path(__file__).resolve().parents[1]
 REQUIRED = {"esp.img", "boot.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst",
             "root-image-manifest.json", "kernel-manifest.json", "initramfs-manifest.json",
             "esp-manifest.json", "runtime-manifest.json", "mesa-manifest.json",
-            "rootfs-manifest.json", "source-runs.json", "uefi-source.json"}
+            "ffmpeg-manifest.json", "rootfs-manifest.json", "source-runs.json", "uefi-source.json"}
 
 
 def verify(root):
@@ -41,15 +41,20 @@ def verify(root):
         if sha256(root / name) != row["sha256"] or (root / name).stat().st_size != row["bytes"]:
             raise ValueError("upstream-packaged component changed: " + name)
     image = read("root-image-manifest.json")
-    for component in ("rootfs", "kernel", "runtime", "mesa", "initramfs"):
+    for component in ("rootfs", "kernel", "runtime", "mesa", "ffmpeg", "initramfs"):
         if image.get(component + "_manifest_sha256") != sha256(root / (component + "-manifest.json")):
             raise ValueError("root image refers to another component: " + component)
-    for component in ("runtime", "mesa"):
+    for component in ("runtime", "mesa", "ffmpeg"):
         if read("rootfs-manifest.json").get(component + "_manifest_sha256") != sha256(root / (component + "-manifest.json")):
             raise ValueError("rootfs refers to another installed component: " + component)
     mesa = read("mesa-manifest.json")
     if mesa.get("status") != "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED" or mesa.get("chip_id") != "0xffff44050001":
         raise ValueError("bundle does not include the verified piano Mesa build")
+    ffmpeg = read("ffmpeg-manifest.json")
+    if (ffmpeg.get("status"), ffmpeg.get("releasever"), ffmpeg.get("arch")) != (
+            "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "44", "aarch64") or set(
+                ffmpeg.get("decoders", {})) != {"h264_v4l2m2m", "hevc_v4l2m2m"}:
+        raise ValueError("bundle does not include the verified piano FFmpeg build")
     if image["status"] != "IMAGE_VERIFIED" or image.get("format") != "raw-f2fs" or image["label"] != "PIANOROOT":
         raise ValueError("root image is not a verified piano F2FS image")
     proof = image["verify"]
@@ -76,6 +81,7 @@ def verify(root):
     return {"status": "HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED",
             "kernel_release": kernel["kernel_release"], "kernel_manifest_sha256": kernel_hash,
             "mesa_manifest_sha256": sha256(root / "mesa-manifest.json"),
+            "ffmpeg_manifest_sha256": sha256(root / "ffmpeg-manifest.json"),
             "root_image": {"format": "raw-f2fs", "label": "PIANOROOT", "expanded_sha256": image["sha256"],
                            "bytes": image["bytes"], "verification": proof},
             "source_runs": source_runs, "uefi_source_verified": True, "device_tested": False,

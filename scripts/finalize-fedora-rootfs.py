@@ -25,6 +25,11 @@ PIANO_DEBUG_NCM_MAC = "02:87:50:00:00:01"
 PIANO_DEBUG_NCM_ADDRESS = "192.168.77.1/30"
 PIANO_DEBUG_NM_UUID = "5b1c9a2e-6f3d-4a71-8c2b-0d4e5f607182"
 
+# 重建 FFmpeg 只装运行时库和 CLI；-devel 与 freeworld 不进设备镜像。集合必须
+# 恰好等于这 8 个，空集合或漏包都要拒绝，否则 NEVRA 校验会被空清单绕过。
+FFMPEG_PACKAGES = {"ffmpeg-free", "libavcodec-free", "libavdevice-free", "libavfilter-free",
+                   "libavformat-free", "libavutil-free", "libswresample-free", "libswscale-free"}
+
 
 def chroot(root, *command):
     return subprocess.check_output(["chroot", str(root), *command], text=True)
@@ -350,9 +355,37 @@ def verify_fastrpc_daemon(root, runtime_meta):
             raise ValueError("installed FastRPC service differs: " + name)
 
 
+def verify_ffmpeg_install(root, ffmpeg):
+    """拒绝装成官方 ffmpeg-free 或漏装解码器的镜像。
+
+    与 Mesa 一样，逐个核对已安装包的 NEVRA 是否就是本次重建的产物；再在目标树里
+    真跑一次 `ffmpeg -decoders`，确认两个 v4l2m2m 解码器真的注册进来，而不是只把
+    RPM 拷进去。官方 ffmpeg-free 的 release 更低，dnf 会把它升级成 piano1 产物。
+    """
+    if (ffmpeg.get("status"), ffmpeg.get("releasever"), ffmpeg.get("arch")) != (
+            "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "44", "aarch64"):
+        raise ValueError("FFmpeg is not the verified native piano build")
+    expected_decoders = {"h264_v4l2m2m", "hevc_v4l2m2m"}
+    if set(ffmpeg.get("decoders", {})) != expected_decoders:
+        raise ValueError("FFmpeg manifest does not prove the v4l2m2m decoders")
+    if set(ffmpeg.get("packages", {})) != FFMPEG_PACKAGES:
+        raise ValueError("FFmpeg manifest does not name the exact runtime package set")
+    for name, row in ffmpeg["packages"].items():
+        if chroot(root, "rpm", "-q", "--qf", "%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}", name).strip() != row["nevra"]:
+            raise ValueError("installed FFmpeg package differs: " + name)
+    listing = chroot(root, "/usr/bin/ffmpeg", "-hide_banner", "-decoders")
+    present = set()
+    for line in listing.splitlines():
+        fields = line.split()
+        if len(fields) > 1 and fields[1] in expected_decoders:
+            present.add(fields[1])
+    if present != expected_decoders:
+        raise ValueError("installed ffmpeg lacks the v4l2m2m decoders: " + repr(sorted(present)))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    for name in ("rootfs", "kernel", "runtime", "mesa", "output"):
+    for name in ("rootfs", "kernel", "runtime", "mesa", "ffmpeg", "output"):
         ap.add_argument("--" + name, required=True, type=Path)
     args = ap.parse_args()
     root, kernel, runtime, output = [getattr(args, name).resolve() for name in ("rootfs", "kernel", "runtime", "output")]
@@ -375,6 +408,8 @@ def main():
         safe_relative(relative)
         if sha256(guest_resolve(root, "/" + relative)) != digest:
             raise ValueError("installed A830v1 driver differs: " + relative)
+    ffmpeg_dir = args.ffmpeg.resolve()
+    verify_ffmpeg_install(root, json.loads((ffmpeg_dir / "manifest.json").read_text()))
     for row in m["modules"]:
         path = root / "usr" / row["path"]
         if sha256(path) != row["sha256"]:
@@ -453,6 +488,7 @@ def main():
               "kernel_manifest_sha256": kernel_hash, "root_policy": "LABEL=PIANOROOT",
               "root_fstype": "f2fs", "runtime_manifest_sha256": sha256(runtime / "manifest.json"),
               "mesa_manifest_sha256": sha256(mesa_dir / "manifest.json"),
+              "ffmpeg_manifest_sha256": sha256(ffmpeg_dir / "manifest.json"),
               "packages_sha256": sha256(output / "packages.tsv"), "enabled_services": services,
               "login": (f"{DEFAULT_PIANO_LOGIN} autologin; documented default password set; "
                         "root locked; no NOPASSWD"),

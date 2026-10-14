@@ -1,0 +1,63 @@
+name: build-ffmpeg
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  ffmpeg:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare the native builder and the pinned BSP patch series
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq podman zstd python3 git
+          python3 scripts/checkout-sources.py --output build/sources --mode check
+
+      - name: Rebuild the Fedora source RPM with the v4l2m2m decoders and the BSP patches
+        run: |
+          set -euo pipefail
+          release=$(python3 -c 'import json; print(json.load(open("product.json"))["target"]["releasever"])')
+          test "$release" = 44
+          sudo podman run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            "registry.fedoraproject.org/fedora:$release" bash -euo pipefail -c '
+              dnf -y install python3 rpm-build redhat-rpm-config dnf5-plugins git tar xz zstd
+              git config --global --add safe.directory /workspace
+              python3 scripts/build-fedora-ffmpeg.py --sunuefi build/sources/sunuefi --output build/ffmpeg
+            '
+
+      - name: Package the verified runtime RPMs
+        run: |
+          set -euo pipefail
+          sudo chown -R "$(id -u):$(id -g)" build/ffmpeg
+          tar -I 'zstd -6 -T0' -cf piano-fedora-ffmpeg.tar.zst -C build/ffmpeg \
+            manifest.json installed-packages.tsv rpms
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: piano-fedora-ffmpeg
+          path: piano-fedora-ffmpeg.tar.zst
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Preserve the FFmpeg build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-diagnostics
+          path: |
+            build/ffmpeg/rpmbuild/SPECS/ffmpeg.spec
+            build/ffmpeg/rpmbuild/SOURCES/enable_decoders
+            build/ffmpeg/rpmbuild/SOURCES/sunuefi-*.patch
+            build/ffmpeg/rpmbuild/BUILD/**/ffbuild/config.log
+            build/ffmpeg/rpmbuild/BUILD/**/config_components.h
+          if-no-files-found: warn
+          retention-days: 14

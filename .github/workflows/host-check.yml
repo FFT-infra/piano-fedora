@@ -1,6 +1,6 @@
 name: host-check
 
-# 只做主机侧检查，不构建镜像，不接触设备。
+# 主机侧检查；显式 dispatch 可附带打包或原生 FFmpeg 构建，不接触设备。
 on:
   push:
     branches: ["main"]
@@ -11,12 +11,20 @@ on:
         description: "可选：同时压缩该成功 prepare-install run 的材料"
         required: false
         default: ""
+      build_ffmpeg:
+        description: "同时构建锁定 Fedora FFmpeg 与上游 BSP 补丁的原生 RPM"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
   actions: read
 
 jobs:
+  ffmpeg:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ffmpeg }}
+    uses: ./.github/workflows/build-ffmpeg.yml
   package-install:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.package_prepare_run != '' }}
     uses: ./.github/workflows/package-install.yml
