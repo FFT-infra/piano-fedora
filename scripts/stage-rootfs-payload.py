@@ -143,7 +143,8 @@ def stage_hardware(rootfs, sunuefi):
         target.chmod(0o644 if relative.endswith((".py", ".service")) else 0o755)
         staged[relative] = actual
     # 引导脚本按 /usr/lib/piano/piano-disk-hardware-prepare 调用它。
-    alias = safe_target(rootfs, "usr/lib/piano/piano-disk-hardware-prepare")
+    # 操作的是链接本身，父目录仍须通过路径保护，不能跟随任意父级链接。
+    alias = safe_target(rootfs, "usr/lib/piano") / "piano-disk-hardware-prepare"
     if alias.exists() or alias.is_symlink():
         alias.unlink()
     alias.symlink_to("piano-ram-hardware-prepare")

@@ -89,6 +89,31 @@ def main():
             source.write_text("#!/bin/sh\nexit 0\n")
         with patch.object(stage, "sha256", side_effect=lambda p: digests[p.relative_to(preflight_source).as_posix()]):
             stage.stage_hardware(rootfs, preflight_source)
+            # 已有系统带项目自己创建的别名；替换链接本身不应被当成跟随链接。
+            stage.stage_hardware(rootfs, preflight_source)
+            alias = rootfs / "usr/lib/piano/piano-disk-hardware-prepare"
+            check(alias.readlink() == Path("piano-ram-hardware-prepare"),
+                  "existing managed alias must be replaceable")
+            outside = tmp / "outside"
+            outside.mkdir()
+            sentinel = outside / "keep"
+            sentinel.write_bytes(b"untouched")
+            alias.unlink()
+            alias.symlink_to(sentinel)
+            stage.stage_hardware(rootfs, preflight_source)
+            check(sentinel.read_bytes() == b"untouched" and
+                  alias.readlink() == Path("piano-ram-hardware-prepare"),
+                  "alias replacement must unlink the link without touching its target")
+            parent_escape = make_rootfs(tmp / "parent-escape")
+            (parent_escape / "usr/lib").mkdir()
+            (parent_escape / "usr/lib/piano").symlink_to(outside, target_is_directory=True)
+            try:
+                stage.stage_hardware(parent_escape, preflight_source)
+            except stage.StageError:
+                pass
+            else:
+                check(False, "hardware staging accepted a symlink parent")
+            check(set(outside.iterdir()) == {sentinel}, "parent rejection wrote outside root")
         rescue = rootfs / "usr/local/bin/piano-debug-bootstrap"
         check(rescue.is_file() and os.access(rescue, os.X_OK),
               "rescue helper must be installed in Fedora's canonical local bin")
