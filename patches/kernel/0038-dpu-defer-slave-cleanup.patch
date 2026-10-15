@@ -78,6 +78,14 @@ diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c b/drivers/gpu/
 index 0c190eb..d5b886e 100644
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
+@@ -617,6 +617,7 @@ static void dpu_encoder_phys_vid_disable(struct dpu_encoder_phys *phys_enc)
+ 		return;
+ 	}
+ 
+-	dpu_encoder_helper_phys_cleanup(phys_enc);
+ 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
+ 	phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 0);
+ 	if (dpu_encoder_phys_vid_is_master(phys_enc))
 @@ -625,6 +625,17 @@ static void dpu_encoder_phys_vid_disable(struct dpu_encoder_phys *phys_enc)
  		dpu_encoder_phys_inc_pending(phys_enc);
  	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
@@ -96,3 +104,10 @@ index 0c190eb..d5b886e 100644
  	/*
  	 * Wait for a vsync so we know the ENABLE=0 latched before
  	 * the (connector) source of the vsync's gets disabled,
+@@ -661,6 +672,7 @@ static void dpu_encoder_phys_vid_disable(struct dpu_encoder_phys *phys_enc)
+ 		}
+ 	}
+ 
++	dpu_encoder_helper_phys_cleanup(phys_enc);
+ 	phys_enc->enable_state = DPU_ENC_DISABLED;
+ }
