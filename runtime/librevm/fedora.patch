@@ -199,23 +199,16 @@ diff --git a/crates/librevm-core/src/image.rs b/crates/librevm-core/src/image.rs
 diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backend.rs
 --- a/crates/librevm-core/src/backend.rs
 +++ b/crates/librevm-core/src/backend.rs
-@@ -275,4 +275,10 @@
+@@ -275,4 +275,4 @@
      args.push(vm.cpus.to_string());
 -
 -    if vm.hypervisor.disable_sandbox {
 +    // The pinned Gunyah backend does not handle PAGE_FAULT exits (reason 3) on this target.
 +    if vm.hypervisor.disable_sandbox || resolved.hypervisor == Hypervisor::Gunyah {
          args.push("--disable-sandbox".to_string());
-+    }
-+    // Gunyah transfers guest memory away from the host CMA region (696MB with ~40MB free).
-+    // Backing guest memory with 2MB large pages eliminates CMA fragmentation stalls and OOM kills.
-+    if resolved.hypervisor == Hypervisor::Gunyah {
-+        args.push("--hugepages".to_string());
-+    }
-@@ -671,2 +671,4 @@
+@@ -671,2 +671,3 @@
          assert!(joined.contains("--cpus 2"));
 +        assert!(joined.contains("--disable-sandbox"));
-+        assert!(joined.contains("--hugepages"));
          assert!(joined.contains("earlycon"));
 @@ -671,5 +672,20 @@
          assert_eq!(args.last().unwrap(), "/bin/sh");
