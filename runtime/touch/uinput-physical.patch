@@ -1,0 +1,15 @@
+--- a/device/piano-thp/src/input.cpp
++++ b/device/piano-thp/src/input.cpp
+@@ -17,6 +17,12 @@
+     uinput_abs_setup setup{};
+     setup.code = code;
+     setup.absinfo.maximum = maximum;
++    if (code == ABS_MT_POSITION_X || code == ABS_MT_POSITION_Y) {
++        const int millimetres = code == ABS_MT_POSITION_X ? 239 : 163;
++        setup.absinfo.resolution = (maximum + 1 + millimetres / 2) / millimetres;
++        // One panel pixel in the calibrated ten-units-per-pixel coordinate system.
++        setup.absinfo.fuzz = kSuperResolution;
++    }
+     if (ioctl(fd, UI_ABS_SETUP, &setup) < 0)
+         throw std::system_error(errno, std::generic_category(), "UI_ABS_SETUP");
+ }

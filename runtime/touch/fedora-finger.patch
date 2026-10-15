@@ -1,0 +1,142 @@
+--- a/initramfs/touch-view/piano-touch-view.c
++++ b/initramfs/touch-view/piano-touch-view.c
+@@ -64,6 +64,7 @@
+ #include <linux/fb.h>
+ #include <linux/uinput.h>
+ #include "piano-pen-owner.h"
++#include "piano-finger-bridge.h"
+ 
+ #define STREAM_PATH "/proc/nvt_thp_stream"
+ #define CONTROL_PATH "/proc/nvt_thp_raw"
+@@ -84,6 +85,7 @@
+ 	    MODE_INPUT };
+ 
+ static volatile sig_atomic_t running = 1;
++static int finger_failed;
+ 
+ static struct {
+ 	enum mode mode;
+@@ -712,55 +714,6 @@
+ 	int fd;
+ 	int reported_touch;
+ } ui = { .fd = -1 };
+-
+-static void ui_abs(int code, int min, int max)
+-{
+-	struct uinput_abs_setup a = { .code = code };
+-
+-	a.absinfo.minimum = min;
+-	a.absinfo.maximum = max;
+-	if (ioctl(ui.fd, UI_ABS_SETUP, &a))
+-		perror("UI_ABS_SETUP");
+-}
+-
+-static int ui_open(void)
+-{
+-	struct uinput_setup us = { 0 };
+-
+-	ui.fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK | O_CLOEXEC);
+-	if (ui.fd < 0)
+-		return -errno;
+-	ioctl(ui.fd, UI_SET_EVBIT, EV_SYN);
+-	ioctl(ui.fd, UI_SET_EVBIT, EV_KEY);
+-	ioctl(ui.fd, UI_SET_EVBIT, EV_ABS);
+-	ioctl(ui.fd, UI_SET_KEYBIT, BTN_TOUCH);
+-	ioctl(ui.fd, UI_SET_PROPBIT, INPUT_PROP_DIRECT);
+-	ioctl(ui.fd, UI_SET_ABSBIT, ABS_X);
+-	ioctl(ui.fd, UI_SET_ABSBIT, ABS_Y);
+-	ioctl(ui.fd, UI_SET_ABSBIT, ABS_MT_SLOT);
+-	ioctl(ui.fd, UI_SET_ABSBIT, ABS_MT_TRACKING_ID);
+-	ioctl(ui.fd, UI_SET_ABSBIT, ABS_MT_POSITION_X);
+-	ioctl(ui.fd, UI_SET_ABSBIT, ABS_MT_POSITION_Y);
+-	ui_abs(ABS_X, 0, SCREEN_W - 1);
+-	ui_abs(ABS_Y, 0, SCREEN_H - 1);
+-	ui_abs(ABS_MT_SLOT, 0, MAX_POINTS - 1);
+-	ui_abs(ABS_MT_TRACKING_ID, 0, 0xffff);
+-	ui_abs(ABS_MT_POSITION_X, 0, SCREEN_W - 1);
+-	ui_abs(ABS_MT_POSITION_Y, 0, SCREEN_H - 1);
+-	us.id.bustype = BUS_SPI;
+-	us.id.vendor = 0x0603;	/* Novatek */
+-	us.id.product = 0x6532;
+-	us.id.version = 1;
+-	snprintf(us.name, sizeof(us.name), "piano NT36532 THP touchscreen");
+-	if (ioctl(ui.fd, UI_DEV_SETUP, &us) || ioctl(ui.fd, UI_DEV_CREATE)) {
+-		int ret = -errno;
+-
+-		close(ui.fd);
+-		ui.fd = -1;
+-		return ret;
+-	}
+-	return 0;
+-}
+ 
+ static void ui_emit(int type, int code, int value)
+ {
+@@ -1164,7 +1117,7 @@
+ 			fprintf(stderr, "no framebuffer painting: %s\n", strerror(-ret));
+ 	}
+ 	if (opt.mode == MODE_INPUT) {
+-		ret = ui_open();
++		ret = piano_finger_open(getenv("PIANO_FINGER_CALIBRATION"));
+ 		if (ret) {
+ 			fprintf(stderr, "/dev/uinput: %s (modprobe uinput)\n",
+ 				strerror(-ret));
+@@ -1210,7 +1163,11 @@
+ 		ssize_t n;
+ 		size_t off = 0;
+ 
+-		ret = poll(pfd, 3, opt.pen_input ? 10 : 200);
++		ret = poll(pfd, 3, opt.mode == MODE_INPUT || opt.pen_input ? 10 : 200);
++		if (opt.mode == MODE_INPUT && piano_finger_tick(boot_ns()) < 0) {
++			finger_failed = 1;
++			break;
++		}
+ 		if (ret < 0 && errno != EINTR)
+ 			break;
+ 		if (ret > 0)
+@@ -1253,7 +1210,7 @@
+ 			observe_record(h);
+ 			if (le16(h + 26) & 2) {
+ 				if (opt.mode == MODE_INPUT)
+-					ui_report(track(NULL, 0));
++					piano_finger_reset();
+ 				have_reference = 0;
+ 				ref_count = 0;
+ 				ref_type = -1;
+@@ -1271,7 +1228,19 @@
+ 			 * contiguous type3 hand matrix. Never feed it to that decoder.
+ 			 * Full concurrent hand-quarter integration remains separate work.
+ 			 */
+-			if (pen_owner && flen >= TRANSPORT_LEN + 57 &&
++			if (opt.mode == MODE_INPUT) {
++				int finger_ret;
++				if (pen_ret > 0 && flen >= TRANSPORT_LEN + 57 &&
++				    h[hlen + TRANSPORT_LEN + 56] == 29)
++					finger_ret = piano_finger_reset();
++				else if (flen >= TRANSPORT_LEN)
++					finger_ret = piano_finger_record(h + hlen + TRANSPORT_LEN,
++						flen - TRANSPORT_LEN, le64(h + 8), le64(h + 16),
++						le16(h + 24), le16(h + 26), le32(h + 28), boot_ns());
++				else
++					finger_ret = piano_finger_reset();
++				if (finger_ret < 0) { finger_failed = 1; running = 0; break; }
++			} else if (pen_owner && flen >= TRANSPORT_LEN + 57 &&
+ 			    h[hlen + TRANSPORT_LEN + 56] == 29) {
+ 				st.types[29]++;
+ 				if (pen_ret > 0 && opt.mode == MODE_INPUT) {
+@@ -1308,6 +1277,7 @@
+ 			(unsigned long long)pen_stats.input_errors,
+ 			(unsigned long long)pen_stats.policy_contact_releases,
+ 			(unsigned long long)pen_stats.policy_stream_releases);
++	piano_finger_close();
+ 	piano_pen_owner_destroy(pen_owner);
+ 	pen_owner = NULL;
+ 	capture_finish("owner_stopped");
+@@ -1324,5 +1294,5 @@
+ 	}
+ 	print_stats(now_s() - start);
+ 	print_diagnostics(now_s() - start, 1);
+-	return st.csum_ok || pen_stats.frames29 ? 0 : 3;
+-}
++	return finger_failed ? 1 : (st.csum_ok || pen_stats.frames29 ? 0 : 3);
++}

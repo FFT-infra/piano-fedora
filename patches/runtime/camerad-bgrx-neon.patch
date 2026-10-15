@@ -1,0 +1,100 @@
+--- a/camera/piano-camerad.c
++++ b/camera/piano-camerad.c
+@@ -47,6 +47,10 @@
+ 	uint32_t count;
+ };
+ 
++#include "nv12-bgrx.h"
++
++static bool output_bgrx = true;
++
+ #define NUM_BUFS	4
+ #define AE_TARGET	112.0	/* mean luma, gamma encoded */
+ #define AE_PERIOD	3	/* frames between control updates */
+@@ -470,7 +474,8 @@
+ 
+ static size_t frame_size(const struct cam_cfg *cfg)
+ {
+-	return (size_t)cfg->out_w * cfg->out_h * 3 / 2;
++	size_t pixels = (size_t)cfg->out_w * cfg->out_h;
++	return output_bgrx ? pixels * 4 : pixels * 3 / 2;
+ }
+ 
+ static int loopback_write_frame(struct cam *c, const uint8_t *frame)
+@@ -497,8 +502,9 @@
+ 
+ 	if (!black)
+ 		return -1;
+-	memset(black, 0, luma);
+-	memset(black + luma, 128, size - luma);
++	memset(black, 0, size);
++	if (!output_bgrx)
++		memset(black + luma, 128, size - luma);
+ 	ret = loopback_write_frame(c, black);
+ 	free(black);
+ 
+@@ -523,21 +529,21 @@
+ 
+ 	f.fmt.pix.width = cfg->out_w;
+ 	f.fmt.pix.height = cfg->out_h;
+-	f.fmt.pix.pixelformat = V4L2_PIX_FMT_NV12;
++	f.fmt.pix.pixelformat = output_bgrx ? V4L2_PIX_FMT_XBGR32 : V4L2_PIX_FMT_NV12;
+ 	f.fmt.pix.field = V4L2_FIELD_NONE;
+-	f.fmt.pix.bytesperline = cfg->out_w;
++	f.fmt.pix.bytesperline = cfg->out_w * (output_bgrx ? 4 : 1);
+ 	f.fmt.pix.sizeimage = size;
+ 	/* full range BT.601 YCbCr, sRGB transfer */
+-	f.fmt.pix.colorspace = V4L2_COLORSPACE_JPEG;
++	f.fmt.pix.colorspace = output_bgrx ? V4L2_COLORSPACE_SRGB : V4L2_COLORSPACE_JPEG;
+ 	if (xioctl(c->loop_fd, VIDIOC_S_FMT, &f) < 0 ||
+ 	    xioctl(c->loop_fd, VIDIOC_G_FMT, &f) < 0) {
+ 		logmsg(c, "loopback format: %s", strerror(errno));
+ 		return -1;
+ 	}
+-	if (f.fmt.pix.pixelformat != V4L2_PIX_FMT_NV12 ||
++	if (f.fmt.pix.pixelformat != (output_bgrx ? V4L2_PIX_FMT_XBGR32 : V4L2_PIX_FMT_NV12) ||
+ 	    f.fmt.pix.width != cfg->out_w || f.fmt.pix.height != cfg->out_h ||
+-	    f.fmt.pix.bytesperline != cfg->out_w || f.fmt.pix.sizeimage != size) {
+-		logmsg(c, "loopback did not accept tightly packed NV12 %ux%u", cfg->out_w,
++	    f.fmt.pix.bytesperline != cfg->out_w * (output_bgrx ? 4 : 1) || f.fmt.pix.sizeimage != size) {
++		logmsg(c, "loopback did not accept requested packed output %ux%u", cfg->out_w,
+ 		       cfg->out_h);
+ 		return -1;
+ 	}
+@@ -748,7 +754,7 @@
+ 		       c->sizeimage, c->frame_span);
+ 		goto out;
+ 	}
+-	if (c->bpl != cfg->out_w) {
++	if (output_bgrx || c->bpl != cfg->out_w) {
+ 		c->stage = malloc(frame_size(cfg));
+ 		if (!c->stage)
+ 			goto out;
+@@ -1271,7 +1277,10 @@
+ 		af_update(c, y, c->bpl);
+ 
+ 		out = y;
+-		if (c->stage) {
++		if (output_bgrx) {
++			nv12_to_bgrx(y, uv, c->bpl, c->stage, cfg->out_w, cfg->out_h);
++			out = c->stage;
++		} else if (c->stage) {
+ 			uint8_t *d = c->stage;
+ 
+ 			for (unsigned int r = 0; r < cfg->out_h * 3 / 2; r++)
+@@ -1869,6 +1878,15 @@
+ 
+ int main(void)
+ {
++	const char *output = getenv("PIANO_CAMERA_OUTPUT");
++	if (output) {
++		if (!strcmp(output, "nv12")) output_bgrx = false;
++		else if (strcmp(output, "bgrx")) {
++			fputs("PIANO_CAMERA_OUTPUT must be nv12 or bgrx\n", stderr);
++			return 2;
++		}
++	}
++
+ 	struct sigaction sa = { .sa_handler = on_signal };
+ 	unsigned int ncams = 0;
+ 

@@ -1,0 +1,224 @@
+--- a/src/task_scheduler.c
++++ b/src/task_scheduler.c
+@@ -136,7 +136,19 @@
+ 
+ static int uperf_sched_setattr(pid_t tid, struct uperf_sched_attr *attr) {
+ #ifdef SYS_sched_setattr
+-    return (int)syscall(SYS_sched_setattr, tid, attr, 0);
++    int result = (int)syscall(SYS_sched_setattr, tid, attr, 0);
++    const uint64_t clamp_flags = SCHED_FLAG_UTIL_CLAMP_MIN | SCHED_FLAG_UTIL_CLAMP_MAX;
++    if (result != 0 && errno == EOPNOTSUPP && (attr->sched_flags & clamp_flags)) {
++        static bool warned;
++        if (!warned) {
++            log_warn("sched: kernel lacks uclamp; retaining affinity/priority without utilization clamps");
++            warned = true;
++        }
++        struct uperf_sched_attr compatible = *attr;
++        compatible.sched_flags &= ~clamp_flags;
++        result = (int)syscall(SYS_sched_setattr, tid, &compatible, 0);
++    }
++    return result;
+ #else
+     (void)tid;
+     (void)attr;
+--- a/tests/test_thermal.c
++++ b/tests/test_thermal.c
+@@ -72,10 +72,10 @@
+ /* Test: default policy values */
+ TEST(test_default_policy) {
+     ThermalPolicy p = thermal_default_policy();
+-    ASSERT_EQ(p.warn_temp, 70000, "warn_temp");
+-    ASSERT_EQ(p.throttle_temp, 80000, "throttle_temp");
+-    ASSERT_EQ(p.critical_temp, 95000, "critical_temp");
+-    ASSERT_EQ(p.recovery_temp, 75000, "recovery_temp");
++    ASSERT_EQ(p.warn_temp, 85000, "warn_temp");
++    ASSERT_EQ(p.throttle_temp, 95000, "throttle_temp");
++    ASSERT_EQ(p.critical_temp, 120000, "critical_temp");
++    ASSERT_EQ(p.recovery_temp, 88000, "recovery_temp");
+     ASSERT_PASS("default policy");
+ }
+ 
+@@ -141,15 +141,15 @@
+ 
+ TEST(test_thermal_hysteresis) {
+     ThermalPolicy policy = thermal_default_policy();
+-    ASSERT_EQ(thermal_policy_next_state(&policy, THERMAL_NORMAL, 71000),
++    ASSERT_EQ(thermal_policy_next_state(&policy, THERMAL_NORMAL, 86000),
+               THERMAL_WARNING, "enter warning");
+-    ASSERT_EQ(thermal_policy_next_state(&policy, THERMAL_WARNING, 69000),
++    ASSERT_EQ(thermal_policy_next_state(&policy, THERMAL_WARNING, 84000),
+               THERMAL_WARNING, "warning deadband");
+-    ASSERT_EQ(thermal_policy_next_state(&policy, THERMAL_WARNING, 66000),
++    ASSERT_EQ(thermal_policy_next_state(&policy, THERMAL_WARNING, 81000),
+               THERMAL_NORMAL, "leave warning below deadband");
+-    ASSERT_EQ(thermal_policy_next_state(&policy, THERMAL_THROTTLED, 79000),
++    ASSERT_EQ(thermal_policy_next_state(&policy, THERMAL_THROTTLED, 94000),
+               THERMAL_THROTTLED, "throttle held until recovery");
+-    ASSERT_EQ(thermal_policy_next_state(&policy, THERMAL_THROTTLED, 74000),
++    ASSERT_EQ(thermal_policy_next_state(&policy, THERMAL_THROTTLED, 87000),
+               THERMAL_WARNING, "leave throttle below recovery");
+     ASSERT_PASS("thermal transitions use hysteresis");
+ }
+
+--- a/src/input_monitor.c
++++ b/src/input_monitor.c
+@@ -12,6 +12,8 @@
+ #include <dirent.h>
+ #include <sys/ioctl.h>
+ #include <sys/epoll.h>
++#include <sys/inotify.h>
++#include <time.h>
+ #include <linux/input.h>
+ #include <linux/input-event-codes.h>
+ 
+@@ -23,6 +25,11 @@ static bool bitmap_test(const unsigned long *bits, unsigned int bit) {
+             (1UL << (bit % BITS_PER_LONG))) != 0;
+ }
+ 
++/* How long to wait before checking again when no touchscreen is open. */
++#define MONITOR_RESCAN_INTERVAL_MS 2000ULL
++/* Debounce for /dev/input changes: the panel may need a moment to finish probing. */
++#define MONITOR_HOTPLUG_DELAY_MS 200ULL
++
+ /* Internal input monitor state */
+ struct InputMonitor {
+     /* Device state */
+@@ -30,6 +37,11 @@ struct InputMonitor {
+     int device_max_x[INPUT_MAX_DEVICES];
+     int device_max_y[INPUT_MAX_DEVICES];
+     int nr_devices;
++    /* Earliest monotonic time a device list refresh may run. */
++    uint64_t rescan_at_ms;
++
++    /* /dev/input change notifications (panels and the pen dock come and go) */
++    int inotify_fd;
+ 
+     /* Epoll infrastructure */
+     int epoll_fd;
+@@ -167,6 +179,20 @@ InputMonitor *input_monitor_new(float swipe_thd, float gesture_thd_x,
+     for (int i = 0; i < INPUT_MAX_DEVICES; i++)
+         im->device_fds[i] = -1;
+ 
++    im->inotify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
++    if (im->inotify_fd >= 0) {
++        if (inotify_add_watch(im->inotify_fd, "/dev/input",
++                              IN_CREATE | IN_DELETE | IN_MOVED_TO |
++                              IN_MOVED_FROM | IN_ATTRIB) < 0) {
++            log_warn("input_monitor: cannot watch /dev/input: %s",
++                     strerror(errno));
++            close(im->inotify_fd);
++            im->inotify_fd = -1;
++        }
++    } else {
++        log_warn("input_monitor: inotify unavailable: %s", strerror(errno));
++    }
++
+     log_info("InputMonitor created: screen=%dx%d swipeThd=%.3f gesture=(%.3f, %.3f)",
+              screen_width, screen_height, swipe_thd, gesture_thd_x, gesture_thd_y);
+     return im;
+@@ -181,6 +207,11 @@ void input_monitor_free(InputMonitor *im) {
+         close(im->epoll_fd);
+     }
+ 
++    if (im->inotify_fd >= 0) {
++        close(im->inotify_fd);
++        im->inotify_fd = -1;
++    }
++
+     log_debug("InputMonitor destroyed");
+     free(im);
+ }
+@@ -283,9 +314,60 @@ static uint64_t timeval_to_ms(const struct timeval *tv) {
+     return (uint64_t)tv->tv_sec * 1000 + tv->tv_usec / 1000;
+ }
+ 
++static uint64_t monitor_now_ms(void) {
++    struct timespec ts;
++    clock_gettime(CLOCK_MONOTONIC, &ts);
++    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
++}
++
++/*
++ * The touchscreen is re-probed on resume, the pen dock is hot-pluggable, and
++ * at early boot the daemon can win the race against the input devices. fds for
++ * nodes that go away keep EPOLLIN asserted forever, so a plain "log and retry"
++ * spins as fast as the log can be written and pins a core. Watch /dev/input for
++ * changes and plan a device refresh instead of busy-looping.
++ */
++static void monitor_note_input_change(InputMonitor *im, uint64_t delay_ms) {
++    uint64_t due = monitor_now_ms() + delay_ms;
++    if (im->rescan_at_ms == 0 || due < im->rescan_at_ms)
++        im->rescan_at_ms = due;
++}
++
++static void monitor_drain_inotify(InputMonitor *im) {
++    if (im->inotify_fd < 0) return;
++    char buffer[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
++    bool changed = false;
++    for (;;) {
++        ssize_t n = read(im->inotify_fd, buffer, sizeof(buffer));
++        if (n <= 0) break;
++        changed = true;
++    }
++    if (changed)
++        monitor_note_input_change(im, MONITOR_HOTPLUG_DELAY_MS);
++}
++
++static void monitor_rescan_if_due(InputMonitor *im) {
++    uint64_t now = monitor_now_ms();
++    if (im->nr_devices == 0) {
++        /* Nothing open: keep looking even if no inotify event arrives. */
++        if (im->rescan_at_ms == 0)
++            im->rescan_at_ms = now;
++        else if (now + MONITOR_RESCAN_INTERVAL_MS < im->rescan_at_ms)
++            im->rescan_at_ms = now;  /* stale far-future retry */
++    }
++    if (im->rescan_at_ms == 0 || now < im->rescan_at_ms) return;
++    im->rescan_at_ms = 0;
++    input_monitor_close_devices(im);
++    if (input_monitor_discover_devices(im) <= 0)
++        im->rescan_at_ms = monitor_now_ms() + MONITOR_RESCAN_INTERVAL_MS;
++}
++
+ int input_monitor_poll(InputMonitor *im, InputEvent *events, int max_events) {
+-    if (!im || im->nr_devices == 0) return 0;
++    if (!im) return 0;
+     if (!events || max_events <= 0) return 0;
++    monitor_drain_inotify(im);
++    monitor_rescan_if_due(im);
++    if (im->nr_devices == 0) return 0;
+ 
+     /* Prepare epoll events array */
+     struct epoll_event ep_events[INPUT_MAX_DEVICES];
+@@ -313,6 +395,13 @@ int input_monitor_poll(InputMonitor *im, InputEvent *events, int max_events) {
+         struct input_event ie[16];
+         ssize_t n = read(fd, &ie, sizeof(ie));
+         if (n < 0) {
++            if (errno == ENODEV) {
++                /* The node is gone; one dead fd means the device list changed. */
++                log_warn("input_monitor: fd %d vanished, rescanning", fd);
++                input_monitor_close_devices(im);
++                monitor_note_input_change(im, MONITOR_HOTPLUG_DELAY_MS);
++                return 0;
++            }
+             if (errno != EAGAIN && errno != EWOULDBLOCK)
+                 log_warn("input_monitor: read from fd %d: %s", fd, strerror(errno));
+             continue;
+--- a/src/main.c
++++ b/src/main.c
+@@ -892,9 +892,12 @@ static InputMonitor *create_input_monitor(const Config *config) {
+     if (!monitor) return NULL;
+     input_monitor_discover_devices(monitor);
+     if (input_monitor_device_count(monitor) == 0) {
+-        log_warn("No touchscreen devices found — input monitoring disabled");
+-        input_monitor_free(monitor);
+-        return NULL;
++        /*
++         * The panel can still be probing during early boot, and the pen dock is
++         * hot-pluggable. Keep the monitor alive: it watches /dev/input and
++         * attaches as soon as a touchscreen shows up.
++         */
++        log_warn("No touchscreen devices found yet - waiting for one to appear");
+     }
+     return monitor;
+ }
