@@ -352,6 +352,9 @@ def main():
         assert "Requires=" not in camera.read_text()
         assert "StartLimitBurst=3" in camera.read_text()
         assert not (root / "etc/systemd/system/piano-camerad.service").is_symlink()
+        touch_drop = root / "etc/systemd/system/piano-touch.service.d/20-fast-restart.conf"
+        assert "RestartSec=1" in touch_drop.read_text()
+        assert (root / "etc/piano/camera.conf").read_text() == "PIANO_CAMERA_OUTPUT=nv12\n"
         assert (root / "usr/bin/piano-collect-boot").stat().st_mode & 0o111
         check_debug_handoff(root, staged)
         check_piano_hardware_fixes(root)

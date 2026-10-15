@@ -181,6 +181,10 @@ def stage_boot_diagnostics(root):
         "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf":
             "[Unit]\nWants=piano-camera.service\nAfter=piano-camera.service\n"
             "StartLimitIntervalSec=60\nStartLimitBurst=3\n",
+        "etc/systemd/system/piano-touch.service.d/20-fast-restart.conf":
+            "[Service]\nRestartSec=1\n",
+        "etc/piano/camera.conf":
+            "PIANO_CAMERA_OUTPUT=nv12\n",
     }
     for name, text in files.items():
         target = safe_destination(root, name)
