@@ -271,10 +271,11 @@
       "ref": "main",
       "category": "Gunyah 虚拟机管理器与模块安装脚本",
       "role": "Gunyah 虚拟机管理器与模块安装脚本",
-      "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "decision": "consume",
+      "reason": "正式 Fedora 运行时按构建锁消费",
       "reference_commit": "9833d43c7caadfdfb8439306cd10641921d58e90",
-      "reference_date": "2026-10-13"
+      "reference_date": "2026-10-13",
+      "lock_key": "librevm"
     },
     {
       "repo": "code002-2/linux",
@@ -904,6 +905,24 @@
       "lock_key": "gunyah-driver",
       "reference_commit": "fd503a492d381687c143b7085ea79ebce58dcdc7",
       "reference_date": "2026-10-07"
+    },
+    {
+      "repo": "google/crosvm",
+      "ref": "main",
+      "category": "带 Gunyah、virtio-net 后端的原生 VMM",
+      "role": "带 Gunyah、virtio-net 后端的原生 VMM",
+      "decision": "consume",
+      "lock_key": "crosvm",
+      "reason": "正式 Fedora 运行时按构建锁消费"
+    },
+    {
+      "repo": "phxinyang/qualcomm-iris-vaapi",
+      "ref": "main",
+      "category": "Qualcomm Iris VA-API 用户态驱动，按源码能力表限制硬解宣称",
+      "role": "Qualcomm Iris VA-API 用户态驱动，按源码能力表限制硬解宣称",
+      "decision": "consume",
+      "lock_key": "iris-vaapi",
+      "reason": "正式 Fedora 运行时按构建锁消费"
     }
   ],
   "checked_date": "2026-10-14"

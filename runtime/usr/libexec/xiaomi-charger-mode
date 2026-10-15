@@ -1,0 +1,558 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-2.0-only
+
+import ctypes
+import fcntl
+import glob
+import mmap
+import os
+import select
+import struct
+import subprocess
+import time
+
+
+KEY_POWER = 116
+EV_KEY = 0x01
+
+POWER_HOLD_SECS = 2.0
+MIPPS_DELAY_SECS = 0.8
+UNPLUG_CONFIRM_SECS = 0.5
+ONLINE_DROP_IGNORE_SECS = 8.0
+INITIAL_SOURCE_WAIT_SECS = 2.0
+INITIAL_SOURCE_FALLBACK_SECS = 10.0
+REFRESH_SECS = 1.0
+
+SYS_REBOOT = 142
+LINUX_REBOOT_MAGIC1 = 0xfee1dead
+LINUX_REBOOT_MAGIC2 = 672274793
+LINUX_REBOOT_CMD_RESTART = 0x01234567
+LINUX_REBOOT_CMD_POWER_OFF = 0x4321fedc
+
+
+def log(message):
+    print(f"xiaomi-charger-mode: {message}", flush=True)
+
+
+def read_text(path, default=""):
+    fd = -1
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+        data = os.read(fd, 4096)
+    except OSError:
+        return default
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+    return data.decode("utf-8", errors="replace").strip()
+
+
+def read_int(path, default=None):
+    try:
+        return int(read_text(path))
+    except ValueError:
+        return default
+
+
+def in_charger_boot():
+    return "androidboot.mode=charger" in read_text("/proc/cmdline").split()
+
+
+def power_supplies():
+    return sorted(glob.glob("/sys/class/power_supply/*"))
+
+
+def supply_type(path):
+    return read_text(os.path.join(path, "type"))
+
+
+def online_value(path):
+    return read_int(os.path.join(path, "online"), 0) or 0
+
+
+def typec_attached():
+    return bool(glob.glob("/sys/class/typec/port*-partner"))
+
+
+def external_power_present():
+    if typec_attached():
+        return True
+    for path in power_supplies():
+        if supply_type(path) in ("USB", "USB_C", "USB_PD", "Mains", "Wireless"):
+            if online_value(path) > 0:
+                return True
+    return False
+
+
+def find_battery():
+    preferred = "/sys/class/power_supply/bq27z561-0"
+    if supply_type(preferred) == "Battery":
+        return preferred
+    for path in power_supplies():
+        if supply_type(path) == "Battery":
+            return path
+    return None
+
+
+def battery_info():
+    path = find_battery()
+    if not path:
+        return None, "Unknown"
+    return read_int(os.path.join(path, "capacity")), read_text(os.path.join(path, "status"), "Unknown")
+
+
+def battery_info_ready():
+    capacity, status = battery_info()
+    return capacity is not None and status not in ("", "Unknown")
+
+
+def find_backlight():
+    for path in sorted(glob.glob("/sys/class/backlight/*")):
+        brightness = os.path.join(path, "brightness")
+        max_brightness = read_int(os.path.join(path, "max_brightness"), 0) or 0
+        if os.path.exists(brightness) and max_brightness > 0:
+            return path
+    return None
+
+
+def backlight_brightness(path):
+    if not path:
+        return None
+    return read_int(os.path.join(path, "brightness"))
+
+
+def backlight_restore_value(path):
+    if not path:
+        return 1
+    current = backlight_brightness(path)
+    if current and current > 0:
+        return current
+    max_brightness = read_int(os.path.join(path, "max_brightness"), 1) or 1
+    return max(1, max_brightness * 3 // 4)
+
+
+def set_backlight(path, value):
+    if not path:
+        return False
+    try:
+        with open(os.path.join(path, "brightness"), "w", encoding="ascii") as brightness:
+            brightness.write(f"{value}\n")
+        return True
+    except OSError:
+        return False
+
+
+def find_xiaomi_dir():
+    for path in ["/sys/class/qcom-battery"] + glob.glob("/sys/devices/platform/pmic-glink/*/xiaomi"):
+        if os.path.exists(os.path.join(path, "request_vdm_cmd")):
+            return path
+    return None
+
+
+def xiaomi_bus_power_watts():
+    root = find_xiaomi_dir()
+    if not root:
+        return None
+    voltage_mv = read_int(os.path.join(root, "bq2597x_bus_voltage"), 0) or 0
+    current_ma = (read_int(os.path.join(root, "bq2597x_bus_current"), 0) or 0)
+    current_ma += read_int(os.path.join(root, "bq2597x_slave_bus_current"), 0) or 0
+    if voltage_mv <= 0 or current_ma < 100:
+        return None
+    return voltage_mv * current_ma / 1000000.0
+
+
+def input_power_watts():
+    if not external_power_present():
+        return None
+
+    xiaomi_power = xiaomi_bus_power_watts()
+    if xiaomi_power is not None:
+        return xiaomi_power
+
+    best = None
+    for path in power_supplies():
+        if supply_type(path) not in ("USB", "USB_C", "USB_PD", "Mains", "Wireless"):
+            continue
+        if online_value(path) <= 0:
+            continue
+        voltage = read_int(os.path.join(path, "voltage_now"))
+        current = read_int(os.path.join(path, "current_now"))
+        if voltage is None or current is None or voltage <= 0 or current <= 0:
+            continue
+        watts = voltage * current / 1000000000000.0
+        if best is None or watts > best:
+            best = watts
+    return best
+
+
+def input_event_devices():
+    devices = []
+    block = {}
+    for line in read_text("/proc/bus/input/devices").splitlines() + [""]:
+        if not line:
+            name = block.get("name", "").lower()
+            handlers = block.get("handlers", "")
+            if "event" in handlers and ("pwrkey" in name or "power" in name):
+                for token in handlers.split():
+                    if token.startswith("event"):
+                        devices.append(f"/dev/input/{token}")
+            block = {}
+        elif line.startswith("N: Name="):
+            block["name"] = line.split("=", 1)[1].strip().strip('"')
+        elif line.startswith("H: Handlers="):
+            block["handlers"] = line.split("=", 1)[1].strip()
+    return devices
+
+
+def open_power_key_events():
+    fds = {}
+    for path in input_event_devices():
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        except OSError:
+            continue
+        try:
+            flags = fcntl.fcntl(fd, fcntl.F_GETFD)
+            fcntl.fcntl(fd, fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
+        except OSError:
+            pass
+        fds[fd] = path
+    return fds
+
+
+def read_power_key_events(fds):
+    events = []
+    if not fds:
+        return events
+    readable, _, _ = select.select(list(fds), [], [], 0)
+    event_size = struct.calcsize("llHHI")
+    for fd in readable:
+        while True:
+            try:
+                data = os.read(fd, event_size)
+            except (BlockingIOError, OSError):
+                break
+            if len(data) != event_size:
+                break
+            _, _, ev_type, code, value = struct.unpack("llHHI", data)
+            if ev_type == EV_KEY and code == KEY_POWER:
+                events.append(value)
+    return events
+
+
+FONT = {
+    " ": ("00000", "00000", "00000", "00000", "00000", "00000", "00000"),
+    "%": ("11001", "11010", "00100", "01000", "01011", "10011", "00000"),
+    "-": ("00000", "00000", "00000", "11111", "00000", "00000", "00000"),
+    ".": ("00000", "00000", "00000", "00000", "00000", "01100", "01100"),
+    "0": ("01110", "10001", "10011", "10101", "11001", "10001", "01110"),
+    "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
+    "2": ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
+    "3": ("11110", "00001", "00001", "01110", "00001", "00001", "11110"),
+    "4": ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
+    "5": ("11111", "10000", "10000", "11110", "00001", "00001", "11110"),
+    "6": ("00110", "01000", "10000", "11110", "10001", "10001", "01110"),
+    "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
+    "8": ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
+    "9": ("01110", "10001", "10001", "01111", "00001", "00010", "11100"),
+    "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
+    "D": ("11110", "10001", "10001", "10001", "10001", "10001", "11110"),
+    "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
+    "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
+    "G": ("01111", "10000", "10000", "10011", "10001", "10001", "01111"),
+    "H": ("10001", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "I": ("01110", "00100", "00100", "00100", "00100", "00100", "01110"),
+    "L": ("10000", "10000", "10000", "10000", "10000", "10000", "11111"),
+    "N": ("10001", "11001", "10101", "10011", "10001", "10001", "10001"),
+    "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
+    "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
+    "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
+    "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
+    "W": ("10001", "10001", "10001", "10101", "10101", "10101", "01010"),
+}
+
+
+def fb_info():
+    if not os.path.exists("/dev/fb0"):
+        return None
+    size = read_text("/sys/class/graphics/fb0/virtual_size")
+    if "," not in size:
+        return None
+    width, height = [int(v) for v in size.split(",", 1)]
+    stride = read_int("/sys/class/graphics/fb0/stride")
+    bpp = read_int("/sys/class/graphics/fb0/bits_per_pixel")
+    if not stride or bpp != 32:
+        return None
+    return width, height, stride
+
+
+def pixel(color):
+    r, g, b = color
+    return bytes((b, g, r, 0))
+
+
+def fill_rect(buf, stride, x, y, width, height, color):
+    if width <= 0 or height <= 0:
+        return
+    row = pixel(color) * width
+    for yy in range(y, y + height):
+        start = yy * stride + x * 4
+        buf[start:start + width * 4] = row
+
+
+def draw_text(buf, stride, x, y, text, scale, color):
+    cursor = x
+    for char in text.upper():
+        glyph = FONT.get(char, FONT[" "])
+        for row_i, row in enumerate(glyph):
+            for col_i, bit in enumerate(row):
+                if bit == "1":
+                    fill_rect(buf, stride, cursor + col_i * scale, y + row_i * scale,
+                              scale, scale, color)
+        cursor += 6 * scale
+
+
+def screen_layout(width, height):
+    scale = max(5, min(width, height) // 180)
+    title_scale = max(scale + 1, min(width, height) // 130)
+    icon_w = min(width * 2 // 3, 980)
+    icon_h = max(120, min(height // 5, 260))
+    icon_x = (width - icon_w) // 2
+    icon_y = height // 4 - icon_h // 2
+    return scale, title_scale, icon_x, icon_y, icon_w, icon_h
+
+
+def format_power():
+    watts = input_power_watts()
+    if watts is None:
+        return "POWER --.-W"
+    return f"POWER {watts:.1f}W"
+
+
+def text_clear_height(scale):
+    return 7 * scale + 8
+
+
+def draw_centered_text_line(buf, stride, width, y, text, scale, color):
+    fill_rect(buf, stride, 0, y, width, text_clear_height(scale), (0, 0, 0))
+    draw_text(buf, stride, max(20, (width - len(text) * 6 * scale) // 2),
+              y, text, scale, color)
+
+
+def draw_dynamic(buf, stride, width, height, include_hint=False):
+    capacity, _ = battery_info()
+    pct = 0 if capacity is None else max(0, min(100, capacity))
+    scale, title_scale, icon_x, icon_y, icon_w, icon_h = screen_layout(width, height)
+
+    fill_rect(buf, stride, icon_x + 10, icon_y + 10, icon_w - 20, icon_h - 20, (0, 0, 0))
+    fill_rect(buf, stride, icon_x + 20, icon_y + 20,
+              (icon_w - 40) * pct // 100, icon_h - 40,
+              (0, 190, 100) if pct >= 20 else (220, 60, 50))
+
+    percent = "--%" if capacity is None else f"{capacity}%"
+    draw_centered_text_line(buf, stride, width, icon_y + icon_h + 90,
+                            percent, title_scale, (245, 245, 245))
+    draw_centered_text_line(buf, stride, width, icon_y + icon_h + 220,
+                            format_power(), scale, (210, 210, 210))
+    if include_hint:
+        draw_centered_text_line(buf, stride, width, icon_y + icon_h + 220 + 8 * scale + 18,
+                                "HOLD POWER TO REBOOT", scale, (210, 210, 210))
+
+
+def draw_screen(message="CHARGING", full=True):
+    info = fb_info()
+    if info is None:
+        return False
+    width, height, stride = info
+    length = stride * height
+    scale, _, icon_x, icon_y, icon_w, icon_h = screen_layout(width, height)
+
+    fd = -1
+    try:
+        fd = os.open("/dev/fb0", os.O_RDWR | os.O_CLOEXEC)
+        with mmap.mmap(fd, length, mmap.MAP_SHARED, mmap.PROT_WRITE | mmap.PROT_READ) as fb:
+            if full:
+                frame = bytearray(length)
+                fill_rect(frame, stride, icon_x, icon_y, icon_w, icon_h, (230, 230, 230))
+                fill_rect(frame, stride, icon_x + icon_w, icon_y + icon_h // 3,
+                          max(24, icon_w // 22), icon_h // 3, (230, 230, 230))
+                draw_dynamic(frame, stride, width, height, include_hint=True)
+                if message != "CHARGING":
+                    msg_y = icon_y + icon_h + 220
+                    fill_rect(frame, stride, 0, msg_y, width, height - msg_y, (0, 0, 0))
+                    draw_text(frame, stride, max(20, (width - len(message) * 6 * scale) // 2),
+                              msg_y, message, scale, (210, 210, 210))
+                fb[:] = frame
+            else:
+                draw_dynamic(fb, stride, width, height)
+            fb.flush()
+        return True
+    except OSError:
+        return False
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+def unblank_display():
+    try:
+        with open("/sys/class/graphics/fb0/blank", "w", encoding="ascii") as blank:
+            blank.write("0\n")
+    except OSError:
+        pass
+    try:
+        subprocess.run(["/usr/bin/plymouth", "quit"], stdin=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=2, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def reboot_syscall(command):
+    libc = ctypes.CDLL(None, use_errno=True)
+    rc = libc.syscall(SYS_REBOOT, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2,
+                      command, None)
+    if rc != 0:
+        errno = ctypes.get_errno()
+        raise OSError(errno, os.strerror(errno))
+
+
+def request_power_action(reason, command, message):
+    log(reason)
+    draw_screen(message)
+    reboot_syscall(command)
+
+
+def request_reboot(reason):
+    request_power_action(reason, LINUX_REBOOT_CMD_RESTART, "REBOOTING")
+
+
+def request_poweroff(reason):
+    request_power_action(reason, LINUX_REBOOT_CMD_POWER_OFF, "POWERING OFF")
+
+
+def run_mipps_auth():
+    auth = "/usr/libexec/xiaomi-mipps-auth"
+    flock = "/usr/bin/flock"
+    if not os.path.exists(auth) or not os.path.exists(flock):
+        return False
+    log("starting xiaomi-mipps-auth")
+    result = subprocess.run(
+        [flock, "-n", "-E", "0", "/run/xiaomi-mipps-auth.lock", auth, "--timeout", "4"],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, errors="replace", timeout=20, check=False)
+    for line in result.stdout.splitlines():
+        log(f"xiaomi-mipps-auth: {line}")
+    for line in result.stderr.splitlines():
+        log(f"xiaomi-mipps-auth stderr: {line}")
+    log(f"xiaomi-mipps-auth exited rc={result.returncode}")
+    return result.returncode == 0
+
+
+def main():
+    if not in_charger_boot():
+        return 0
+
+    log("starting")
+    unblank_display()
+    fds = open_power_key_events()
+    log("power key devices: " + (", ".join(fds.values()) or "none"))
+    backlight = find_backlight()
+    backlight_on_value = backlight_restore_value(backlight)
+
+    start = time.monotonic()
+    power_down_since = None
+    source_missing_since = None
+    seen_source = False
+    seen_typec = False
+    mipps_deadline = None
+    mipps_done = False
+    display_ready = False
+    display_ready_since = None
+    display_on = True
+    screen_drawn = False
+    next_draw = 0.0
+    last_source = None
+
+    while True:
+        now = time.monotonic()
+        if not display_ready and battery_info_ready():
+            display_ready = True
+            display_ready_since = now
+            log("battery display ready")
+
+        for value in read_power_key_events(fds):
+            if value == 1:
+                if power_down_since is None:
+                    power_down_since = now
+            elif value == 0:
+                if power_down_since is not None and now - power_down_since < POWER_HOLD_SECS:
+                    if backlight is None:
+                        backlight = find_backlight()
+                        if backlight:
+                            backlight_on_value = backlight_restore_value(backlight)
+                    current = backlight_brightness(backlight)
+                    if current is not None:
+                        display_on = current > 0
+                        if current > 0:
+                            backlight_on_value = current
+                    if display_on:
+                        if set_backlight(backlight, 0):
+                            display_on = False
+                    else:
+                        if set_backlight(backlight, backlight_on_value):
+                            display_on = True
+                            screen_drawn = False
+                            next_draw = 0.0
+                            unblank_display()
+                power_down_since = None
+        if power_down_since is not None and now - power_down_since >= POWER_HOLD_SECS:
+            request_reboot("power key held, rebooting")
+            return 0
+
+        attached = typec_attached()
+        source_present = external_power_present()
+        if source_present != last_source:
+            log(f"external power present={source_present}")
+            last_source = source_present
+
+        if source_present:
+            seen_source = True
+            seen_typec = seen_typec or attached
+            source_missing_since = None
+            if not mipps_done and mipps_deadline is None:
+                mipps_deadline = now + MIPPS_DELAY_SECS
+        elif seen_source:
+            if source_missing_since is None:
+                source_missing_since = now
+            confirm = UNPLUG_CONFIRM_SECS if seen_typec and not attached else ONLINE_DROP_IGNORE_SECS
+            if now - source_missing_since >= confirm:
+                request_poweroff("external power removed, powering off")
+                return 0
+        elif display_ready_since is not None and now - display_ready_since >= INITIAL_SOURCE_WAIT_SECS:
+            request_poweroff("external power not detected, powering off")
+            return 0
+        elif display_ready_since is None and now - start >= INITIAL_SOURCE_FALLBACK_SECS:
+            request_poweroff("external power not detected, powering off")
+            return 0
+
+        if not mipps_done and mipps_deadline is not None and now >= mipps_deadline:
+            run_mipps_auth()
+            mipps_done = True
+
+        if display_ready and display_on and now >= next_draw:
+            draw_screen("CHARGING", full=not screen_drawn)
+            screen_drawn = True
+            next_draw = now + REFRESH_SECS
+
+        time.sleep(0.05)
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        raise SystemExit(130)

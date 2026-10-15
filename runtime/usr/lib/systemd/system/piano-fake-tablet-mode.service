@@ -1,0 +1,14 @@
+[Unit]
+Description=Fake tablet-mode switch for GNOME auto-rotation (Xiaomi Pad 8 Pro)
+After=systemd-modules-load.service
+Before=gdm.service
+ConditionPathExists=/dev/uinput
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/piano-fake-tablet-mode
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

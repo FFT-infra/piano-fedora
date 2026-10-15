@@ -76,11 +76,11 @@ jobs:
         run: |
           set -euo pipefail
           # 镜像记录里写明了它消费的内核 artifact；旧记录没有这个字段时默认正式档。
-          # 只允许两档，避免记录被改写后下载到无关 artifact。
+          # 新交付只接受正式内核，拒绝旧实验构建。
           record=build/in/image/source-runs.json
           kernel_artifact=$(python3 -c 'import json;print(json.load(open("'"$record"'")).get("kernel_artifact","kernel-release-7.2.9"))')
           case "$kernel_artifact" in
-            kernel-release-7.2.9|kernel-experimental-gunyah) ;;
+            kernel-release-7.2.9) ;;
             *) echo "recorded kernel_artifact is not allowed: $kernel_artifact" >&2; exit 2 ;;
           esac
           run=$(python3 -c 'import json;print(json.load(open("'"$record"'"))["kernel_run"])')
@@ -100,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/kernel build/uefi build/initramfs build/device-root
-          # 实验 artifact 同时带内核 tar 与 SDK tar，只解与记录同名的那一个。
+          # 精确选择记录里的内核归档。
           tar -I zstd -xf "build/in/kernel/$KERNEL_ARTIFACT.tar.zst" -C build/kernel
           tar -I zstd -xf build/in/uefi/*.tar.zst -C build/uefi
           tar -I zstd -xf build/in/image/initramfs.tar.zst -C build/initramfs

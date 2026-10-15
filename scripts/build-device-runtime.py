@@ -63,7 +63,7 @@ def stage_power_overlay(sunuefi, payload):
     return list(relatives)
 
 
-def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0"):
+def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0", license_expression="MIT AND Apache-2.0 AND BSD-2-Clause-Patent AND BSD-3-Clause AND GPL-2.0-only"):
     """自有 RPM 只拥有实际载荷文件，不声明拥有整个 /usr 或系统目录。"""
     top = output / (name + "-rpmbuild")
     for folder in ("BUILD", "BUILDROOT", "SPECS", "SOURCES", "RPMS", "SRPMS"):
@@ -79,7 +79,7 @@ def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0"
         "%global debug_package %{nil}\n%global _build_id_links none\n"
         f"Name: {name}\nVersion: {version}\nRelease: 1%{{?dist}}\n"
         "Summary: Piano native runtime built from locked sources\n"
-        "License: MIT AND Apache-2.0 AND BSD-2-Clause-Patent AND BSD-3-Clause AND GPL-2.0-only\n"
+        f"License: {license_expression}\n"
         f"Source0: {name}-{version}.tar.gz\n"
         + "".join("Requires: " + r + "\n" for r in requires)
         + "".join("Provides: " + r + "\n" for r in provides)
@@ -296,6 +296,8 @@ def build(args):
         if p.is_file() or p.is_symlink():
             put(p, payload / p.relative_to(sun / "linux/bsp/common"), p.stat().st_mode & 0o111)
     stage_power_overlay(sun, payload)
+    from piano_runtime_extras import package_session_fixes
+    session_proof = package_session_fixes(output, rpm_package, put, sha256)
     for name in ("cpufreq-start", "pstore-save"):
         put(public / "rootfs/overlay/usr/lib/piano" / name, payload / "usr/lib/piano" / name, True)
     put(Path(shutil.which("busybox")), payload / "usr/lib/piano/busybox", True)
@@ -348,15 +350,20 @@ def build(args):
     put(integration / "debian/piano-sensors.udev", payload / "usr/lib/udev/rules.d/70-piano-sensors.rules")
     put(integration / "59-fastrpc-remoteproc.rules", payload / "etc/udev/rules.d/59-fastrpc-remoteproc.rules")
     put(integration / "iio-sensor-proxy-piano.conf", payload / "etc/systemd/system/iio-sensor-proxy.service.d/piano.conf")
+    from piano_runtime_extras import build as build_extras
+    extras_proof = build_extras(sun.parent, output / "extras", rpm_package, put, sha256, run)
+    for p in (output / "extras/rpms").glob("*.rpm"):
+        shutil.copyfile(p, output / "rpms" / p.name)
     provenance = {"status": "FEDORA_RUNTIME_BUILT_NOT_DEVICE_VERIFIED",
                   "kernel_release": record["kernel_release"], "kernel_manifest_sha256": kernel_hash,
                   "touch": touch_proof, "camera": camera_proof, "boot_request": request,
-                  "sensor_sources": sensor_proof, "fastrpc_daemon": fastrpc_proof, "device_tested": False}
+                  "sensor_sources": sensor_proof, "fastrpc_daemon": fastrpc_proof,
+                  "extras": extras_proof, "session_fixes": session_proof, "device_tested": False}
     dest = payload / "usr/share/piano-provenance/fedora-runtime.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(provenance, indent=2) + "\n")
     rpm_package("piano-runtime", payload, output,
-                requires=("python3", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
+                requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
                           "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils"))
     provenance["rpms"] = {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
                           for p in (output / "rpms").glob("*.rpm")}

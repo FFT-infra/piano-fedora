@@ -422,6 +422,41 @@ def verify_fastrpc_daemon(root, runtime_meta):
             raise ValueError("installed FastRPC service differs: " + name)
 
 
+def verify_runtime_extras(root, runtime_meta):
+    """核对实际安装的 VA-API、虚拟机程序和平台配置，拒绝仅包名匹配。"""
+    sources = json.loads((ROOT / "sources.lock.json").read_text())["sources"]
+    extras = runtime_meta.get("extras", {})
+    if set(extras) != {"iris-vaapi", "crosvm", "librevm"}:
+        raise ValueError("runtime extras source proof is incomplete")
+    for name, proof in extras.items():
+        if proof.get("commit") != sources[name]["commit"]:
+            raise ValueError("runtime extras source differs: " + name)
+    librevm = extras["librevm"]
+    if (librevm.get("adapter_sha256") != sha256(ROOT / "runtime/librevm/fedora.patch")
+            or librevm.get("cargo_lock_sha256") != sha256(ROOT / "runtime/librevm/Cargo.lock")
+            or set(librevm.get("binaries", {})) != {"librevm", "librevm-daemon", "librevm-gui"}):
+        raise ValueError("LibreVM adapter or binary proof differs")
+    if extras["crosvm"].get("features") != ["gunyah", "net", "balloon"]:
+        raise ValueError("crosvm lacks the production Gunyah feature proof")
+    files = {"usr/lib64/dri/v4l2_drv_video.so": extras["iris-vaapi"].get("driver_sha256"),
+             "usr/bin/crosvm": extras["crosvm"].get("binary_sha256")}
+    files.update({"usr/bin/" + name: digest for name, digest in librevm["binaries"].items()})
+    session = {p.relative_to(ROOT / "runtime").as_posix(): sha256(p)
+               for p in (ROOT / "runtime/usr").rglob("*") if p.is_file()}
+    if runtime_meta.get("session_fixes") != session:
+        raise ValueError("session fixes proof differs from the production payload")
+    files.update(session)
+    config = "usr/lib/tmpfiles.d/piano-crosvm.conf"
+    files[config] = sha256(ROOT / "runtime/crosvm/piano-crosvm.conf")
+    for name, digest in files.items():
+        target = guest_resolve(root, "/" + name)
+        if not target.is_file() or sha256(target) != digest:
+            raise ValueError("installed runtime extra differs: " + name)
+    alias = guest_resolve(root, "/usr/lib64/dri") / "msm_drv_video.so"
+    if not alias.is_symlink() or str(alias.readlink()) != "v4l2_drv_video.so":
+        raise ValueError("VA-API msm driver alias differs")
+
+
 def verify_ffmpeg_install(root, ffmpeg):
     """拒绝装成官方 ffmpeg-free 或漏装解码器的镜像。
 
@@ -463,6 +498,7 @@ def main():
     if runtime_meta["kernel_manifest_sha256"] != kernel_hash:
         raise ValueError("runtime and rootfs select different kernel builds")
     verify_fastrpc_daemon(root, runtime_meta)
+    verify_runtime_extras(root, runtime_meta)
     mesa_dir = args.mesa.resolve()
     mesa = json.loads((mesa_dir / "manifest.json").read_text())
     if (mesa.get("status"), mesa.get("releasever"), mesa.get("arch"), mesa.get("chip_id")) != (
@@ -489,6 +525,8 @@ def main():
     # 正式 root 的服务及账号在目标树中配置，绝不启动构建机上的设备服务。
     if subprocess.run(["chroot", str(root), "id", "piano"], capture_output=True).returncode:
         chroot(root, "useradd", "--create-home", "--groups", "wheel", "--shell", "/bin/bash", "piano")
+    chroot(root, "groupadd", "--force", "--system", "librevm")
+    chroot(root, "usermod", "--append", "--groups", "librevm", "piano")
     # 默认登录口令（上游 1b3c538 同款）；root 仍锁定，wheel 也不加 NOPASSWD。
     set_login_password(root)
     piano_field = shadow_password(root, DEFAULT_PIANO_LOGIN)
@@ -508,6 +546,8 @@ def main():
                 "piano-adsp.service", "piano-audio.service", "piano-keyboard.service",
                 "piano-cpufreq.service", "piano-video.service", "piano-camera.service",
                 "piano-camerad.service", "adsprpcd-sensorspd.service",
+                "piano-fake-tablet-mode.service", "xiaomi-charger-mode.service",
+                "librevm-daemon.service",
                 "piano-clock-restore.service", "piano-clock-save.service",
                 "piano-clock-save.timer", "piano-selinux-policy.service"]
     chroot(root, "systemctl", "enable", *services)
@@ -547,7 +587,8 @@ def main():
     packages = chroot(root, "rpm", "-qa", "--qf", "%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{ARCH}\n")
     output.mkdir(parents=True, exist_ok=True)
     (output / "packages.tsv").write_text("".join(sorted(packages.splitlines(keepends=True))))
-    required = {"piano-runtime", "libssc", "iio-sensor-proxy", "systemd", "gdm", "gnome-shell"}
+    required = {"piano-runtime", "libssc", "iio-sensor-proxy", "systemd", "gdm", "gnome-shell",
+                "librevm", "piano-crosvm", "libva-v4l2-iris", "piano-session-fixes"}
     installed = {line.split("\t")[0] for line in packages.splitlines()}
     if not required <= installed:
         raise ValueError("missing required installed packages: " + str(required - installed))

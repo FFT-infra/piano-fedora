@@ -71,7 +71,7 @@ def main():
                       "CONFIG_GUNYAH_TIMER": "y", "CONFIG_GUNYAH_PLATFORM_HOOKS": "y",
                       "CONFIG_GUNYAH_QCOM_PLATFORM": "y", "CONFIG_GUNYAH_QCOM_TRUSTED_VM": "y",
                       "CONFIG_GUNYAH_IRQFD": "y", "CONFIG_GUNYAH_IOEVENTFD": "y"}, \
-        "experimental VM profile changed"
+        "production VM profile changed"
     assert validate(gunyah) == gunyah
     for symbol in gunyah:
         partial = dict(gunyah)
@@ -95,8 +95,8 @@ def main():
         else:
             raise AssertionError("configured Gunyah option lost without rejection: " + symbol)
     vm_branches = [node for node in ast.walk(main_node) if isinstance(node, ast.If)
-                   and isinstance(node.test, ast.Attribute) and node.test.attr == "experimental_gunyah"]
-    assert len(vm_branches) == 1, "experimental profile must require an explicit flag"
+                   and isinstance(node.test, ast.Attribute) and node.test.attr == "fedora_policy"]
+    assert len(vm_branches) == 1 and any(isinstance(node, ast.Name) and node.id == "GUNYAH_OVERRIDES" for node in ast.walk(vm_branches[0])), "Fedora production policy must consume Gunyah"
     print("OK: all 18 nftables options, actual configured-result rejection and policy consumption")
     return 0
 

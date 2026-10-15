@@ -1,0 +1,198 @@
+diff --git a/packaging/org.librevm.Daemon1.conf b/packaging/org.librevm.Daemon1.conf
+--- a/packaging/org.librevm.Daemon1.conf
++++ b/packaging/org.librevm.Daemon1.conf
+@@ -24,7 +24,6 @@
+   </policy>
+ 
+   <policy group="librevm">
+-    <allow own="org.librevm.Daemon1"/>
+     <allow send_destination="org.librevm.Daemon1"/>
+     <allow receive_sender="org.librevm.Daemon1"/>
+   </policy>
+diff --git a/packaging/librevm-daemon.service b/packaging/librevm-daemon.service
+--- a/packaging/librevm-daemon.service
++++ b/packaging/librevm-daemon.service
+@@ -2,6 +2,7 @@
+ Description=librevm virtual machine manager
+ Documentation=https://github.com/code002-2/librevm
+ # The daemon talks to the system bus and needs /dev/gunyah, which the kernel creates.
++ConditionPathExists=/dev/gunyah
+ After=dbus.service
+ Wants=dbus.service
+ 
+@@ -36,7 +37,7 @@
+ NoNewPrivileges=yes
+ ProtectHome=read-only
+ ProtectSystem=strict
+-ReadWritePaths=/var/lib/librevm /run/librevm /var/log/librevm-gui.log /tmp
++ReadWritePaths=/var/lib/librevm /run/librevm /var/log/librevm
+ PrivateTmp=no
+ ProtectKernelTunables=no
+ ProtectControlGroups=yes
+diff --git a/scripts/librevm-gui-session b/scripts/librevm-gui-session
+--- a/scripts/librevm-gui-session
++++ b/scripts/librevm-gui-session
+@@ -21,8 +21,10 @@
+ # Logging must never be able to kill the launch: the shell runs this as the desktop
+ # user, and a root-owned log file cannot be appended to by that user. Test first,
+ # and fall back to somewhere always writable.
+-PREFERRED=/var/log/librevm-gui.log
+-FALLBACK=/tmp/librevm-gui.log
++STATE=${XDG_STATE_HOME:-$HOME/.local/state}/librevm
++mkdir -p "$STATE" || exit 1
++PREFERRED=$STATE/gui.log
++FALLBACK=$STATE/gui-fallback.log
+ 
+ if ( : >> "$PREFERRED" ) 2>/dev/null; then
+     LOG=$PREFERRED
+diff --git a/crates/librevm-core/src/config.rs b/crates/librevm-core/src/config.rs
+--- a/crates/librevm-core/src/config.rs
++++ b/crates/librevm-core/src/config.rs
+@@ -90,7 +90,7 @@
+ 
+     /// Run crosvm without its minijail sandbox. Needed on systems without a
+     /// usable `/var/empty`, and for the console to attach cleanly.
+-    #[serde(default = "default_true")]
++    #[serde(default)]
+     pub disable_sandbox: bool,
+ }
+ 
+@@ -110,7 +110,7 @@
+             protection: Protection::default(),
+             firmware: None,
+             crosvm: None,
+-            disable_sandbox: true,
++            disable_sandbox: false,
+         }
+     }
+ }
+@@ -733,6 +733,11 @@
+                 cmdline: default_cmdline(),
+             },
+             console: ConsoleConfig::default(),
++            serial: SerialConfig::default(),
++            disks: Vec::new(),
++            shared_dirs: Vec::new(),
++            network: NetConfig::default(),
++            gpu: GpuConfig::default(),
+             description: None,
+         }
+     }
+diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backend.rs
+--- a/crates/librevm-core/src/backend.rs
++++ b/crates/librevm-core/src/backend.rs
+@@ -85,31 +85,19 @@
+         .unwrap_or(false)
+ }
+ 
+-/// Is Gunyah actually usable, as opposed to merely present?
+-///
+-/// `/dev/gunyah` on its own is not enough: a stale device node survives a module
+-/// reload, and crosvm needs the resource manager behind it. The module list is the
+-/// honest check, because the node only appears once the driver has bound.
++/// A registered misc device works for both built-in and modular Gunyah.
++/// Checking /proc/modules rejects the production built-in driver; a stale
++/// /dev node alone must not report readiness after driver removal.
+ pub fn gunyah_ready() -> bool {
+-    if !Path::new(GUNYAH_NODE).exists() {
+-        return false;
+-    }
+-    modules_loaded(&[
+-        "gunyah",
+-        "gunyah_hypercall",
+-        "gunyah_rsc_mgr",
+-    ])
+-}
+-
+-/// Read `/proc/modules` and report whether every name is loaded.
+-fn modules_loaded(names: &[&str]) -> bool {
+-    let Ok(text) = std::fs::read_to_string("/proc/modules") else {
+-        return false;
+-    };
+-    names.iter().all(|want| {
+-        text.lines()
+-            .any(|line| line.split_whitespace().next() == Some(*want))
+-    })
++    gunyah_ready_at(Path::new(GUNYAH_NODE), Path::new("/sys/class/misc/gunyah"))
++}
++
++fn gunyah_ready_at(node: &Path, registration: &Path) -> bool {
++    use std::os::unix::fs::FileTypeExt;
++    std::fs::metadata(node)
++        .map(|m| m.file_type().is_char_device())
++        .unwrap_or(false)
++        && registration.exists()
+ }
+ 
+ /// Find a program that can install the Gunyah modules.
+@@ -625,6 +613,13 @@
+     use super::*;
+     use crate::config::*;
+ 
++    #[test]
++    fn built_in_readiness_requires_a_character_device_and_registration() {
++        assert!(gunyah_ready_at(Path::new("/dev/null"), Path::new("/sys/class")));
++        assert!(!gunyah_ready_at(Path::new("/dev/null"), Path::new("/nonexistent-gunyah")));
++        assert!(!gunyah_ready_at(Path::new("/etc/passwd"), Path::new("/sys/class")));
++    }
++
+     fn vm() -> VmConfig {
+         VmConfig {
+             name: "t".into(),
+@@ -637,6 +632,11 @@
+                 cmdline: "console=ttyS0 earlycon".into(),
+             },
+             console: ConsoleConfig::default(),
++            serial: SerialConfig::default(),
++            disks: Vec::new(),
++            shared_dirs: Vec::new(),
++            network: NetConfig::default(),
++            gpu: GpuConfig::default(),
+             description: None,
+         }
+     }
+@@ -656,11 +656,6 @@
+             &det(),
+             Path::new("/usr/bin/crosvm"),
+             &ConsoleSink::Stdout,
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+             Path::new("/run/librevm"),
+         )
+         .unwrap();
+@@ -719,11 +714,6 @@
+             Path::new("/c"),
+             &ConsoleSink::UnixStream(PathBuf::from("/tmp/nope/x.sock")),
+             Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+         )
+         .unwrap();
+         let joined = args.join(" ");
+diff --git a/crates/librevm-core/src/image.rs b/crates/librevm-core/src/image.rs
+--- a/crates/librevm-core/src/image.rs
++++ b/crates/librevm-core/src/image.rs
+@@ -1388,11 +1388,15 @@
+     #[test]
+     fn the_cache_path_comes_from_the_url() {
+         let dir = Path::new("/tmp/images");
+-        let e = find("alpine-3.21").unwrap();
++        let catalogue = vec![ImageEntry::from_url(
++            "https://example.invalid/alpine-minirootfs-3.21.3-aarch64.tar.gz",
++            Compression::Gzip,
++        )];
++        let e = find(&catalogue, "from-url").unwrap();
+         let p = cache_path(dir, e);
+         assert_eq!(
+             p.file_name().unwrap().to_str().unwrap(),
+-            "alpine-minirootfs-3.21.3-aarch64.tar.gz"
++            "from-url-alpine-minirootfs-3.21.3-aarch64.tar.gz"
+         );
+         assert!(p.starts_with(cache_dir(dir)));
+     }

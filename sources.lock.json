@@ -55,13 +55,31 @@
       "url": "https://github.com/SuperTurtleDev/iceland-mainline-kernel-linux.git",
       "ref": "pr/gunyah",
       "commit": "fd503a492d381687c143b7085ea79ebce58dcdc7",
-      "role": "独立 Gunyah 实验内核的驱动来源：从 android17-6.18 导入并已适配主线 7.2；正式 Fedora 内核不自动导入"
+      "role": "Fedora 正式内核的 Gunyah 驱动：从 android17-6.18 导入并已适配主线 7.2，按 commit 原样导入并核验"
     },
     "fastrpc": {
       "url": "https://github.com/qualcomm/fastrpc.git",
       "ref": "v1.0.8",
       "commit": "d247519650fe5cb16de6c78edaa95bcc4be25073",
       "role": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd"
+    },
+    "librevm": {
+      "url": "https://github.com/code002-2/librevm.git",
+      "ref": "main",
+      "commit": "4be3e42b963e95a7753e600613a46059ebdfcd04",
+      "role": "Gunyah 虚拟机管理器、守护进程和 GTK 前端"
+    },
+    "crosvm": {
+      "url": "https://github.com/google/crosvm.git",
+      "ref": "main",
+      "commit": "4c5aa700ed5293444c0aadd672dc009ed72463e3",
+      "role": "带 Gunyah、virtio-net 后端的原生 VMM"
+    },
+    "iris-vaapi": {
+      "url": "https://github.com/phxinyang/qualcomm-iris-vaapi.git",
+      "ref": "main",
+      "commit": "f587b14e6b22955c7250a45ff5f43588bbce2114",
+      "role": "Qualcomm Iris VA-API 用户态驱动，按源码能力表限制硬解宣称"
     }
   }
 }

@@ -9,11 +9,11 @@ on:
         required: true
         default: "rootfs-44-gnome"
       kernel_artifact:
-        description: "内核 artifact，只允许 kernel-release-7.2.9 或 kernel-experimental-gunyah"
+        description: "正式内核 artifact（内建 Gunyah）：kernel-release-7.2.9"
         required: true
         default: "kernel-release-7.2.9"
       runtime_artifact:
-        description: "native Fedora 设备 RPM，必须与内核档位配对（正式=piano-fedora-runtime，实验=piano-fedora-runtime-gunyah）"
+        description: "正式设备 RPM：piano-fedora-runtime，必须匹配内核摘要"
         required: true
         default: "piano-fedora-runtime"
       size_mib:
@@ -61,29 +61,13 @@ jobs:
           RUNTIME_RUN: ${{ inputs.runtime_run_id }}
         run: |
           set -euo pipefail
-          # 内核档位只允许两档：正式 kernel-release-7.2.9 与实验 kernel-experimental-gunyah。
-          # 实验档同一 artifact 里同时带内核 tar 与 SDK tar，不再单独索引 kernel-sdk-7.2.9；
-          # 正式档的 SDK 是独立 artifact。runtime 名字必须与内核档位显式配对，避免默认
-          # 解析把实验 runtime 选中到正式镜像（反之亦然）。
-          case "$KERNEL_ARTIFACT" in
-            kernel-release-7.2.9)
-              KERNEL_TIER=standard
-              EXPECTED_RUNTIME=piano-fedora-runtime
-              kernel_artifacts=(--artifact "$KERNEL_ARTIFACT" --artifact kernel-sdk-7.2.9)
-              ;;
-            kernel-experimental-gunyah)
-              KERNEL_TIER=experimental
-              EXPECTED_RUNTIME=piano-fedora-runtime-gunyah
-              kernel_artifacts=(--artifact "$KERNEL_ARTIFACT")
-              # 实验档必须钉住同一次 run，否则 SDK/内核可能来自不同构建。
-              test -n "$KERNEL_RUN" || { echo "experimental kernel requires kernel_run_id" >&2; exit 2; }
-              test -n "$RUNTIME_RUN" || { echo "experimental runtime requires runtime_run_id" >&2; exit 2; }
-              ;;
-            *)
-              echo "kernel_artifact must be kernel-release-7.2.9 or kernel-experimental-gunyah, got: $KERNEL_ARTIFACT" >&2
-              exit 2
-              ;;
-          esac
+          # 正式产物统一包含 Gunyah；旧实验产物不进入新交付链。
+          test "$KERNEL_ARTIFACT" = kernel-release-7.2.9 || {
+            echo "only production kernel-release-7.2.9 is accepted" >&2; exit 2;
+          }
+          KERNEL_TIER=standard
+          EXPECTED_RUNTIME=piano-fedora-runtime
+          kernel_artifacts=(--artifact "$KERNEL_ARTIFACT" --artifact kernel-sdk-7.2.9)
           test "$RUNTIME_ARTIFACT" = "$EXPECTED_RUNTIME" || {
             echo "runtime_artifact $RUNTIME_ARTIFACT does not match kernel tier $KERNEL_TIER (expected $EXPECTED_RUNTIME)" >&2
             exit 2
@@ -142,7 +126,7 @@ jobs:
           set -euo pipefail
           mkdir -p build/device-root build/kernel build/runtime build/mesa build/ffmpeg build/image-tmp
           sudo tar -I zstd --numeric-owner --xattrs --xattrs-include='*' --acls --selinux -xf build/in/base/*.tar.zst -C build/device-root
-          # 实验 artifact 同时带内核 tar 与 SDK tar，glob 会把 SDK 也解进 build/kernel；
+          # 精确选择内核归档，SDK 与运行时仍按独立目录处理。
           # 只解与 kernel_artifact 同名的那个内核 archive。
           tar -I zstd -xf "build/in/kernel/$KERNEL_ARTIFACT.tar.zst" -C build/kernel
           tar -I zstd -xf build/in/runtime/*.tar.zst -C build/runtime

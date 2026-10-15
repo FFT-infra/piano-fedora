@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "target": "sunuefi",
-  "note": "只添加显式选择的独立 Gunyah 实验配置；正式内核默认路径不选择该配置。所有驱动必须来自 prepare-gunyah-source.py 生成的干净派生 worktree，不删除内存所有权检查，不临时导出私有 MM 接口。",
+  "note": "Fedora 正式内核默认包含完整 built-in Gunyah；驱动按锁定 commit 原样导入，源码清单供 SDK 重放核验。",
   "base": {
     "sunuefi_commit": "50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73"
   },
   "patches": [
     {
       "file": "0001-isolated-gunyah-profile.patch",
-      "summary": "增加完整的 built-in Gunyah 配置与独立源码检查，默认不启用",
+      "summary": "Fedora 正式配置默认启用 Gunyah，缺少驱动源码时拒绝构建",
       "targets": {
         "tools/build_piano_full_kernel.py": "c0bd1adbfec8c6fe6929f833c3d17d4c9745d4654ed61664258fd6b9ac94baf1"
       },

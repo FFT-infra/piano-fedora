@@ -5,11 +5,11 @@
 | 产物 | 生产入口 | 集成关系 |
 | --- | --- | --- |
 | UEFI 产品 | build-uefi.yml | 使用固定 SunUEFI 配方；保留原始 manifest |
-| Image、完整模块、SDK | build-kernel.yml | 内建 F2FS/SELinux，强制 rootfstype=f2fs；SDK 绑定同一配置和 Module.symvers |
+| Image、完整模块、SDK | build-kernel.yml | 内建 F2FS/SELinux/Gunyah，强制 rootfstype=f2fs；SDK 绑定同一配置和 Module.symvers |
 | Fedora 基础树 | build-rootfs.yml | 原生 DNF installroot，记录容器 ID 和实际 RPM，排除发行版 kernel |
 | A830v1 Mesa RPM | build-mesa.yml | 固定 Fedora 源 RPM 与 piano 补丁，复用 Fedora 配方；从实际 RPM 核对 Gallium/Turnip 芯片表 |
 | FFmpeg RPM | host-check 调用的 build-ffmpeg.yml | 固定 Fedora 源 RPM，沿用 SunUEFI BSP 补丁启用 H.264/HEVC v4l2m2m 解码器；build-ffmpeg 是 workflow_call 复用件，实际 run 的 workflow_id 是 host-check；原生构建及设备解码仍待验证 |
-| 设备运行时 RPM | build-device-runtime.yml | Fedora 原生触控/笔、相机程序、传感器、BOOT 请求工具、拓扑与设备配置；外部模块匹配 SDK |
+| 设备运行时 RPM | build-device-runtime.yml | Fedora 原生触控/笔、相机程序、传感器、BOOT 请求工具、拓扑与设备配置；外部模块匹配 SDK；另含 VA-API、crosvm、LibreVM 和平台配置 RPM |
 | 设备 rootfs、initramfs、F2FS raw 镜像 | build-image.yml | 同一 job 安装设备、Mesa 与 FFmpeg RPM，核对已安装包及解码器注册，运行上游完整 rootfs 检查，配置服务、清理身份、设置 SELinux 标签并完整读回验证 |
 | ESP、Linux boot.img、交付集合 | build-bundle.yml | 从集成记录取得准确内核，调用上游 DTB/mkbootimg/ESP 包装，核对全部文件和展开 root 镜像 |
 
@@ -19,7 +19,11 @@
 
 F2FS 镜像同时绑定 rootfs、内核、运行时、Mesa、FFmpeg 和 initramfs 六份清单的 SHA256。rootfs 清单引用实际消费的运行时、Mesa 与 FFmpeg 清单，并记录实际 RPM 清单的摘要。
 
-组件分目录解包。基础树、内核、UEFI、运行时、Mesa、FFmpeg 和 initramfs 不共享 manifest 路径。跨 run 查找仅接受成功且未过期的 artifact；SDK 与内核从同一次 run 获取。内核档位只允许 kernel-release-7.2.9 与 kernel-experimental-gunyah 两档：正式档的 SDK 是独立 artifact，实验档的内核与 SDK 同在一个 artifact，因此镜像与 bundle 只解与档位同名的内核 archive，不用 glob 带上 SDK。实验档必须显式钉住 kernel_run_id 与 runtime_run_id，且 runtime artifact 名要与内核档位配对（正式 piano-fedora-runtime，实验 piano-fedora-runtime-gunyah）。镜像产物中的 source-runs.json 记录 kernel_run 与 kernel_artifact，bundle 按记录下载同名 artifact；旧记录没有该字段时默认正式档。
+组件分目录解包。基础树、内核、UEFI、运行时、Mesa、FFmpeg 和 initramfs 不共享 manifest 路径。跨 run 查找仅接受成功且未过期的 artifact；SDK 与内核从同一次 run 获取。内核只允许标准 kernel-release-7.2.9，SDK 是独立 artifact，二者从同一成功 run 获取。
+镜像和 bundle 只解包准确命名的内核 archive，拒绝旧 kernel-experimental-gunyah
+与 piano-fedora-runtime-gunyah 产物。Gunyah 已由标准内核和标准 runtime 消费，
+SDK 内携带源码派生证明。source-runs.json 记录 kernel_run 与 kernel_artifact，
+bundle 按记录下载并要求其为标准档。
 
 ## F2FS 验证
 
@@ -43,6 +47,6 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 ## 尚需验证
 
-2026-10-10 的完整 Actions 构建及下载后的本地校验已通过，包括组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷和 boot.img 组件。没有任何本次产物在平板上启动过，首次分区、恢复材料、本机 BOOT 输入和 Android 数据处理选择仍属于部署前的独立要求。
+2026-10-10 的完整 Actions 构建及下载后的本地校验已通过，包括组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷和 boot.img 组件。该段记录 2026-10-10 的主机构建验收；后续 Fedora 已在本机 F2FS 启动，最新内核、媒体和运行时证据见[设备验收](device-acceptance-20261015.md)。首次分区、恢复材料及 Android 往返仍需各自的设备证明。
 
 上游安装器保留 ext4 合同；本仓库新增独立的 F2FS 初装入口和本机 BOOT 文件准备入口。工具路径、Actions 材料、破坏性操作门禁和真机验收边界见[首次安装](installation.md)。新增实现的实际构建、包装和设备验收状态分别以对应 manifest 与会话记录为准。

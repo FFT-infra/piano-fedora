@@ -2,9 +2,9 @@
 
 小米平板 8 Pro（piano）的 Fedora + HyperOS 双系统构建仓库，Linux 根分区用 F2FS。
 
-SunUEFI 按 commit 锁定为上游，本仓库只带三样增量：Fedora 后端、F2FS 全链路、首次分区。
+SunUEFI 按 commit 锁定为上游；本仓库维护 Fedora/F2FS 构建、安装和设备适配，标准内核包含 Gunyah，用户态以 RPM 交付。
 
-Fedora 44/GNOME 已在本机 F2FS 根分区启动，双摄基础采集与传感器服务已复核。视频长测试暴露了 Iris 关键帧请求缺项，修复和各项验证边界见[本轮设备验收](docs/device-acceptance-20261015.md)。交付内容和构建顺序见 [产物说明](docs/artifacts.md)。
+Fedora 44/GNOME 已在本机 F2FS 根分区启动，双摄基础采集与传感器服务已复核。Iris 关键帧请求与 B 帧顺序修复已通过真机长视频回归，当前进展和各项验证边界见[本轮设备验收](docs/device-acceptance-20261015.md)。交付内容和构建顺序见 [产物说明](docs/artifacts.md)。
 
 启动合同、离线诊断和图形服务取证见 [离线构建与设备验收](docs/offline-bringup.md)。
 
@@ -13,7 +13,7 @@ Fedora 44/GNOME 已在本机 F2FS 根分区启动，双摄基础采集与传感�
 相关上游的去重索引见 [upstreams.json](docs/upstreams.json)，包含构建消费源、同设备
 移植、厂商驱动与虚拟化参考；当前提交通过 `python3 scripts/audit-upstreams.py
 --execute` 重新核验，结果写入 `build/`，不会自动更换构建 pin。
-VM 的两条公开实现与未完成门槛见[虚拟化记录](docs/virtualization.md)。
+VM 的正式构建链与未完成门槛见[虚拟化记录](docs/virtualization.md)，所有剩余项目见[交付完成清单](docs/completion-checklist.md)。
 
 ## 用法
 

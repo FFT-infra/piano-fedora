@@ -16,7 +16,7 @@ def run(command, **kw):
 
 
 def replay_gunyah_source(sun, prepared, record, proof_path, output):
-    """按同一锁定输入重放派生树，再与实验内核清单逐项比较。"""
+    """按同一锁定输入重放派生树，再与正式内核清单逐项比较。"""
     proof = json.loads(proof_path.read_text())
     lock = json.loads((Path(__file__).resolve().parents[1] / "sources.lock.json").read_text())
     pin = lock["sources"]["gunyah-driver"]["commit"]
@@ -36,7 +36,7 @@ def replay_gunyah_source(sun, prepared, record, proof_path, output):
                              sun / "upstream/gunyah-driver", output / "gunyah-source", pin)
     replayed = module.execute_plan(plan)
     if replayed != proof:
-        raise ValueError("replayed Gunyah source differs from the experimental build proof")
+        raise ValueError("replayed Gunyah source differs from the production build proof")
     return {"worktree": plan["output"], "actual_commit": replayed["derived"]["commit"],
             "actual_tree": replayed["derived"]["tree"]}
 
@@ -46,8 +46,12 @@ def main():
     for name in ("sunuefi", "kernel", "sdk", "output"):
         ap.add_argument("--" + name, required=True, type=Path)
     ap.add_argument("--gunyah-source-proof", type=Path,
-                    help="实验内核随附的源码派生清单；重放锁定驱动后才允许编译模块")
+                    help="正式内核随附的源码派生清单；重放锁定驱动后才允许编译模块")
     args = ap.parse_args()
+    if args.gunyah_source_proof is None:
+        args.gunyah_source_proof = args.sdk / "kernel-gunyah-source.json"
+    if not args.gunyah_source_proof.is_file():
+        ap.error("production kernel SDK requires kernel-gunyah-source.json")
     sun, kernel, sdk, output = [getattr(args, name).resolve() for name in ("sunuefi", "kernel", "sdk", "output")]
     record, kernel_hash = inspect_kernel(kernel)
     if sha256(sdk / "kernel-sdk-manifest.json") != kernel_hash:

@@ -84,9 +84,15 @@ def main():
         checkout(mipps["url"], mipps["commit"], output / "piano-mipps-auth")
         fastrpc = lock["fastrpc"]
         checkout(fastrpc["url"], fastrpc["commit"], output / "fastrpc")
-    if args.mode == "gunyah":
+        for name in ("librevm", "crosvm", "iris-vaapi"):
+            entry = lock[name]
+            checkout(entry["url"], entry["commit"], output / name)
+            if name == "crosvm":
+                subprocess.run(["git", "-C", str(output / name), "submodule", "update", "--init",
+                                "--depth=1", "third_party/minijail"], check=True)
+    if args.kernel:
         driver = lock["gunyah-driver"]
-        checkout(driver["url"], driver["commit"], output / "gunyah-driver", sparse_paths=(
+        checkout(driver["url"], driver["commit"], sun / "upstream/gunyah-driver", sparse_paths=(
             "/drivers/virt/gunyah/", "/arch/arm64/gunyah/",
             "/arch/arm64/include/asm/gunyah.h", "/include/linux/gunyah.h",
             "/include/linux/gunyah_qtvm.h", "/include/uapi/linux/gunyah.h",
