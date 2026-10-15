@@ -121,6 +121,7 @@ VM 源码与配套 QEMU 的重新核验见[虚拟化记录](virtualization.md)�
 | kernel-f2fs（3 条） | `tools/build_piano_full_kernel.py` 没有 F2FS/SELinux 配置；选择器 `.rodata`/`.data` 只有段首 `ALIGN(16)`，没有段尾对齐 | 保留 |
 | uefi-ufs（1 条） | 上游有 `PianoUfsBuildResumeActive`，但只在描述符读失败（`EFI_DEVICE_ERROR`）时调用 | 保留：本机 1 TB UFS 睡眠态也能读成功，那个闸门不触发 |
 | uefi-live-memory（1 条，本轮新增） | 全部远端分支 `grep ddr_size` 为空，raw 交接不碰 `/memory` | 保留：24 GB 采纳，真机 `MemTotal` 22.57 GiB |
+| uefi-live-rm（1 条，本轮新增） | 上游把 inherited FDT 当只读输入，raw 交接不碰 `/hypervisor` 下的 RM 节点 | 保留：节点 `reg` 是构建期冻结的 TX/RX capability，不换成当次值则首次 RM 请求 ARG_INVAL 并阻塞 VM_START |
 | runtime/camerad-gcc-bounds | 上游无 | 保留 |
 
 **pin 是否移动**：`sunuefi` 提到 `1b0e201` 已在本地重放验证（补丁干净应用、`check_patches` 通过），但该提交只改 Nyarch 打包，不改变任何启动或内核产物，因此本轮不动 pin；与其它输入一起评审时再决定。`fedora-sheng` 只作后端参照，不消费其代码。

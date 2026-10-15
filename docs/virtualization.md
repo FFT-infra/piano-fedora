@@ -1,111 +1,98 @@
-# VM 路线与验收
+# Gunyah 正式集成与 VM 验收
 
-目标包括 Fedora 宿主内运行硬件加速客体，再验证存储、网络和管理器。
-当前没有完成 VM 支持，不能将软件模拟或容器作为这项目标的验收替代。
+Gunyah 已进入标准 Fedora 内核构建链，不再提供实验档输入或独立实验 job。
+客体执行、磁盘和网络需要真机证据，内核编译成功不能代替 VM 验收。
 
-## 本机状态（2026-10-13）
+## 正式构建链
 
-已通过桥接机 SSH 读取当前 Fedora：内核为
-`7.2.9-piano-gnome-gd33a42990baf`，`/dev/kvm` 与 `/dev/gunyah` 均不存在。
-设备树中的 Gunyah VM/RM 节点只是定位接口的线索，尚未取得本机 RM 握手、
-VM 创建或客体执行成功证据。
+| 环节 | 入口与合同 |
+| --- | --- |
+| 固定驱动 | `sources.lock.json` 的 `gunyah-driver`，commit `fd503a492d381687c143b7085ea79ebce58dcdc7`；32 个文件原样导入 |
+| 源码准备 | `scripts/prepare-production-kernel.py` 重放 SunUEFI/Iris 后导入驱动；不依赖一份已编译的基础内核 |
+| 来源证明 | `production-source-manifest.json` 记录最终源码身份；`kernel-gunyah-source.json` 记录父树、导入文件和派生树 |
+| 标准配置 | `--fedora-policy` 自动要求驱动源码并启用全部八项 Gunyah 配置；缺源码或配置不完整即失败 |
+| 内核与 SDK | `build-kernel.yml` 标准 job 先配置与单编驱动，再整核构建；标准 SDK 携带派生证明 |
+| 外部模块 | `prepare-runtime-kernel.py` 默认重放 Gunyah 派生证明，要求源码、配置、Module.symvers 与内核清单匹配 |
+| 镜像与交付 | 只接受标准 kernel/runtime artifact，拒绝旧实验档，防止混装模块 |
 
-## 两条公开实现
+八项内置配置为 `GUNYAH`、`GUNYAH_HYPERCALLS`、`GUNYAH_TIMER`、
+`GUNYAH_PLATFORM_HOOKS`、`GUNYAH_QCOM_PLATFORM`、`GUNYAH_QCOM_TRUSTED_VM`、
+`GUNYAH_IRQFD` 与 `GUNYAH_IOEVENTFD`。固定源码、逐字节导入和重放一致性由
+`check_gunyah_source.py`、`check_production_kernel.py`、`check_runtime_kernel_source.py`
+覆盖，均纳入 `make test`。
 
-| 路线 | 源码和实际接口 | 当前取舍 |
-| --- | --- | --- |
-| 直接 Gunyah VMM | 小米 piano-w-oss 厂商驱动、Qualcomm 公开提案、`/dev/gunyah`、crosvm/相应 QEMU | 优先核对本机官方驱动的 ABI 与移植依赖，公开提案作对照 |
-| KVM ABI 到 Gunyah 的桥 | Karim 的 34 补丁系列、配套 QEMU、`/dev/kvm` | 保留实验对照；原提案尚无 virtio/SMP，不能直接满足普通 libvirt/Incus VM |
+补丁文件名 `0001-isolated-gunyah-profile.patch` 是历史名称，其内容已改成
+Fedora 正式策略，未保留 `--experimental-gunyah` 开关。
 
-`code002-2/librevm@4be3e42b963e95a7753e600613a46059ebdfcd04` 的获取脚本默认
-克隆自身 main，查找 `modules/$(uname -r)/*.ko`，否则要求提供内核源码。
-该提交的目录树没有这些预编译模块。v0.1.0/v0.2.0 的公开发布资产只有应用
-deb 与对应摘要，没有宿主驱动。点击安装按钮并不构成可复现的 VM 构建流程。
+## 用户态
 
-作者在 `docs/virtio-on-gunyah.md` 记录 crosvm 使用 `--no-balloon` 后客体磁盘和
-网络可用。这是作者记录，未在本机复现；同文档的 `--disable-sandbox` 仅作
-实验复现参数，不作为发行版默认配置。
+`piano-crosvm` 原生构建锁定的 crosvm，使用 `gunyah,net,balloon` feature；
+`librevm` RPM 包含 CLI、daemon 和 GTK GUI，消费仓库内的 Fedora 适配与完整
+Cargo.lock。管理器默认启用 sandbox，不能把测试用的 `--disable-sandbox`
+当作生产默认值。内置驱动的就绪判断检查 `/dev/gunyah` 和内核注册路径，
+不依赖 `/proc/modules`。
 
-现有十文件摘录不完整，保留在 `linux/gunyah-overlay/`，尚未参与任何构建。
-正式集成需要完整系列、许可证和来源摘要，以及独立的实验内核产物；不把
-未验证模块注入当前可启动内核。当前 nftables 修复用于 Fedora 防火墙与
-后续 VM 网络，不能使缺失的 hypervisor 后端自动出现。
+`build-device-runtime.py` 自动构建并交付上述 RPM。finalizer 校验源码 pin、
+适配和锁文件摘要，以及 rootfs 实际安装的二进制字节；仅存在包名不能通过。
+同一链路还交付 VA-API 与旋转/充电/schedutil 平台配置。
 
-完整源码入口已经找到：`CodeLinaro-mirror/linux-kernel_gunyah-linux` 的
-`eberman/gunyah@a73f08e03671eed3c2e3917637eacff764feef90`，基于 Linux
-6.10-rc7，包含 VM Manager、guest_memfd、vCPU、irqfd、ioeventfd 与 UAPI。
-这推翻“公开驱动源码找不到”的旧结论；仍需审阅系列基线、SCM/内存接口与
-本机 RM compatible，不能直接把旧树驱动复制成当前 7.2.9 的外部模块。
+## Gunyah RM capability 交接
 
-2026-10-14 核对“换上游最新一份”是否可行：**主线至今没有合并 Gunyah 驱动**。
-`torvalds/linux` master 的 `drivers/virt/` 是 acrn、coco、fsl_hypervisor.c、
-nitro_enclaves、vboxguest、vmgenid.c；固定的 7.2.6 树里唯一带 gunyah 的文件是
-`drivers/watchdog/gunyah_wdt.c`。两份公开源码反而更难用：v17 提案基于 ~6.8，
-`eberman/gunyah` 基于 6.10-rc7，都要通用 guest_memfd（`include/linux/guest_memfd.h`
-与 `mm/guest_memfd.c`），而 7.2.6 只有 KVM 内部的 `virt/kvm/guest_memfd.c`。
-小米厂商驱动是 6.6.57 基线，但自带 pin-user-pages、不依赖 guest_memfd，且是
-唯一对得上本机 RM 的官方实现，所以维持从它导入。
+`uefi-live-rm` 补丁修的是 raw 交接里的一处输入：payload DTB 的
+`/hypervisor/qcom,resource-manager-rpc@…` 节点 `reg` 是构建镜像时那一轮启动的
+TX/RX capability，ABL 每次启动重新分配并通过 inherited FDT 下发当次值。
+驱动按 `compatible` 找节点、按两个 u64 读 `reg`，所以过期值的表现是第一次
+RM 请求被 hypervisor 判 ARG_INVAL、`gunyah_rm_msgq_send` 的许可永不返回，
+调用者停在 D 状态，`VM_START` 永远发不出去。
 
-逐符号核对已确认：该 VMM 使用通用 `include/linux/guest_memfd.h` 与
-`mm/guest_memfd.c` 的 `guest_memfd_alloc/grab_folio/make_inaccessible` 接口，
-并选择 `CONFIG_GUEST_MEMFD`。当前固定内核只有 KVM 内部的
-`virt/kvm/guest_memfd.c` 与 `CONFIG_KVM_GUEST_MEMFD`，不提供这些通用 API。
-移植还需 arm64 hypercall/Kbuild 和驱动接入。真机读取后更正：节点名虽然为
-`qcom,resource-manager-rpc@…`，其 compatible 列表已经包含
-`gunyah-resource-manager`，并提供两个 64 位 capability ID 与两项 IRQ。
-不能从节点名直接断言驱动不匹配。父 hypervisor 的 compatible 列表为
-Qualcomm 两项及 `simple-bus`，未包含通用 `gunyah-hypervisor`；仍需核对
-父初始化、版本探测与已有平台子设备的注册路径，不盲目覆盖 compatible。
+补丁在把 DTB 交给内核之前，用产品已经校验过的 inherited FDT 覆盖这 16 字节，
+并且只在「两棵树各自恰好一个匹配节点、继承值正好 16 字节且两个 id 都非零、
+目标属性形状就是驱动读的那种」时才改；任何缺失、歧义或读不动都保留 payload
+原值并记日志。节点名里的 unit-address 不动，Linux 侧不读它。
 
-小米官方 `piano-w-oss@45fb9bd6ae5ba2942fc1d53e4b6b46ef76992f71` 里也有完整
-宿主驱动，其 UAPI 包含 `GH_VM_SET_USER_MEM_REGION`、`GH_VM_ANDROID_LEND_USER_MEM`
-和 `GH_VM_ANDROID_SET_FW_CONFIG`，自带 pin-user-pages、不依赖通用 guest_memfd。
-2026-10-13 到 10-14 曾按它做过一版导入，结果是 6.6.57 → 7.2 的逐处 API 漂移：
-51 分钟那轮撞上 `folio_index()` 与 `of_node_to_fwnode()`，改写后在十分钟的预检里
-又撞上 `vm_mgr_mem.c` 的 `PageSwapBacked()`。这条线不再继续手工移植，改为直接
-消费上游已适配的驱动（见下），小米树降为研究来源。
+验证分两层：主机侧把要发货的 C 原文抽出来配真实 libfdt（两个独立 1.8.1
+环境）对真实抓取的 payload DTB 与 inherited FDT 重放，只有 RM `reg` 与
+`uefi-live-memory` 的内存项发生变化，九条策略用例与三条反向改坏对照都符合
+预期；实机结论必须由正常启动路径给出，见
+[设备验收](device-acceptance-20261015.md)。`tests/check_uefi_live_rm.py`
+在主机 `make test` 里用假 FdtLib 编译同一段 C，覆盖同一组接受/拒绝路径。
 
-已适配主线 7.2 的现成驱动在 `SuperTurtleDev/iceland-mainline-kernel-linux` 的
-`pr/gunyah` 分支：驱动来自 Android common kernel `android17-6.18`，分支上三个提交
-分别是导入、适配主线 7.2、以及 `tools/virt/gunyah/gh_vmtest.py` 冒烟测试与验证
-记录。其 `Documentation/virt/gunyah/port_adaptations.md` 记录五处适配，其中
-`of_node_to_fwnode()`→`of_fwnode_handle()` 与上面撞到的是同一类。分支作者在
-OnePlus Pad 4（SM8850）上记录 `gunyah: Running under Gunyah hypervisor 51/v1`、
-`/dev/gunyah` 出现、VM_START 约 2 ms；这是作者记录，未在本机复现。
+## 2026-10-15 构建与部署证据
 
-## 执行入口（2026-10-14 现状）
+Bridge 完整编译正式内核 `7.2.9-piano-gnome-gaf0eac10c933`，源码 commit
+`af0eac10c933cd21e130a39d954f8d271e54e7c1`，tree
+`c105213de7cee43813e79ae3332e2745626422d6`。Image SHA256 为
+`ab5429321fd4736a82c133defb10998b48c31f53a54bd958feafe1f385a1e5a5`，
+内核清单 SHA256 为
+`3c41bd00b4933259dd3993090943929a88fd6b9c167e07bc0a96b22676a316bb`。
+八项 Gunyah 配置预检、驱动单编、整核构建和 1639 个模块的 vermagic 检查通过。
 
-驱动改为**原样搬运上游已适配的源码**，本仓库不再改写驱动字节：
+匹配的 v4l2loopback 用同一 config/Module.symvers 与 clang 19.1.7 构建。
+ESP 更新已逐文件读回验证，board.dtb 与持久 BOOT 未变；旧内核、模块和完整
+ESP 回滚包保留。启动与 VM 结果见[设备验收](device-acceptance-20261015.md)。
 
-| 环节 | 入口 | 边界 |
-| --- | --- | --- |
-| 驱动源码 | `sources.lock.json` 的 `gunyah-driver`（`SuperTurtleDev/iceland-mainline-kernel-linux@fd503a49`，分支 `pr/gunyah`） | 只有独立实验构建消费；正式内核不自动替换 |
-| 派生源码 | `scripts/prepare-gunyah-source.py --kernel <封存内核> --kernel-source <源码树> --driver-source <驱动 checkout> --output build/kernel-worktrees/gunyah-experiment --execute` | 默认只打印计划；32 个导入文件逐个与锁定提交逐字节比对；不改写任何字节；输出锁在 `build/` 下；提交只落在新 worktree 的 detached HEAD |
-| 检查 | `tests/check_gunyah_source.py`（已进 `make test`） | 覆盖隐藏修改拒绝、两次派生结果一致、导入文件与上游逐字节相同 |
-| 配置 | `patches/kernel-gunyah`（`GUNYAH_OVERRIDES` + `--experimental-gunyah`） | 八个符号按上游 Kconfig 全选；显式旗标才选；正式档不带该配置 |
-| 构建 | `build-kernel.yml` 的 `gunyah-kernel` job，输入 `experimental_kernel_run_id`（取该 run 的封存内核产物） | 与正式 `kernel` job 互斥；留空即不构建实验档；先单编驱动目录的预检，再整核构建 |
-| 配套 runtime | `build-device-runtime.yml` 的 `experimental_kernel_run_id` | 与标准 `kernel_run_id` 互斥；从同一实验 artifact 取 Image 清单与 SDK，重放派生源码并比较全部来源清单后编译外部模块；不混用标准内核模块 |
+平板原生构建的 VA-API 测试 14 项通过，LibreVM core 测试 56 项通过，
+crosvm Gunyah 及 LibreVM 完整 workspace release 编译通过。四个运行时 RPM
+已安装，旧的未受 RPM 管理的 LibreVM 启动器和宽松调试 override 已清理。
+这些结果证明用户态构建与安装，不证明客体已运行。
 
-预检这一步在 2026-10-14 首次生效：整核构建要五十多分钟，而驱动目录的问题
-在配置完成后十分钟内就能判死。
+## 完成门槛
 
-2026-10-14，Actions run `38445077854` 的驱动预检、整核构建和 SDK 导出均成功。
-本地对下载产物执行 `piano_artifacts.inspect_kernel`，校验 Image、配置、1636 个
-模块及索引通过，内核为 `7.2.9-piano-gnome-gd770d520df28`。派生清单的
-`PREPARED_NOT_BUILT_NOT_DEVICE_VERIFIED` 只描述源码准备步骤；构建结果另由内核
-清单与这次 CI 证明。实验内核尚未部署，RM 握手和客体执行仍未验证，不能据此
-声明 VM 可用。
+| 项目 | 所需证据 |
+| --- | --- |
+| 平台接口 | 正式内核启动，RM 握手，设备权限，SELinux Enforcing |
+| 客体执行 | VM 创建、VM_START、单 vCPU 控制台与正常退出 |
+| 数据路径 | virtio-blk 写入和重新打开校验，virtio-net 连通 |
+| 生命周期 | 多轮启停、VM fd/内存与网络清理，失败时有界退出 |
+| 管理器 | 默认 sandbox、D-Bus 权限、GUI 与真实客体操作 |
+| 扩展 | SMP、UEFI、图形和 Incus 分别验收，不由单 vCPU 冒烟结果推定 |
 
-## 完成需要的证据
-
-1. 固定完整宿主驱动源码，记录相对现有 piano 内核的差异和移植补丁；核对
-   hypervisor/RM compatible、消息队列、doorbell、SCM 内存权限接口。
-2. 使用与 Image 一致的配置、编译器、Module.symvers 和 UAPI 构建，检查
-   vermagic、BTI、所有未解析符号；构建清单绑定模块与内核。
-3. 真机取得 RM 握手、实际 VM 创建和单 vCPU 客体控制台；再测试退出/回收，
-   不能仅以设备节点存在判定通过。
-4. 验证 virtio-blk 读写、virtio-net、内存回收和重复启停；之后分别评估 SMP、
-   客体 UEFI、图形与 libvirt/Incus 的具体接口，逐项记录失败与限制。
+2026-10-14 的旧实验产物与直接 ioctl 记录只作历史诊断；它们不能证明当前
+正式内核已通过上述门槛。当前正式内核已经启动并提供 `/dev/gunyah`；首次
+RM 请求失败后的发送许可等待曾阻塞 VM_START，原因已定位为构建期冻结的 RM
+capability，修正走上面的 `uefi-live-rm` 补丁。反汇编、直接 hypercall 诊断与
+主机侧 libfdt 对照见[设备验收](device-acceptance-20261015.md)。补丁尚未经过
+正常启动路径的实机验证，因此仍无客体控制台结果。
 
 ## 实读来源
 

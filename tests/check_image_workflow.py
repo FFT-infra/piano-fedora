@@ -97,9 +97,13 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
             "product": {"sha256": digest(root / "PianoUEFI-product.img"),
                         "bytes": (root / "PianoUEFI-product.img").stat().st_size},
             "evidence": {"kind": "successful-actions-build-log", "log_sha256": "2" * 64}}
-    memory_sources = {"patches/uefi-live-memory/series.json",
-                      "patches/uefi-live-memory/0001-adopt-live-memory-map.patch"}
-    assert memory_sources <= set(uefi["project_source_sha256"]), "UEFI memory patch is not bound to the product"
+    # 交付包绑定的 UEFI 项目补丁：内存与 Gunyah RM 交接都要能在 uefi-source.json
+    # 里查到，否则 bundle 可以拿一个新的 product 配旧的来源清单。
+    uefi_sources = {"patches/uefi-live-memory/series.json",
+                    "patches/uefi-live-memory/0001-adopt-live-memory-map.patch",
+                    "patches/uefi-live-rm/series.json",
+                    "patches/uefi-live-rm/0001-adopt-live-resource-manager-caps.patch"}
+    assert uefi_sources <= set(uefi["project_source_sha256"]), "UEFI handoff patches are not bound to the product"
     write("uefi-source.json", uefi)
 
     def verify(data=raw):
@@ -115,9 +119,11 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
                     {"product": {"sha256": "0" * 64, "bytes": 7}},
                     {"project_source_sha256": {}},
                     {"project_source_sha256": {key: value for key, value in uefi["project_source_sha256"].items()
-                                                if key not in memory_sources}},
+                                                if key not in uefi_sources}},
                     {"project_source_sha256": {**uefi["project_source_sha256"],
-                                               "patches/uefi-live-memory/series.json": "0" * 64}}):
+                                               "patches/uefi-live-memory/series.json": "0" * 64}},
+                    {"project_source_sha256": {**uefi["project_source_sha256"],
+                                               "patches/uefi-live-rm/0001-adopt-live-resource-manager-caps.patch": "0" * 64}}):
         write("uefi-source.json", {**uefi, **changed})
         try:
             verify()
@@ -268,17 +274,16 @@ def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_
 
 
 def check_image_kernel_tiers(root):
-    """实际跑 resolve step：档位选择、配对、实验必须钉 run，且不会误取另一档。"""
+    """实际跑 resolve step：正式档配对，旧实验选择必须拒绝。"""
     root.mkdir()
     # 正式档：不钉 run，动态解析；必须落 standard。
     result, output = run_resolve(root / "std", "kernel-release-7.2.9", "piano-fedora-runtime")
     assert result.returncode == 0, result.stderr
     assert "kernel_tier=standard" in output, output
-    # 实验档：必须钉 kernel/runtime run；必须落 experimental。
+    # 即使提供旧实验产物的完整 run，也不能混入正式构建。
     result, output = run_resolve(root / "exp", "kernel-experimental-gunyah",
                                  "piano-fedora-runtime-gunyah", "7001", "7002")
-    assert result.returncode == 0, result.stderr
-    assert "kernel_tier=experimental" in output, output
+    assert result.returncode != 0, "obsolete experimental selection accepted"
     # 只放标准 artifact、却选实验档：必须失败，证明真的请求实验 artifact 而非静默回退。
     workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
                  "build-mesa.yml", "host-check.yml"]
@@ -342,11 +347,10 @@ def run_bundle_resolve(root, record):
 
 def check_bundle_kernel_resolution(root):
     root.mkdir()
-    # 显式实验记录：解析实验 artifact 并把它写进 output。
+    # 显式实验记录：新 bundle 必须拒绝。
     result, output = run_bundle_resolve(root / "exp",
                                         {"kernel_run": "7001", "kernel_artifact": "kernel-experimental-gunyah"})
-    assert result.returncode == 0, result.stderr
-    assert "kernel_artifact=kernel-experimental-gunyah" in output, output
+    assert result.returncode != 0, "obsolete experimental bundle accepted"
     # 旧记录没有 kernel_artifact：默认正式档，保持向后兼容。
     result, output = run_bundle_resolve(root / "legacy", {"kernel_run": "7001"})
     assert result.returncode == 0, result.stderr
@@ -357,7 +361,7 @@ def check_bundle_kernel_resolution(root):
 
 
 def check_kernel_unpack(root):
-    """实际跑 unpack step：实验 artifact 里的 SDK tar 不能被 glob 解进 build/kernel。"""
+    """实际跑 unpack step：相邻 SDK 归档不能被 glob 解进 build/kernel。"""
     root.mkdir()
     work = root / "work"
     (work / "build/in/kernel").mkdir(parents=True)
@@ -365,8 +369,8 @@ def check_kernel_unpack(root):
     (work / "build/in/runtime").mkdir(parents=True)
     (work / "build/in/mesa").mkdir(parents=True)
     (work / "build/in/ffmpeg").mkdir(parents=True)
-    make_tar(work / "build/in/kernel/kernel-experimental-gunyah.tar.zst", "KERNEL-MARKER", "kernel")
-    make_tar(work / "build/in/kernel/kernel-experimental-gunyah-sdk.tar.zst", "SDK-MARKER", "sdk")
+    make_tar(work / "build/in/kernel/kernel-release-7.2.9.tar.zst", "KERNEL-MARKER", "kernel")
+    make_tar(work / "build/in/kernel/kernel-sdk-7.2.9.tar.zst", "SDK-MARKER", "sdk")
     make_tar(work / "build/in/base/rootfs.tar.zst", "rootfs.txt", "root")
     make_tar(work / "build/in/runtime/runtime.tar.zst", "runtime.txt", "rt")
     make_tar(work / "build/in/mesa/mesa.tar.zst", "mesa.txt", "mesa")
@@ -380,7 +384,7 @@ def check_kernel_unpack(root):
                'exec "$PIANO_REAL_PYTHON" "$@"\n')
     env = {**os.environ, "PATH": str(binary) + os.pathsep + os.environ["PATH"],
            "PIANO_REAL_PYTHON": sys.executable,
-           "KERNEL_ARTIFACT": "kernel-experimental-gunyah"}
+           "KERNEL_ARTIFACT": "kernel-release-7.2.9"}
     result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
                              step_body(".github/workflows/build-image.yml", "Unpack into separate component directories")],
                             cwd=work, env=env, capture_output=True, text=True)

@@ -19,9 +19,11 @@ test:
 	python3 tests/check_esp_image.py
 	python3 tests/check_bundle_overlays.py
 	python3 tests/check_patches.py
+	python3 tests/check_uefi_live_rm.py
 	python3 tests/check_fedora_kernel.py
 	python3 tests/check_iris_source.py
 	python3 tests/check_gunyah_source.py
+	python3 tests/check_production_kernel.py
 	python3 tests/check_runtime_kernel_source.py
 	python3 tests/check_fastrpc_runtime.py
 	python3 tests/check_sensor_runtime.py
@@ -36,6 +38,7 @@ test:
 	python3 tests/check_rootfs_policy.py
 	python3 tests/check_stage_payload.py
 	python3 tests/check_image_workflow.py
+	python3 tests/check_runtime_extras.py
 	python3 tests/check_rootfs_finalize.py
 
 # 在平板上执行，MEDIA_OUTPUT 必须是新的证据目录。
