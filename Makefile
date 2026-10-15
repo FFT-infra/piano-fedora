@@ -1,4 +1,4 @@
-.PHONY: test plan clean
+.PHONY: test test-device-media plan clean
 
 test:
 	python3 tests/check_sources.py
@@ -20,20 +20,27 @@ test:
 	python3 tests/check_bundle_overlays.py
 	python3 tests/check_patches.py
 	python3 tests/check_fedora_kernel.py
+	python3 tests/check_iris_source.py
 	python3 tests/check_gunyah_source.py
 	python3 tests/check_runtime_kernel_source.py
 	python3 tests/check_fastrpc_runtime.py
 	python3 tests/check_sensor_runtime.py
+	python3 tests/check_ssc_retry.py
 	python3 tests/check_camerad_adapter.py
 	python3 tests/check_ffmpeg_port.py
 	python3 tests/check_ffmpeg_install.py
 	python3 tests/check_initramfs.py
 	python3 tests/check_bootstrap_contract.py
 	python3 tests/check_boot_evidence.py
+	python3 tests/check_boot_log_rotation.py
 	python3 tests/check_rootfs_policy.py
 	python3 tests/check_stage_payload.py
 	python3 tests/check_image_workflow.py
 	python3 tests/check_rootfs_finalize.py
+
+# 在平板上执行，MEDIA_OUTPUT 必须是新的证据目录。
+test-device-media:
+	python3 scripts/verify-device-media.py --output "$(MEDIA_OUTPUT)"
 
 RELEASEVER ?= 44
 plan:

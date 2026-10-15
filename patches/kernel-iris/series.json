@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "target": "sunuefi",
+  "base": {
+    "sunuefi_commit": "50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73"
+  },
+  "patches": [
+    {
+      "file": "0001-consume-iris-decode-order.patch",
+      "summary": "在固定 Stable 内核准备链中消费 Iris 解码顺序与编码关键帧补丁，封存派生树与补丁摘要，runtime 使用同一路径重放",
+      "targets": {
+        "tools/prepare_release_kernel.py": "9909d6b9a4304e01fa4f82bfb055534db3dd88037235ab4033dbfaf62a39d03d"
+      },
+      "creates": [
+        "patches/linux/7.2.9/0035-media-iris-decode-order.patch",
+        "patches/linux/7.2.9/0037-media-iris-force-key-frame.patch"
+      ]
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 
 SunUEFI 按 commit 锁定为上游，本仓库只带三样增量：Fedora 后端、F2FS 全链路、首次分区。
 
-Fedora 44/GNOME、A830v1 Mesa、F2FS/SELinux 内核与完整主机构建包已在 GitHub Actions 构建并核对。产物尚未真机验证，交付内容和构建顺序见 [产物说明](docs/artifacts.md)。
+Fedora 44/GNOME 已在本机 F2FS 根分区启动，双摄基础采集与传感器服务已复核。视频长测试暴露了 Iris 关键帧请求缺项，修复和各项验证边界见[本轮设备验收](docs/device-acceptance-20261015.md)。交付内容和构建顺序见 [产物说明](docs/artifacts.md)。
 
 启动合同、离线诊断和图形服务取证见 [离线构建与设备验收](docs/offline-bringup.md)。
 

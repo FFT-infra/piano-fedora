@@ -209,8 +209,11 @@ def build_sensors(sun, output):
     source_records = {}
     for name, version, archive, digest in rows:
         source = sensors_source(output, name, version, archive, digest)
-        patches = list((sensor / "patches" / name).glob("*.patch"))
-        for patch in sorted(patches):
+        patches = sorted((sensor / "patches" / name).glob("*.patch"))
+        if name == "libssc":
+            patches.append(Path(__file__).resolve().parents[1] /
+                           "patches/runtime/libssc-wait-for-qmi.patch")
+        for patch in patches:
             run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", patch], cwd=source)
         build = output / (name + "-build")
         setup = ["meson", "setup", build, source, "--prefix=/usr", "--libdir=lib64",

@@ -1,0 +1,162 @@
+diff --git a/patches/linux/7.2.9/0035-media-iris-decode-order.patch b/patches/linux/7.2.9/0035-media-iris-decode-order.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..008a90247f136ad496c4fcfd7599c6273bcf9f87
+GIT binary patch
+literal 13193
+zcmdPZ)m2E;PbtbQOD!ta&rMCqOw=#PNi0drFUr*~OwP~M&n(I;1{3kgB}F;KddXbc
+z+S&?9B<gW+P|!6s(J@odHZ{>Pv`}zx;8Nh^EJ`gYEy`1H_Ya5<_Kb41=2GBHPApDU
+z2s809ig)&OiT4d~b&n78baC~M_b@UuiFfr23Gxq!jQ90-akWA+0a@IdOPhcxKK}jz
+z@ot_zA+AACleFP(adCC>@ptwHi-YYX%{WJ&01rniE==>l5@Z<Y<Qjt2JdijM#<_+$
+z#}n^e*Dz=N-US=y79Zjq@9*Xo>>3j9;u&Uy&ATDa@gBsQ2KEX8^T28#CK5^`zMg*Z
+zfdR;=10>=W<ml@f9~b})Gkk`CJPFbQG6a-v4Iv5F(9BH7&;T{%`Zz|q2ARY=d4>cz
+zhPXn#Ovr2xPuHM$XMYz@KlgYa(|D&KWVeD%G(|HJPl9%Fb&hxO3=Z&djEr}21(B|P
+zj!r(VD3O9i9&bEj7>d(0P?k+eO-n4zDM9vyr(bYLyjys@vtvNKuVVyARV^1dEG^AJ
+zg@BQvF-9qXEz@I^49FQB*+OiZF-i=$pD{8yvj1=zg`STvj6>vclFb8a#V`<(>W$1y
+zNH!0o6T>)AsR>S_1dRh_0fOFz=5gW-LoYNi90zhS3667%2WvnoHb99CTzi1>E=qPM
+zDxrXM1qR?S#5K&>3Y>n8AnDiG$P}Y2z?yDA0f~~|P2!z`;Fe&?>;&D4VIrsmL4+oj
+ztWGF`Fmii5qzJ)oD9NUQe2b-sFaU`|3Iz*OLr|e$VPULeW)3Z2IXM+TKrJ<|q$t0j
+zGCnsyB~?eEII}7>KTV_5*ho{;noFUUOMy!}Gp|Ge)JTahPA!Q~NlnVhPtJ}{Pt7yZ
+zC@v`~O@>Nl<`tJHXn{x_h19&#Tm@JwCmtjgpH?29oLCTFQdy9y0AggOXmV*+gIW^#
+zAdSc-Wu#@s7pE2%XXfX{=NA+!Xn_Pk3|j?|QMz^@K9T}ZFqRq{DS(7CQxssTAT}09
+zLu`xHgGj>^gS?AVX<1@UX(~)*VopIuVth%mjzUsuNumze8khnuZO+Uz1r3O^lJiqi
+zlND@jA+4(b&xm+8-w<$hsHp(*DOf4QH42Kh3K(UiCa6^dYqA+wb7_P4#pRhL$r%b7
+zAooIz0p~$*W<YPfp_eGobmjt1Qk)<o6l@hd+&tr9c02m`#5?(i`nfm;MS}dx$(dA?
+znwSk{l3<OCXE3Nr#BC2$0oYv1tcZ6Ei4XSibasWi8>i=>mSXBacLqH3Xmi4wsk*M7
+zeqoM2V5PN?sDLE|jAVld%>WNaaD>O|fm4Wrwt^Yh1W?MssSRAtg6dK<U9}3SImM|8
+z1QVERm@_nGfRy4&U?5eX1VwfN1C@((NMKm4fkq{j5*S`9Fq6yRNnp?h0a`lYBqDXW
+zhB>3@f~GET!36Clg326DNMhI5QgF*G$}LYUN>xa$C`e5%DOSi&ODj$-DOO0zOe{`K
+zQAny(Fw;>e&n(GM0Ot&a{2~QV2STAFSs^n|At|$@Si#8H%Fs+tK}(-Yn-f(2LUM&I
+zL_>T@vVx6`f}xp04Y+6paV!*S6hP$^r1XQj3#2o@pjg)qR_KE&qJpCQg4CjtN^s!|
+zDU~x*bigSbTD5@+IuCzPJK4w4JviRa-_I3A9$crTr<TMQ<QJ91XXd5lL(PI@Ax#v;
+zAj1M2BYpfGUE+<6;sYF=y<J^URH%WR3HBho8ik91DpPGx$SR;zrn#AU@r4DHR-+2l
+zpl&@Cs!`I%Dl*6ztH=Pi^NbC2Ock_^4Rp-F?Gcn<L2i<O8XATahLANEYOtf5PiaHO
+zns#j@bf;4##b6kkSV4I*L^m|8C^0vc8pe{6DnS_z)G{S;5DiHixDRa#YAqX@>KGY;
+z6DOBKaY<rHX0k#uawfypz6Cc>VQt;wTnkfEgZPxx<mgxhTW~G~m$rJ4@<qW`0o%9&
+zxJ=Q@&CFA<RWN{Z5-SvJ6$~Mq;*!*Y`23>y+{EH+gebV&LFfQ^2;39~7h6I80r4)b
+z&i*d0@%}+Bu0iqsp&<dGArSM@auU;v6>JqiBMELkj_&cEegUB&@d5rpU<I`xRrs6@
+zlIO(cUZ~@Va4*yj1x`*x&;$heyLtM!f?HEMpn*uJ6<FK7FvU)e!LB}@pkf|mRxUW$
+z@M>`O_X`dQa`g0bb&2=zbobB!mrW+7W}pOMVs4~kW&%zDoSb^asU@HmTv28*xF3X3
+zhJYMd3nI`13w^v3Il!<w4p$=!su8!ZFf_uNO_*&Oh*_v{1Fk!rJVP`{a+Rh+4T&0I
+zt|DJ2rhg!nHMG?Y?ST>7JA#A-wk!i4sRoTAf(CXV$}qAEBrk#Ui$V<|7x}vSg+g?o
+zB^=}qG)Mt7@oOU|e#{O9NF^+n>6$@#;FJL6phhLEus|yo@Hrl2CO)^odnq7=1M3t}
+zY=B3ykez~&Xz{l4p*q1KNSaQ}v<EQ@H3D#F39Qb7j0d^k%@J5N5|x+m>csR9p}d6E
+zIH(UGVKEr<6149GaUi669mtI28s<z_r+_L%c)J5M6pJ!|3#zwZc^V`c7!Ysa<QW1L
+z2ImrA$B6jA07wOCX=DMaAPo%+@YIkwiIu5E@kyB_MTsS;Ad^OGM;{}M30ItTHr}!T
+zG*ydJC+RsFt8s%qM}wzypbbP&^*QjF+Q`g=u9+I-Yj~!HH5x{1N7%9h(7Y{pTpDj)
+z!djid>Q&P75?12|eO?-^9T8nmER%+y>I+ss8bUeXS`oG|!PhYYS~Z%0r`ik+%#C#*
+zQ*E`@TncC-2%y<2=;%OMN@{X^W?n&QNqlmCURq{)d_iJSVs3FfbW#F3bfC?NzbCJN
+zkazM72@VNzb@Yu7at-$P2@Ub|_X9Z@Zh$jrJODDU8;m016YA?2@9Yue@9PL!9}(~3
+z8V~~Q5?h)YLuz~rGfKP_pOIPy8x0w7FPVXtOBotiT2SPrvI5J&5=rKeNHR2_%twi3
+zhJ(OI<c#~pC+FwpCg!D(IsS*F9W)MTW(FPy0#QcB&~YG6PSET^F_vj^=ole<BpcKT
+z0*yt2hl^5DL9@g0`9&$IMe+HiB?YA=I0v;sr9(kZVqPkAh8#LKj&;0ID><=1!B#;H
+zG6M~p^2Ro<7z>(+1R0I&6a`z*WW25&c$@$-=c2Er;FFqIma0&ak*bgen*)NDMhc~Q
+z$r*`x>8U9SrFl82#l;Gx#i>Qb1&PV23gEdRkf!8((2{~2=(G=LPEt`LIk7<3E)6`?
+zsD>CMarW_a^$Up)b`8-4Pkuw^dqDG0T-vaSO7JudQeYN?7Y1NX0fD>R;MjqebhrjR
+zA(04DhGTw+Qvp0p4jKdnm4uM;6x_5!XobxNg&G?n$*3U*FMJ{hSr9Q7geS!yJc&{(
+z5R+!W1I;KS)!-0>MP+<SVo9QcRvMUst(8d5FG|(5!&GMt9uGCMGy)a=<_4C~f|8T7
+z8WeZ|po#?2j|8pG(*dm~LBU`Hk)p079x^Kc>Jg$S1a}RQ40Q}M1g#(SjduqP&c+7>
+zxdyxXg+MI8VrXVgZhU%CVrCveLxV#DT!Z4l<9e{g5nxj>4J|G$0CitMi(QaS1rL!S
+zxfELxgQ>?f6geG0ivf^gu=gSD1n?peNN!Ha&joqO7PM3ZG<Y8bn&l^}R7^=t%gjqH
+z)+24Y4jyp`?VwW86uiLD)Lh39GB&OZk%nX#P>OI0b#rqK0<BI24JAOwN1gpc{X#em
+zDh!Mb3=9m7Ot=&<^aXf2L+2-){X*hHA_H7G5gIH&E0MtKia^eS4Wfdkiot7ZK*<r-
+z0YYBX!pX^Lt6)$8o{K<M18v_!rNL7xSfnvq|6tQV`MnlgT4MMC>IT@DF(;A_EV;C~
+zAS<IlJ^*C_P>ZjmC_e|BV?ovjImd@N1;snN1wox{00FR8T99+RGZuM6NYm5M2sE3j
+zZD<6m{jr3xn~!Gzs0f2agh?_MMZuo#evUrz&i+3BLGhk`ZvF^gn3{5FWAQX7c|zk3
+z65mKVlCani;OQI^8srL%WOyu_8DUWiUOngP<{0V|67S*a=;9iLFx<=nhlbz~$DojS
+zw;+Gt_#nrCcyJ+wu*Q;$lxzgActMSe{5%qK5vFcXCNeaJG(L?@bPOSrjGSOM#s@h=
+z%Oy~p!&c{l*vJcWLG=wZr6JbQBMYJqjlh(m4B^8BQHBd(f=Jy#m=HuWc-T^b6O^$b
+z?u9P+2DuPb5T?>G0uuVLrQy)DY5}fN3@t2lpnDa-y)I)=Z40VPpu_tLoM2(p1>hjN
+zz{04jxWWF%vN{t(9Hbv@{j?630=W1kC0UeZrX-Wt&V*_KCjcWzKhelg#}d-COerpj
+zFDulwODQUgFDS|^1I;$(6_<ckal)jMO4H&Yt-<)>%&JrcTiAL{h#+K@W>RTdT51t!
+z^(H4wA86G;QEFjQX<Bi7Vopwea$-qlK4^j&6lIX&IvCVE1hv(0)IADnYFygjC8H1p
+zxLORL^^a<(6(6Xj0dC&Gos(D*pI4e24{<4I^4SHNzd?h{;3k<<s9QX^%0TvhN-8W+
+ebnPJar=*r4D*#v4@YZm0Nkx2NJV*@G0|x+FeeVMR
+
+literal 0
+HcmV?d00001
+
+diff --git a/patches/linux/7.2.9/0037-media-iris-force-key-frame.patch b/patches/linux/7.2.9/0037-media-iris-force-key-frame.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..8901c0d147b1579992cf84474baf14ea59724fb8
+GIT binary patch
+literal 4433
+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
+F7XT4xei{G(
+
+literal 0
+HcmV?d00001
+
+diff --git a/tools/prepare_release_kernel.py b/tools/prepare_release_kernel.py
+index 88aa643..e74b630 100644
+--- a/tools/prepare_release_kernel.py
++++ b/tools/prepare_release_kernel.py
+@@ -41,7 +41,15 @@ TARGETS[DEFAULT_TARGET] = {
+     **TARGETS['kernel69'],
+     'series_target': 'kernel69',
+     'patch_tree': TARGETS['kernel69']['target_tree'],
+-    'target_tree': 'fb842b86ffb1bae70f6a59d28dc4886b7523d35e',
++    'target_tree': '8c03f6b8274db0e05bece2ce404c39e6d843d0fe',
++    'iris_decode_order_patch': {
++        'file': 'patches/linux/7.2.9/0035-media-iris-decode-order.patch',
++        'sha256': '51593c9fd8bce2d1a3953abeda91af432b85d6efcb4c7672015c6cac3cfc22c4',
++    },
++    'iris_keyframe_patch': {
++        'file': 'patches/linux/7.2.9/0037-media-iris-force-key-frame.patch',
++        'sha256': '9d8af1a409e8226ab3476b244d67359c39b078c4ec286d8f19f29cf98a80a524',
++    },
+     'stable_commit': '5fce161649b4d779d1b76d9fcd52dc77779774b8',
+     'stable_tree': 'c278d1443495d2a1a07fff2bcfb286b5c35baaea',
+     'stable_version': '7.2.9',
+@@ -342,7 +350,7 @@ def write_manifest(path, record):
+ 
+ def update_patches(root, policy):
+     result = {}
+-    for key in ('conflict_resolution', 'cpu_model_patch', 'fastrpc_dma_patch', 'panel_depth_patch', 'flash_cleanup_patch', 'va_clock_order_patch', 'gcv2_backend_patch', 'gcv2_catalog_patch', 'dsi_stop_order_patch', 'dsi_fixed_bpc_patch', 'flash_torch_rounding_patch', 'va_mono_patch', 'dsi_video_phases_patch', 'dsi_post_hs_sync_patch', 'piano_panel_reset_patch', 'dsi_post_resync_reset_patch', 'piano_privacy_led_patch', 'nvt_panel_follower_patch', 'p81c_pressure_hid_patch', 'piano_preferred_120hz_patch', 'piano_function_row_patch', 'dsi_pll_registration_patch', 'dsi_slave_restore_patch', 'dpu_video_stop_order_patch', 'piano_pen_dock_patch', 'nvt_system_resume_patch', 'pcie_active_wakeup_patch', 'smp2p_sleepstate_patch', 'nanosic_backlight_default_patch', 'q6apm_global_lifetime_patch', 'fastrpc_freezable_invoke_patch', 'dsi_phy_runtime_clock_patch'):
++    for key in ('conflict_resolution', 'cpu_model_patch', 'fastrpc_dma_patch', 'panel_depth_patch', 'flash_cleanup_patch', 'va_clock_order_patch', 'gcv2_backend_patch', 'gcv2_catalog_patch', 'dsi_stop_order_patch', 'dsi_fixed_bpc_patch', 'flash_torch_rounding_patch', 'va_mono_patch', 'dsi_video_phases_patch', 'dsi_post_hs_sync_patch', 'piano_panel_reset_patch', 'dsi_post_resync_reset_patch', 'piano_privacy_led_patch', 'nvt_panel_follower_patch', 'p81c_pressure_hid_patch', 'piano_preferred_120hz_patch', 'piano_function_row_patch', 'dsi_pll_registration_patch', 'dsi_slave_restore_patch', 'dpu_video_stop_order_patch', 'piano_pen_dock_patch', 'nvt_system_resume_patch', 'pcie_active_wakeup_patch', 'smp2p_sleepstate_patch', 'nanosic_backlight_default_patch', 'q6apm_global_lifetime_patch', 'fastrpc_freezable_invoke_patch', 'dsi_phy_runtime_clock_patch', 'iris_decode_order_patch', 'iris_keyframe_patch'):
+         if key not in policy:
+             continue
+         row = policy[key]
+@@ -415,6 +423,8 @@ def merge_stable(work, policy, paths):
+         ('q6apm_global_lifetime_patch', 'fix(asoc): synchronize global APM readiness with removal', 'q6apm_global_lifetime_commit'),
+         ('fastrpc_freezable_invoke_patch', 'fix(fastrpc): freeze in-flight invocation waiters in place', 'fastrpc_freezable_invoke_commit'),
+         ('dsi_phy_runtime_clock_patch', 'fix(drm): manage DSI PHY interface clocks during runtime PM', 'dsi_phy_runtime_clock_commit'),
++        ('iris_decode_order_patch', 'feat(media): expose Iris decode order and deblocking controls', 'iris_decode_order_commit'),
++        ('iris_keyframe_patch', 'fix(media): forward Iris encoder keyframe requests', 'iris_keyframe_commit'),
+     ):
+         if key not in paths:
+             continue

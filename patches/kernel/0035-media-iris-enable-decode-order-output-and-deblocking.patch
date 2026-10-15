@@ -128,6 +128,15 @@
  int iris_set_min_qp(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id)
  {
  	const struct iris_hfi_session_ops *hfi_ops = inst->hfi_session_ops;
+--- a/drivers/media/platform/qcom/iris/iris_ctrls.h
++++ b/drivers/media/platform/qcom/iris/iris_ctrls.h
+@@ -30,5 +30,6 @@
+ int iris_set_entropy_mode_gen1(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
+ int iris_set_entropy_mode_gen2(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
++int iris_set_deblock_gen2(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
+ int iris_set_min_qp(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
+ int iris_set_max_qp(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
+ int iris_set_frame_qp(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
 --- a/drivers/media/platform/qcom/iris/iris_hfi_gen2.c
 +++ b/drivers/media/platform/qcom/iris/iris_hfi_gen2.c
 @@ -15,6 +15,22 @@

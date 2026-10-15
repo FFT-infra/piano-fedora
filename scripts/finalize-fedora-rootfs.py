@@ -221,6 +221,20 @@ printf '%s\\n' "$now" > /var/lib/piano-clock/.last.tmp
 mv /var/lib/piano-clock/.last.tmp /var/lib/piano-clock/last
 """
 
+# The offline clock floor can revisit a date already used by bootlog's dateext.
+# Include the time so recovery does not overwrite an earlier boot's archive.
+PIANO_BOOT_LOG_ROTATION = """/var/log/boot.log
+{
+    missingok
+    daily
+    copytruncate
+    rotate 7
+    notifempty
+    dateext
+    dateformat -%Y%m%d-%H%M%S
+}
+"""
+
 PIANO_CLOCK_RESTORE_UNIT = """[Unit]
 Description=Piano clock floor from the last saved time
 DefaultDependencies=no
@@ -332,6 +346,7 @@ def stage_piano_hardware_fixes(root):
     }
     files = {
         **scripts,
+        "etc/logrotate.d/bootlog": PIANO_BOOT_LOG_ROTATION,
         "usr/lib/systemd/system/piano-clock-restore.service": PIANO_CLOCK_RESTORE_UNIT,
         "usr/lib/systemd/system/piano-clock-save.service": PIANO_CLOCK_SAVE_UNIT,
         "usr/lib/systemd/system/piano-clock-save.timer": PIANO_CLOCK_SAVE_TIMER,
