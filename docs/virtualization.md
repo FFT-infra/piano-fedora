@@ -28,9 +28,11 @@ Fedora 正式策略，未保留 `--experimental-gunyah` 开关。
 
 `piano-crosvm` 原生构建锁定的 crosvm，使用 `gunyah,net,balloon` feature；
 `librevm` RPM 包含 CLI、daemon 和 GTK GUI，消费仓库内的 Fedora 适配与完整
-Cargo.lock。管理器默认启用 sandbox，不能把测试用的 `--disable-sandbox`
-当作生产默认值。内置驱动的就绪判断检查 `/dev/gunyah` 和内核注册路径，
-不依赖 `/proc/modules`。
+Cargo.lock。VM 配置默认 `disable_sandbox=false`；命令构造只在实际选择 Gunyah
+时追加 `--disable-sandbox`。这是当前锁定的 Gunyah crosvm 后端对本目标
+PAGE_FAULT exit（reason 3）的运行要求。KVM 路径保留 sandbox，回归测试覆盖
+默认配置。内置驱动的就绪判断检查 `/dev/gunyah` 和内核注册路径，不依赖
+`/proc/modules`。
 
 `build-device-runtime.py` 自动构建并交付上述 RPM。finalizer 校验源码 pin、
 适配和锁文件摘要，以及 rootfs 实际安装的二进制字节；仅存在包名不能通过。
@@ -71,28 +73,59 @@ Bridge 完整编译正式内核 `7.2.9-piano-gnome-gaf0eac10c933`，源码 commi
 ESP 更新已逐文件读回验证，board.dtb 与持久 BOOT 未变；旧内核、模块和完整
 ESP 回滚包保留。启动与 VM 结果见[设备验收](device-acceptance-20261015.md)。
 
-平板原生构建的 VA-API 测试 14 项通过，LibreVM core 测试 56 项通过，
+平板原生构建的 VA-API 测试 14 项通过，LibreVM core/CLI 共 57 项测试通过，
 crosvm Gunyah 及 LibreVM 完整 workspace release 编译通过。四个运行时 RPM
 已安装，旧的未受 RPM 管理的 LibreVM 启动器和宽松调试 override 已清理。
-这些结果证明用户态构建与安装，不证明客体已运行。
+新 LibreVM RPM 通过包校验；daemon active、D-Bus 名称可见，`librevm info` 识别
+Gunyah，CLI、daemon、GUI 的安装摘要与本轮构建产物一致。
 
-## 完成门槛
+## 当前验收结果与剩余门槛
 
-| 项目 | 所需证据 |
-| --- | --- |
-| 平台接口 | 正式内核启动，RM 握手，设备权限，SELinux Enforcing |
-| 客体执行 | VM 创建、VM_START、单 vCPU 控制台与正常退出 |
-| 数据路径 | virtio-blk 写入和重新打开校验，virtio-net 连通 |
-| 生命周期 | 多轮启停、VM fd/内存与网络清理，失败时有界退出 |
-| 管理器 | 默认 sandbox、D-Bus 权限、GUI 与真实客体操作 |
-| 扩展 | SMP、UEFI、图形和 Incus 分别验收，不由单 vCPU 冒烟结果推定 |
+| 项目 | 当前结果 | 剩余工作 |
+| --- | --- | --- |
+| 平台接口 | 正式内核、`/dev/gunyah`、实时 RM capability 交接及 SELinux Enforcing 通过 | 后续内核更新后复测 |
+| 客体执行 | LibreVM Auto 选中 Gunyah；单 vCPU VM_START、客体正常退出通过 | 控制台交互体验仍需验收 |
+| 数据路径 | virtio-blk 上 64 MiB ext4 写入和读回通过；virtio-net 连通通过（`NET_OK=1 NET_RX=2`，与宿主同网段伪桥，无 NAT） | 无 |
+| 生命周期 | 三轮 disk+net 全通过、单轮无磁盘失败有界退出通过；每轮 crosvm 退出后进程、PID、socket 全清（0 hub、0 僵尸） | 无 |
+| 管理器 | RPM、CLI、daemon、D-Bus 与安装二进制核验通过；KVM sandbox 回归通过 | GUI 实际创建/操作客体及完整 SELinux 流程待测；Gunyah 自动关闭 crosvm sandbox |
+| 扩展 | — | SMP、UEFI、图形和 Incus 分别实现与验收，不由单 vCPU 结果推定 |
 
-2026-10-14 的旧实验产物与直接 ioctl 记录只作历史诊断；它们不能证明当前
-正式内核已通过上述门槛。当前正式内核已经启动并提供 `/dev/gunyah`；首次
-RM 请求失败后的发送许可等待曾阻塞 VM_START，原因已定位为构建期冻结的 RM
-capability，修正走上面的 `uefi-live-rm` 补丁。反汇编、直接 hypercall 诊断与
-主机侧 libfdt 对照见[设备验收](device-acceptance-20261015.md)。补丁尚未经过
-正常启动路径的实机验证，因此仍无客体控制台结果。
+首次 RM 请求失败后的发送许可等待属于修复前记录，根因是构建期冻结的 RM
+capability；`uefi-live-rm` 补丁已在正常启动路径生效。正确的项目 guest kernel
+完成 64 MiB ext4 写入和读回，VM 返回码为 0，进程资源清理通过。旧实验产物、
+错误 guest kernel 的失败尝试与最终通过结果应分开看；完整设备证据见
+[设备验收](device-acceptance-20261015.md)。
+
+## 2026-10-16 修复：virtio-net、失败有界退出与 hub 残留
+
+### 客体网络
+
+初始 ramdisk 把客体地址硬编码为 `10.9.0.2/24`、网关 `10.9.0.1`，而
+librevm 的 tap 直接使用宿主真实网段（伪桥，无 NAT），因此 ping 必然失败。
+`runtime/vm-guest/vmaccept-init` 现在从内核命令行读取 `vmaccept.guest=` 与
+`vmaccept.gw=`，缺省仍是 `10.9.0.x`，独立 harness 行为不变。实测
+`vmaccept.guest=192.168.5.201 vmaccept.gw=192.168.5.1` 时
+`NET_OK=1 NET_RX=2`，磁盘摘要与 nonce 同时通过。
+
+### VM 生命周期残留（本轮修复）
+
+多轮回归暴露出两个真实缺陷，均已修复并复验：
+
+1. **hub 进程不退出。** `hub::run` 先等控制台 EOF 再 `child.wait()`；只要还有
+   任何写端持有该 socket，reader 就永不返回，于是 crosvm 已死成僵尸、hub 却
+   一直活着，pid 文件还被看门狗线程反复重写。现在父进程的退出是唯一退出
+   信号：先 `child.wait()`，用克隆句柄 `shutdown(Both)` 打断 reader，再 join、
+   删除 pid 文件与 socket。
+2. **daemon 不回收 hub。** `hub::spawn` 用 `Command::spawn` 启动 detach 的 hub
+   后从不 `wait`，每停一台机器就留下一个 `[librevm] <defunct>`。现在 spawn
+   之后由专用线程 `wait` 回收。
+
+复验（内核 `7.2.9-piano-gnome-g8c0e589d8829`，2026-10-16）：三轮
+disk+net（每轮约 6 s）与一轮无磁盘（12 s，有界失败）全部按预期结束，
+`hub procs 0 / zombies 0 / crosvm 0 / pid files 0 / sockets 0`。
+修复后的二进制摘要：`librevm` `dd221b56…`、`librevm-daemon` `ce9086d3…`、
+`librevm-gui` `cc9500f9…`；证据在
+`/home/piano/integration-20261015/stability-verify/librevm-fix-20261016/`。
 
 ## 实读来源
 

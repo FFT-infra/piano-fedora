@@ -119,15 +119,15 @@ piano-session-fixes。安装前备份 SHA256 为
 systemd override 已清理。SDK 已导出并保存派生源码证明，SDK 压缩包 SHA256
 `d3ee53e9871113434740d25a0b8355a19d95d0c8ae25aa8697062197a90eda24`。
 
-默认 sandbox 的单 vCPU crosvm 验收尚未启动客体。进程阻塞在
+修复前，默认配置的单 vCPU crosvm 验收未能启动客体。进程阻塞在
 `gunyah_rm_call+0x164`；对本轮 vmlinux 反汇编确认它是
 `gunyah_rm_msgq_send` 的 send_ready 等待，尚未发送 alloc_vmid。
 开机首次 get_log 请求返回 -EINVAL 后，发送许可未恢复。一次性诊断模块
 读取当前 DT capability，直接 recv 返回原始错误 1，info-area 查询返回 -1；
 诊断模块已卸载。原继承 FDT 的地址仍可读，但内容已经被后续启动覆盖，
 不能从这块内存恢复本次启动的 RM 值。历史原厂抓取与静态 DT 的 capability
-不同，仅支持继续核对实时交接，不能代替同次启动的对照。随后重启已清除 D
-状态进程；尚未修复 RM 传输，不重复用同一配置启动 VM。
+不同，只能作为根因线索，不能代替同次启动的对照。随后重启清除了 D 状态进程。
+这条阻塞记录属于实时 capability 修复和重建 librevm RPM 之前；最终结果见下文。
 
 ### RM capability 实时交接
 
@@ -165,6 +165,23 @@ raw 交接把 DTB 交给内核之前，从产品已校验的 inherited FDT 取�
 `out/gunyah-live-rm-20261015/host-check/`（生成器、两份二进制、`run-real.log`、
 `cases.log`、输出 DTB），Bridge 侧同源运行记录为 `~/piano-rm-check-20261015/`。
 
+### 正式启动路径上的 VM 验收
+
+随后重新构建并安装 LibreVM RPM，RPM 文件校验通过；daemon 重启后为 active、
+D-Bus 名称可见，`librevm info` 识别到 Gunyah。core/CLI 共 57 项测试通过，
+完整 release workspace 构建成功；CLI、daemon、GUI 的已安装二进制摘要均与
+本轮构建产物一致。
+
+通过 LibreVM `Auto` 选择 Gunyah，VM 配置中的 `disable_sandbox` 为 false，
+实际命令按 Gunyah 后端要求带 `--disable-sandbox`。客体使用项目 guest kernel
+`/home/piano/guest-kernel/src/arch/arm64/boot/Image`（SHA256
+`090416a6a0ea5ede8d0810fb9171b4dec31087a98d94f3bc795d012a19628c9d`，
+`CONFIG_DMA_RESTRICTED_POOL=y`），完成 64 MiB ext4 写入及读回，VM 正常退出、
+crosvm 返回码为 0，进程、PID 文件和 socket 均清理。此次首次证明正式内核的
+RM 实时交接、VM_START 与 virtio-blk 数据通路可用；virtio-net、多轮生命周期和
+GUI 实际创建客体仍需单独验收。设备日志和结果已归档在
+`/home/piano/production-project/build/extras-librevm-gunyah-20261015/device-acceptance/`。
+
 同一批工作的早期一次性尝试是用离线重打包把当次 capability 写进 payload
 （boot SHA256 `73222cf2cea28ddd76664f84f052b842156bb835ffe8c624f1efe3eb762698ab`），
 那次 RAM 启动停在黑屏、没有可用控制台，只能算诊断，不能算修复证明：
@@ -196,13 +213,95 @@ tip 事件，压感 0–1，位置及倾斜变化正常。未捕获 TABLET_TOOL_
 charge_current、mipps_auth、charge_policy 均开启；不能因此声称实际达到 45W。
 0036 不应重复套用到已有实现。需使用真实充电器、线材和负载记录功率与温度。
 
-当前标准内核已有 `/dev/gunyah`，RM 传输与 VM_START 尚未通过。
-librevm-daemon active 和空 VM 列表只证明用户态管理器响应，客体控制台、
-磁盘和网络仍未完成，见[虚拟化验收门槛](virtualization.md)。
+当前标准内核已通过 RM 实时交接和一次单 vCPU VM_START；客体完成 ext4 写入、
+读回并正常退出。virtio-net 已打通（`NET_OK=1 NET_RX=2`），三轮 disk+net
+与一轮有界失败退出全部通过，crosvm/hub/PID/socket 清理干净（见
+[虚拟化验收门槛](virtualization.md)）。GUI 实际操作仍需人手在场确认。
 
 Linux 启动请求配置与桌面入口在位。Claude 留下的 `piano_sunuefi_module.zip`
 只有模块脚手架及根目录 request 程序，缺少 manager 要求的 bin/ 原生工具和
 策略/状态，不能安装使用。
+
+## 2026-10-16 补充：切换根因、suspend、关屏噪声与 uperf
+
+### Linux → Android 失败的根因
+
+原先记录“helper 写入 target=0/sequence=3 读回成功、重启仍进 Linux”。本轮
+实证有两个独立原因，其中一个已把状态改坏：
+
+1. **`/etc/piano/boot-request.json` 的 `app_generation` 是过期值**
+   （`6c38318a290175eba5ff2bb5ef106768`），而当前 BOOT 实际是
+   `2b191f0dd3bca52d20950ec58199f95b`。generational 校验不匹配时
+   `piano-next-boot` 会拒绝操作，请求永远不会被写入。已用标准入口
+   `piano-next-boot-configure --device /dev/disk/by-partlabel/boot_b`
+   从在线 BOOT 重建，读回一致。修复前的失败记录因此不能只归因于 selector。
+2. **产品固件带开机选择画面。** `sources/Project-SunUEFI` 的
+   `bootselect/BootSelect.c` 在 aarch64 且定义 `PIANO_EARLY_CHOOSER` 时进入
+   `PianoEarlyChoose(Fdt, Target)`，而 `bootselect/Makefile` 确实定义了该宏。
+   `EarlySplash.c` 的实现是：音量上键 → Android，音量下键 → UEFI，不按则
+   3 秒后采用请求页里的 DefaultTarget。也就是说按键会覆盖请求页决定，不按
+   才会遵守它。排查“写入成功但没切过去”时必须先排除这个 3 秒窗口。
+
+请求页布局已实测确认：`boot_b` 的 NEXT 页在偏移 `37621760`（0x23E1000），
+两页相隔 4096 字节，滚动写入（page0 seq=3 target=2、page1 seq=2 target=0）。
+native helper `piano-boot-request.c` 的边界校验 `page + 2*PAGE == selector`
+正好命中该偏移；`BOOT_a` 没有 SunUEFI 布局。
+
+当前请求保持在 **target=2（Linux）**，这是刻意恢复的状态；在没有人在现场
+的情况下不得留下 target=0，否则下一次重启会直接进 Android。完整
+Android→Linux→Android→Linux 往返需要真机重启，必须由操作者决定时机。
+
+Android 侧模块已安装，`install-state.json` 为 `ADOPTED_READ_ONLY_VERIFIED`、
+`boot_written=false`，`app_sha256=6c38318a…`（即上文的旧 generation，与当前
+BOOT 不同——这份历史不一致需要随模块一起复核）。实测 Android 运行在
+SELinux **Permissive**（启动参数带 `selinux=permissive`），手动 `setenforce 1`
+可用但不能当持久策略；固化方式仍待落实。
+
+### suspend/resume
+
+`rtcwake -m mem -s 20` 成功唤醒（实际 22 s），唤醒后无 failed unit，显示与
+触控、相机服务都在，Wi-Fi 约 3 s 内自动重连（`4way_handshake → completed`
+后 DHCP 拿回 192.168.5.8）。dmesg 中的 `IRQ…: set affinity failed(-22)` 与
+CMA 分配失败出现在关机 CPU 路径上，属既有噪声，本轮未发现新增故障。
+证据：`stability-verify/suspend-cycles.txt`。
+
+### 关屏仍在产生 DPU underrun 快照
+
+0038 补丁确实已合入当前内核（模块字符串里能找到
+`slave intf:%d still enabled before cleanup`），但反复关屏时**每 2–3 次仍会
+产生一次 devcoredump**：`intf_1`/`intf_2` 的 `is_en` 与配置寄存器非零，而
+现状应为全零，差值 18 word。同时 `dmesg` 里 **0 条 dpu 错误**（underrun
+回调只累加计数不打印），且设备未编 tracefs（`/sys/kernel/debug/tracing`
+不存在），无法用 tracepoint 进一步定位。用户确认屏幕显示正常，因此这是
+**需要文档化的残余噪声**，不是当前可见故障。证据：
+`stability-verify/dpu-split.txt` 与 `stability-verify/screen-crash/`。
+
+### 设备端包库同步
+
+修复后的二进制最初是直接替换安装的，`rpm -V` 因此报 `S.5....T.`。随后在
+设备上按同一 spec 结构重建并升级了两个包（`uperf-linux-0.1.2-2.fc44`、
+`librevm-0.2.0-2.fc44`），`rpm -V` 现在对两者都干净，服务重启后 VM 回归
+（`magic_ok=True net_ok=1`、`hub 0 / zombies 0 / crosvm 0 / pid+socket clean`）
+与 uperf 空闲 CPU（6 s 内 0 s 增量）全部保持。证据：
+`stability-verify/pkgs-20261016/`。
+
+### uperf ENODEV 死循环（已修复）
+
+现场发现 `uperf-linux` 对已经消失的输入设备 fd 持续 `read` 返回 `ENODEV`，
+日志以 42 次/秒刷屏，累计 CPU 时间 3 分 50 秒／运行 1 小时 34 分。修法是
+`runtime/uperf/fedora.patch` 里的三处改动：
+
+1. `input_monitor_poll` 在 `ENODEV` 时关闭整组设备、安排 250 ms 后重扫并
+   立即返回，不再逐次打日志（死节点会永远保持 `EPOLLIN`）；
+2. 新增 `/dev/input` 的 inotify 监听与 200 ms 防抖，配合 2 s 空转重扫兜底，
+   这样设备晚出现（早期启动竞争）或热插拔后都能重新挂上；
+3. `main.c` 启动时找不到触屏不再永久关闭输入监控（原来会
+   `input_monitor_free` 并置空），改为保留监控等待设备出现。
+
+设备复验（同内核）：设备热插拔出现/消失、启动时两个节点都隐藏再恢复、
+真实 `ENODEV`（虚拟触屏被销毁）三种情形全部按预期重新挂载，空闲 8–10 s
+CPU 时间 0 s，最后 1 分钟 `No such device` 日志 0 条。部署二进制 SHA256
+`7c220321…`；证据：`stability-verify/uperf-fix-20261016/`。
 
 已用上游 `build_android_module.py` 的 installed-core 入口生成完整匹配模块，
 保存在 `out/android-matching-core-20261015/piano-matching-core-20261015.zip`。
