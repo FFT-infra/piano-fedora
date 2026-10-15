@@ -221,7 +221,7 @@ jobs:
           git init -q "$headers"
           kernel_url=$(python3 -c 'import json;print(json.load(open("sources.lock.json"))["sources"]["linux-piano"]["url"])')
           kernel_commit=$(python3 -c 'import json;print(json.load(open("sources.lock.json"))["sources"]["linux-piano"]["commit"])')
-          git -C "$headers" remote add origin "$kernel_url"
+          git -C "$headers" remote set-url origin "$kernel_url" 2>/dev/null || git -C "$headers" remote add origin "$kernel_url"
           git -C "$headers" sparse-checkout set --cone include/dt-bindings include/uapi
           git -C "$headers" fetch --depth=1 --filter=blob:none origin "$kernel_commit"
           git -C "$headers" checkout --detach FETCH_HEAD
