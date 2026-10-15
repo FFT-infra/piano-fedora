@@ -15,7 +15,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tool", type=Path)
     args = ap.parse_args()
-    tool = args.tool or Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT / "build/test-sunuefi")) / "tools/build_piano_full_kernel.py"
+    sunuefi = os.environ.get("PIANO_TEST_SUNUEFI")
+    if args.tool:
+        tool = args.tool
+    elif sunuefi:
+        tool = Path(sunuefi) / "tools/build_piano_full_kernel.py"
+    else:
+        print("SKIP: set PIANO_TEST_SUNUEFI to a patched checkout to inspect Fedora kernel policy")
+        return 0
     if not tool.is_file():
         print("SKIP: patched SunUEFI unavailable; Fedora kernel configuration not checked")
         return 0

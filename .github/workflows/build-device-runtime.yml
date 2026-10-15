@@ -9,6 +9,9 @@ on:
         description: "同时产出 kernel 与 SDK 的成功 run；留空解析最新完整 run"
         required: false
         default: ""
+      calibration_run_id:
+        description: "含用户提供 touch-calibration artifact 的 run，包含两份完整原厂 INI，不进入 Git"
+        required: true
 
 permissions:
   contents: read
@@ -39,6 +42,13 @@ jobs:
           if [ -n "$KERNEL_RUN" ]; then args+=(--run-id "$KERNEL_RUN"); fi
           python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml \
             --artifact kernel-release-7.2.9 --artifact kernel-sdk-7.2.9 "${args[@]}"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: touch-calibration
+          path: build/in/touch-calibration
+          run-id: ${{ inputs.calibration_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -79,14 +89,17 @@ jobs:
                 protobuf-c-compiler protobuf-compiler gobject-introspection-devel \
                 vala gtk-doc systemd systemd-devel libgudev-devel polkit-devel \
                 cargo rust libva-devel libdrm-devel libcap-devel libseccomp-devel \
+                mesa-libEGL-devel mesa-libGLES-devel mesa-libgbm-devel \
+                cmake json-c-devel dbus-devel nlohmann-json-devel \
                 clang-devel openssl-devel gtk4-devel libadwaita-devel
               git config --global --add safe.directory /workspace/build/sources/sunuefi/upstream/debian-piano-current
               git config --global --add safe.directory /workspace/build/sources/fastrpc
-              for name in librevm crosvm iris-vaapi; do
+              for name in librevm crosvm iris-vaapi piano-integration uperf; do
                 git config --global --add safe.directory /workspace/build/sources/$name
               done
               git config --global --add safe.directory /workspace/build/sources/crosvm/third_party/minijail
               python3 scripts/build-device-runtime.py --sunuefi build/sources/sunuefi \
+                --finger-config-dir build/in/touch-calibration \
                 --kernel build/in/kernel --uapi build/kernel-runtime/uapi \
                 --loopback build/kernel-runtime/v4l2loopback/v4l2loopback.ko \
                 --output build/device-runtime

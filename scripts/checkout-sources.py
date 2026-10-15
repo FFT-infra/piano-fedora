@@ -84,12 +84,16 @@ def main():
         checkout(mipps["url"], mipps["commit"], output / "piano-mipps-auth")
         fastrpc = lock["fastrpc"]
         checkout(fastrpc["url"], fastrpc["commit"], output / "fastrpc")
-        for name in ("librevm", "crosvm", "iris-vaapi"):
+        for name in ("librevm", "crosvm", "iris-vaapi", "uperf"):
             entry = lock[name]
             checkout(entry["url"], entry["commit"], output / name)
             if name == "crosvm":
                 subprocess.run(["git", "-C", str(output / name), "submodule", "update", "--init",
                                 "--depth=1", "third_party/minijail"], check=True)
+        entry = lock["piano-integration"]
+        checkout(entry["url"], entry["commit"], output / "piano-integration", sparse_paths=(
+            "/device/piano-thp/", "/device/camera/", "/tools/extract-thp-calibration.py",
+            "/LICENSES/", "/LICENSE", "/NOTICE"))
     if args.kernel:
         driver = lock["gunyah-driver"]
         checkout(driver["url"], driver["commit"], sun / "upstream/gunyah-driver", sparse_paths=(

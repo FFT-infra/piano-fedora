@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-10-14",
+  "checked_date": "2026-10-15",
   "note": "只列构建实际消费的上游；研究与后端参考单独记录在 docs/upstreams.json。",
   "sources": {
     "dtc": {
@@ -76,10 +76,22 @@
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {
-      "url": "https://github.com/phxinyang/qualcomm-iris-vaapi.git",
+      "url": "https://github.com/radxa-pkg/libva-v4l2.git",
+      "ref": "v1.0.0",
+      "commit": "0e4ce1e05da1d0a92b342efc2090b9e4987035e1",
+      "role": "Qualcomm Iris stateful V4L2 VA-API 后端：H.264/HEVC 硬解与编码；phxinyang/qualcomm-iris-vaapi 只有解码 entrypoint，会覆盖它"
+    },
+    "piano-integration": {
+      "url": "https://github.com/yzddmr6/xiaomipad-8pro-mainline.git",
       "ref": "main",
-      "commit": "f587b14e6b22955c7250a45ff5f43588bbce2114",
-      "role": "Qualcomm Iris VA-API 用户态驱动，按源码能力表限制硬解宣称"
+      "commit": "1ab620f41730fd66732141d73d27d6ce93f8a92a",
+      "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者"
+    },
+    "uperf": {
+      "url": "https://github.com/code002-2/uperf-linux.git",
+      "ref": "main",
+      "commit": "edfb14a235c3708b4e9627c819dc28c68596d0f1",
+      "role": "原生 ARM64 性能守护进程、CLI 和 GTK GUI；使用内核限制与显式触控坐标单位"
     }
   }
 }

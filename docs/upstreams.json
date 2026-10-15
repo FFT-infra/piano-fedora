@@ -330,12 +330,13 @@
     {
       "repo": "code002-2/uperf-linux",
       "ref": "main",
-      "category": "用户态性能调度参考",
-      "role": "用户态性能调度参考",
-      "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
+      "category": "runtime",
+      "role": "原生 ARM64 性能守护进程、CLI 和 GTK GUI；使用内核限制与显式触控坐标单位",
+      "decision": "consume",
+      "reason": "正式 Fedora 运行时按固定源码构建并核验安装字节",
       "reference_commit": "edfb14a235c3708b4e9627c819dc28c68596d0f1",
-      "reference_date": "2026-10-10"
+      "reference_date": "2026-10-15",
+      "lock_key": "uperf"
     },
     {
       "repo": "Droid-VM/crosvm",
@@ -916,13 +917,24 @@
       "reason": "正式 Fedora 运行时按构建锁消费"
     },
     {
-      "repo": "phxinyang/qualcomm-iris-vaapi",
-      "ref": "main",
-      "category": "Qualcomm Iris VA-API 用户态驱动，按源码能力表限制硬解宣称",
-      "role": "Qualcomm Iris VA-API 用户态驱动，按源码能力表限制硬解宣称",
+      "repo": "radxa-pkg/libva-v4l2",
+      "ref": "v1.0.0",
+      "category": "Qualcomm Iris stateful V4L2 VA-API 后端（硬件解码 + H.264/HEVC 编码）",
+      "role": "Qualcomm Iris stateful V4L2 VA-API 后端（硬件解码 + H.264/HEVC 编码）",
       "decision": "consume",
       "lock_key": "iris-vaapi",
-      "reason": "正式 Fedora 运行时按构建锁消费"
+      "reason": "正式 Fedora 运行时按构建锁消费；编码 entrypoint 只在这一支里，只有解码入口的 phxinyang 分支不得再覆盖它"
+    },
+    {
+      "repo": "yzddmr6/xiaomipad-8pro-mainline",
+      "ref": "main",
+      "category": "runtime",
+      "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者",
+      "decision": "consume",
+      "lock_key": "piano-integration",
+      "reference_commit": "1ab620f41730fd66732141d73d27d6ce93f8a92a",
+      "reference_date": "2026-10-15",
+      "reason": "正式 Fedora 运行时按固定源码构建并核验安装字节"
     }
   ],
   "checked_date": "2026-10-14"

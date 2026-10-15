@@ -249,6 +249,8 @@ def build(args):
     import build_piano_runtime_helpers as runtime
     import stage_piano_ram_hardware as hardware
     import build_boot_request
+    from piano_device_integration import integration_source, build_touch, adapt_camera, stage_payload, build_performance
+    device_source, device_pin = integration_source(sun.parent, output, run)
     public = sun / "upstream/debian-piano-current"
     runtime.repository(public, runtime.PUBLIC_COMMIT)
     payload = output / "piano-payload"
@@ -260,6 +262,7 @@ def build(args):
     touch, touch_proof = runtime.derive_touch_source(public, build)
     camera, camera_proof = runtime.derive_camerad_source(public, build)
     adapt_camerad_for_fedora(camera, camera_proof)
+    adapt_camera(camera, device_source, camera_proof, run, sha256)
     pen_files, pen_proof = runtime.build_pen_core(build, flags)
     helpers = dict(pen_files)
     for name, (relative, pin, destination) in (runtime.PUBLIC_SOURCES | runtime.BSP_SOURCES).items():
@@ -271,11 +274,15 @@ def build(args):
         obj, exe = build / (name + ".o"), build / name
         effective = touch if name == "piano-touch-view" else camera if name == "piano-camerad" else source
         if name == "piano-touch-view":
-            item = runtime.build_touch_binary(build, flags, args.uapi, effective, pen_proof)
+            item = build_touch(runtime, build, flags, args.uapi, effective, pen_proof,
+                               device_source, run, sha256)
+            touch_proof.update(item)
         else:
             run([*flags, "-isystem", args.uapi / "include", "-Dmain=PianoOriginalMain", "-c", effective, "-o", obj])
             run([*flags, "-static", entry, obj, "-lm", "-o", exe])
             item = runtime.verify_elf(exe)
+            if name == "piano-camerad":
+                camera_proof["binary_sha256"] = sha256(exe)
         run([exe, "--help"], timeout=10)
         helpers[destination] = {**item, "file": name, "mode": 0o755}
     for destination, row in helpers.items():
@@ -296,6 +303,8 @@ def build(args):
         if p.is_file() or p.is_symlink():
             put(p, payload / p.relative_to(sun / "linux/bsp/common"), p.stat().st_mode & 0o111)
     stage_power_overlay(sun, payload)
+    integration_proof = stage_payload(device_source, device_pin, payload, touch_proof,
+                                      camera_proof, put, sha256, args.finger_config_dir)
     from piano_runtime_extras import package_session_fixes
     session_proof = package_session_fixes(output, rpm_package, put, sha256)
     for name in ("cpufreq-start", "pstore-save"):
@@ -352,17 +361,19 @@ def build(args):
     put(integration / "iio-sensor-proxy-piano.conf", payload / "etc/systemd/system/iio-sensor-proxy.service.d/piano.conf")
     from piano_runtime_extras import build as build_extras
     extras_proof = build_extras(sun.parent, output / "extras", rpm_package, put, sha256, run)
+    performance_proof = build_performance(sun.parent, output, rpm_package, put, run, sha256)
     for p in (output / "extras/rpms").glob("*.rpm"):
         shutil.copyfile(p, output / "rpms" / p.name)
     provenance = {"status": "FEDORA_RUNTIME_BUILT_NOT_DEVICE_VERIFIED",
                   "kernel_release": record["kernel_release"], "kernel_manifest_sha256": kernel_hash,
                   "touch": touch_proof, "camera": camera_proof, "boot_request": request,
                   "sensor_sources": sensor_proof, "fastrpc_daemon": fastrpc_proof,
-                  "extras": extras_proof, "session_fixes": session_proof, "device_tested": False}
+                  "extras": extras_proof, "session_fixes": session_proof,
+                  "integration": integration_proof, "performance": performance_proof, "device_tested": False}
     dest = payload / "usr/share/piano-provenance/fedora-runtime.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(provenance, indent=2) + "\n")
-    rpm_package("piano-runtime", payload, output,
+    rpm_package("piano-runtime", payload, output, version="0.2.0",
                 requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
                           "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils"))
     provenance["rpms"] = {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
@@ -372,6 +383,8 @@ def build(args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--finger-config-dir", type=Path, required=True,
+                    help="私有完整原厂 piano_nova_{csot,boe}_thp_config.ini 目录；精简笔配置不能替代")
     for name in ("sunuefi", "kernel", "uapi", "output"):
         ap.add_argument("--" + name, type=Path, required=True)
     ap.add_argument("--loopback", type=Path, required=True)

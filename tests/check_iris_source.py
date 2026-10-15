@@ -25,10 +25,12 @@ def main():
     prepare = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(prepare)
     policy = prepare.TARGETS[prepare.DEFAULT_TARGET]
-    keys = ('iris_decode_order_patch', 'iris_keyframe_patch')
+    keys = ('iris_decode_order_patch', 'iris_keyframe_patch', 'dpu_shutdown_patch', 'piano_amp_limit_patch')
     references = (
         '0035-media-iris-enable-decode-order-output-and-deblocking.patch',
         '0037-media-iris-force-key-frame.patch',
+        '0038-dpu-defer-slave-cleanup.patch',
+        '0039-piano-speaker-gain-limit.patch',
     )
     assert all(key in policy for key in keys), 'Iris patches are archived but not consumed'
     tree = ast.parse(tool.read_text())
@@ -38,7 +40,7 @@ def main():
              and isinstance(n.iter, ast.Tuple)]
     assert len(loops) == 1, 'unexpected stable patch application loop'
     applied = [ast.literal_eval(n)[0] for n in loops[0].iter.elts]
-    assert applied[-2:] == list(keys), 'Iris patches missing from actual application sequence'
+    assert applied[-len(keys):] == list(keys), 'Iris/display/audio patches missing from actual application sequence'
     assert policy['target_tree'] != policy['stable_merged_tree'], 'derived tree is not sealed'
     with tempfile.TemporaryDirectory(prefix='iris-source-') as directory:
         root = Path(directory).resolve()
