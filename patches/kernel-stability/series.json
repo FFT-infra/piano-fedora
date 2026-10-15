@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "target": "sunuefi",
+  "base": {
+    "sunuefi_commit": "50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73"
+  },
+  "patches": [
+    {
+      "file": "0001-consume-display-audio-fixes.patch",
+      "summary": "正式内核重放 DPU 关屏清理顺序及 Piano 功放增益上限，校验补丁摘要与最终源码树",
+      "targets": {
+        "tools/prepare_release_kernel.py": "e643f1161564025523492bfa9bd12e189ba59c74b5c98074c10bcc517c8f34b5"
+      },
+      "creates": [
+        "patches/linux/7.2.9/0038-dpu-defer-slave-cleanup.patch",
+        "patches/linux/7.2.9/0039-piano-speaker-gain-limit.patch"
+      ]
+    }
+  ]
+}
