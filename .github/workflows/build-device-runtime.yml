@@ -9,6 +9,10 @@ on:
         description: "同时产出 kernel 与 SDK 的成功 run；留空解析最新完整 run"
         required: false
         default: ""
+      calibration_run_id:
+        description: "可选：含 touch-calibration artifact 的 run。留空则使用仓库密钥里的原厂 INI"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -17,7 +21,7 @@ permissions:
 jobs:
   runtime:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -39,6 +43,36 @@ jobs:
           if [ -n "$KERNEL_RUN" ]; then args+=(--run-id "$KERNEL_RUN"); fi
           python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml \
             --artifact kernel-release-7.2.9 --artifact kernel-sdk-7.2.9 "${args[@]}"
+
+      - if: inputs.calibration_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: touch-calibration
+          path: build/in/touch-calibration
+          run-id: ${{ inputs.calibration_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 两份原厂触摸 INI 是许可不明的厂商数据，不进 Git。仓库密钥
+      # TOUCH_CALIBRATION_TGZ_B64 保存它们的最小打包，CI 就地解出到 build/。
+      - name: Materialize the private touch calibration
+        env:
+          CALIBRATION_B64: ${{ secrets.TOUCH_CALIBRATION_TGZ_B64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/in/touch-calibration
+          if [ -n "${{ inputs.calibration_run_id }}" ]; then
+            echo "using the touch-calibration artifact from run ${{ inputs.calibration_run_id }}"
+            exit 0
+          fi
+          if [ -z "$CALIBRATION_B64" ]; then
+            echo 'neither a calibration run nor TOUCH_CALIBRATION_TGZ_B64 is available' >&2
+            exit 1
+          fi
+          printf '%s' "$CALIBRATION_B64" | base64 -d | tar -xz -C build/in/touch-calibration
+          for ini in piano_nova_boe_thp_config.ini piano_nova_csot_thp_config.ini; do
+            test -s "build/in/touch-calibration/$ini" || { echo "missing $ini" >&2; exit 1; }
+          done
+          ls -l build/in/touch-calibration
 
       - uses: actions/download-artifact@v4
         with:
@@ -77,9 +111,19 @@ jobs:
                 busybox alsa-topology-utils m4 meson ninja-build pkgconf-pkg-config \
                 glib2-devel libqmi-devel libmbim-devel protobuf-c-devel \
                 protobuf-c-compiler protobuf-compiler gobject-introspection-devel \
-                vala gtk-doc systemd systemd-devel libgudev-devel polkit-devel
+                vala gtk-doc systemd systemd-devel libgudev-devel polkit-devel \
+                cargo rust libva-devel libdrm-devel libcap-devel libseccomp-devel \
+                mesa-libEGL-devel mesa-libGLES-devel mesa-libgbm-devel \
+                cmake json-c-devel dbus-devel nlohmann-json-devel \
+                clang-devel openssl-devel gtk4-devel libadwaita-devel
               git config --global --add safe.directory /workspace/build/sources/sunuefi/upstream/debian-piano-current
+              git config --global --add safe.directory /workspace/build/sources/fastrpc
+              for name in librevm crosvm iris-vaapi piano-integration uperf; do
+                git config --global --add safe.directory /workspace/build/sources/$name
+              done
+              git config --global --add safe.directory /workspace/build/sources/crosvm/third_party/minijail
               python3 scripts/build-device-runtime.py --sunuefi build/sources/sunuefi \
+                --finger-config-dir build/in/touch-calibration \
                 --kernel build/in/kernel --uapi build/kernel-runtime/uapi \
                 --loopback build/kernel-runtime/v4l2loopback/v4l2loopback.ko \
                 --output build/device-runtime

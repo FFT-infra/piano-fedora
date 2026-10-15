@@ -42,6 +42,8 @@ Fedora 的初始桌面用户为 `piano`，默认密码 `piano123456`，与上游
 
 正常 Fedora 使用需要账户认证的 `serial-getty@ttyGS0.service`；initramfs 救援的串口 shell 与之分开。NCM 使用上游固定设备 MAC，NetworkManager 静态配置为 `192.168.77.1/30`，不添加默认路由；主机可使用 `192.168.77.2/30`。这些是已配置的接管入口，实际 USB 枚举和登录仍需设备验证。
 
+在现有 Fedora 上用 `stage-rootfs-payload.py --rootfs /` 增量安装时，脚本在返回成功前用本机 `setfiles -F` 恢复新模块、硬件准备和 USB 诊断程序、systemd 单元及来源记录的 SELinux 标签。复制来源中的 `user_home_t` 不能用于系统模块；摘要一致不代表标签正确。离线 staging 的标签由 build-image 中的完整目标策略标记步骤处理。
+
 ABL 只读对照把完整取证保存到 RAM 中 `/run/piano-boot-evidence.txt`，进入串口救援后可读取；它不写 Linux 根分区。原生 BOOT 文件检查使用 `verify-native-boot.py`，七项文件 guard 的报告与真实设备的槽位、当前来源及块设备写读回分开保存，不将未完成的 Android 模块标为 ready。
 
 ## 分区与容量

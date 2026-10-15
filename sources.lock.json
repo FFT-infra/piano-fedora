@@ -1,12 +1,18 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-10-12",
-  "note": "只列实际消费的上游。研究用的 75 个仓库不在此列。",
+  "checked_date": "2026-10-15",
+  "note": "只列构建实际消费的上游；研究与后端参考单独记录在 docs/upstreams.json。",
   "sources": {
+    "dtc": {
+      "url": "https://github.com/dgibson/dtc.git",
+      "ref": "v1.8.1",
+      "commit": "8f48565e5cfedc74d3f7512f1e0188e9d85dc1de",
+      "role": "设备树打包工具：保留覆盖层目标节点已有 phandle 的 libfdt 1.8.1"
+    },
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "158f526ae5cfa58f4707a540f3e59c1f7d4ae46e",
+      "commit": "50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器"
     },
     "linux-piano": {
@@ -45,11 +51,47 @@
       "commit": "a75f8c5d5fa099d65c171ac839c2e3bb6c63ec45",
       "role": "Debian rootfs 与 boot 打包，作对照参考"
     },
-    "fedora-sheng": {
-      "url": "https://github.com/mumuxiao722/fedora-sheng.git",
+    "gunyah-driver": {
+      "url": "https://github.com/SuperTurtleDev/iceland-mainline-kernel-linux.git",
+      "ref": "pr/gunyah",
+      "commit": "fd503a492d381687c143b7085ea79ebce58dcdc7",
+      "role": "Fedora 正式内核的 Gunyah 驱动：从 android17-6.18 导入并已适配主线 7.2，按 commit 原样导入并核验"
+    },
+    "fastrpc": {
+      "url": "https://github.com/qualcomm/fastrpc.git",
+      "ref": "v1.0.8",
+      "commit": "d247519650fe5cb16de6c78edaa95bcc4be25073",
+      "role": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd"
+    },
+    "librevm": {
+      "url": "https://github.com/code002-2/librevm.git",
       "ref": "main",
-      "commit": "3bd197feb71f1d38b4ee7544fe3d5ee47c000cb4",
-      "role": "Fedora 后端参考（sheng/SM8550，GPL-3.0）。提供 RPM spec、Actions 参数化、dual(linux) 分区模式。硬件与启动链不可复用"
+      "commit": "4be3e42b963e95a7753e600613a46059ebdfcd04",
+      "role": "Gunyah 虚拟机管理器、守护进程和 GTK 前端"
+    },
+    "crosvm": {
+      "url": "https://github.com/google/crosvm.git",
+      "ref": "main",
+      "commit": "4c5aa700ed5293444c0aadd672dc009ed72463e3",
+      "role": "带 Gunyah、virtio-net 后端的原生 VMM"
+    },
+    "iris-vaapi": {
+      "url": "https://github.com/radxa-pkg/libva-v4l2.git",
+      "ref": "v1.0.0",
+      "commit": "0e4ce1e05da1d0a92b342efc2090b9e4987035e1",
+      "role": "Qualcomm Iris stateful V4L2 VA-API 后端：H.264/HEVC 硬解与编码；phxinyang/qualcomm-iris-vaapi 只有解码 entrypoint，会覆盖它"
+    },
+    "piano-integration": {
+      "url": "https://github.com/yzddmr6/xiaomipad-8pro-mainline.git",
+      "ref": "main",
+      "commit": "1ab620f41730fd66732141d73d27d6ce93f8a92a",
+      "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者"
+    },
+    "uperf": {
+      "url": "https://github.com/code002-2/uperf-linux.git",
+      "ref": "main",
+      "commit": "edfb14a235c3708b4e9627c819dc28c68596d0f1",
+      "role": "原生 ARM64 性能守护进程、CLI 和 GTK GUI；使用内核限制与显式触控坐标单位"
     }
   }
 }

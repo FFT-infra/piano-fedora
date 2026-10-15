@@ -3,14 +3,14 @@
   "target": "sunuefi",
   "note": "按顺序应用。每个补丁的 targets 是应用前该文件必须匹配的摘要；上游更新后不匹配会报错退出，不静默跳过。creates 必须与实际新建的文件完全一致。",
   "base": {
-    "sunuefi_commit": "158f526ae5cfa58f4707a540f3e59c1f7d4ae46e"
+    "sunuefi_commit": "50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73"
   },
   "patches": [
     {
-      "file": "0001-add-f2fs-root-support.patch",
-      "summary": "新增 F2FS 配置片段，登记为可审阅覆盖，并把 F2FS_FS 加进最终配置校验",
+      "file": "0001-f2fs-root-fedora-selinux.patch",
+      "summary": "在上游 50f29a9 上重放 F2FS 与 Fedora SELinux 覆盖，保留新版笔座、蓝牙、睡眠及 PM 诊断配置，支持 --root-fstype",
       "targets": {
-        "tools/build_piano_full_kernel.py": "a4257470e7c8d2252a2e09cc47b1ec8e048db4f7116f1eb9c85165b9259d3e22"
+        "tools/build_piano_full_kernel.py": "2d06e5281974341ca29f58fd622e58a4dac53177d73889f0a9c80f6d2379b005"
       },
       "creates": [
         "linux/configs/piano-f2fs.config"
@@ -26,18 +26,18 @@
       "creates": []
     },
     {
-      "file": "0003-fedora-root-and-selinux.patch",
-      "summary": "显式选择 F2FS 强制命令行与 Fedora SELinux，保留原有源码和硬件校验",
-      "targets": {
-        "tools/build_piano_full_kernel.py": "de0fc188e6ed768eee18d03b4256169a60cbc8ab35b2b237c14def4a44042286"
-      },
-      "creates": []
-    },
-    {
       "file": "0004-align-selector-rodata.patch",
       "summary": "强制选择器链接脚本中 rodata 与 data 段在末尾以 4 字节对齐，避免 objcopy 输出未对齐二进制导致模块校验失败",
       "targets": {
         "uefi/handoff/bootselect/BootSelect.ld": "f6a783ef0e265f218cd367dea1bbf6b08bc3e31d0ceb2957df453263774e9a6e"
+      },
+      "creates": []
+    },
+    {
+      "file": "0005-fedora-nftables.patch",
+      "summary": "补齐 Fedora firewalld 与 libvirt 所需 nftables 内核接口，配置后逐项验证",
+      "targets": {
+        "tools/build_piano_full_kernel.py": "f6f5f271382131cad14a5d242332654b933ffff9f994f00fed553202984eba39"
       },
       "creates": []
     }

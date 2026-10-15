@@ -1,0 +1,78 @@
+From 6f161e3fd93ea351fdd5107cb6713f51f4bbf0a7 Mon Sep 17 00:00:00 2001
+From: yzddmr6 <46088090+yzddmr6@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 05:51:16 +0800
+Subject: [PATCH] ASoC: qcom: sc8280xp: cap the piano speaker amplifier gain
+
+The piano speakers run without the DSP speaker protection that stock
+Android has on the secondary TDM feedback port. As for the WSA
+amplifiers of the reference boards, limit the amplifier gain from the
+machine driver until protection exists: the four "<position> Amp Volume"
+controls are capped at 215 of 255 (0.375 dB steps, -15 dB). Stock runs
+the amplifiers at 243 for all four speakers and 235 for one (ODM
+mixer_paths_overlay_static.xml FSM_Volume), with protection.
+
+The limit is a per-board list in the card data, applied when each link
+initialises; snd_soc_limit_volume() ignores names a board does not have.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ sound/soc/qcom/sc8280xp.c | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+diff --git a/sound/soc/qcom/sc8280xp.c b/sound/soc/qcom/sc8280xp.c
+index 9f565ed2106d..e68ee9a39d79 100644
+--- a/sound/soc/qcom/sc8280xp.c
++++ b/sound/soc/qcom/sc8280xp.c
+@@ -74,6 +74,9 @@ struct qcom_snd_soc_common {
+ 	/* TDM backend channels and sample format, if not stereo S16_LE */
+ 	unsigned int tdm_channels;
+ 	snd_pcm_format_t tdm_format;
++	/* Controls to cap until speaker protection runs, NULL-terminated */
++	const char * const *speaker_volume_controls;
++	int speaker_volume_max;
+ 	int (*snd_prepare)(struct snd_pcm_substream *substream);
+ };
+ 
+@@ -182,6 +185,12 @@ static int sc8280xp_snd_init(struct snd_soc_pcm_runtime *rtd)
+ 	struct snd_soc_card *card = rtd->card;
+ 	struct snd_soc_jack *dp_jack  = NULL;
+ 	int dp_pcm_id = 0;
++	int i;
++
++	for (i = 0; data->priv->speaker_volume_controls &&
++		    data->priv->speaker_volume_controls[i]; i++)
++		snd_soc_limit_volume(card, data->priv->speaker_volume_controls[i],
++				     data->priv->speaker_volume_max);
+ 
+ 	switch (cpu_dai->id) {
+ 	case WSA_CODEC_DMA_RX_0:
+@@ -382,6 +391,20 @@ static int xiaomi_piano_snd_prepare(struct snd_pcm_substream *substream)
+ 					   xiaomi_piano_speaker_channels_mapping);
+ }
+ 
++/*
++ * The FS19xx amplifiers run without the speaker protection stock has on the
++ * ADSP (VI feedback on the secondary TDM TX port). Cap their gain at -15 dB
++ * (215 of 255 steps of 0.375 dB); stock Android runs 235-243 with
++ * protection.
++ */
++static const char * const xiaomi_piano_speaker_volume_controls[] = {
++	"Top Left Amp Volume",
++	"Top Right Amp Volume",
++	"Bottom Left Amp Volume",
++	"Bottom Right Amp Volume",
++	NULL
++};
++
+ static int sc8280xp_snd_prepare(struct snd_pcm_substream *substream)
+ {
+ 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+@@ -610,6 +633,8 @@ static const struct qcom_snd_soc_common xiaomi_piano_priv_data = {
+ 			 SND_SOC_DAIFMT_DSP_A,
+ 	.tdm_channels = 4,
+ 	.tdm_format = SNDRV_PCM_FORMAT_S32_LE,
++	.speaker_volume_controls = xiaomi_piano_speaker_volume_controls,
++	.speaker_volume_max = 215,
+ 	.snd_prepare = xiaomi_piano_snd_prepare,
+ };
+ 

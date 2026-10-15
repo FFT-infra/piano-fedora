@@ -200,6 +200,7 @@ for virtual in dev proc sys run; do
     mount --move "/$virtual" "/sysroot/$virtual" || fail "Cannot move $virtual"
 done
 chroot /sysroot /usr/lib/piano/piano-disk-hardware-prepare || fail 'Hardware preparation failed; collect the verifier output before continuing'
+chroot /sysroot /usr/libexec/piano-physical-platform || fail 'Physical platform export preparation failed'
 log "DISK_ROOT_READY: starting Fedora systemd on LABEL=$expected fstype=f2fs"
 if [ -f /etc/piano/boot-task-snapshot ]; then
     # 从真实 root 运行，让这个进程在 initramfs 被移除后仍然存活。

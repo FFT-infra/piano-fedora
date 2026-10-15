@@ -1,0 +1,21 @@
+diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
+index 171285d..1739af9 100644
+--- a/tools/build_piano_full_kernel.py
++++ b/tools/build_piano_full_kernel.py
+@@ -56,6 +56,16 @@ F2FS_OVERRIDES={'CONFIG_F2FS_FS':'y','CONFIG_F2FS_FS_XATTR':'y',
+                 'CONFIG_F2FS_FS_POSIX_ACL':'y','CONFIG_F2FS_FS_SECURITY':'y'}
+ FEDORA_OVERRIDES={'CONFIG_SECURITY_NETWORK':'y','CONFIG_SECURITY_SELINUX':'y',
+                   'CONFIG_LSM':'"selinux"'}
++# Fedora firewalld and libvirt need the complete nftables netlink API.
++FEDORA_OVERRIDES.update({
++ 'CONFIG_NETFILTER':'y','CONFIG_NETFILTER_ADVANCED':'y',
++ 'CONFIG_NF_CONNTRACK':'y','CONFIG_NF_NAT':'y','CONFIG_NF_TABLES':'y',
++ 'CONFIG_NF_TABLES_INET':'y','CONFIG_NFT_CT':'y',
++ 'CONFIG_NFT_LOG':'y','CONFIG_NFT_LIMIT':'y','CONFIG_NFT_REJECT':'y',
++ 'CONFIG_NFT_REJECT_INET':'y','CONFIG_NFT_FIB':'y','CONFIG_NFT_FIB_INET':'y',
++ 'CONFIG_NFT_FIB_IPV4':'y','CONFIG_NFT_FIB_IPV6':'y','CONFIG_NFT_MASQ':'y',
++ 'CONFIG_NFT_NAT':'y','CONFIG_NFT_REDIR':'y',
++})
+ ALLOWED_OVERRIDES={**BLUETOOTH_OVERRIDES,**PEN_DOCK_OVERRIDES,**FLASH_OVERRIDES,**EARLY_CPUCP_OVERRIDES,
+                    **USERSPACE_SECURITY_OVERRIDES,**SLEEP_OVERRIDES,**PM_DEBUG_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES}
+ 

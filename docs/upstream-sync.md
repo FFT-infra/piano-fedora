@@ -2,6 +2,132 @@
 
 构建来源由 sources.lock.json 固定。上游 main 的进展用于审阅；更新文档不改变已构建镜像的来源，也不使旧二进制自动获得新实现。
 
+## 2026-10-15 消费 pin 升到 SunUEFI 50f29a92
+
+全量审计 90 个登记仓库后，SunUEFI main 领先 pin 8 个提交：`a485cc01 -> 50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73`。
+
+这 8 个提交含实际硬件与驱动改进：
+1. `0030-soc-qcom-smp2p-sleepstate.patch`：DSP 睡眠通知（防止 ADSP 看门狗 bite）。
+2. `0031-hid-nanosic-piano-backlight-default.patch`：键盘保护套背光默认 80% 亮度。
+3. `0032-asoc-q6apm-clear-global-on-remove.patch`：ASoC Q6APM 卸载竞态清理。
+4. `0033-fastrpc-freeze-inflight-invoke.patch`：睡眠时冻结在途 FastRPC 用户态等待线程。
+5. `0034-dsi-phy-runtime-interface-clock.patch`：DSI PHY 运行时接口时钟动态管理（解决唤醒时短暂红色虚影）。
+6. `linux/dts/piano-pen-dock.dtso`：支持标准 dtc 打包入口。
+7. `tools/package_sparse_images.py`：支持 Fastboot 稀疏镜像导出。
+
+五组自有补丁在 50f29a92 上全部重放并校验通过，33 项离线/真实环境测试全绿。
+
+## 2026-10-14 消费 pin 升到 SunUEFI a485cc01
+
+全量审计 89 个登记仓库（`scripts/audit-upstreams.py --execute`）后，9 个实际消费源里
+只有 SunUEFI main 领先 pin：`17537522 -> a485cc01c6394866f0d07567d1ebf6ff6114fafb`，
+26 个提交。其余 8 个消费源与 pin 逐字一致；3 个 404 的仓库仍是研究登记，不参与构建。
+
+这 26 个提交含实际硬件修复：双路显示从路时钟恢复、DSI PLL 注册延迟、
+DPU 停机顺序、面板恢复后触控中断重开、触控笔磁吸唤醒与蓝牙扫描重连、
+SM8750 PCIe 活跃链路供电、蓝牙 RFCOMM/PAN 模块、麦克风 +40 dB 增益、
+电源键与合盖锁屏熄屏。上游同时明确：默认自动睡眠仍未启用，桌面睡眠请求后的
+用户进程恢复仍在定位，所以本仓库不启用自动睡眠，只跟随上游已进默认内核的部分。
+
+配套改动：
+
+| 项 | 说明 |
+| --- | --- |
+| 五组补丁 | F2FS/Fedora SELinux、nftables、Gunyah 实验档、UEFI 内存地图、1TB UFS，全部在 a485 上重新生成并真实重放通过 |
+| `piano-boot-task-snapshot` | 上游内容更新；staging 对该文件不设写死摘要，继续跟随上游 |
+| 打包 overlays | `build-bundle` 同步上游新增的 `piano-touch-panel.dtso` 与 `piano-pen-dock.dtso`，共 7 个 |
+| 相机适配 | 上游相机补丁集未变，`CAMERAD_ADAPTER_INPUT_SHA256` 仍为 `e5cfcb2a`，无需 rebase |
+
+`make test` 在 a485 上全绿（含相机适配的真实 GCC 编译）。这一步只证明源码与补丁可构建；
+新内核、UEFI、镜像与部署包仍需各自重新构建并在设备上验收。
+
+## 2026-10-14 复核：登记表本身不会报"谁更新了"
+
+`python3 scripts/audit-upstreams.py --execute` 对 89 个登记仓库取证：86 个拿到完整
+提交号，CrabApple、llfzs/8pro、runesign/mipad-6s-pro-linux 仍是 404。
+
+审计原先报不出更新：89 行里只有 fedora-sheng 一行填了 `reference_commit`，而
+`inspect_repository()` 只读 `lock_key`（9 个消费源），该字段写了没人用，79 个
+reference 上游只能拍快照。现在每行都带上次复核的 `reference_commit` 与
+`reference_date`，审计逐行比对，摘要给 `updated` 计数，并逐条打印
+`UPDATED <repo> <旧> -> <新> <subject>`；`--record-baseline` 才写回登记表，
+未核验的行保持原样。回填基线后第一次运行就报出一条：`mumuxiao722/fedora-sheng
+3bd197fe -> 641c991e`（Denial 的 ARM64 补丁集加 Arch 支持）。
+
+消费源 9 个里 8 个与 pin 一致，只有 `slwyts/Project-SunUEFI` 的 main 领先
+（`1b0e201e` 对 pin `17537522`）——该差异只动 Nyarch 打包三行，是否提 pin 仍待评审。
+
+手工比对补上了这次遗漏：`code002-2/librevm` 在 2026-10-13T15:10Z 新增提交
+`9833d43c`，加进 `packaging/gunyah-driver-7.2/`——从 Android common kernel
+`android17-6.18` 导入、且已适配主线 7.2 的完整 Gunyah 驱动，附 `gh_vmtest.py`
+冒烟测试与 OnePlus Pad 4 上的验证记录。
+
+据此 Gunyah 实验档改为消费上游现成驱动，本仓库不再移植：
+
+| 项 | 旧 | 新 |
+| --- | --- | --- |
+| 锁 | `piano-vendor-kernel`：MiCode piano-w-oss `45fb9bd6`（6.6.57 基线） | `gunyah-driver`：`SuperTurtleDev/iceland-mainline-kernel-linux@fd503a49`（分支 `pr/gunyah`） |
+| 派生 | 19 个文件导入 + 四处 API 改写 | 32 个文件原样搬运，零改写 |
+| 配置 | 五个 Gunyah 符号 | 八个，按上游 Kconfig 全选 |
+
+旧线为什么停：6.6→7.2 是一条逐处移除的 API，手工移植每轮只暴露一处。整核那轮
+在第 51 分钟撞上 `folio_index()` 与 `of_node_to_fwnode()`，十分钟预检里又撞上
+`PageSwapBacked()`。细节见[虚拟化记录](virtualization.md)。
+
+## 2026-10-13 晚间复核与 Fedora 缺口
+
+去重研究索引扩为 [88 个仓库](upstreams.json)，补入 code002-2 的 piano-linux、
+librevm、视频加速、调度器与 UEFI fork，以及真正消费的 Qualcomm FastRPC。
+本轮对每个所选 ref 执行 GitHub API 查询：最终 88 项中 85 个取得完整提交号；CrabApple、
+llfzs/8pro、runesign/mipad-6s-pro-linux 返回 404，记为未核验，不推断不存在
+其他公开替代。命令为 `python3 scripts/audit-upstreams.py --execute`，逐仓库
+证据在本机 `build/upstream-audit-20261013-expanded.json`，不把生成输出当源码提交。
+后续补入完整 Gunyah 源码镜像、GGLK 客体内核与 S25 Ultra 客体运行记录，
+再次全量核验；它们仍为研究入口，不自动成为本机构建输入。
+
+SunUEFI main 仍为 `1b0e201e3e7fb0737d73c41624a855482a4df7c5`，没有新增启动
+核心修复；消费 pin 仍为 `17537522`。fedora-sheng 的差异仍为 Denial 打包，
+其余原有消费上游与固定提交一致。新增 FastRPC 消费源固定 v1.0.8 的
+`d247519650fe5cb16de6c78edaa95bcc4be25073`，仅构建 Fedora RPM 没有安装的
+adsprpcd 守护进程，继续使用 Fedora 提供的 listener 共享库。
+
+当前真机 `nft list ruleset` 报 Netlink Protocol not supported，配置也没有
+NF_TABLES。新增 `0005-fedora-nftables.patch` 将 18 项配置纳入完整 Fedora
+策略；对固定 piano 内核执行原生 olddefconfig 后，这 18 项全部保留。
+这不是已运行内核的能力，仍需新 Image/模块/运行时重新构建与设备验收。
+
+相机本次启动被临时配置禁用，移除该配置后既有 oneshot 仍保持已完成状态。
+重启上游相机服务后，CAMSS 与前后传感器绑定，前后 loopback 节点各完成三帧
+GStreamer 读取。尚未验证 GNOME 相机界面与冷启动，不把节点存在视为完整通过。
+
+补装 adsprpcd 后服务稳定运行、重启计数为 0，SSC registry 可响应；但 accel
+仍未枚举，iio-sensor-proxy 仍退出，传感器功能尚未修复完成。
+VM 源码与配套 QEMU 的重新核验见[虚拟化记录](virtualization.md)。
+
+## 2026-10-13 核对（含补丁去重评估）
+
+`git fetch` 后逐个比对八个消费上游：
+
+| 上游 | pin | 远端 | 差异 |
+| --- | --- | --- | --- |
+| sunuefi | `17537522` | `1b0e201` | 1 个提交，只动 Nyarch 打包三行文件（`linux/bsp/arch/chromium-flags.conf`、`tools/build_nyarch_apps.py`、`tools/stage_arch_piano.py`），与启动、交接、内存无关 |
+| fedora-sheng | `3bd197fe` | `641c991e` | 9 个提交，全部是 Denial 合成器打包（v0.5.0、ARM64 补丁扩到 Arch/openSUSE/Debian/Ubuntu、构建加 libpolkit-agent-1-dev、去掉 RPM 后缀环境变量） |
+| linux-piano(`piano-7.2.6`)、piano-firmware、piano-mesa、piano-sensors、piano-mipps-auth、debian-piano | 不变 | 与 pin 一致 | — |
+
+**补丁去重评估**：对上游 HEAD 逐条核对，结论是四条系列都要保留，没有一条已被吸收。
+
+| 系列 | 上游现状 | 结论 |
+| --- | --- | --- |
+| kernel-f2fs（3 条） | `tools/build_piano_full_kernel.py` 没有 F2FS/SELinux 配置；选择器 `.rodata`/`.data` 只有段首 `ALIGN(16)`，没有段尾对齐 | 保留 |
+| uefi-ufs（1 条） | 上游有 `PianoUfsBuildResumeActive`，但只在描述符读失败（`EFI_DEVICE_ERROR`）时调用 | 保留：本机 1 TB UFS 睡眠态也能读成功，那个闸门不触发 |
+| uefi-live-memory（1 条，本轮新增） | 全部远端分支 `grep ddr_size` 为空，raw 交接不碰 `/memory` | 保留：24 GB 采纳，真机 `MemTotal` 22.57 GiB |
+| uefi-live-rm（1 条，本轮新增） | 上游把 inherited FDT 当只读输入，raw 交接不碰 `/hypervisor` 下的 RM 节点 | 保留：节点 `reg` 是构建期冻结的 TX/RX capability，不换成当次值则首次 RM 请求 ARG_INVAL 并阻塞 VM_START |
+| runtime/camerad-gcc-bounds | 上游无 | 保留 |
+
+**pin 是否移动**：`sunuefi` 提到 `1b0e201` 已在本地重放验证（补丁干净应用、`check_patches` 通过），但该提交只改 Nyarch 打包，不改变任何启动或内核产物，因此本轮不动 pin；与其它输入一起评审时再决定。`fedora-sheng` 只作后端参照，不消费其代码。
+
+**不改变的事**：本轮核对不让任何已构建镜像获得新实现；新部署包仍须记录 UEFI run、生产提交、实际 checkout、项目补丁与产品摘要。
+
 ## 本轮核对
 
 2026-10-11 22:14（Asia/Shanghai），GitHub API 与 git ls-remote 对 main 的结果一致：`964459705190fb7b83809e5b059e90b9718f619d`，领先本仓库 pin `6a8763d010adb00b18911d6d12e6dd02869f98b9` 三个提交。

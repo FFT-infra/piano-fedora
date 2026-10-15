@@ -1,0 +1,98 @@
+From c55958fa09dd2e4c2ee3299547a196e674ae4ac2 Mon Sep 17 00:00:00 2001
+From: yzddmr6 <46088090+yzddmr6@users.noreply.github.com>
+Date: Thu, 15 Oct 2026 09:38:25 +0800
+Subject: [PATCH] drm/msm/dpu: tear a video-mode slave down after both timing
+ engines stop
+
+With a bonded DSI panel both INTFs hang off one CTL. The slave's
+dpu_encoder_helper_phys_cleanup() starts with a CTL software reset,
+and the virtual encoder disables the slave first, so that reset ran
+while the master's timing engine was still scanning out the final
+frame. On the piano NT36532 (DSC, 3200x2136) the INTF underrun this
+causes is decoded by the panel as a garbled frame: a visible flash on
+every screen-off, lock or suspend.
+
+Measured with the dpu tracepoints on the installed 7.2.10 kernel: both
+INTF underrun callbacks fire 20-30 us after dpu_enc_disable, inside
+the slave's cleanup, and never during enable or kickoff.
+
+Let a slave's phys disable only stop its timing engine, and run its
+cleanup from dpu_encoder_virt_atomic_disable() after the master's
+disable has waited for the stopping frame; poll the slave's INTF
+status for at most 40 ms in case its disable latches a frame later.
+The master's cleanup still resets the shared CTL exactly as before,
+so the stale-configuration black screen that commit b7a813e2245c
+("drm/msm/dpu: disable the slave encoder before the master") fixed
+stays fixed.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+
+Backport to the locked SunUEFI 7.2.9 tree: explicitly disable non-master
+physical encoders before the master, retaining the generic encoder loop.
+
+---
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
+index d5ea787..ed4c41d 100644
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
+@@ -1416,10 +1416,37 @@ static void dpu_encoder_virt_atomic_disable(struct drm_encoder *drm_enc,
+ 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
+ 		struct dpu_encoder_phys *phys = dpu_enc->phys_encs[i];
+ 
+-		if (phys->ops.disable)
++		if (phys != dpu_enc->cur_master && phys->ops.disable)
+ 			phys->ops.disable(phys);
+ 	}
+ 
++	if (dpu_enc->cur_master && dpu_enc->cur_master->ops.disable)
++		dpu_enc->cur_master->ops.disable(dpu_enc->cur_master);
++
++	/*
++	 * A video-mode slave shares the master's CTL, and its cleanup resets
++	 * that CTL. The master's disable above waited for the frame in which
++	 * both timing engines stopped, so the slave is torn down only now;
++	 * doing it earlier underruns both INTFs for the final frame.
++	 */
++	if (dpu_enc->cur_slave && dpu_enc->cur_master &&
++	    dpu_enc->cur_slave->intf_mode == INTF_MODE_VIDEO) {
++		struct dpu_encoder_phys *slave = dpu_enc->cur_slave;
++		struct dpu_hw_intf_status status = { 0 };
++		unsigned int polls = 0;
++
++		/* The slave latches its disable at its own frame boundary. */
++		while (slave->hw_intf && slave->hw_intf->ops.get_status) {
++			slave->hw_intf->ops.get_status(slave->hw_intf, &status);
++			if (!status.is_en || polls++ >= 40)
++				break;
++			usleep_range(1000, 1500);
++		}
++		if (status.is_en)
++			DPU_ERROR("enc%d slave intf:%d still enabled before cleanup\n",
++				  drm_enc->base.id, slave->hw_intf->idx - INTF_0);
++		dpu_encoder_helper_phys_cleanup(slave);
++	}
+ 
+ 	/* after phys waits for frame-done, should be no more frames pending */
+ 	if (atomic_xchg(&dpu_enc->frame_done_timeout_ms, 0)) {
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
+index 0c190eb..d5b886e 100644
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
+@@ -625,6 +625,17 @@ static void dpu_encoder_phys_vid_disable(struct dpu_encoder_phys *phys_enc)
+ 		dpu_encoder_phys_inc_pending(phys_enc);
+ 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
+ 
++	/*
++	 * A slave shares the master's CTL. Its cleanup resets that CTL, so
++	 * dpu_encoder_virt_atomic_disable() runs it only after the master
++	 * has waited for the last frame of both timing engines; resetting
++	 * the CTL while an engine still scans out underruns the INTFs.
++	 */
++	if (!dpu_encoder_phys_vid_is_master(phys_enc)) {
++		phys_enc->enable_state = DPU_ENC_DISABLED;
++		return;
++	}
++
+ 	/*
+ 	 * Wait for a vsync so we know the ENABLE=0 latched before
+ 	 * the (connector) source of the vsync's gets disabled,

@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq zstd dosfstools mtools device-tree-compiler python3 git
+          sudo apt-get install -y -qq zstd dosfstools mtools device-tree-compiler python3 git gcc make flex bison
 
       - name: Resolve complete image and UEFI inputs
         id: src
@@ -75,21 +75,33 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          run=$(python3 -c 'import json;print(json.load(open("build/in/image/source-runs.json"))["kernel_run"])')
-          python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml --artifact kernel-release-7.2.9 --run-id "$run"
+          # 镜像记录里写明了它消费的内核 artifact；旧记录没有这个字段时默认正式档。
+          # 新交付只接受正式内核，拒绝旧实验构建。
+          record=build/in/image/source-runs.json
+          kernel_artifact=$(python3 -c 'import json;print(json.load(open("'"$record"'")).get("kernel_artifact","kernel-release-7.2.9"))')
+          case "$kernel_artifact" in
+            kernel-release-7.2.9) ;;
+            *) echo "recorded kernel_artifact is not allowed: $kernel_artifact" >&2; exit 2 ;;
+          esac
+          run=$(python3 -c 'import json;print(json.load(open("'"$record"'"))["kernel_run"])')
+          echo "kernel_artifact=$kernel_artifact" >> "$GITHUB_OUTPUT"
+          python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml --artifact "$kernel_artifact" --run-id "$run"
 
       - uses: actions/download-artifact@v4
         with:
-          name: kernel-release-7.2.9
+          name: ${{ steps.kernel.outputs.kernel_artifact }}
           path: build/in/kernel
           run-id: ${{ steps.kernel.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Unpack the isolated components and verify identity
+        env:
+          KERNEL_ARTIFACT: ${{ steps.kernel.outputs.kernel_artifact }}
         run: |
           set -euo pipefail
           mkdir -p build/kernel build/uefi build/initramfs build/device-root
-          tar -I zstd -xf build/in/kernel/*.tar.zst -C build/kernel
+          # 精确选择记录里的内核归档。
+          tar -I zstd -xf "build/in/kernel/$KERNEL_ARTIFACT.tar.zst" -C build/kernel
           tar -I zstd -xf build/in/uefi/*.tar.zst -C build/uefi
           tar -I zstd -xf build/in/image/initramfs.tar.zst -C build/initramfs
           sudo tar -I zstd --numeric-owner --xattrs --xattrs-include='*' --acls --selinux -xf build/in/image/device-root.tar.zst -C build/device-root
@@ -109,8 +121,15 @@ jobs:
       - name: Create the upstream-compatible ESP and Linux boot payload
         run: |
           set -euo pipefail
+          # Ubuntu 24.04 的 libfdt 1.6.1 会覆盖已存在的 panel phandle。
+          # 使用锁定上游 1.8.1，sudo 下显式传递工具和动态库路径。
+          make -C build/sources/dtc -j2 NO_PYTHON=1 NO_YAML=1 dtc fdtoverlay
+          export PATH="$PWD/build/sources/dtc:$PATH"
+          export LD_LIBRARY_PATH="$PWD/build/sources/dtc/libfdt"
+          PIANO_TEST_SUNUEFI=build/sources/sunuefi python3 tests/check_bundle_overlays.py
           # stock Android BOOT 包装仍要求本机当前 BOOT，通用包不冒充已部署合体 BOOT。
-          sudo python3 build/sources/sunuefi/tools/package_release.py \
+          sudo env "PATH=$PATH" "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+            python3 build/sources/sunuefi/tools/package_release.py \
             --uefi build/uefi/PianoUEFI-product.img --kernel build/kernel \
             --dtb build/sources/sunuefi/vendor/piano-linux/board.dtb \
             --cpu-model-overlay build/sources/sunuefi/linux/dts/piano-cpu-model.dtso \
@@ -120,6 +139,8 @@ jobs:
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-audio-dmic-clock.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-flash.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-privacy-led.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-touch-panel.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-pen-dock.dtso \
             --initramfs build/initramfs/initramfs.cpio.gz \
             --rootfs build/device-root/rootfs --rootfs-manifest build/device-root/manifest.json \
             --root-selector LABEL=PIANOROOT --esp-size-mib 512 --output build/packaged
@@ -135,7 +156,7 @@ jobs:
           cp build/in/image/pianoroot.f2fs.img.zst bundle/
           cp build/in/image/diagnostic-abl-storage.tar.zst bundle/
           cp build/in/image/root-image-manifest.json build/in/image/source-runs.json build/in/image/runtime-manifest.json bundle/
-          cp build/in/image/mesa-manifest.json build/in/image/rootfs-manifest.json bundle/
+          cp build/in/image/mesa-manifest.json build/in/image/ffmpeg-manifest.json build/in/image/rootfs-manifest.json bundle/
           cp build/kernel/manifest.json bundle/kernel-manifest.json
           cp build/uefi-source.json bundle/
           python3 - <<'PY'
@@ -145,6 +166,9 @@ jobs:
           record = json.loads(path.read_text())
           record.update(uefi_run=os.environ['UEFI_RUN'], image_run=os.environ['ROOT_RUN'],
                         bundle_source_commit=os.environ['GITHUB_SHA'])
+          pins = json.loads(Path('sources.lock.json').read_text())['sources']
+          record['dtc_commit'] = pins['dtc']['commit']
+          record['dt_bindings_commit'] = pins['linux-piano']['commit']
           path.write_text(json.dumps(record, indent=2) + '\n')
           PY
           cp build/initramfs/manifest.json bundle/initramfs-manifest.json

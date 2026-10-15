@@ -68,6 +68,24 @@ jobs:
           git -C sunuefi/upstream/linux-piano checkout "${{ steps.pins.outputs.kernel_commit }}"
           echo "kernel at $(git -C sunuefi/upstream/linux-piano rev-parse HEAD)"
 
+      - name: Fetch the locked Gunyah driver
+        run: |
+          python3 - <<'PYTHON'
+          import importlib.util, json
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location('checkout', 'scripts/checkout-sources.py')
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          lock = json.loads(Path('sources.lock.json').read_text())['sources']['gunyah-driver']
+          module.checkout(lock['url'], lock['commit'], Path('sunuefi/upstream/gunyah-driver'),
+                          sparse_paths=('/drivers/virt/gunyah/', '/arch/arm64/gunyah/',
+                                        '/arch/arm64/include/asm/gunyah.h', '/include/linux/gunyah.h',
+                                        '/include/linux/gunyah_qtvm.h', '/include/uapi/linux/gunyah.h',
+                                        '/tools/virt/gunyah/', '/Documentation/virt/gunyah/',
+                                        '/Documentation/devicetree/bindings/firmware/gunyah-cma-mem.yaml',
+                                        '/Documentation/devicetree/bindings/firmware/gunyah-hypervisor.yaml'))
+          PYTHON
+
       - name: Apply project patches to SunUEFI
         run: |
           set -euo pipefail
@@ -75,9 +93,8 @@ jobs:
           # 上游一变就报错退出，不静默套用一个上下文已变的补丁。
           python3 scripts/apply-patches.py --sunuefi sunuefi
 
-      - name: Prepare release kernel
-        working-directory: sunuefi
-        run: python3 tools/prepare_release_kernel.py --refresh
+      - name: Prepare production kernel including Gunyah
+        run: python3 scripts/prepare-production-kernel.py --sunuefi sunuefi
 
       - name: Validate the complete Fedora configuration before compilation
         working-directory: sunuefi
@@ -86,7 +103,7 @@ jobs:
           python3 - <<'PY'
           import json, subprocess
           from pathlib import Path
-          record = json.loads(Path('build/release-7.2.9/source-manifest.json').read_text())
+          record = json.loads(Path('build/release-7.2.9/production-source-manifest.json').read_text())
           subprocess.run([
               'python3', 'tools/build_piano_full_kernel.py',
               '--worktree', record['worktree'], '--commit', record['actual_commit'],
@@ -97,12 +114,18 @@ jobs:
           ], check=True)
           config = Path('build/kernels/release-7.2.9/.config').read_text().splitlines()
           for name in ('F2FS_FS', 'F2FS_FS_XATTR', 'F2FS_FS_POSIX_ACL',
-                       'F2FS_FS_SECURITY', 'SECURITY_NETWORK', 'SECURITY_SELINUX'):
+                       'F2FS_FS_SECURITY', 'SECURITY_NETWORK', 'SECURITY_SELINUX',
+                       'GUNYAH', 'GUNYAH_HYPERCALLS', 'GUNYAH_TIMER', 'GUNYAH_PLATFORM_HOOKS',
+                       'GUNYAH_QCOM_PLATFORM', 'GUNYAH_QCOM_TRUSTED_VM', 'GUNYAH_IRQFD', 'GUNYAH_IOEVENTFD'):
               assert 'CONFIG_' + name + '=y' in config, name
           assert 'CONFIG_LSM="selinux"' in config
           assert any('rootfstype=f2fs' in line for line in config if line.startswith('CONFIG_CMDLINE='))
           print('Fedora F2FS/SELinux configuration verified before the long build')
           PY
+          WT=$(python3 -c "import json;print(json.load(open('build/kernels/release-7.2.9/full-build-pending.json'))['compiler_worktree'])")
+          make -C "$WT" O="$PWD/build/kernels/release-7.2.9" ARCH=arm64 LLVM=1 LLVM_IAS=1 -j4 \
+            drivers/virt/gunyah/ arch/arm64/gunyah/
+
 
       - name: Build kernel
         working-directory: sunuefi
@@ -111,7 +134,7 @@ jobs:
           python3 - <<'PY'
           import json, subprocess
           from pathlib import Path
-          record = json.loads(Path('build/release-7.2.9/source-manifest.json').read_text())
+          record = json.loads(Path('build/release-7.2.9/production-source-manifest.json').read_text())
           subprocess.run([
               'python3', 'tools/build_piano_full_kernel.py',
               '--worktree', record['worktree'],
@@ -143,7 +166,8 @@ jobs:
           tar -I 'zstd -6 -T0' -cf "$GITHUB_WORKSPACE/kernel-sdk-7.2.9.tar.zst" \
             -C "$OUT" .config Module.symvers include/config include/generated \
             arch/arm64/include/generated
-          cp build/release-7.2.9/source-manifest.json "$GITHUB_WORKSPACE/kernel-source-manifest.json"
+          cp build/release-7.2.9/kernel-gunyah-source.json "$GITHUB_WORKSPACE/kernel-gunyah-source.json"
+          cp build/release-7.2.9/production-source-manifest.json "$GITHUB_WORKSPACE/kernel-source-manifest.json"
           cp artifacts/kernels/release-7.2.9/manifest.json "$GITHUB_WORKSPACE/kernel-sdk-manifest.json"
 
       - name: Package kernel
@@ -168,6 +192,7 @@ jobs:
           path: |
             kernel-sdk-7.2.9.tar.zst
             kernel-source-manifest.json
+            kernel-gunyah-source.json
             kernel-sdk-manifest.json
           if-no-files-found: error
           retention-days: 14

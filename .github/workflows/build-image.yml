@@ -9,11 +9,11 @@ on:
         required: true
         default: "rootfs-44-gnome"
       kernel_artifact:
-        description: "具有 F2FS/SELinux 配置的内核 artifact"
+        description: "正式内核 artifact（内建 Gunyah）：kernel-release-7.2.9"
         required: true
         default: "kernel-release-7.2.9"
       runtime_artifact:
-        description: "native Fedora 设备 RPM"
+        description: "正式设备 RPM：piano-fedora-runtime，必须匹配内核摘要"
         required: true
         default: "piano-fedora-runtime"
       size_mib:
@@ -61,13 +61,28 @@ jobs:
           RUNTIME_RUN: ${{ inputs.runtime_run_id }}
         run: |
           set -euo pipefail
+          # 正式产物统一包含 Gunyah；旧实验产物不进入新交付链。
+          test "$KERNEL_ARTIFACT" = kernel-release-7.2.9 || {
+            echo "only production kernel-release-7.2.9 is accepted" >&2; exit 2;
+          }
+          KERNEL_TIER=standard
+          EXPECTED_RUNTIME=piano-fedora-runtime
+          kernel_artifacts=(--artifact "$KERNEL_ARTIFACT" --artifact kernel-sdk-7.2.9)
+          test "$RUNTIME_ARTIFACT" = "$EXPECTED_RUNTIME" || {
+            echo "runtime_artifact $RUNTIME_ARTIFACT does not match kernel tier $KERNEL_TIER (expected $EXPECTED_RUNTIME)" >&2
+            exit 2
+          }
+          echo "kernel_tier=$KERNEL_TIER" >> "$GITHUB_OUTPUT"
           python3 scripts/resolve-artifact-run.py --workflow build-rootfs.yml --artifact "$ROOTFS_ARTIFACT" --output-key rootfs_run
           kernel_args=(); runtime_args=()
           if [ -n "$KERNEL_RUN" ]; then kernel_args+=(--run-id "$KERNEL_RUN"); fi
           if [ -n "$RUNTIME_RUN" ]; then runtime_args+=(--run-id "$RUNTIME_RUN"); fi
-          python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml --artifact "$KERNEL_ARTIFACT" --artifact kernel-sdk-7.2.9 --output-key kernel_run "${kernel_args[@]}"
+          python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml "${kernel_artifacts[@]}" --output-key kernel_run "${kernel_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-device-runtime.yml --artifact "$RUNTIME_ARTIFACT" --output-key runtime_run "${runtime_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-mesa.yml --artifact piano-fedora-mesa --output-key mesa_run
+          # build-ffmpeg.yml 是 workflow_call 复用件，未单独注册；实际 run 的 workflow_id
+          # 是 host-check。按已注册的 host-check 解析，artifact 名仍是 piano-fedora-ffmpeg。
+          python3 scripts/resolve-artifact-run.py --workflow host-check.yml --artifact piano-fedora-ffmpeg --output-key ffmpeg_run
 
       - uses: actions/download-artifact@v4
         with:
@@ -97,14 +112,26 @@ jobs:
           run-id: ${{ steps.source.outputs.mesa_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-fedora-ffmpeg
+          path: build/in/ffmpeg
+          run-id: ${{ steps.source.outputs.ffmpeg_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Unpack into separate component directories
+        env:
+          KERNEL_ARTIFACT: ${{ inputs.kernel_artifact }}
         run: |
           set -euo pipefail
-          mkdir -p build/device-root build/kernel build/runtime build/mesa build/image-tmp
+          mkdir -p build/device-root build/kernel build/runtime build/mesa build/ffmpeg build/image-tmp
           sudo tar -I zstd --numeric-owner --xattrs --xattrs-include='*' --acls --selinux -xf build/in/base/*.tar.zst -C build/device-root
-          tar -I zstd -xf build/in/kernel/*.tar.zst -C build/kernel
+          # 精确选择内核归档，SDK 与运行时仍按独立目录处理。
+          # 只解与 kernel_artifact 同名的那个内核 archive。
+          tar -I zstd -xf "build/in/kernel/$KERNEL_ARTIFACT.tar.zst" -C build/kernel
           tar -I zstd -xf build/in/runtime/*.tar.zst -C build/runtime
           tar -I zstd -xf build/in/mesa/*.tar.zst -C build/mesa
+          tar -I zstd -xf build/in/ffmpeg/*.tar.zst -C build/ffmpeg
           python3 scripts/checkout-sources.py --output build/sources --mode boot
 
       - name: Validate and stage the sealed kernel payload
@@ -116,7 +143,7 @@ jobs:
           kernel_hash = hashlib.sha256(Path('build/kernel/manifest.json').read_bytes()).hexdigest()
           runtime = json.loads(Path('build/runtime/manifest.json').read_text())
           assert runtime['kernel_manifest_sha256'] == kernel_hash, 'runtime/kernel mismatch'
-          for component in ('runtime', 'mesa'):
+          for component in ('runtime', 'mesa', 'ffmpeg'):
               manifest = json.loads(Path(f'build/{component}/manifest.json').read_text())
               for name, item in manifest['rpms'].items():
                   p = Path(f'build/{component}/rpms') / name
@@ -138,6 +165,7 @@ jobs:
               dnf -y --installroot=/workspace/build/device-root/rootfs --releasever="$PIANO_RELEASE" --use-host-config \
                 --setopt=install_weak_deps=False --setopt=localpkg_gpgcheck=0 install \
                 /workspace/build/runtime/rpms/*.rpm /workspace/build/mesa/rpms/*.rpm \
+                /workspace/build/ffmpeg/rpms/*.rpm \
                 erofs-utils device-mapper python3-gobject
             '
 
@@ -145,7 +173,8 @@ jobs:
         run: |
           set -euo pipefail
           sudo python3 scripts/finalize-fedora-rootfs.py --rootfs build/device-root/rootfs \
-            --kernel build/kernel --runtime build/runtime --mesa build/mesa --output build/device-root
+            --kernel build/kernel --runtime build/runtime --mesa build/mesa \
+            --ffmpeg build/ffmpeg --output build/device-root
           sudo python3 - <<'PY'
           import json, sys
           from pathlib import Path
@@ -176,7 +205,7 @@ jobs:
           git init -q "$headers"
           kernel_url=$(python3 -c 'import json;print(json.load(open("sources.lock.json"))["sources"]["linux-piano"]["url"])')
           kernel_commit=$(python3 -c 'import json;print(json.load(open("sources.lock.json"))["sources"]["linux-piano"]["commit"])')
-          git -C "$headers" remote add origin "$kernel_url"
+          git -C "$headers" remote set-url origin "$kernel_url" 2>/dev/null || git -C "$headers" remote add origin "$kernel_url"
           git -C "$headers" sparse-checkout set --cone include/dt-bindings include/uapi
           git -C "$headers" fetch --depth=1 --filter=blob:none origin "$kernel_commit"
           git -C "$headers" checkout --detach FETCH_HEAD
@@ -219,7 +248,8 @@ jobs:
           p = Path('root-image-manifest.json')
           m = json.loads(p.read_text())
           for name, folder in (('rootfs', 'device-root'), ('kernel', 'kernel'),
-                               ('runtime', 'runtime'), ('mesa', 'mesa'), ('initramfs', 'initramfs')):
+                               ('runtime', 'runtime'), ('mesa', 'mesa'),
+                               ('ffmpeg', 'ffmpeg'), ('initramfs', 'initramfs')):
               m[name + '_manifest_sha256'] = hashlib.sha256(Path(f'build/{folder}/manifest.json').read_bytes()).hexdigest()
           p.write_text(json.dumps(m, indent=2) + '\n')
           PY
@@ -229,9 +259,11 @@ jobs:
       - name: Package the same staged root and initramfs
         env:
           KERNEL_RUN: ${{ steps.source.outputs.kernel_run }}
+          KERNEL_ARTIFACT: ${{ inputs.kernel_artifact }}
           ROOTFS_RUN: ${{ steps.source.outputs.rootfs_run }}
           RUNTIME_RUN: ${{ steps.source.outputs.runtime_run }}
           MESA_RUN: ${{ steps.source.outputs.mesa_run }}
+          FFMPEG_RUN: ${{ steps.source.outputs.ffmpeg_run }}
         run: |
           set -euo pipefail
           sudo tar --format=pax --numeric-owner --xattrs --xattrs-include='*' --acls --selinux \
@@ -240,13 +272,16 @@ jobs:
           cp build/kernel/manifest.json kernel-manifest.json
           cp build/runtime/manifest.json runtime-manifest.json
           cp build/mesa/manifest.json mesa-manifest.json
+          cp build/ffmpeg/manifest.json ffmpeg-manifest.json
           sudo cp build/device-root/manifest.json rootfs-manifest.json
           python3 - <<'PY'
           import json, os
           from pathlib import Path
           Path('source-runs.json').write_text(json.dumps({
               'kernel_run': os.environ['KERNEL_RUN'], 'rootfs_run': os.environ['ROOTFS_RUN'],
+              'kernel_artifact': os.environ['KERNEL_ARTIFACT'],
               'runtime_run': os.environ['RUNTIME_RUN'], 'mesa_run': os.environ['MESA_RUN'],
+              'ffmpeg_run': os.environ['FFMPEG_RUN'],
               'image_run': os.environ['GITHUB_RUN_ID'],
               'image_source_commit': os.environ['GITHUB_SHA']}, indent=2) + '\n')
           PY
@@ -265,6 +300,7 @@ jobs:
             kernel-manifest.json
             runtime-manifest.json
             mesa-manifest.json
+            ffmpeg-manifest.json
             rootfs-manifest.json
             image-SHA256SUMS
             source-runs.json

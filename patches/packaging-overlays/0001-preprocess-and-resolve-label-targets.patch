@@ -1,0 +1,71 @@
+diff --git a/tools/package_release.py b/tools/package_release.py
+index 95dc94a..b929ae9 100644
+--- a/tools/package_release.py
++++ b/tools/package_release.py
+@@ -36,22 +36,40 @@ def sha(path):
+ 
+ 
+ def run(argv, **kwargs):
+-    return subprocess.run([str(x) for x in argv], check=True, capture_output=True, text=True, **kwargs)
++    try:
++        return subprocess.run([str(x) for x in argv], check=True, capture_output=True, text=True, **kwargs)
++    except subprocess.CalledProcessError as error:
++        raise ValueError(f'Command failed: {error.cmd}\n{error.stderr}') from error
+ 
+ 
+ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True):
+     """Apply declared board properties to a copy of the captured input."""
+     parsed = read_fdt(board.read_bytes())
+     before = parsed['tree']
+-    compiled, derived = work / 'cpu-model.dtbo', work / 'board-with-cpu-model.dtb'
+-    run(['dtc', '-@', '-I', 'dts', '-O', 'dtb', '-o', compiled, overlay])
++    compiled, derived = work / (overlay.stem + '.dtbo'), work / 'board-with-overlay.dtb'
++    preprocessed = work / (overlay.stem + '.pp.dts')
++    includes = ROOT / 'upstream/linux-piano/include'
++    result = run(['cpp', '-nostdinc', '-undef', '-x', 'assembler-with-cpp',
++                  '-I', includes, overlay])
++    preprocessed.write_text(result.stdout)
++    run(['dtc', '-@', '-I', 'dts', '-O', 'dtb', '-o', compiled, preprocessed])
+     overlay_fdt = read_fdt(compiled.read_bytes())
+     fragments = overlay_fdt['tree']
+     next_phandle = max(parsed['phandles'], default=0) + 1
+     expected = {}
+     for path, properties in fragments.items():
+         if path.count('/') == 1 and path.startswith('/fragment@'):
+-            target = properties['target-path'].rstrip(b'\0').decode()
++            if 'target-path' in properties:
++                target = properties['target-path'].rstrip(b'\0').decode()
++            else:
++                require(not cpu_only, 'CPU overlay must declare target-path')
++                reference = (path + ':target:0').encode()
++                labels = [label for label, refs in fragments.get('/__fixups__', {}).items()
++                          if reference in refs.split(b'\0')]
++                require(len(labels) == 1, 'Board overlay target must name one base symbol')
++                symbol = before.get('/__symbols__', {}).get(labels[0])
++                require(symbol is not None, 'Board overlay base symbol is missing: ' + labels[0])
++                target = symbol.rstrip(b'\0').decode()
+             payload = fragments[path + '/__overlay__']
+             require(target in before, 'Board overlay must target an existing node')
+             if cpu_only:
+@@ -69,8 +87,9 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True):
+                     handle = struct.pack('>I', next_phandle)
+                     next_phandle += 1
+                     before[target]['phandle'] = handle
+-                properties.pop('target-path')
+-                properties['target'] = handle
++                if 'target-path' in properties:
++                    properties.pop('target-path')
++                    properties['target'] = handle
+             expected[target] = payload
+     require(expected, 'Board overlay has no targets')
+     overlay_input = board
+@@ -86,6 +105,9 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True):
+             output_fdt['boot_cpu'] == parsed['boot_cpu'],
+             'Board overlay changed reserved memory or boot CPU')
+     after = output_fdt['tree']
++    require(all(output_fdt['phandles'].get(handle) == path
++                for handle, path in parsed['phandles'].items()),
++            'Board overlay overwrote an inherited phandle; use libfdt 1.8.1')
+     if cpu_only:
+         for target, payload in expected.items():
+             for key, value in payload.items():

@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,19 @@ import urllib.request
 from pathlib import Path
 
 from piano_artifacts import inspect_kernel, sha256
+
+# iio-sensor-proxy 3.9 的 meson_options.txt 把 ssc-support 声明为 feature/auto，
+# 而 src/meson.build 用 get_option('ssc-support').enabled() 决定是否编入
+# drv-ssc-*。auto 在 libssc 存在时仍是 not enabled（auto≠enabled），SSC 后端
+# 会被静默跳过：ELF 不链接 libssc，设备上 service 因拿不到 sensor 而秒退。
+# Debian 的 debian/rules 在 arm64 显式传 -Dssc-support=enabled，Fedora 侧必须同样显式。
+SSC_DRIVER_MARKERS = ("ssc-accel", "ssc-proximity", "ssc-light", "ssc-compass")
+# 构建机已装 binutils；用它的 readelf 读 DT_NEEDED，不自己解析 ELF。
+SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]")
+
+# The locked SunUEFI includes the static camera helper's local-video-group fix.
+# Reversing that one upstream patch reproduces the previous 1b5f1eee input.
+CAMERAD_ADAPTER_INPUT_SHA256 = "e5cfcb2a71834a9031e730e258d4035c45670d340994e700b44ff79d89b2f7ba"
 
 
 def run(command, **kw):
@@ -30,7 +44,26 @@ def put(source, destination, executable=False):
         destination.chmod(0o755 if executable else 0o644)
 
 
-def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0"):
+def stage_power_overlay(sunuefi, payload):
+    """Install only the hardware/session-owned files from GNOME's power overlay."""
+    overlay = Path(sunuefi) / "linux/desktops/gnome/power-overlay"
+    payload = Path(payload)
+    relatives = (
+        "usr/lib/piano/power-button",
+        "usr/lib/systemd/user/piano-power-button.service",
+        "etc/udev/rules.d/70-piano-power-button.rules",
+        "etc/systemd/logind.conf.d/piano.conf",
+        "etc/dconf/db/local.d/00-power",
+    )
+    for relative in relatives:
+        source = overlay / relative
+        if not source.is_file():
+            raise FileNotFoundError("locked power overlay file is missing: " + str(source))
+        put(source, payload / relative, relative == "usr/lib/piano/power-button")
+    return list(relatives)
+
+
+def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0", license_expression="MIT AND Apache-2.0 AND BSD-2-Clause-Patent AND BSD-3-Clause AND GPL-2.0-only"):
     """自有 RPM 只拥有实际载荷文件，不声明拥有整个 /usr 或系统目录。"""
     top = output / (name + "-rpmbuild")
     for folder in ("BUILD", "BUILDROOT", "SPECS", "SOURCES", "RPMS", "SRPMS"):
@@ -46,7 +79,7 @@ def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0"
         "%global debug_package %{nil}\n%global _build_id_links none\n"
         f"Name: {name}\nVersion: {version}\nRelease: 1%{{?dist}}\n"
         "Summary: Piano native runtime built from locked sources\n"
-        "License: MIT AND Apache-2.0 AND BSD-2-Clause-Patent AND GPL-2.0-only\n"
+        f"License: {license_expression}\n"
         f"Source0: {name}-{version}.tar.gz\n"
         + "".join("Requires: " + r + "\n" for r in requires)
         + "".join("Provides: " + r + "\n" for r in provides)
@@ -82,6 +115,82 @@ def sensors_source(output, name, version, archive_name, digest):
     return roots[0]
 
 
+def verify_ssc_runtime(binary):
+    """确认产物真的链接了 libssc 且编入 SSC 驱动，而不是配置被静默跳过。
+
+    用构建机 binutils 的 readelf -dW 读 DT_NEEDED，只看产物本身；meson 的 log 或
+    config.h 在后端被跳过或链接失败时都可能仍是"配置成功"。源码标记读整文件即可，
+    .rodata 里的 udev 类型字面量与动态节无关。"""
+    readelf = shutil.which("readelf")
+    if readelf is None:
+        raise ValueError("binutils readelf unavailable; cannot verify libssc linkage")
+    completed = subprocess.run([readelf, "-dW", str(binary)],
+                               capture_output=True, text=True)
+    if completed.returncode != 0:
+        raise ValueError("readelf cannot read iio-sensor-proxy output: " + completed.stderr.strip())
+    output = completed.stdout
+    linked = SSC_NEEDED.findall(output)
+    if not linked:
+        raise ValueError(
+            "iio-sensor-proxy ELF does not link libssc; meson ssc-support was not "
+            "enabled (needs -Dssc-support=enabled)")
+    raw = Path(binary).read_bytes()
+    missing = [m for m in SSC_DRIVER_MARKERS if m.encode() not in raw]
+    if missing:
+        raise ValueError("iio-sensor-proxy ELF is missing SSC driver markers " + repr(missing))
+    return {"libssc": sorted(set(linked)), "ssc_driver_markers": list(SSC_DRIVER_MARKERS),
+            "sha256": sha256(binary), "bytes": Path(binary).stat().st_size}
+
+
+def sensor_meson_options(name):
+    """iio-sensor-proxy 必须显式 -Dssc-support=enabled，否则 feature/auto 静默跳过 SSC。"""
+    return ["-Dssc-support=enabled"] if name == "iio-sensor-proxy" else []
+
+
+def build_fastrpc_daemon(source, payload, build):
+    """Fedora 的 fastrpc RPM 只有库；从同版上游构建 dlopen listener 的守护进程。"""
+    lock = json.loads((Path(__file__).resolve().parents[1] / "sources.lock.json").read_text())["sources"]["fastrpc"]
+    head = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+    dirty = subprocess.check_output(["git", "-C", str(source), "status", "--porcelain"], text=True).strip()
+    if head != lock["commit"] or dirty:
+        raise ValueError("FastRPC daemon source identity/cleanliness mismatch")
+    executable = build / "adsprpcd"
+    # 与上游 src/Makefile.am 的 adsprpcd_CFLAGS/LDADD 一致。共享库由 Fedora
+    # 拥有，不再编译或覆盖另一套 libadsprpc/libadsp_default_listener。
+    run(["gcc", "-O2", "-Wall", "-Wextra", "-I", source / "inc",
+         "-DDEFAULT_DOMAIN_ID=0", "-DUSE_SYSLOG", "-DUSE_ADSP",
+         source / "src/dsprpcd.c", "-ldl", "-o", executable])
+    run([executable, "--help"], timeout=10)
+    put(executable, payload / "usr/bin/adsprpcd", True)
+    put(source / "LICENSE.txt", payload / "usr/share/licenses/piano-runtime/fastrpc-LICENSE.txt")
+    return {"commit": head, "source_sha256": sha256(source / "src/dsprpcd.c"),
+            "binary_sha256": sha256(executable), "listener": "libadsp_default_listener.so.1"}
+
+
+def adapt_camerad_for_fedora(camera, proof):
+    """向已核对的上游输出应用 GCC 和真机管线修复，保持输入摘要门槛。"""
+    actual = sha256(camera)
+    if (proof.get("effective_source_sha256") != CAMERAD_ADAPTER_INPUT_SHA256
+            or actual != CAMERAD_ADAPTER_INPUT_SHA256):
+        # 门槛拒绝的是"没核对过的适配输出"，不是"GCC 补丁坏了"。它也会在
+        # --sunuefi 指向非锁定 commit 时触发：那种 checkout 的适配器只有 5 个
+        # 相机补丁（缺 piano-camerad-local-video-group），摘要自然不同，看起来
+        # 却像补丁失配。锁定 commit 的适配器有 6 个补丁，摘要逐位等于这个常量
+        # （2026-10-13 用锁定树实测复现）。摘要一起打出来，好判断是哪一端变了。
+        raise ValueError(
+            "camera adapter input changed; review the GCC patch against the pinned "
+            f"SunUEFI commit: expected {CAMERAD_ADAPTER_INPUT_SHA256[:12]}…, "
+            f"got {actual[:12]}…, adapter proof "
+            f"{str(proof.get('effective_source_sha256'))[:12]}…")
+    gcc_patch = Path(__file__).resolve().parents[1] / "patches/runtime/camerad-gcc-bounds.patch"
+    run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", gcc_patch], cwd=camera.parent.parent)
+    proof["fedora_patch_sha256"] = sha256(gcc_patch)
+    route_patch = gcc_patch.with_name("camerad-owned-pix-route.patch")
+    run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", route_patch], cwd=camera.parent.parent)
+    proof["fedora_route_patch_sha256"] = sha256(route_patch)
+    proof["fedora_effective_source_sha256"] = sha256(camera)
+
+
 def build_sensors(sun, output):
     """取固定源码而非 Debian 二进制，在 Fedora 库 ABI 上构建。"""
     sensor = output / "sensor-source"
@@ -100,13 +209,20 @@ def build_sensors(sun, output):
     source_records = {}
     for name, version, archive, digest in rows:
         source = sensors_source(output, name, version, archive, digest)
-        patches = list((sensor / "patches" / name).glob("*.patch"))
-        for patch in sorted(patches):
+        patches = sorted((sensor / "patches" / name).glob("*.patch"))
+        if name == "libssc":
+            patches.append(Path(__file__).resolve().parents[1] /
+                           "patches/runtime/libssc-wait-for-qmi.patch")
+        for patch in patches:
             run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", patch], cwd=source)
         build = output / (name + "-build")
-        run(["meson", "setup", build, source, "--prefix=/usr", "--libdir=lib64",
-             "--buildtype=release"])
+        setup = ["meson", "setup", build, source, "--prefix=/usr", "--libdir=lib64",
+                 "--buildtype=release", *sensor_meson_options(name)]
+        run(setup)
         run(["meson", "compile", "-C", build, "-j", "4"])
+        elf_proof = None
+        if name == "iio-sensor-proxy":
+            elf_proof = verify_ssc_runtime(build / "src" / "iio-sensor-proxy")
         payload = output / (name + "-payload")
         run(["meson", "install", "-C", build], env={**os.environ, "DESTDIR": str(payload)})
         rpm_package(name, payload, output, version=version)
@@ -115,6 +231,8 @@ def build_sensors(sun, output):
              "--setopt=localpkg_gpgcheck=0"])
         source_records[name] = {"version": version, "archive_sha256": digest,
                                 "patches": {p.name: sha256(p) for p in patches}}
+        if elf_proof is not None:
+            source_records[name]["elf"] = elf_proof
     return source_records
 
 
@@ -131,6 +249,8 @@ def build(args):
     import build_piano_runtime_helpers as runtime
     import stage_piano_ram_hardware as hardware
     import build_boot_request
+    from piano_device_integration import integration_source, build_touch, adapt_camera, stage_payload, build_performance
+    device_source, device_pin = integration_source(sun.parent, output, run)
     public = sun / "upstream/debian-piano-current"
     runtime.repository(public, runtime.PUBLIC_COMMIT)
     payload = output / "piano-payload"
@@ -141,12 +261,8 @@ def build(args):
     flags = [compiler, "-O2", "-Wall", "-Wextra", "-Werror"]
     touch, touch_proof = runtime.derive_touch_source(public, build)
     camera, camera_proof = runtime.derive_camerad_source(public, build)
-    if camera_proof['effective_source_sha256'] != '1b5f1eee73d4cad6d91791c4d384b53f15b96518d15d75b2e446f02309982eb2':
-        raise ValueError('camera adapter input changed; review the GCC patch')
-    gcc_patch = Path(__file__).resolve().parents[1] / 'patches/runtime/camerad-gcc-bounds.patch'
-    run(['patch', '--batch', '--forward', '--fuzz=0', '-p1', '-i', gcc_patch], cwd=camera.parent.parent)
-    camera_proof['fedora_patch_sha256'] = sha256(gcc_patch)
-    camera_proof['fedora_effective_source_sha256'] = sha256(camera)
+    adapt_camerad_for_fedora(camera, camera_proof)
+    adapt_camera(camera, device_source, camera_proof, run, sha256)
     pen_files, pen_proof = runtime.build_pen_core(build, flags)
     helpers = dict(pen_files)
     for name, (relative, pin, destination) in (runtime.PUBLIC_SOURCES | runtime.BSP_SOURCES).items():
@@ -158,11 +274,15 @@ def build(args):
         obj, exe = build / (name + ".o"), build / name
         effective = touch if name == "piano-touch-view" else camera if name == "piano-camerad" else source
         if name == "piano-touch-view":
-            item = runtime.build_touch_binary(build, flags, args.uapi, effective, pen_proof)
+            item = build_touch(runtime, build, flags, args.uapi, effective, pen_proof,
+                               device_source, run, sha256)
+            touch_proof.update(item)
         else:
             run([*flags, "-isystem", args.uapi / "include", "-Dmain=PianoOriginalMain", "-c", effective, "-o", obj])
             run([*flags, "-static", entry, obj, "-lm", "-o", exe])
             item = runtime.verify_elf(exe)
+            if name == "piano-camerad":
+                camera_proof["binary_sha256"] = sha256(exe)
         run([exe, "--help"], timeout=10)
         helpers[destination] = {**item, "file": name, "mode": 0o755}
     for destination, row in helpers.items():
@@ -182,6 +302,11 @@ def build(args):
     for p in (sun / "linux/bsp/common").rglob("*"):
         if p.is_file() or p.is_symlink():
             put(p, payload / p.relative_to(sun / "linux/bsp/common"), p.stat().st_mode & 0o111)
+    stage_power_overlay(sun, payload)
+    integration_proof = stage_payload(device_source, device_pin, payload, touch_proof,
+                                      camera_proof, put, sha256, args.finger_config_dir)
+    from piano_runtime_extras import package_session_fixes
+    session_proof = package_session_fixes(output, rpm_package, put, sha256)
     for name in ("cpufreq-start", "pstore-save"):
         put(public / "rootfs/overlay/usr/lib/piano" / name, payload / "usr/lib/piano" / name, True)
     put(Path(shutil.which("busybox")), payload / "usr/lib/piano/busybox", True)
@@ -214,6 +339,7 @@ def build(args):
                        ("90-xiaomi-mipps-auth.rules", "usr/lib/udev/rules.d/90-xiaomi-mipps-auth.rules")):
         put(mipps / name, payload / path, name == "xiaomi-mipps-auth")
     sensor_proof = build_sensors(sun, output)
+    fastrpc_proof = build_fastrpc_daemon(sun.parent / "fastrpc", payload, build)
     sensor = output / "sensor-source"
     integration = output / "piano-sensors"
     shutil.copytree(sensor / "piano-sensors", integration)
@@ -222,18 +348,34 @@ def build(args):
         put(integration / name, payload / "usr/libexec/piano-sensors" / name, True)
     for name in ("adsprpcd-sensorspd.service", "piano-sensors-import.service"):
         put(integration / "debian" / ("piano-sensors." + name), payload / "usr/lib/systemd/system" / name)
+    # Fedora merged-usr 的 canonical 路径；不要依赖 Debian 的 /usr/sbin 布局。
+    dropin = payload / "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf"
+    dropin.parent.mkdir(parents=True, exist_ok=True)
+    dropin.write_text("[Service]\nExecStart=\nExecStart=/usr/bin/adsprpcd sensorspd\n")
+    fastrpc_proof["service_sha256"] = {
+        name: sha256(payload / name) for name in (
+            "usr/lib/systemd/system/adsprpcd-sensorspd.service",
+            "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf")}
     put(integration / "debian/piano-sensors.udev", payload / "usr/lib/udev/rules.d/70-piano-sensors.rules")
     put(integration / "59-fastrpc-remoteproc.rules", payload / "etc/udev/rules.d/59-fastrpc-remoteproc.rules")
     put(integration / "iio-sensor-proxy-piano.conf", payload / "etc/systemd/system/iio-sensor-proxy.service.d/piano.conf")
+    from piano_runtime_extras import build as build_extras
+    extras_proof = build_extras(sun.parent, output / "extras", rpm_package, put, sha256, run)
+    performance_proof = build_performance(sun.parent, output, rpm_package, put, run, sha256)
+    for p in (output / "extras/rpms").glob("*.rpm"):
+        shutil.copyfile(p, output / "rpms" / p.name)
     provenance = {"status": "FEDORA_RUNTIME_BUILT_NOT_DEVICE_VERIFIED",
                   "kernel_release": record["kernel_release"], "kernel_manifest_sha256": kernel_hash,
                   "touch": touch_proof, "camera": camera_proof, "boot_request": request,
-                  "sensor_sources": sensor_proof, "device_tested": False}
+                  "sensor_sources": sensor_proof, "fastrpc_daemon": fastrpc_proof,
+                  "extras": extras_proof, "session_fixes": session_proof,
+                  "integration": integration_proof, "performance": performance_proof, "device_tested": False}
     dest = payload / "usr/share/piano-provenance/fedora-runtime.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(provenance, indent=2) + "\n")
-    rpm_package("piano-runtime", payload, output,
-                requires=("python3", "busybox", "kmod", "util-linux", "fastrpc", "qrtr", "rmtfs", "tqftpserv", "alsa-utils"))
+    rpm_package("piano-runtime", payload, output, version="0.2.0",
+                requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
+                          "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils"))
     provenance["rpms"] = {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
                           for p in (output / "rpms").glob("*.rpm")}
     (output / "manifest.json").write_text(json.dumps(provenance, indent=2) + "\n")
@@ -241,6 +383,8 @@ def build(args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--finger-config-dir", type=Path, required=True,
+                    help="私有完整原厂 piano_nova_{csot,boe}_thp_config.ini 目录；精简笔配置不能替代")
     for name in ("sunuefi", "kernel", "uapi", "output"):
         ap.add_argument("--" + name, type=Path, required=True)
     ap.add_argument("--loopback", type=Path, required=True)

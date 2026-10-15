@@ -1,0 +1,113 @@
+From aad96e94737ba1716a5c4af7a3efa431bd49f16f Mon Sep 17 00:00:00 2001
+From: piano-fedora-test <dev@piano.invalid>
+Date: Thu, 15 Oct 2026 18:17:46 +0800
+Subject: [PATCH] linux: adopt the live Gunyah resource manager capabilities
+
+The Gunyah resource manager is reached through two capabilities (TX and
+RX) that ABL mints per boot and hands down in the inherited FDT. The
+payload's composed DTB carries the pair captured when that image was
+built, so on every later boot the driver calls the hypervisor with stale
+ids: the first RM request fails with ARG_INVAL and the send permit is
+never returned, which parks every caller inside gunyah_rm_call and blocks
+VM_START.
+
+Before handing the tree to Linux, copy the 16-byte reg of the node whose
+compatible is "gunyah-resource-manager" from the inherited FDT the
+product already validated. Only the value moves, never the shape: a tree
+without exactly one such node, or one whose reg is not the two u64 ids
+the driver reads, keeps the payload property and reports why. The node's
+unit-address keeps the build-time id because the driver matches on the
+compatible and reads the capability pair from reg.
+---
+ uefi/core/PianoRawLinuxBoot.c | 56 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 56 insertions(+)
+
+diff --git a/uefi/core/PianoRawLinuxBoot.c b/uefi/core/PianoRawLinuxBoot.c
+index 78a4b9c..8d123a4 100644
+--- a/uefi/core/PianoRawLinuxBoot.c
++++ b/uefi/core/PianoRawLinuxBoot.c
+@@ -22,6 +22,7 @@
+ #define RAW_MEMORY_REG_MAX 1024U
+ #define RAW_DDR_REGIONS 4U
+ #define RAW_DDR_REGION_MAX 64U
++#define RAW_RM_REG_BYTES 16U
+ typedef struct {
+   EFI_HANDLE Image;EFI_SYSTEM_TABLE *SystemTable;EFI_LOADED_IMAGE_PROTOCOL *Identity,Loaded;
+   BOOLEAN Registered,InTake,Captured,Prepared,Entered;
+@@ -252,6 +253,59 @@ STATIC EFI_STATUS ApplyLiveMemory(VOID *Tree,CONST LIVE_MEMORY *In){
+   DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_MEMORY adopted=1 was=%lu now=%lu banks=%u\n",Before,In->Total,In->Banks));
+   return EFI_SUCCESS;
+ }
++// The Gunyah resource manager is reached with two capabilities the bootloader
++// mints for this boot and hands down in the inherited FDT. The payload's
++// composed DTB carries the pair captured when that image was built, so a later
++// boot calls the hypervisor with stale ids: the first RM request fails with
++// ARG_INVAL and every sender then waits on a permit that never returns. Copy
++// the live pair into the tree handed to Linux. An absent, unreadable or
++// differently shaped inherited property keeps the payload value and is logged,
++// because this path can log a mismatch but can never invent a capability.
++typedef struct {BOOLEAN Present;UINT8 Reg[RAW_RM_REG_BYTES];} LIVE_RM;
++STATIC CONST CHAR8 *CONST mRawRmCompatible="gunyah-resource-manager";
++STATIC BOOLEAN RmCapsPlausible(CONST UINT8 *Reg){
++ return Reg!=NULL&&SwapBytes64(ReadUnaligned64((CONST UINT64 *)Reg))!=0&&
++ SwapBytes64(ReadUnaligned64((CONST UINT64 *)(Reg+8)))!=0;
++}
++// Two matching nodes would make "the" capability pair an assumption, so both
++// the inherited and the target tree only ever hand over an unambiguous one.
++STATIC INT32 RmNode(CONST VOID *Fdt){return FdtNodeOffsetByCompatible(Fdt,-1,mRawRmCompatible);}
++STATIC BOOLEAN RmAmbiguous(CONST VOID *Fdt,INT32 Node){
++  return Node>=0&&FdtNodeOffsetByCompatible(Fdt,Node,mRawRmCompatible)>=0;
++}
++STATIC VOID CaptureLiveRm(LIVE_RM *Out,CONST VOID *Inherited){
++  ZeroMem(Out,sizeof(*Out));
++  if(Inherited==NULL||FdtCheckHeader(Inherited)||FdtTotalSize(Inherited)>RAW_DTB_MAX){
++    DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_RM inherited=absent\n"));return;}
++  INT32 Node=RmNode(Inherited);
++  if(RmAmbiguous(Inherited,Node)){DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_RM inherited=ambiguous\n"));return;}
++  if(Node<0){DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_RM inherited=no-resource-manager\n"));return;}
++  INT32 Len=0;CONST UINT8 *Reg=FdtGetProp(Inherited,Node,"reg",&Len);
++  if(Reg==NULL||Len!=(INT32)RAW_RM_REG_BYTES||!RmCapsPlausible(Reg)){
++    DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_RM inherited=implausible bytes=%d\n",Len));return;}
++  CopyMem(Out->Reg,Reg,RAW_RM_REG_BYTES);Out->Present=TRUE;
++  DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_RM captured=1 tx=%lx rx=%lx\n",
++    SwapBytes64(ReadUnaligned64((CONST UINT64 *)Out->Reg)),
++    SwapBytes64(ReadUnaligned64((CONST UINT64 *)(Out->Reg+8)))));
++}
++STATIC EFI_STATUS ApplyLiveRm(VOID *Tree,CONST LIVE_RM *In){
++  if(!In->Present)return EFI_SUCCESS;
++  INT32 Node=RmNode(Tree);
++  if(RmAmbiguous(Tree,Node)){DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_RM target=ambiguous\n"));return EFI_SUCCESS;}
++  if(Node<0){DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_RM target=no-resource-manager\n"));return EFI_SUCCESS;}
++  INT32 Len=0;CONST UINT8 *Was=FdtGetProp(Tree,Node,"reg",&Len);
++  // Values only, never the shape: the driver reads two u64 ids, and a target
++  // property this boot never audited is reported rather than rewritten.
++  if(Was==NULL||Len!=(INT32)RAW_RM_REG_BYTES){
++    DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_RM target=shape-kept bytes=%d\n",Len));return EFI_SUCCESS;}
++  UINT64 WasTx=SwapBytes64(ReadUnaligned64((CONST UINT64 *)Was));
++  UINT64 WasRx=SwapBytes64(ReadUnaligned64((CONST UINT64 *)(Was+8)));
++  if(FdtSetProp(Tree,Node,"reg",In->Reg,RAW_RM_REG_BYTES))return EFI_COMPROMISED_DATA;
++  DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_RM adopted=1 was=%lx/%lx now=%lx/%lx\n",WasTx,WasRx,
++    SwapBytes64(ReadUnaligned64((CONST UINT64 *)In->Reg)),
++    SwapBytes64(ReadUnaligned64((CONST UINT64 *)(In->Reg+8)))));
++  return EFI_SUCCESS;
++}
+ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST PIANO_RAW_LINUX_REPORT **Out){
+  if(!Out)return EFI_INVALID_PARAMETER;*Out=NULL;
+  if(!mRaw.Captured||mRaw.Prepared||Image!=mRaw.Image||!Live()||!SameImage()||!Clean(O))return EFI_ACCESS_DENIED;
+@@ -276,11 +330,13 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST P
+  .Dtb=RAW_DTB,.Initrd=RAW_INITRD,.InitrdBytes=P->Ramdisk.Bytes,.Image=Image,.Identity=mRaw.Identity,.Token=mRaw.Token};
+  if(!Hash(Kernel,(UINTN)P->Kernel.Bytes,R.KernelSha)||!Hash(Bytes+P->Ramdisk.Offset,(UINTN)P->Ramdisk.Bytes,R.InitrdSha))return EFI_DEVICE_ERROR;
+  LIVE_MEMORY Live;CaptureLiveMemory(&Live,O->Config.Fdt);
++ LIVE_RM Rm;CaptureLiveRm(&Rm,O->Config.Fdt);
+  CopyMem((VOID *)(UINTN)Address,Kernel,(UINTN)P->Kernel.Bytes);
+  if(Span>P->Kernel.Bytes)ZeroMem((VOID *)(UINTN)(Address+P->Kernel.Bytes),(UINTN)(Span-P->Kernel.Bytes));
+  CopyMem((VOID *)(UINTN)RAW_INITRD,Bytes+P->Ramdisk.Offset,(UINTN)P->Ramdisk.Bytes);
+  VOID *Tree=(VOID *)(UINTN)RAW_DTB;if(FdtOpenInto(InputDtb,Tree,(INT32)Capacity))return EFI_COMPROMISED_DATA;
+  E=ApplyLiveMemory(Tree,&Live);if(E!=EFI_SUCCESS)return E;
++ E=ApplyLiveRm(Tree,&Rm);if(E!=EFI_SUCCESS)return E;
+  E=PianoPanelSelectDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
+  INT32 Chosen=FdtPathOffset(Tree,"/chosen");if(Chosen<0)return EFI_COMPROMISED_DATA;
+  UINT64 Start=SwapBytes64(RAW_INITRD),End=SwapBytes64(RAW_INITRD+P->Ramdisk.Bytes);
+-- 
+2.54.0
+

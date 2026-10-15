@@ -1,0 +1,304 @@
+diff --git a/packaging/org.librevm.Daemon1.conf b/packaging/org.librevm.Daemon1.conf
+--- a/packaging/org.librevm.Daemon1.conf
++++ b/packaging/org.librevm.Daemon1.conf
+@@ -24,7 +24,6 @@
+   </policy>
+ 
+   <policy group="librevm">
+-    <allow own="org.librevm.Daemon1"/>
+     <allow send_destination="org.librevm.Daemon1"/>
+     <allow receive_sender="org.librevm.Daemon1"/>
+   </policy>
+diff --git a/packaging/librevm-daemon.service b/packaging/librevm-daemon.service
+--- a/packaging/librevm-daemon.service
++++ b/packaging/librevm-daemon.service
+@@ -2,6 +2,7 @@
+ Description=librevm virtual machine manager
+ Documentation=https://github.com/code002-2/librevm
+ # The daemon talks to the system bus and needs /dev/gunyah, which the kernel creates.
++ConditionPathExists=/dev/gunyah
+ After=dbus.service
+ Wants=dbus.service
+ 
+@@ -36,7 +37,7 @@
+ NoNewPrivileges=yes
+ ProtectHome=read-only
+ ProtectSystem=strict
+-ReadWritePaths=/var/lib/librevm /run/librevm /var/log/librevm-gui.log /tmp
++ReadWritePaths=/var/lib/librevm /run/librevm /var/log/librevm
+ PrivateTmp=no
+ ProtectKernelTunables=no
+ ProtectControlGroups=yes
+diff --git a/scripts/librevm-gui-session b/scripts/librevm-gui-session
+--- a/scripts/librevm-gui-session
++++ b/scripts/librevm-gui-session
+@@ -21,8 +21,10 @@
+ # Logging must never be able to kill the launch: the shell runs this as the desktop
+ # user, and a root-owned log file cannot be appended to by that user. Test first,
+ # and fall back to somewhere always writable.
+-PREFERRED=/var/log/librevm-gui.log
+-FALLBACK=/tmp/librevm-gui.log
++STATE=${XDG_STATE_HOME:-$HOME/.local/state}/librevm
++mkdir -p "$STATE" || exit 1
++PREFERRED=$STATE/gui.log
++FALLBACK=$STATE/gui-fallback.log
+ 
+ if ( : >> "$PREFERRED" ) 2>/dev/null; then
+     LOG=$PREFERRED
+diff --git a/crates/librevm-core/src/config.rs b/crates/librevm-core/src/config.rs
+--- a/crates/librevm-core/src/config.rs
++++ b/crates/librevm-core/src/config.rs
+@@ -90,7 +90,7 @@
+ 
+     /// Run crosvm without its minijail sandbox. Needed on systems without a
+     /// usable `/var/empty`, and for the console to attach cleanly.
+-    #[serde(default = "default_true")]
++    #[serde(default)]
+     pub disable_sandbox: bool,
+ }
+ 
+@@ -110,7 +110,7 @@
+             protection: Protection::default(),
+             firmware: None,
+             crosvm: None,
+-            disable_sandbox: true,
++            disable_sandbox: false,
+         }
+     }
+ }
+@@ -733,6 +733,11 @@
+                 cmdline: default_cmdline(),
+             },
+             console: ConsoleConfig::default(),
++            serial: SerialConfig::default(),
++            disks: Vec::new(),
++            shared_dirs: Vec::new(),
++            network: NetConfig::default(),
++            gpu: GpuConfig::default(),
+             description: None,
+         }
+     }
+diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backend.rs
+--- a/crates/librevm-core/src/backend.rs
++++ b/crates/librevm-core/src/backend.rs
+@@ -85,31 +85,19 @@
+         .unwrap_or(false)
+ }
+ 
+-/// Is Gunyah actually usable, as opposed to merely present?
+-///
+-/// `/dev/gunyah` on its own is not enough: a stale device node survives a module
+-/// reload, and crosvm needs the resource manager behind it. The module list is the
+-/// honest check, because the node only appears once the driver has bound.
++/// A registered misc device works for both built-in and modular Gunyah.
++/// Checking /proc/modules rejects the production built-in driver; a stale
++/// /dev node alone must not report readiness after driver removal.
+ pub fn gunyah_ready() -> bool {
+-    if !Path::new(GUNYAH_NODE).exists() {
+-        return false;
+-    }
+-    modules_loaded(&[
+-        "gunyah",
+-        "gunyah_hypercall",
+-        "gunyah_rsc_mgr",
+-    ])
+-}
+-
+-/// Read `/proc/modules` and report whether every name is loaded.
+-fn modules_loaded(names: &[&str]) -> bool {
+-    let Ok(text) = std::fs::read_to_string("/proc/modules") else {
+-        return false;
+-    };
+-    names.iter().all(|want| {
+-        text.lines()
+-            .any(|line| line.split_whitespace().next() == Some(*want))
+-    })
++    gunyah_ready_at(Path::new(GUNYAH_NODE), Path::new("/sys/class/misc/gunyah"))
++}
++
++fn gunyah_ready_at(node: &Path, registration: &Path) -> bool {
++    use std::os::unix::fs::FileTypeExt;
++    std::fs::metadata(node)
++        .map(|m| m.file_type().is_char_device())
++        .unwrap_or(false)
++        && registration.exists()
+ }
+ 
+ /// Find a program that can install the Gunyah modules.
+@@ -625,6 +613,13 @@
+     use super::*;
+     use crate::config::*;
+ 
++    #[test]
++    fn built_in_readiness_requires_a_character_device_and_registration() {
++        assert!(gunyah_ready_at(Path::new("/dev/null"), Path::new("/sys/class")));
++        assert!(!gunyah_ready_at(Path::new("/dev/null"), Path::new("/nonexistent-gunyah")));
++        assert!(!gunyah_ready_at(Path::new("/etc/passwd"), Path::new("/sys/class")));
++    }
++
+     fn vm() -> VmConfig {
+         VmConfig {
+             name: "t".into(),
+@@ -637,6 +632,11 @@
+                 cmdline: "console=ttyS0 earlycon".into(),
+             },
+             console: ConsoleConfig::default(),
++            serial: SerialConfig::default(),
++            disks: Vec::new(),
++            shared_dirs: Vec::new(),
++            network: NetConfig::default(),
++            gpu: GpuConfig::default(),
+             description: None,
+         }
+     }
+@@ -656,11 +656,6 @@
+             &det(),
+             Path::new("/usr/bin/crosvm"),
+             &ConsoleSink::Stdout,
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+             Path::new("/run/librevm"),
+         )
+         .unwrap();
+@@ -719,11 +714,6 @@
+             Path::new("/c"),
+             &ConsoleSink::UnixStream(PathBuf::from("/tmp/nope/x.sock")),
+             Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+         )
+         .unwrap();
+         let joined = args.join(" ");
+diff --git a/crates/librevm-core/src/image.rs b/crates/librevm-core/src/image.rs
+--- a/crates/librevm-core/src/image.rs
++++ b/crates/librevm-core/src/image.rs
+@@ -1388,11 +1388,15 @@
+     #[test]
+     fn the_cache_path_comes_from_the_url() {
+         let dir = Path::new("/tmp/images");
+-        let e = find("alpine-3.21").unwrap();
++        let catalogue = vec![ImageEntry::from_url(
++            "https://example.invalid/alpine-minirootfs-3.21.3-aarch64.tar.gz",
++            Compression::Gzip,
++        )];
++        let e = find(&catalogue, "from-url").unwrap();
+         let p = cache_path(dir, e);
+         assert_eq!(
+             p.file_name().unwrap().to_str().unwrap(),
+-            "alpine-minirootfs-3.21.3-aarch64.tar.gz"
++            "from-url-alpine-minirootfs-3.21.3-aarch64.tar.gz"
+         );
+         assert!(p.starts_with(cache_dir(dir)));
+     }
+diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backend.rs
+--- a/crates/librevm-core/src/backend.rs
++++ b/crates/librevm-core/src/backend.rs
+@@ -275,4 +275,4 @@
+     args.push(vm.cpus.to_string());
+-
+-    if vm.hypervisor.disable_sandbox {
++    // The pinned Gunyah backend does not handle PAGE_FAULT exits (reason 3) on this target.
++    if vm.hypervisor.disable_sandbox || resolved.hypervisor == Hypervisor::Gunyah {
+         args.push("--disable-sandbox".to_string());
+@@ -671,2 +671,3 @@
+         assert!(joined.contains("--cpus 2"));
++        assert!(joined.contains("--disable-sandbox"));
+         assert!(joined.contains("earlycon"));
+@@ -671,5 +672,20 @@
+         assert_eq!(args.last().unwrap(), "/bin/sh");
+     }
+-
++    #[test]
++    fn kvm_keeps_the_sandbox_for_default_config() {
++        let mut resolved = det();
++        resolved.hypervisor = Hypervisor::Kvm;
++        resolved.node = Some(PathBuf::from(KVM_NODE));
++        let args = build_command(
++            &vm(),
++            &resolved,
++            Path::new("/usr/bin/crosvm"),
++            &ConsoleSink::Stdout,
++            Path::new("/run/librevm"),
++        )
++        .unwrap();
++        assert!(!args.iter().any(|arg| arg == "--disable-sandbox"));
++    }
++
+     #[test]
+     fn unprotected_omits_swiotlb() {
+diff --git a/crates/librevm-ctl/src/main.rs b/crates/librevm-ctl/src/main.rs
+--- a/crates/librevm-ctl/src/main.rs
++++ b/crates/librevm-ctl/src/main.rs
+@@ -1970,5 +1970,5 @@
+             protection,
+             firmware,
+             crosvm,
+-            disable_sandbox: true,
++            disable_sandbox: false,
+         },
+diff --git a/crates/librevm-core/src/hub.rs b/crates/librevm-core/src/hub.rs
+index d970856..cc814f5 100644
+--- a/crates/librevm-core/src/hub.rs
++++ b/crates/librevm-core/src/hub.rs
+@@ -205,9 +205,17 @@ pub fn spawn(store: &Store, name: &str, self_exe: &std::path::Path) -> Result<i3
+         // its own session, so it survives the caller's terminal going away
+         .process_group(0);
+ 
+-    let child = cmd.spawn().context("starting the console hub")?;
++    let mut child = cmd.spawn().context("starting the console hub")?;
+     let hub_pid = child.id();
+ 
++    // The hub is detached, but this process is still its parent, so it has to be
++    // reaped when it eventually exits. A daemon that does not do this keeps one
++    // zombie per stopped machine for as long as it runs, which was visible as a
++    // growing pile of `[librevm] <defunct>` under `librevm-daemon`.
++    std::thread::spawn(move || {
++        let _ = child.wait();
++    });
++
+     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+     let mut guest_pid = None;
+     while std::time::Instant::now() < deadline {
+@@ -496,6 +504,13 @@ pub fn run(store: &Store, name: &str) -> Result<()> {
+         let console_in_for_out = console_in.clone();
+         let log_for_out = log_path.clone();
+         let name = name.to_string();
++        let name_for_cleanup = name.clone();
++        let name_for_reader = name.clone();
++        // crosvm's helpers inherit the console fd, so a reader that waits for the
++        // last writer to let go can outlive the machine it is watching and leave
++        // the hub (and a zombie crosvm) behind. Keep a handle that can break the
++        // read once crosvm itself is gone.
++        let console_break = console.try_clone().ok();
+         let reader = std::thread::spawn(move || {
+             let mut buf = [0u8; 8192];
+             let mut log = std::fs::OpenOptions::new()
+@@ -525,9 +540,21 @@ pub fn run(store: &Store, name: &str) -> Result<()> {
+                     Err(_) => break,
+                 }
+             }
+-            log::info!("{name}: guest console closed");
++            log::info!("{name_for_reader}: guest console closed");
+         });
++
++        // The child's exit is the hub's end-of-life signal, and it is the only
++        // reliable one: waiting for console EOF first is what used to leave a hub
++        // alive next to a zombie crosvm.
++        let status = child.wait().ok();
++        if let Some(socket) = console_break.as_ref() {
++            let _ = socket.shutdown(std::net::Shutdown::Both);
++        }
+         let _ = reader.join();
++        let _ = std::fs::remove_file(store.pid_file(&name_for_cleanup));
++        let _ = std::fs::remove_file(&socket_path);
++        log::info!("{name}: crosvm exited ({status:?})");
++        return Ok(());
+     }
+ 
+     let status = child.wait().ok();

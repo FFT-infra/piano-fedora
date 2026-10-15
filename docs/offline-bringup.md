@@ -63,6 +63,10 @@ prepare-install 完成后可运行 package-install，指定其 prepare_run。该
 
 正常 Fedora 接管上游 debug stage、认证串口 getty 与按固定 NCM MAC 匹配的静态 NetworkManager 连接；成功交接后不遗留 initramfs 转发进程，也不启用免密 root 串口。登录与改密说明见[安装验收](installation.md)。Fedora 的 gdm.service 具有与上游 Debian 显示管理器相同的 Requires/After 显示依赖；相机失败保留日志并限制重试，不通过永久 mask 改写失败。
 
+新镜像在构建时初始化 `/var/lib/piano-clock/last`，使 RTC 落在 1970 年、尚无网络的
+首次启动也能恢复时间下限。已有有效时间戳保持原值；构建机时钟异常则拒绝生成。
+该值用于避免明显错误的日期，不代表首次启动的精确实时时间，联网校时仍须独立验证。
+
 ## 已有分区的部署验收
 
 已有 sunuefi_root/sunuefi_esp 的平板使用[已有分区更新入口](installation.md)，不得重新执行会清空 userdata 的首次分区 apply。先只读核对当前 GPT、原厂 BOOT、槽位、容量、内存描述与恢复材料；合体 BOOT 必须绑定本机实际 APP generation。恢复工具不能恢复已擦除的 Android 用户文件。
