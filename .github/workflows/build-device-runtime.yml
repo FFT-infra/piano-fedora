@@ -10,8 +10,9 @@ on:
         required: false
         default: ""
       calibration_run_id:
-        description: "含用户提供 touch-calibration artifact 的 run，包含两份完整原厂 INI，不进入 Git"
-        required: true
+        description: "可选：含 touch-calibration artifact 的 run。留空则使用仓库密钥里的原厂 INI"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -43,12 +44,35 @@ jobs:
           python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml \
             --artifact kernel-release-7.2.9 --artifact kernel-sdk-7.2.9 "${args[@]}"
 
-      - uses: actions/download-artifact@v4
+      - if: inputs.calibration_run_id != ''
+        uses: actions/download-artifact@v4
         with:
           name: touch-calibration
           path: build/in/touch-calibration
           run-id: ${{ inputs.calibration_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 两份原厂触摸 INI 是许可不明的厂商数据，不进 Git。仓库密钥
+      # TOUCH_CALIBRATION_TGZ_B64 保存它们的最小打包，CI 就地解出到 build/。
+      - name: Materialize the private touch calibration
+        env:
+          CALIBRATION_B64: ${{ secrets.TOUCH_CALIBRATION_TGZ_B64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/in/touch-calibration
+          if [ -n "${{ inputs.calibration_run_id }}" ]; then
+            echo "using the touch-calibration artifact from run ${{ inputs.calibration_run_id }}"
+            exit 0
+          fi
+          if [ -z "$CALIBRATION_B64" ]; then
+            echo 'neither a calibration run nor TOUCH_CALIBRATION_TGZ_B64 is available' >&2
+            exit 1
+          fi
+          printf '%s' "$CALIBRATION_B64" | base64 -d | tar -xz -C build/in/touch-calibration
+          for ini in piano_nova_boe_thp_config.ini piano_nova_csot_thp_config.ini; do
+            test -s "build/in/touch-calibration/$ini" || { echo "missing $ini" >&2; exit 1; }
+          done
+          ls -l build/in/touch-calibration
 
       - uses: actions/download-artifact@v4
         with:
