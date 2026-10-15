@@ -431,6 +431,10 @@ def verify_runtime_extras(root, runtime_meta):
     for name, proof in extras.items():
         if proof.get("commit") != sources[name]["commit"]:
             raise ValueError("runtime extras source differs: " + name)
+    # 曾经装过只有 VLD entrypoint 的驱动，浏览器与 ffmpeg 的硬件编码静默消失；
+    # 交付载荷必须声明编码能力，缺任何一项都视为退化的 VA-API 后端。
+    if extras["iris-vaapi"].get("encoder_entrypoints") != ["EncSlice"]:
+        raise ValueError("VA-API driver does not prove its encoder entrypoints")
     librevm = extras["librevm"]
     if (librevm.get("adapter_sha256") != sha256(ROOT / "runtime/librevm/fedora.patch")
             or librevm.get("cargo_lock_sha256") != sha256(ROOT / "runtime/librevm/Cargo.lock")
@@ -455,6 +459,41 @@ def verify_runtime_extras(root, runtime_meta):
     alias = guest_resolve(root, "/usr/lib64/dri") / "msm_drv_video.so"
     if not alias.is_symlink() or str(alias.readlink()) != "v4l2_drv_video.so":
         raise ValueError("VA-API msm driver alias differs")
+
+
+def verify_device_integration(root, runtime_meta):
+    """固定来源、适配代码和实际安装载荷必须一致。"""
+    sources = json.loads((ROOT / "sources.lock.json").read_text())["sources"]
+    integration = runtime_meta.get("integration", {})
+    performance = runtime_meta.get("performance", {})
+    required = {"usr/bin/piano-touch-view", "usr/lib/piano/piano-camerad",
+                "usr/lib/piano/touch-input",
+                "usr/share/piano/touch/piano-csot.json", "usr/share/piano/touch/piano-boe.json",
+                "usr/share/alsa/ucm2/Qualcomm/sm8750/Xiaomi-Pad-8-Pro/HiFi.conf"}
+    if not required <= set(integration.get("files", {})):
+        raise ValueError("incomplete device integration payload proof")
+    if performance.get("adapter_sha256") != sha256(ROOT / "runtime/uperf/fedora.patch"):
+        raise ValueError("performance compatibility adapter differs")
+    if not {"usr/bin/uperf-linux", "usr/bin/uperfctl", "etc/uperf-linux/config.json"} <= set(performance.get("files", {})):
+        raise ValueError("incomplete performance payload proof")
+    for name, proof in (("piano-integration", integration), ("uperf", performance)):
+        if proof.get("commit") != sources[name]["commit"] or not proof.get("files"):
+            raise ValueError("missing pinned integration proof: " + name)
+        for relative, digest in proof["files"].items():
+            if relative.startswith("/") or ".." in Path(relative).parts:
+                raise ValueError("unsafe integration payload path")
+            target = guest_resolve(root, "/" + relative)
+            if not target.is_file() or sha256(target) != digest:
+                raise ValueError("installed integration differs: " + relative)
+    touch = integration.get("touch", {})
+    adapters = {p.name: sha256(p) for p in (ROOT / "runtime/touch").iterdir() if p.is_file()}
+    if touch.get("finger_adapter_sha256") != adapters or touch.get("single_thp_reader") is not True:
+        raise ValueError("finger pipeline adapter proof differs")
+    if integration.get("camera", {}).get("bgrx_adapter_sha256") != sha256(ROOT / "patches/runtime/camerad-bgrx-neon.patch"):
+        raise ValueError("camera NEON adapter proof differs")
+    config = json.loads(guest_resolve(root, "/etc/uperf-linux/config.json").read_text())
+    if (config["modules"]["input"]["screen_width"], config["modules"]["input"]["screen_height"]) != (32000, 21360):
+        raise ValueError("performance input geometry differs")
 
 
 def verify_ffmpeg_install(root, ffmpeg):
@@ -499,6 +538,7 @@ def main():
         raise ValueError("runtime and rootfs select different kernel builds")
     verify_fastrpc_daemon(root, runtime_meta)
     verify_runtime_extras(root, runtime_meta)
+    verify_device_integration(root, runtime_meta)
     mesa_dir = args.mesa.resolve()
     mesa = json.loads((mesa_dir / "manifest.json").read_text())
     if (mesa.get("status"), mesa.get("releasever"), mesa.get("arch"), mesa.get("chip_id")) != (
@@ -547,7 +587,7 @@ def main():
                 "piano-cpufreq.service", "piano-video.service", "piano-camera.service",
                 "piano-camerad.service", "adsprpcd-sensorspd.service",
                 "piano-fake-tablet-mode.service", "xiaomi-charger-mode.service",
-                "librevm-daemon.service",
+                "librevm-daemon.service", "uperf-linux.service",
                 "piano-clock-restore.service", "piano-clock-save.service",
                 "piano-clock-save.timer", "piano-selinux-policy.service"]
     chroot(root, "systemctl", "enable", *services)
