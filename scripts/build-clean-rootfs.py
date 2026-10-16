@@ -228,19 +228,83 @@ def execute(plan_data):
     with log_file.open("w") as stream:
         subprocess.run(cmd, stdout=stream, stderr=subprocess.STDOUT, check=True)
 
-    # 配置默认用户与系统环境
+    # 配置默认用户、主机名、fstab 与系统环境
     print("--> Setting up piano user, fstab and default services...")
     # 设置 fstab
     fstab_path = root / "etc" / "fstab"
     fstab_path.parent.mkdir(parents=True, exist_ok=True)
-    fstab_path.write_text(
+    fstab_text = (
         "/dev/disk/by-partlabel/sunuefi_root  /          f2fs  rw,noatime,compress_algorithm=zstd,compress_chksum,atgc,gc_merge  0 0\n"
-        "/dev/disk/by-partlabel/sunuefi_esp   /boot/efi  vfat  umask=0077,shortname=winnt  0 2\n",
-        encoding="utf-8"
+        "/dev/disk/by-partlabel/sunuefi_esp   /boot/efi  vfat  umask=0077,shortname=winnt  0 2\n"
     )
+    hostname_path = root / "etc" / "hostname"
+    if os.geteuid() != 0 and shutil.which("sudo"):
+        subprocess.run(["sudo", "tee", str(fstab_path)], input=fstab_text, text=True, check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(["sudo", "tee", str(hostname_path)], input="piano\n", text=True, check=True, stdout=subprocess.DEVNULL)
+    else:
+        fstab_path.write_text(fstab_text, encoding="utf-8")
+        hostname_path.write_text("piano\n", encoding="utf-8")
 
-    # 设置主机名
-    (root / "etc" / "hostname").write_text("piano\n", encoding="utf-8")
+    # 辅助 chroot 执行工具
+    def run_chroot(cmd_args, stdin_text=None):
+        base_cmd = ["chroot", str(root), *cmd_args]
+        if os.geteuid() != 0 and shutil.which("sudo"):
+            base_cmd = ["sudo", *base_cmd]
+        return subprocess.run(base_cmd, input=stdin_text, text=True, check=True, capture_output=True)
+
+    # 1. 确保 piano 用户创建并分配辅助组
+    print(f"--> Configuring user {DEFAULT_USER}...")
+    check_user_cmd = ["chroot", str(root), "id", DEFAULT_USER]
+    if os.geteuid() != 0 and shutil.which("sudo"):
+        check_user_cmd = ["sudo", *check_user_cmd]
+    if subprocess.run(check_user_cmd, capture_output=True).returncode != 0:
+        run_chroot([
+            "useradd", "--create-home",
+            "--groups", "wheel,audio,video,input,render",
+            "--shell", "/bin/bash",
+            DEFAULT_USER
+        ])
+    run_chroot(["groupadd", "--force", "--system", "librevm"])
+    run_chroot(["usermod", "--append", "--groups", "librevm,audio,video,input,render", DEFAULT_USER])
+
+    # 2. 设置用户密码
+    run_chroot(["/usr/sbin/chpasswd"], stdin_text=f"{DEFAULT_USER}:{DEFAULT_PASS}\n")
+
+    # 3. GDM 自动登录配置
+    gdm_conf = root / "etc" / "gdm" / "custom.conf"
+    gdm_text = f"[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin={DEFAULT_USER}\n"
+    if os.geteuid() != 0 and shutil.which("sudo"):
+        subprocess.run(["sudo", "mkdir", "-p", str(gdm_conf.parent)], check=True)
+        subprocess.run(["sudo", "tee", str(gdm_conf)], input=gdm_text, text=True, check=True, stdout=subprocess.DEVNULL)
+    else:
+        gdm_conf.parent.mkdir(parents=True, exist_ok=True)
+        gdm_conf.write_text(gdm_text, encoding="utf-8")
+
+    # 4. 屏蔽未适配的磁盘休眠目标，锁定为 deep 挂起
+    for unit in ("hibernate.target", "hybrid-sleep.target", "suspend-then-hibernate.target"):
+        target_unit = root / "etc" / "systemd" / "system" / unit
+        if os.geteuid() != 0 and shutil.which("sudo"):
+            subprocess.run(["sudo", "mkdir", "-p", str(target_unit.parent)], check=True)
+            subprocess.run(["sudo", "ln", "-sf", "/dev/null", str(target_unit)], check=True)
+        else:
+            target_unit.parent.mkdir(parents=True, exist_ok=True)
+            if target_unit.is_symlink() or target_unit.exists():
+                target_unit.unlink()
+            target_unit.symlink_to("/dev/null")
+
+    # 5. 启用关键系统服务
+    services_to_enable = [
+        "NetworkManager.service", "sshd.service", "gdm.service", "bluetooth.service",
+        "piano-touch.service", "piano-camerad.service", "uperf-linux.service",
+        "piano-clock-restore.service", "piano-clock-save.timer",
+        "piano-physical-platform.service", "piano-boot-request-autoconfig.service",
+        "qbootctl.service",
+    ]
+    for service in services_to_enable:
+        try:
+            run_chroot(["systemctl", "enable", service])
+        except subprocess.CalledProcessError:
+            pass
 
     # 执行审计
     print("--> Running post-assembly RPM provenance audit...")
