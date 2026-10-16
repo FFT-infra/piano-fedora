@@ -48,9 +48,7 @@ cp -a usr etc %{buildroot}/
 %config(noreplace) %{_sysconfdir}/systemd/sleep.conf.d/piano.conf
 %config(noreplace) %{_sysconfdir}/modules-load.d/piano-bwmon.conf
 %config(noreplace) %{_sysconfdir}/modules-load.d/piano-stats.conf
-%config(noreplace) %{_sysconfdir}/udev/rules.d/70-piano-camera.rules
 %config(noreplace) %{_sysconfdir}/udev/rules.d/70-piano-power-button.rules
-%config(noreplace) %{_sysconfdir}/wireplumber/wireplumber.conf.d/50-piano-camera.conf
 %config(noreplace) %{_sysconfdir}/dconf/db/local.d/00-power
 
 %{_unitdir}/piano-clock-restore.service

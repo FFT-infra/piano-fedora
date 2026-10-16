@@ -3,6 +3,8 @@
 # build-rpms.sh - Automated RPM matrix build & repository indexer for piano
 # ==============================================================================
 set -euo pipefail
+export PATH="/usr/bin:/usr/sbin:$PATH"
+export QA_RPATHS=23
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -20,11 +22,16 @@ echo "Output dir   : $OUT_DIR"
 echo "Build root   : $BUILD_TMP"
 echo ""
 
-# Build noarch packages first
-for pkg in piano-fedora-configs alsa-xiaomi-piano; do
+HOST_ARCH="$(uname -m)"
+PACKAGES_TO_BUILD=("piano-fedora-configs" "alsa-xiaomi-piano")
+if [ "$HOST_ARCH" = "aarch64" ]; then
+    PACKAGES_TO_BUILD+=("piano-camera" "xiaomi-piano-thp")
+fi
+
+for pkg in "${PACKAGES_TO_BUILD[@]}"; do
     if [ -d "$PACKAGES_DIR/$pkg" ]; then
-        echo "--> Building noarch package: $pkg"
-        SPEC_FILE=$(find "$PACKAGES_DIR/$pkg" -maxdepth 1 -name "*.spec")
+        echo "--> Building package: $pkg"
+        SPEC_FILE=$(find "$PACKAGES_DIR/$pkg" -maxdepth 1 -name "*.spec" | head -n 1)
         PKG_VERSION=$(grep -E '^Version:' "$SPEC_FILE" | awk '{print $2}')
         TAR_NAME="${pkg}-${PKG_VERSION}.tar.gz"
         
@@ -32,7 +39,7 @@ for pkg in piano-fedora-configs alsa-xiaomi-piano; do
             --transform "s,^\.,${pkg}-${PKG_VERSION}," \
             -C "$PACKAGES_DIR/$pkg" .
             
-        rpmbuild --define "_topdir $BUILD_TMP" -bb "$SPEC_FILE"
+        rpmbuild --define "_topdir $BUILD_TMP" --define "_annobin_gcc_plugin %{nil}" -bb "$SPEC_FILE"
     fi
 done
 

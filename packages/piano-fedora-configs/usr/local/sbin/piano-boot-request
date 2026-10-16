@@ -59,11 +59,14 @@ def records(stream, offset, generation):
     return result
 
 
-def operate(path, action, target=0):
+def operate(path, action, target=0, expect_generation=None):
     writing = action in ('set', 'consume')
     block = path.is_block_device()
     with path.open('rb') as stream:
         offset, generation = layout(stream); pages = records(stream, offset, generation)
+    generation_hex = generation.hex()
+    if expect_generation and generation_hex.lower() != expect_generation.lower():
+        raise ValueError('APP generation differs from installed configuration')
     valid = [r for r in pages if r['valid']]
     if not valid: raise ValueError('Both request records are invalid')
     current = max(valid, key=lambda r:r['sequence'])
@@ -83,7 +86,7 @@ def operate(path, action, target=0):
             if block: subprocess.run(['blockdev', '--setro', str(path)], check=True)
         current = {'sequence': sequence, 'target': target}
     return {'target': current['target'], 'sequence': current['sequence'], 'request_pages_offset': offset,
-            'operation': action, 'original_kernel_changed': False}
+            'operation': action, 'app_generation': generation_hex, 'original_kernel_changed': False}
 
 
 def main():
@@ -91,9 +94,17 @@ def main():
     parser.add_argument('action', choices=('status', 'set', 'consume'))
     parser.add_argument('--device', type=Path, required=True)
     parser.add_argument('--target', choices=('android', 'menu', 'linux', 'setup'), default='android')
+    parser.add_argument('--expect-generation', dest='expect_generation', default=None)
     args = parser.parse_args()
+    if args.expect_generation:
+        if args.action not in ('set', 'consume') or len(args.expect_generation) != 32:
+            parser.exit(1, 'piano-boot-request: --expect-generation requires set/consume and 32 hex digits\n')
+        try:
+            int(args.expect_generation, 16)
+        except ValueError:
+            parser.exit(1, 'piano-boot-request: --expect-generation requires set/consume and 32 hex digits\n')
     try:
-        print(json.dumps(operate(args.device, args.action, ('android', 'menu', 'linux', 'setup').index(args.target))))
+        print(json.dumps(operate(args.device, args.action, ('android', 'menu', 'linux', 'setup').index(args.target), args.expect_generation)))
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, str(error)+'\n')
 

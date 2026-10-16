@@ -1,3 +1,4 @@
+%global _annotated_build 0
 %global debug_package %{nil}
 
 Name:           piano-camera
@@ -10,6 +11,7 @@ Source0:        %{name}-%{version}.tar.gz
 
 ExclusiveArch:  aarch64
 
+BuildRequires:  gcc
 BuildRequires:  systemd-rpm-macros
 Requires:       systemd
 
@@ -25,11 +27,12 @@ v4l2loopback nodes, bypassing Mesa GTK diagonal tearing artifacts.
 %autosetup
 
 %build
-# Native precompiled NEON relay and scripts
+gcc %{optflags} -Isrc src/piano-camerad.c -lm -lpthread -o piano-camerad
 
 %install
-mkdir -p %{buildroot}
+mkdir -p %{buildroot}%{_prefix}/lib/piano
 cp -a usr etc %{buildroot}/
+install -m 0755 piano-camerad %{buildroot}%{_prefix}/lib/piano/piano-camerad
 
 %files
 %{_prefix}/lib/piano/piano-camerad

@@ -1,3 +1,4 @@
+%global _annotated_build 0
 %global debug_package %{nil}
 
 Name:           xiaomi-piano-thp
@@ -10,6 +11,9 @@ Source0:        %{name}-%{version}.tar.gz
 
 ExclusiveArch:  aarch64
 
+BuildRequires:  gcc-c++
+BuildRequires:  json-devel
+BuildRequires:  make
 BuildRequires:  systemd-rpm-macros
 Requires:       systemd
 Requires:       python3
@@ -28,14 +32,21 @@ pressure/tilt input pipeline for Xiaomi Pad 8 Pro (SM8750 piano).
 %autosetup
 
 %build
-# Precompiled native runtime binaries and calibration maps
+make -C src all CXXFLAGS="%{optflags} -std=c++20"
 
 %install
-mkdir -p %{buildroot}
+mkdir -p %{buildroot}%{_bindir}
 cp -a usr %{buildroot}/
+if [ -f src/build/piano-thp-live ]; then
+    install -m 0755 src/build/piano-thp-live %{buildroot}%{_bindir}/piano-thp-live
+fi
+if [ ! -f %{buildroot}%{_bindir}/piano-touch-view ] && [ -f %{buildroot}%{_bindir}/piano-thp-live ]; then
+    ln -sf piano-thp-live %{buildroot}%{_bindir}/piano-touch-view
+fi
 
 %files
 %{_bindir}/piano-touch-view
+%{_bindir}/piano-thp-live
 %{_prefix}/lib/piano/touch-start
 %{_prefix}/lib/piano/touch-input
 %{_prefix}/lib/piano/pen-bluetooth
