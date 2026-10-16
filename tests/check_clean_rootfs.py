@@ -105,6 +105,8 @@ def main():
               "piano-fedora-configs.spec must package piano-ram-hardware-prepare")
         check("piano-disk-hardware-prepare" in spec_text,
               "piano-fedora-configs.spec must package piano-disk-hardware-prepare")
+        check("/usr/local/sbin/piano-debug-stage" in spec_text and "/usr/local/bin/piano-debug-stage" in spec_text,
+              "piano-fedora-configs.spec must package piano-debug-stage in both sbin and bin")
 
     if failures:
         for f in failures:

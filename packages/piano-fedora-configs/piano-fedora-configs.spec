@@ -44,7 +44,10 @@ for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
 %install
 mkdir -p %{buildroot}
 cp -a usr etc %{buildroot}/
+ln -sf /usr/local/bin/piano-debug-bootstrap %{buildroot}/usr/local/sbin/piano-debug-bootstrap
+ln -sf /usr/local/bin/piano-debug-stage %{buildroot}/usr/local/sbin/piano-debug-stage
 chmod 0755 %{buildroot}%{_bindir}/* %{buildroot}%{_libexecdir}/*
+chmod 0755 %{buildroot}/usr/local/sbin/* %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || true
 
 %files
 %config(noreplace) %{_sysconfdir}/systemd/system/qbootctl.service.d/piano.conf
@@ -81,6 +84,8 @@ chmod 0755 %{buildroot}%{_bindir}/* %{buildroot}%{_libexecdir}/*
 %{_bindir}/piano-next-boot-configure
 %{_libexecdir}/piano-next-boot-helper
 /usr/local/sbin/piano-boot-request
+/usr/local/sbin/piano-debug-bootstrap
+/usr/local/sbin/piano-debug-stage
 /usr/local/bin/piano-debug-bootstrap
 /usr/local/bin/piano-debug-stage
 

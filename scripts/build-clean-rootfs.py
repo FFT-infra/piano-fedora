@@ -72,7 +72,7 @@ def inspect_rpm_repo(rpms_dir):
         return {"valid": False, "error": f"missing repodata/repomd.xml in {rpms_path}", "packages": {}}
 
     found_pkgs = {}
-    for p in rpms_path.glob("*.rpm"):
+    for p in sorted(rpms_path.glob("*.rpm")):
         name = p.name
         for expected in PIANO_PACKAGES:
             if name.startswith(expected + "-") or name == expected:
@@ -157,7 +157,7 @@ def audit_rootfs(rootfs_dir):
         "usr/lib64/libssc.so",
         "usr/lib64/dri/v4l2_drv_video.so",
         "usr/lib/systemd/system/piano-boot-request-autoconfig.service",
-        "usr/lib/systemd/system/qbootctl.service.d/piano.conf",
+        "etc/systemd/system/qbootctl.service.d/piano.conf",
     ]
     missing_files = [f for f in key_checks if not (root / f).exists()]
 
@@ -219,6 +219,9 @@ def execute(plan_data):
         "install", "-y",
         *packages
     ]
+
+    if os.geteuid() != 0 and shutil.which("sudo"):
+        cmd = ["sudo", *cmd]
 
     log_file = out / "assembly.log"
     print(f"--> Invoking DNF assembly to {root} (logging to {log_file})...")
