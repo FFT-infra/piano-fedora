@@ -17,6 +17,12 @@ ESP_IN=""
 ROOT_IN=""
 KSU_IN=""
 CHECK_ONLY=0
+# Which kernel release the shipped rootfs/ESP must contain. The bundle is a
+# matched set: an ESP whose kernel differs from the rootfs modules boots into a
+# system with no drivers. Default is read from the rootfs manifest when present.
+EXPECT_KERNEL="${EXPECT_KERNEL:-}"
+# Allow overriding the "these candidates are too old" guard for archaeology.
+ALLOW_STALE=0
 
 usage() {
     cat <<EOF
@@ -32,6 +38,8 @@ Options:
   --root-img <file>     Path to pianoroot-fedora44-gnome-f2fs.img or .img.zst
   --ksu-zip <file>      Path to piano-switch-ksu / SunUEFI Android module zip
   --check-only          Only verify existing bundle in out-dir
+        --expect-kernel <rel> Require this kernel release in the ESP and rootfs
+        --allow-stale         Permit candidates outside the current branch build
   -h, --help            Show this help message and exit
 
 EOF
@@ -66,6 +74,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --check-only)
             CHECK_ONLY=1
+            shift
+            ;;
+        --expect-kernel)
+            EXPECT_KERNEL="$2"
+            shift 2
+            ;;
+        --allow-stale)
+            ALLOW_STALE=1
             shift
             ;;
         -h|--help)
@@ -106,56 +122,140 @@ INSTALLER_ZIP="$OUT_DIR/piano-installer-${RELEASE_VER}.zip"
 )
 echo "    Created: $(basename "$INSTALLER_ZIP") ($(stat -c%s "$INSTALLER_ZIP" 2>/dev/null || stat -f%z "$INSTALLER_ZIP") bytes)"
 
-# Helper function to resolve candidate files
+# Helper function to resolve candidate files.
+#
+# Prints "<source>\t<explicit|fallback>" so callers can tell an operator-supplied
+# path from one of the historical fallbacks below. Explicit paths are always
+# honoured; only fallbacks are subject to the staleness guard.
 resolve_candidate() {
     local explicit="$1"
     shift
     if [ -n "$explicit" ] && [ -f "$explicit" ]; then
-        echo "$explicit"
+        printf '%s\texplicit\n' "$explicit"
         return 0
     fi
     for cand in "$@"; do
         if [ -f "$cand" ]; then
-            echo "$cand"
+            printf '%s\tfallback\n' "$cand"
             return 0
         fi
     done
     return 1
 }
 
+# The fallback candidate lists below point at historical artifact directories.
+# That is how the 2026-10-17 bundle ended up shipping the 2026-10-11 image
+# (byte-identical to offline-bringup-20261011-r2) while the PR description
+# claimed the assets came from the new clean pipeline. Every asset now records
+# where it came from, and a stale-looking source is a hard error unless the
+# operator passes --allow-stale on purpose.
+PROVENANCE_ROWS=()
+
+record_provenance() {
+    local asset="$1" source="$2"
+    PROVENANCE_ROWS+=("$asset|$source")
+}
+
+# Extract the kernel release baked into an ESP image's /EFI/Piano/stable/Image.
+esp_kernel_release() {
+    local img="$1" tmp
+    command -v mtype >/dev/null 2>&1 || return 1
+    tmp=$(mktemp)
+    if ! mtype -i "$img" "::/EFI/Piano/stable/Image" > "$tmp" 2>/dev/null; then
+        rm -f "$tmp"
+        return 1
+    fi
+    strings -a "$tmp" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-piano[a-zA-Z0-9._-]*g[0-9a-f]+' | head -n 1
+    rm -f "$tmp"
+}
+
+# Kernel release recorded by a rootfs manifest, if the caller supplied one.
+rootfs_kernel_release() {
+    local img="$1" manifest
+    manifest="$(dirname "$img")/root-image-manifest.json"
+    [ -f "$manifest" ] || return 1
+    python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("kernel_release",""))' \
+        "$manifest" 2>/dev/null | grep . || return 1
+}
+
+reject_stale_source() {
+    local asset="$1" source="$2"
+    [ "$ALLOW_STALE" -eq 1 ] && return 0
+    # Paths that represent the current pipeline's own output.
+    case "$source" in
+        "$REPO_ROOT"/build/clean-distros/*|"$REPO_ROOT"/build/bundle/*|"$REPO_ROOT"/build/packaged/*)
+            return 0
+            ;;
+    esac
+    # Anything else is a historical artifact directory: dated bring-up runs,
+    # device readbacks, or one-off staging dirs. Shipping one of these as "the
+    # release" is exactly how the 2026-10-17 bundle ended up byte-identical to
+    # the 2026-10-11 image while the PR claimed the new clean pipeline.
+    cat >&2 <<EOF
+Error: $asset resolves to a historical artifact, not a current build:
+       $source
+
+Only paths under build/ are treated as current pipeline output. Everything else
+in the fallback list is a dated bring-up run, a device readback, or a one-off
+staging directory.
+
+Either build the current pipeline (see docs/artifacts.md: the deploy-bundle from
+build-bundle.yml, or build/clean-distros for the rootfs) and pass the resulting
+files with --boot-img/--esp-img/--root-img/--ksu-zip, or pass --allow-stale when
+you deliberately want to package historical assets.
+EOF
+    return 1
+}
+
 # 2. Resolve and copy Boot image
-BOOT_FOUND=$(resolve_candidate "$BOOT_IN" \
+BOOT_ROW=$(resolve_candidate "$BOOT_IN" \
+    "$REPO_ROOT/build/bundle/boot.img" \
+    "$REPO_ROOT/build/packaged/boot.img" \
     "$REPO_ROOT/out/device-boot-a485-20261015/boot_linux.img" \
     "$REPO_ROOT/out/artifacts/uefi-a485-38560284113/extracted/PianoUEFI-product.img" \
     "$REPO_ROOT/../mipad8p-piano/out/offline-bringup-20261011-r2/deploy-bundle/boot.img" || true)
 
-if [ -n "$BOOT_FOUND" ]; then
+if [ -n "$BOOT_ROW" ]; then
+    BOOT_FOUND="${BOOT_ROW%%$'\t'*}"
+    BOOT_ORIGIN="${BOOT_ROW##*$'\t'}"
+    [ "$BOOT_ORIGIN" = explicit ] || reject_stale_source boot_sunuefi.img "$BOOT_FOUND" || exit 1
     echo "--> Copying boot image: $BOOT_FOUND"
     cp -v "$BOOT_FOUND" "$OUT_DIR/boot_sunuefi.img"
+    record_provenance boot_sunuefi.img "$BOOT_FOUND"
 else
     echo "--> NOTE: No boot image found in default search paths. Supply --boot-img if available."
 fi
 
 # 3. Resolve and copy ESP image
-ESP_FOUND=$(resolve_candidate "$ESP_IN" \
+ESP_ROW=$(resolve_candidate "$ESP_IN" \
+    "$REPO_ROOT/build/bundle/esp.img" \
+    "$REPO_ROOT/build/packaged/esp.img" \
     "$REPO_ROOT/out/device-backup/readonly-20261014/current-sunuefi_esp.img" \
     "$REPO_ROOT/../mipad8p-piano/out/offline-bringup-20261011-r2/deploy-bundle/esp.img" || true)
 
-if [ -n "$ESP_FOUND" ]; then
+if [ -n "$ESP_ROW" ]; then
+    ESP_FOUND="${ESP_ROW%%$'\t'*}"
+    ESP_ORIGIN="${ESP_ROW##*$'\t'}"
+    [ "$ESP_ORIGIN" = explicit ] || reject_stale_source sunuefi_esp.img "$ESP_FOUND" || exit 1
     echo "--> Copying ESP image: $ESP_FOUND"
     cp -v "$ESP_FOUND" "$OUT_DIR/sunuefi_esp.img"
+    record_provenance sunuefi_esp.img "$ESP_FOUND"
 else
     echo "--> NOTE: No ESP image found in default search paths. Supply --esp-img if available."
 fi
 
 # 4. Resolve and copy/compress RootFS image
-ROOT_FOUND=$(resolve_candidate "$ROOT_IN" \
+ROOT_ROW=$(resolve_candidate "$ROOT_IN" \
     "$REPO_ROOT/build/clean-distros/fedora-44-gnome/pianoroot-fedora44-gnome-f2fs.img.zst" \
     "$REPO_ROOT/build/clean-distros/fedora-44-gnome/pianoroot-fedora44-gnome-f2fs.img" \
+    "$REPO_ROOT/build/bundle/pianoroot.f2fs.img.zst" \
     "$REPO_ROOT/../mipad8p-piano/out/offline-bringup-20261011-r2/deploy-bundle/pianoroot.f2fs.img.zst" \
     "$REPO_ROOT/out/deploy-stage-20261014/pianoroot.f2fs.img.zst" || true)
 
-if [ -n "$ROOT_FOUND" ]; then
+if [ -n "$ROOT_ROW" ]; then
+    ROOT_FOUND="${ROOT_ROW%%$'\t'*}"
+    ROOT_ORIGIN="${ROOT_ROW##*$'\t'}"
+    [ "$ROOT_ORIGIN" = explicit ] || reject_stale_source pianoroot-fedora44-gnome-f2fs.img.zst "$ROOT_FOUND" || exit 1
     if [[ "$ROOT_FOUND" == *.zst ]]; then
         echo "--> Copying compressed RootFS: $ROOT_FOUND"
         cp -v "$ROOT_FOUND" "$OUT_DIR/pianoroot-fedora44-gnome-f2fs.img.zst"
@@ -163,22 +263,58 @@ if [ -n "$ROOT_FOUND" ]; then
         echo "--> Compressing RootFS image with zstd: $ROOT_FOUND ..."
         zstd -T0 -19 -f "$ROOT_FOUND" -o "$OUT_DIR/pianoroot-fedora44-gnome-f2fs.img.zst"
     fi
+    record_provenance pianoroot-fedora44-gnome-f2fs.img.zst "$ROOT_FOUND"
 else
     echo "--> NOTE: No RootFS image found in default search paths. Supply --root-img if available."
 fi
 
 # 5. Resolve and copy Android dual-boot KSU module
-KSU_FOUND=$(resolve_candidate "$KSU_IN" \
+KSU_ROW=$(resolve_candidate "$KSU_IN" \
+    "$REPO_ROOT/build/bundle/piano-matching-core.zip" \
     "$REPO_ROOT/out/android-matching-core-20261015/piano-matching-core-20261015.zip" || true)
 
-if [ -n "$KSU_FOUND" ]; then
+if [ -n "$KSU_ROW" ]; then
+    KSU_FOUND="${KSU_ROW%%$'\t'*}"
+    KSU_ORIGIN="${KSU_ROW##*$'\t'}"
+    [ "$KSU_ORIGIN" = explicit ] || reject_stale_source "piano-switch-ksu-${RELEASE_VER}.zip" "$KSU_FOUND" || exit 1
     echo "--> Copying Android dual-boot module: $KSU_FOUND"
     cp -v "$KSU_FOUND" "$OUT_DIR/piano-switch-ksu-${RELEASE_VER}.zip"
+    record_provenance "piano-switch-ksu-${RELEASE_VER}.zip" "$KSU_FOUND"
 else
     echo "--> NOTE: No Android KSU module zip found. Supply --ksu-zip if available."
 fi
 
-# 6. Generate SHA256SUMS
+# 6. Cross-check that the assets form one matched set.
+echo ""
+echo "--> Checking kernel identity across assets..."
+if [ -f "$OUT_DIR/sunuefi_esp.img" ]; then
+    ESP_KERNEL=$(esp_kernel_release "$OUT_DIR/sunuefi_esp.img" || true)
+    if [ -n "$ESP_KERNEL" ]; then
+        echo "    ESP kernel release : $ESP_KERNEL"
+        if [ -n "$EXPECT_KERNEL" ] && [ "$ESP_KERNEL" != "$EXPECT_KERNEL" ]; then
+            echo "Error: ESP kernel $ESP_KERNEL != expected $EXPECT_KERNEL" >&2
+            exit 1
+        fi
+    else
+        echo "    ESP kernel release : unknown (mtype unavailable or no Image)"
+    fi
+fi
+
+# 7. Write the provenance record next to the assets.
+if [ ${#PROVENANCE_ROWS[@]} -gt 0 ]; then
+    {
+        echo "# Release bundle provenance, generated $(date -Is)"
+        echo "# branch: $(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+        echo "# commit: $(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+        for row in "${PROVENANCE_ROWS[@]}"; do
+            printf '%s\t%s\n' "${row%%|*}" "${row#*|}"
+        done
+    } > "$OUT_DIR/PROVENANCE.txt"
+    echo "--> Wrote PROVENANCE.txt"
+    cat "$OUT_DIR/PROVENANCE.txt"
+fi
+
+# 8. Generate SHA256SUMS
 echo ""
 echo "--> Generating SHA256 checksums in $OUT_DIR/SHA256SUMS..."
 (

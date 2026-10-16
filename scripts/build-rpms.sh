@@ -13,6 +13,59 @@ PACKAGES_DIR="$REPO_ROOT/packages"
 OUT_DIR="${1:-$REPO_ROOT/out/rpms}"
 BUILD_TMP="${TMPDIR:-$HOME/Lab/Bridge/tmp/trash}/rpmbuild-work"
 
+# kernel-piano does not compile a kernel; it packages the pinned build-kernel
+# artifact. Point KERNEL_PAYLOAD at that tree (the directory holding Image,
+# System.map, config and lib/modules/), or leave it unset and the resolver below
+# will look in the usual artifact locations. If nothing usable is found the
+# build stops instead of emitting a kernel RPM with a 0-byte vmlinuz.
+KERNEL_PAYLOAD="${KERNEL_PAYLOAD:-}"
+
+resolve_kernel_payload() {
+    if [ -n "$KERNEL_PAYLOAD" ]; then
+        echo "$KERNEL_PAYLOAD"
+        return 0
+    fi
+    local candidate
+    for candidate in \
+        "$REPO_ROOT/build/kernels/release-7.2.9" \
+        "$REPO_ROOT/out/artifacts/kernel-a485-38560291716/kernel-release-7.2.9/extracted" \
+        "$REPO_ROOT/out/artifacts/gunyah-a485-38568504093/extracted" \
+        "$REPO_ROOT/out/artifacts/kernel-38407594802"; do
+        if [ -s "$candidate/Image" ] && [ -d "$candidate/lib/modules" ]; then
+            echo "$candidate"
+            return 0
+        fi
+        # Artifacts unpack modules under modules/lib/modules instead of lib/modules.
+        if [ -s "$candidate/Image" ] && [ -d "$candidate/modules/lib/modules" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# The board DTB is not part of the kernel artifact: SunUEFI builds it into its
+# vendor tree and the firmware loads it from the ESP. kernel-piano ships a copy
+# under /boot/dtb/qcom so an installed system can be inspected without unpacking
+# the ESP. Point BOARD_DTB at it, or let the resolver find the pinned checkout.
+resolve_board_dtb() {
+    if [ -n "${BOARD_DTB:-}" ]; then
+        echo "$BOARD_DTB"
+        return 0
+    fi
+    local candidate
+    for candidate in \
+        "$REPO_ROOT/out/esp-files-a485-20261015/board.dtb" \
+        "$REPO_ROOT/build/test-sunuefi/vendor/piano-linux/board.dtb" \
+        "$REPO_ROOT/build/sources/sunuefi/vendor/piano-linux/board.dtb"; do
+        if [ -s "$candidate" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 mkdir -p "$OUT_DIR"
 mkdir -p "$BUILD_TMP"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 
@@ -54,6 +107,49 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
         if [ -z "$SPEC_FILE" ]; then
             echo "Error: No spec file found for $pkg" >&2
             exit 1
+        fi
+
+        # kernel-piano is a packaging-only spec around a prebuilt kernel tree.
+        # Stage that tree as Source0 before the generic source handling runs.
+        if [ "$pkg" = "kernel-piano" ]; then
+            PAYLOAD=$(resolve_kernel_payload) || {
+                echo "Error: no kernel payload found for kernel-piano." >&2
+                echo "       Set KERNEL_PAYLOAD to a tree containing Image, System.map," >&2
+                echo "       config and lib/modules/ (or modules/lib/modules/)." >&2
+                exit 1
+            }
+            echo "--> Using kernel payload: $PAYLOAD"
+            KERNEL_VER=$(grep -E '^[[:space:]]*%global[[:space:]]+KERNEL_VER' "$SPEC_FILE" | awk '{print $3}')
+            STAGE=$(mktemp -d)
+            # Normalise both artifact layouts into the flat tree the spec expects.
+            cp -a "$PAYLOAD/Image" "$PAYLOAD/System.map" "$PAYLOAD/config" "$STAGE/"
+            if [ -d "$PAYLOAD/lib/modules" ]; then
+                mkdir -p "$STAGE/lib"
+                cp -a "$PAYLOAD/lib/modules" "$STAGE/lib/"
+            else
+                cp -a "$PAYLOAD/modules/lib" "$STAGE/lib"
+            fi
+            [ -d "$PAYLOAD/dtb" ] && cp -a "$PAYLOAD/dtb" "$STAGE/"
+            [ -f "$PAYLOAD/board.dtb" ] && cp -a "$PAYLOAD/board.dtb" "$STAGE/"
+            # Fall back to the pinned SunUEFI board DTB when the kernel artifact
+            # does not carry one (the usual case for build-kernel outputs).
+            if [ ! -f "$STAGE/board.dtb" ] && [ ! -d "$STAGE/dtb" ]; then
+                DTB=$(resolve_board_dtb) || {
+                    echo "Error: no board DTB found for kernel-piano." >&2
+                    echo "       Set BOARD_DTB to SunUEFI's vendor/piano-linux/board.dtb." >&2
+                    exit 1
+                }
+                echo "--> Using board DTB: $DTB"
+                cp -a "$DTB" "$STAGE/board.dtb"
+            fi
+            [ -f "$PAYLOAD/manifest.json" ] && cp -a "$PAYLOAD/manifest.json" "$STAGE/"
+            tar -I 'zstd -6 -T0' -cf "$BUILD_TMP/SOURCES/kernel-payload-${KERNEL_VER}.tar.zst" -C "$STAGE" .
+            rm -rf "$STAGE"
+            echo "    Staged $(stat -c%s "$BUILD_TMP/SOURCES/kernel-payload-${KERNEL_VER}.tar.zst") bytes"
+            rpmbuild --define "_topdir $BUILD_TMP" \
+                     --define "_annobin_gcc_plugin %{nil}" \
+                     -bb "$SPEC_FILE"
+            continue
         fi
 
         # Copy local patches, helper files and companion sources

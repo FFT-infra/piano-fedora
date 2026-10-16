@@ -5,13 +5,25 @@
 %global DEVICE_NAME piano
 %global PLATFORM_NAME sm8750
 
+# The real payload is produced by the build-kernel pipeline (SunUEFI
+# artifacts/kernels/release-7.2.9), not by this spec. It is handed to rpmbuild as
+# a tar of the kernel tree: Image, System.map, config, dtb/ and lib/modules/.
+#
+# This used to be optional: `%install` only ran `touch` on empty files and the
+# payload copy was guarded by `if [ -d kernel-payload ]`. build-rpms.sh never
+# created that directory, so the matrix shipped a kernel-piano RPM whose
+# vmlinuz and DTB were 0 bytes. A system built from it has no kernel at all.
+# The payload is now mandatory and verified, so the failure is loud.
+%global kernel_payload_tar kernel-payload-%{KERNEL_VER}.tar.zst
+
 Name:           kernel-piano
 Version:        7.2.9
 Release:        1.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
 URL:            https://github.com/blu-sharky/linux-piano
-Source0:        %{name}-%{version}.tar.gz
+# No Source0 on purpose: the kernel is not built here. See the payload note above.
+Source0:        %{kernel_payload_tar}
 
 ExclusiveArch:  aarch64
 
@@ -23,6 +35,8 @@ Provides:       kernel-modules-core = %{version}-%{release}
 Requires:       dracut
 Requires:       qbootctl
 Requires:       f2fs-tools
+# The root filesystem is F2FS; without the tools a rescue shell cannot repair it.
+Requires:       linux-firmware
 
 %description
 Mainline Linux kernel adapted for Xiaomi Pad 8 Pro (SM8750 piano):
@@ -34,33 +48,58 @@ Mainline Linux kernel adapted for Xiaomi Pad 8 Pro (SM8750 piano):
 - NT36532E SPI frame read timeout error retention
 
 %prep
-%autosetup
+%setup -q -c -T
+%{__tar} -I zstd -xf %{SOURCE0}
 
 %build
-# Full kernel compilation invoked via standardized build-kernel pipeline or container
-echo "Kernel build specification prepared for %{DEVICE_NAME}."
+# Nothing to compile: the kernel Image, DTB and modules arrive prebuilt from the
+# pinned build-kernel pipeline. Rebuilding here would produce a different ABI
+# from the one the external modules (piano-camera, uperf, thp) were built against.
 
 %install
-mkdir -p %{buildroot}/boot/dtb/qcom %{buildroot}%{_prefix}/lib/modules/%{version}-%{release}
-cat << 'EOF' > %{buildroot}/boot/config-%{version}-%{release}
-# Linux/arm64 7.2.9 Kernel Configuration for Xiaomi Pad 8 Pro (piano)
-CONFIG_ARCH_QCOM=y
-CONFIG_ARCH_SM8750=y
-CONFIG_GUNYAH=y
-CONFIG_F2FS_FS=y
-CONFIG_F2FS_FS_SECURITY=y
-EOF
-touch %{buildroot}/boot/vmlinuz-%{version}-%{release}
-touch %{buildroot}/boot/dtb/qcom/sm8750-xiaomi-piano.dtb
-touch %{buildroot}%{_prefix}/lib/modules/%{version}-%{release}/modules.order
-touch %{buildroot}%{_prefix}/lib/modules/%{version}-%{release}/modules.builtin
-if [ -d kernel-payload ]; then
-    cp -a kernel-payload/* %{buildroot}/
+# Refuse to package an incomplete kernel. Every one of these has been observed
+# missing at some point; a silent empty file is worse than a failed build.
+test -s Image
+test -s System.map
+test -s config
+test -d lib/modules
+
+install -d %{buildroot}/boot/dtb/qcom
+install -d %{buildroot}%{_prefix}/lib/modules
+
+install -m 0644 Image    %{buildroot}/boot/vmlinuz-%{version}-%{release}
+install -m 0644 System.map %{buildroot}/boot/System.map-%{version}-%{release}
+install -m 0644 config   %{buildroot}/boot/config-%{version}-%{release}
+
+# The board DTB may come as dtb/qcom/*.dtb (kernel build) or as a single
+# board.dtb next to the kernel (SunUEFI packaging). Accept either.
+if [ -d dtb ]; then
+    cp -a dtb/. %{buildroot}/boot/dtb/
+fi
+if [ -f board.dtb ]; then
+    install -m 0644 board.dtb %{buildroot}/boot/dtb/qcom/sm8750-xiaomi-piano.dtb
+fi
+test -s %{buildroot}/boot/dtb/qcom/sm8750-xiaomi-piano.dtb
+
+# Modules keep the kernel's own release string (7.2.9-piano-gnome-g<hash>); the
+# RPM version alone would not match the modules' vermagic.
+cp -a lib/modules/. %{buildroot}%{_prefix}/lib/modules/
+test -s "$(find %{buildroot}%{_prefix}/lib/modules -name 'modules.dep' | head -n 1)"
+
+# Record which upstream commit this kernel came from, so a shipped image can be
+# traced back without unpacking the RPM.
+if [ -f manifest.json ]; then
+    install -D -m 0644 manifest.json \
+        %{buildroot}%{_datadir}/piano/kernel-manifest.json
 fi
 
 %files
-/boot/*
-%{_prefix}/lib/modules/%{version}-%{release}
+/boot/vmlinuz-%{version}-%{release}
+/boot/System.map-%{version}-%{release}
+/boot/config-%{version}-%{release}
+/boot/dtb
+%{_prefix}/lib/modules/*
+%{_datadir}/piano/kernel-manifest.json
 
 %changelog
 * Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 7.2.9-1.piano

@@ -11,10 +11,13 @@
 用法：
     scripts/build-clean-rootfs.py --plan --releasever 44
     scripts/build-clean-rootfs.py --execute --releasever 44 --output build/clean-rootfs
+    scripts/build-clean-rootfs.py --execute --releasever 44 --image \
+        --output build/clean-distros/fedora-44-gnome
     scripts/build-clean-rootfs.py --audit-only --rootfs build/clean-rootfs
 """
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -53,6 +56,14 @@ def load_json(path):
         return json.loads(Path(path).read_text(encoding="utf-8"))
     except Exception as exc:
         raise RootfsError(f"failed to load JSON from {path}: {exc}") from exc
+
+
+def sha256(path):
+    value = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            value.update(chunk)
+    return value.hexdigest()
 
 
 def dnf_binary():
@@ -107,12 +118,19 @@ def plan(releasever, desktop, rpms_dir, output=None):
     all_packages = base_pkgs + filtered_desktop_pkgs + PIANO_PACKAGES
     out_dir = Path(output or DISTROS / f"fedora-{releasever}-{desktop}").resolve()
 
+    # 镜像容量与 label 取自 product.json，和 ESP/首次分区规划共用同一份记录。
+    # 通用交付镜像用 8192 MiB 测试容量；本机目标容量由 prepare-install 扩容。
+    product = load_json(ROOT / "product.json") if (ROOT / "product.json").is_file() else {}
+    target = product.get("target", {})
+
     return {
         "status": "PLAN_READY",
         "distro": "fedora",
         "releasever": str(releasever),
         "desktop": desktop,
         "arch": profile.get("arch", "aarch64"),
+        "root_label": target.get("root_label", "PIANOROOT"),
+        "root_size_mib": 8192,
         "rpms_dir": str(Path(rpms_dir).resolve()),
         "repo_status": repo_info,
         "output": str(out_dir),
@@ -123,6 +141,7 @@ def plan(releasever, desktop, rpms_dir, output=None):
         "total_packages_count": len(all_packages),
         "display_manager": desktops[desktop].get("display_manager", "gdm"),
         "dnf_binary": dnf_binary(),
+        "build_image": False,
     }
 
 
@@ -309,13 +328,76 @@ def execute(plan_data):
     # 执行审计
     print("--> Running post-assembly RPM provenance audit...")
     audit_res = audit_rootfs(root)
+
+    # 审计通过后可选地打成 F2FS 镜像。这一步以前是缺失的：
+    # `--execute` 只产出 rootfs 目录，而 package-release-bundle.sh 去
+    # build/clean-distros/ 找 .img/.img.zst，找不到就静默回退到历史镜像，
+    # 于是“纯净装配链”从未真正出现在任何 release 里。
+    image_res = None
+    if plan_data.get("build_image"):
+        image_res = build_image(out, root, plan_data)
+
     manifest_data = {
         **plan_data,
         "audit": audit_res,
-        "status": "BUILT_AND_AUDITED" if audit_res["audit_passed"] else "AUDIT_FAILED"
+        "image": image_res,
+        "status": "AUDIT_FAILED" if not audit_res["audit_passed"] else (
+            "BUILT_IMAGED_AND_AUDITED" if image_res else "BUILT_AND_AUDITED")
     }
     (out / "clean-manifest.json").write_text(json.dumps(manifest_data, indent=2) + "\n")
     return manifest_data
+
+
+def build_image(out, root, plan_data):
+    """把审计过的 rootfs 目录打成 F2FS raw 镜像与 .zst 压缩包。
+
+    复用 scripts/build-f2fs-image.py，它已经实现“挂载真实 F2FS + tar 保属性
+    写入 + 卸载后只读读回逐项比对”，并且拒绝用 sload -P 静默丢 xattr。
+    这里只负责选容量、调用与压缩，不重复实现导入逻辑。
+    """
+    size_mib = int(plan_data.get("root_size_mib") or 8192)
+    img = out / "pianoroot-fedora44-gnome-f2fs.img"
+    manifest = out / "image-manifest.json"
+    tool = ROOT / "scripts" / "build-f2fs-image.py"
+    if not tool.is_file():
+        raise RootfsError(f"missing image builder: {tool}")
+    if img.exists():
+        # 重新装配时不要复用上一次的镜像：容量或内容可能已经变了。
+        img.unlink()
+
+    print(f"--> Building F2FS image ({size_mib} MiB) from {root}...")
+    cmd = [
+        sys.executable, str(tool),
+        "--rootfs", str(root),
+        "--size-mib", str(size_mib),
+        "--label", plan_data.get("root_label", "PIANOROOT"),
+        "--output", str(img),
+        "--verify",
+        "--manifest", str(manifest),
+    ]
+    # 挂载式导入需要 root；容器或 CI 里通常已经是 root。
+    if os.geteuid() != 0 and shutil.which("sudo"):
+        cmd = ["sudo", *cmd]
+    subprocess.run(cmd, check=True)
+
+    zst = Path(str(img) + ".zst")
+    if not shutil.which("zstd"):
+        raise RootfsError("zstd is required to publish the rootfs image")
+    print(f"--> Compressing {img.name} -> {zst.name}...")
+    subprocess.run(["zstd", "-T0", "-19", "-f", str(img), "-o", str(zst)], check=True)
+
+    record = json.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else {}
+    return {
+        "image": str(img),
+        "image_bytes": img.stat().st_size,
+        "image_sha256": sha256(img),
+        "zst": str(zst),
+        "zst_bytes": zst.stat().st_size,
+        "zst_sha256": sha256(zst),
+        "size_mib": size_mib,
+        "verify": record.get("verify"),
+        "status": record.get("status"),
+    }
 
 
 def main():
@@ -325,6 +407,10 @@ def main():
     parser.add_argument("--rpms-dir", default=str(RPMS_DEFAULT), help="本地 RPM 仓库目录")
     parser.add_argument("--output", help="产物输出路径")
     parser.add_argument("--rootfs", help="用于 audit-only 的已安装 rootfs 路径")
+    parser.add_argument("--image", action="store_true",
+                        help="装配后额外产出 F2FS raw 镜像与 .zst（需要 root 挂载权限）")
+    parser.add_argument("--size-mib", type=int,
+                        help="镜像容量 MiB（默认 8192，即通用交付测试容量）")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--plan", action="store_true", help="打印组装计划与本地 RPM 源验证")
     mode.add_argument("--execute", action="store_true", help="执行装配并生成 clean rootfs")
@@ -340,12 +426,17 @@ def main():
             p = plan(args.releasever, args.desktop, args.rpms_dir, args.output)
             if not p["repo_status"]["valid"]:
                 raise RootfsError(f"RPM repository is invalid: {p['repo_status']}")
+            p["build_image"] = bool(args.image)
+            if args.size_mib:
+                p["root_size_mib"] = args.size_mib
             res = execute(p)
             print(json.dumps({
                 "status": res["status"],
                 "output": res["output"],
                 "audit_passed": res["audit"]["audit_passed"],
                 "total_rpms": res["audit"]["total_rpms_installed"],
+                "image": (res.get("image") or {}).get("image"),
+                "image_sha256": (res.get("image") or {}).get("image_sha256"),
             }, indent=2, ensure_ascii=False))
             return 0
         elif args.audit_only:

@@ -202,10 +202,30 @@ fastboot getvar partition-size:sunuefi_esp
 启动后验证（三项都要满足）：
 
 ```sh
-uname -r              # release 对应的内核版本
+uname -r              # 必须等于 ESP 里那个内核的 release（见下）
 findmnt /             # 根文件系统为 F2FS
 systemctl --failed    # 输出为空
 ```
+
+`uname -r` 的正确值不是随便一个 7.2.9，而是这一版 ESP 里实际装的内核。
+它在两个地方可以查到，两边必须一致：
+
+```sh
+# 1) ESP 镜像里的内核字符串（刷写前就能查，不需要设备）
+fastboot fetch sunuefi_esp esp.img      # 或直接用发布包里的 sunuefi_esp.img
+mtype -i sunuefi_esp.img ::/EFI/Piano/stable/Image > Image.bin
+strings -a Image.bin | grep -m1 -oE '[0-9.]+-piano[^ ]*g[0-9a-f]+'
+
+# 2) 设备启动后的实际内核
+uname -r
+
+# 3) 模块目录必须与之同名，否则驱动根本不会加载
+ls /usr/lib/modules/
+```
+
+如果 `uname -r` 与 ESP 里的字符串不符，说明刷进去的不是这一版资产；
+如果 `/usr/lib/modules/` 下没有同名目录，说明 rootfs 与 ESP 的内核不是一套，
+系统能起来但没有任何驱动。
 
 能进入 GNOME 桌面是刷写成功的最直接证据。以上读回与启动后检查在本文档定稿时
 **尚未在真机上完整执行**（当时设备停在 Fastboot），只作为流程定义，不能当作

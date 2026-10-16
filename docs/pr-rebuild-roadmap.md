@@ -63,6 +63,24 @@
      首次分区仍走 `install-f2fs.py`；
    - 上述脚本路径已用桩设备跑通（无 `erase`、写入序列与预检顺序符合预期），
      **但尚未在一台纯净真机上按 Release 资产完整执行**。
+
+   > **2026-10-17 补充：交付物本身此前不成立。**
+   > 上面这些是脚本能力的边界，但当时还有一个更严重的问题——`out/release-bundle/`
+   > 里的资产并不是本 PR 流水线的产物：rootfs 与 2026-10-11 的
+   > `offline-bringup-20261011-r2` 镜像逐字节相同（`bundle_source_commit`
+   > 记为 `97fe3f1`），ESP 是 10-14 的设备读回，内核还是 10-11 的
+   > `gd33a42990baf`，且镜像里没有任何一个本 PR 的 9 个 RPM。原因是
+   > `package-release-bundle.sh` 的候选列表按顺序取第一个存在的文件，
+   > 而这些历史目录一直存在；`build-clean-rootfs.py --execute` 又只产出
+   > rootfs 目录、从不产出 `.img`，打包脚本要的 `build/clean-distros/` 从未
+   > 出现过，于是每次都静默回退。
+   >
+   > 已修复：打包脚本只把 `build/` 下的路径视为当前产物，回退到历史目录
+   > 一律报错（`--allow-stale` 才放行），并写出 `PROVENANCE.txt`；
+   > `build-clean-rootfs.py` 新增 `--image`，审计通过后直接产出 F2FS raw
+   > 镜像与 `.zst`。回归测试见 `tests/check_release_provenance.py`。
+   > 另一个更早的缺陷是 `kernel-piano` RPM 是空壳（vmlinuz 与 DTB 均 0 字节），
+   > 已改为强制打包真实内核载荷，见 `tests/check_kernel_package.py`。
 5. **里程碑 5：纯净真机全流程实操与终验（🟡 进行中 / 实机已全部装配）**
    - 实机（Xiaomi Pad 8 Pro / `piano`）已成功部署全部 9 个解耦 RPM 包，硬件 Iris VA-API 硬解、ALSA UCM2 音频、卡尔曼触控滤波与传感器代理全部实机就绪；
    - 待下次真机重启验证 `piano-boot-request-autoconfig.service` 开机首发自愈与盲测全流程。
