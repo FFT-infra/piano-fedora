@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""回归测试：一键刷机脚本不得擦除或改写引导链关键分区。
+
+实机教训（2026-10-16/17）：`fastboot erase dtbo_b` 会让高通 ABL 拒绝整条
+引导链，报 `Failed to load/authenticate boot image: Device Error`，平板卡在
+Fastboot。脚本此前带着这条命令，文档还写着“已清空，使用 UEFI 内建 DTB”，
+两者都与实测相反。
+
+本测试只读脚本与文档源码，不接触任何设备：
+
+* `flash-linux.sh` / `flash-linux.bat` 不得出现任何 `fastboot erase`，也不得
+  出现 `fastboot -w`、`fastboot format`、`flashing` 之类的破坏性命令。
+* 两个脚本只允许写 `boot_b`、`sunuefi_esp`、`sunuefi_root` 三个分区，且必须
+  有 `set_active b`。
+* 安装文档不得再声称擦除 dtbo_b，也不得把 `erase dtbo_b` 写进步骤里。
+"""
+
+from pathlib import Path
+import re
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = [ROOT / "scripts/installer/flash-linux.sh",
+           ROOT / "scripts/installer/flash-linux.bat"]
+INSTALL_DOC = ROOT / "docs/installation.md"
+INSTALLER_README = ROOT / "scripts/installer/README-INSTALL.txt"
+
+# Partitions the one-click installer is allowed to write.
+ALLOWED_FLASH_TARGETS = {"boot_b", "sunuefi_esp", "sunuefi_root"}
+
+# The scripts route every device write through a `fb()` wrapper that pins the
+# device serial, so match both `fastboot <verb>` and the wrapper `fb <verb>`.
+FB = r"\b(?:fastboot|fb)\b"
+
+# A fastboot invocation that destroys or rewrites boot-chain content. Matching is
+# on the command text only, so comments mentioning the forbidden command (which
+# the docs and scripts deliberately keep as a warning) do not trip the check.
+# `flashing` only counts with a real subcommand, so prose like "fastboot
+# flashing!" in an error message is not mistaken for a command.
+DESTRUCTIVE = re.compile(
+    FB + r"\s+(?:-\S+\s+)*(?:erase|format)\b"
+    r"|" + FB + r"\s+(?:-\S+\s+)*-w\b"
+    r"|" + FB + r"\s+(?:-\S+\s+)*flashing\s+(?:lock|unlock)\b")
+
+# `fastboot flash <partition>` / `fb flash <partition> "$VAR"`.
+FLASH_CALL = re.compile(FB + r"\s+(?:-\S+\s+)*flash\s+([A-Za-z0-9_]+)")
+
+
+def strip_comments(text, suffix):
+    """Drop comment lines so explanatory mentions do not count as commands."""
+    kept = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if suffix == ".sh" and stripped.startswith("#"):
+            continue
+        if suffix == ".bat" and (stripped.lower().startswith("rem ")
+                                 or stripped.startswith("::")):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def check_script(path):
+    text = path.read_text(encoding="utf-8")
+    code = strip_comments(text, path.suffix)
+    failures = []
+
+    hit = DESTRUCTIVE.search(code)
+    if hit:
+        failures.append(f"{path.name}: destructive fastboot command: {hit.group(0)!r}")
+
+    targets = set(FLASH_CALL.findall(code))
+    unexpected = targets - ALLOWED_FLASH_TARGETS
+    if unexpected:
+        failures.append(f"{path.name}: unexpected flash targets {sorted(unexpected)}")
+    missing = ALLOWED_FLASH_TARGETS - targets
+    if missing:
+        failures.append(f"{path.name}: missing flash targets {sorted(missing)}")
+
+    if "set_active b" not in code:
+        failures.append(f"{path.name}: missing 'set_active b'")
+
+    # The shell installer must pin the serial for every device write, otherwise a
+    # second tablet appearing mid-flash would receive the partitions instead.
+    if path.suffix == ".sh":
+        if '-s "$FASTBOOT_SERIAL"' not in code:
+            failures.append(f"{path.name}: flash commands are not pinned to FASTBOOT_SERIAL")
+        # An empty `fastboot devices` output must not abort before the error text.
+        if "|| true" not in code:
+            failures.append(
+                f"{path.name}: device probe lacks '|| true'; set -e would abort silently")
+        # Pre-flight: refuse to flash into partitions that do not exist.
+        for token in ("partition-size:${name}", "unlocked", "is-userspace"):
+            if token not in code:
+                failures.append(f"{path.name}: missing pre-flight check {token!r}")
+
+    return failures
+
+
+def check_docs():
+    failures = []
+    doc = INSTALL_DOC.read_text(encoding="utf-8")
+
+    # The architecture diagram and install steps must not claim dtbo_b is erased.
+    for bad in ("已清空", "擦除冗余 DTBO"):
+        if bad in doc:
+            failures.append(f"docs/installation.md: still claims dtbo_b is erased ({bad!r})")
+
+    # Any step list that shows the erase command must be gone. The manual section
+    # legitimately names it in a "do not run this" warning, so only flag it when
+    # it appears as a bare command line.
+    for lineno, line in enumerate(doc.splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith("fastboot erase dtbo_b"):
+            failures.append(
+                f"docs/installation.md:{lineno}: still instructs 'fastboot erase dtbo_b'")
+
+    # The manual flash chapter must exist and cover the required ground.
+    required = ("手动刷机", "SHA256SUMS", "sha256sum -c", "fastboot flash boot_b",
+                "fastboot flash sunuefi_esp", "fastboot flash sunuefi_root",
+                "fastboot set_active b", "fastboot set_active a")
+    for token in required:
+        if token not in doc:
+            failures.append(f"docs/installation.md: manual-flash chapter missing {token!r}")
+
+    # The shipped README may name the erase command in a "never run this"
+    # warning, so only flag it when it appears as a bare command line.
+    readme = INSTALLER_README.read_text(encoding="utf-8")
+    for lineno, line in enumerate(readme.splitlines(), 1):
+        if line.strip().startswith("fastboot erase dtbo_b"):
+            failures.append(
+                f"scripts/installer/README-INSTALL.txt:{lineno}: instructs 'fastboot erase dtbo_b'")
+
+    return failures
+
+
+def main():
+    failures = []
+    for path in SCRIPTS:
+        if not path.exists():
+            failures.append(f"missing script: {path}")
+            continue
+        failures.extend(check_script(path))
+    failures.extend(check_docs())
+
+    if failures:
+        for item in failures:
+            print(f"FAIL: {item}", file=sys.stderr)
+        return 1
+
+    print("OK: 一键脚本无 erase/-w/format，只写 boot_b/sunuefi_esp/sunuefi_root；"
+          "文档保留原厂 dtbo_b 且含手动刷机章节")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

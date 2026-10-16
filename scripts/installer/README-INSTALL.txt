@@ -28,6 +28,48 @@ Flashing Instructions:
 4. Follow the prompt and type YES to flash.
 5. Tablet will reboot into Fedora 44 GNOME desktop!
 
+Manual Flashing (no installer script):
+The scripts only wrap the commands below. If you prefer to run each step
+yourself, or the script does not work on your platform, do this instead.
+
+Step 1 - Verify the downloaded files:
+   sha256sum -c SHA256SUMS          (macOS: shasum -a 256 -c SHA256SUMS)
+   Run it in the folder holding the images; every line must say OK.
+
+Step 2 - Expand the root filesystem archive:
+   zstd -d pianoroot-fedora44-gnome-f2fs.img.zst
+
+Step 3 - Confirm the device before writing anything:
+   fastboot devices
+   fastboot getvar product          -> must be "piano"
+   fastboot getvar unlocked         -> must be "yes"
+   fastboot getvar is-userspace     -> must be "no" (stock ABL, not fastbootd)
+   fastboot getvar current-slot     -> note it, you need it to roll back
+
+Step 4 - Flash, one command at a time (each must print OKAY):
+   fastboot set_active b
+   fastboot flash boot_b boot_sunuefi.img
+   fastboot flash sunuefi_esp sunuefi_esp.img
+   fastboot flash sunuefi_root pianoroot-fedora44-gnome-f2fs.img
+   fastboot reboot
+
+Step 5 - Verify after reboot:
+   GNOME desktop appears; "uname -r" shows the release kernel;
+   "findmnt /" shows an F2FS root; "systemctl --failed" is empty.
+
+Roll back to Android at any time by switching the slot back:
+   fastboot set_active a
+   fastboot reboot
+
+WARNING - never run these:
+   * Erasing dtbo_b: ABL then rejects the whole boot chain with
+     "Failed to load/authenticate boot image: Device Error" and the tablet
+     sticks in Fastboot.
+   * Erasing userdata: destroys all Android user data irreversibly.
+   * Erasing boot_b, "fastboot -w", or any write to abl, xbl, tz, modem.
+SunUEFI reads its board DTB from vendor_boot_b plus the stock dtbo_b overlay,
+so the stock DTBO content must stay in place.
+
 Login Credentials:
 - Username: piano
 - Password: piano123456

@@ -41,6 +41,7 @@ test:
 	python3 tests/check_runtime_extras.py
 	python3 tests/check_rootfs_finalize.py
 	python3 tests/check_clean_rootfs.py
+	python3 tests/check_flash_script_guard.py
 
 # 在平板上执行，MEDIA_OUTPUT 必须是新的证据目录。
 test-device-media:

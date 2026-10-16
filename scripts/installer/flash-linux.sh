@@ -100,7 +100,12 @@ echo -e "[INFO] Found Fastboot: ${GREEN}${FASTBOOT_VER}${NC}"
 
 # 2. Device connection check
 echo -e "[INFO] Checking connected Fastboot devices..."
-DEVICE_COUNT=$(fastboot devices | grep -v '^$' | wc -l)
+# `fastboot devices` exits non-zero when it finds nothing, and `grep -v '^$'`
+# exits 1 on empty input. Under `set -euo pipefail` either would abort the script
+# right here, before the error message below ever printed. `|| true` keeps the
+# failure path inside our own check.
+DEVICE_LIST=$(fastboot devices 2>/dev/null | grep -v '^$' || true)
+DEVICE_COUNT=$(printf '%s\n' "$DEVICE_LIST" | grep -c . || true)
 if [ "$DEVICE_COUNT" -eq 0 ]; then
     echo -e "${RED}[ERROR] No device detected in Fastboot mode!${NC}"
     echo "Please ensure:"
@@ -111,22 +116,77 @@ if [ "$DEVICE_COUNT" -eq 0 ]; then
     exit 1
 fi
 
-FASTBOOT_SERIAL=$(fastboot devices | head -n 1 | awk '{print $1}')
+if [ "$DEVICE_COUNT" -gt 1 ]; then
+    echo -e "${RED}[ERROR] ${DEVICE_COUNT} Fastboot devices detected.${NC}"
+    echo "Disconnect every other device; flashing the wrong one is unrecoverable."
+    printf '%s\n' "$DEVICE_LIST" | sed 's/^/  /'
+    exit 1
+fi
+
+FASTBOOT_SERIAL=$(printf '%s\n' "$DEVICE_LIST" | head -n 1 | awk '{print $1}')
 echo -e "[INFO] Detected Fastboot device: ${GREEN}${FASTBOOT_SERIAL}${NC}"
+
+# Every fastboot call below is pinned to this serial so a second tablet that
+# shows up mid-flash can never receive a partition write.
+fb() {
+    fastboot -s "$FASTBOOT_SERIAL" "$@"
+}
 
 # 3. Product model validation
 echo -e "[INFO] Querying device product model..."
-PRODUCT_ID=$(fastboot getvar product 2>&1 | grep '^product:' | awk '{print $2}' | tr -d '\r\n')
+PRODUCT_ID=$(fb getvar product 2>&1 | grep '^product:' | awk '{print $2}' | tr -d '\r\n' || true)
 if [ -n "$PRODUCT_ID" ]; then
     if [ "$PRODUCT_ID" != "piano" ]; then
-        echo -e "${YELLOW}[WARNING] Device product reported as '$PRODUCT_ID' (expected 'piano')!${NC}"
-        echo "Flashing onto a non-piano device can cause permanent bricking."
+        echo -e "${RED}[ERROR] Device product reported as '$PRODUCT_ID', expected 'piano'.${NC}"
+        echo "Refusing to flash a different device model; that can cause a hard brick."
+        exit 1
     else
         echo -e "[INFO] Product check passed: ${GREEN}${PRODUCT_ID} (Xiaomi Pad 8 Pro)${NC}"
     fi
 else
-    echo -e "${YELLOW}[WARNING] Could not read 'product' variable from bootloader.${NC}"
+    echo -e "${RED}[ERROR] Could not read 'product' from the bootloader.${NC}"
+    echo "Without it the device model cannot be confirmed. Check the cable and retry."
+    exit 1
 fi
+
+# 3b. Bootloader state: must be stock ABL, not fastbootd, and unlocked.
+UNLOCKED=$(fb getvar unlocked 2>&1 | grep '^unlocked:' | awk '{print $2}' | tr -d '\r\n' || true)
+if [ "$UNLOCKED" != "yes" ]; then
+    echo -e "${RED}[ERROR] Bootloader is not unlocked (unlocked='${UNLOCKED}').${NC}"
+    echo "Unlock it through Xiaomi's official process before flashing."
+    exit 1
+fi
+
+USERSPACE=$(fb getvar is-userspace 2>&1 | grep '^is-userspace:' | awk '{print $2}' | tr -d '\r\n' || true)
+if [ "$USERSPACE" != "no" ]; then
+    echo -e "${RED}[ERROR] Device is in fastbootd (is-userspace='${USERSPACE}').${NC}"
+    echo "Reboot to the stock bootloader: fastboot reboot bootloader"
+    exit 1
+fi
+
+# 3c. The target partitions must exist and be big enough. Flashing a 512 MiB ESP
+# into a missing or shrunken partition is exactly the kind of silent corruption
+# that leaves the tablet unbootable, so refuse before any write happens.
+require_partition() {
+    local name="$1" need="$2" size
+    size=$(fb getvar "partition-size:${name}" 2>&1 | grep "partition-size:${name}:" \
+           | awk '{print $2}' | tr -d '\r\n' || true)
+    if [ -z "$size" ]; then
+        echo -e "${RED}[ERROR] Partition '${name}' not found on the device.${NC}"
+        echo "This tablet has not been partitioned for Linux yet; run the first-partition flow."
+        exit 1
+    fi
+    if [ "$((size))" -lt "$need" ]; then
+        echo -e "${RED}[ERROR] Partition '${name}' is too small (${size} < ${need} bytes).${NC}"
+        exit 1
+    fi
+    echo -e "  ${GREEN}✓${NC} ${name} present, $(printf '%s' "$size") bytes"
+}
+
+echo -e "[INFO] Verifying target partitions..."
+require_partition boot_b 67108864
+require_partition sunuefi_esp 536870912
+require_partition sunuefi_root 1073741824
 
 # 4. Image file resolution
 find_file() {
@@ -273,7 +333,7 @@ echo -e "  - RootFS image : ${GREEN}${ROOT_IMG}${NC} ($(stat -c%s "$ROOT_IMG" 2>
 # 7. Safety Confirmation
 if [ "$AUTO_CONFIRM" -eq 0 ]; then
     echo -e "\n${YELLOW}${BOLD}⚠️  CRITICAL SAFETY WARNING ⚠️${NC}"
-    echo "1. This action will write Linux SunUEFI to Slot B (boot_b, dtbo_b)."
+    echo "1. This action will write Linux SunUEFI to Slot B (boot_b only)."
     echo "2. This action will overwrite 'sunuefi_esp' and 'sunuefi_root' partitions."
     echo "3. Existing Android on Slot A is preserved for dual-boot recovery."
     echo "4. Ensure your Bootloader is UNLOCKED and battery is above 30%."
@@ -288,20 +348,25 @@ fi
 # 7. Flashing execution sequence
 echo -e "\n${BLUE}${BOLD}=== Starting Flashing Sequence ===${NC}"
 
-echo -e "\n--> Step 1/5: Setting active boot slot to B..."
-fastboot set_active b
+echo -e "\n--> Step 1/4: Setting active boot slot to B..."
+fb set_active b
 
-echo -e "\n--> Step 2/5: Erasing dtbo_b (SunUEFI uses unified internal DTB)..."
-fastboot erase dtbo_b
+# dtbo_b is deliberately left untouched. Qualcomm ABL authenticates the whole
+# boot chain of the active slot and rejects an empty/foreign DTBO with
+# "Failed to load/authenticate boot image: Device Error"; erasing dtbo_b has
+# been observed to leave the tablet stuck in Fastboot. SunUEFI reads its board
+# DTB from vendor_boot_b plus the stock dtbo_b overlay fragments, so the stock
+# content must stay in place.
+echo -e "\n--> Skipping dtbo_b: keeping the stock DTBO for the active slot."
 
-echo -e "\n--> Step 3/5: Flashing SunUEFI bootloader header to boot_b..."
-fastboot flash boot_b "$BOOT_IMG"
+echo -e "\n--> Step 2/4: Flashing SunUEFI bootloader header to boot_b..."
+fb flash boot_b "$BOOT_IMG"
 
-echo -e "\n--> Step 4/5: Flashing SunUEFI ESP to sunuefi_esp..."
-fastboot flash sunuefi_esp "$ESP_IMG"
+echo -e "\n--> Step 3/4: Flashing SunUEFI ESP to sunuefi_esp..."
+fb flash sunuefi_esp "$ESP_IMG"
 
-echo -e "\n--> Step 5/5: Flashing Fedora 44 RootFS to sunuefi_root..."
-fastboot flash sunuefi_root "$ROOT_IMG"
+echo -e "\n--> Step 4/4: Flashing Fedora 44 RootFS to sunuefi_root..."
+fb flash sunuefi_root "$ROOT_IMG"
 
 echo -e "\n${GREEN}${BOLD}====================================================================${NC}"
 echo -e "${GREEN}${BOLD}             🎉 Flashing Completed Successfully! 🎉                 ${NC}"
@@ -316,7 +381,7 @@ echo ""
 
 if [ "$DO_REBOOT" -eq 1 ]; then
     echo -e "--> Rebooting tablet into Fedora 44 Linux..."
-    fastboot reboot
+    fb reboot
     echo -e "${GREEN}Device reboot triggered. Enjoy Fedora Linux on Xiaomi Pad 8 Pro!${NC}"
 else
     echo -e "Device left in Fastboot mode (--no-reboot specified)."

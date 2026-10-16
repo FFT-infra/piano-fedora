@@ -42,12 +42,37 @@ REM 3. Product check
 echo [INFO] Querying product model...
 fastboot getvar product 2>&1 | findstr /i "piano" >nul
 if %ERRORLEVEL% neq 0 (
-    echo [WARNING] Device product does not match 'piano'!
-    echo Flashing onto another device model can cause a hard brick.
+    echo [ERROR] Device product does not match 'piano'!
+    echo Refusing to flash another device model; that can cause a hard brick.
     echo.
+    pause
+    exit /b 1
 ) else (
     echo [INFO] Product check passed: piano (Xiaomi Pad 8 Pro)
 )
+
+REM 3b. Bootloader state: stock ABL, not fastbootd, and unlocked.
+fastboot getvar is-userspace 2>&1 | findstr /i "is-userspace: no" >nul
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Device is in fastbootd, not the stock bootloader.
+    echo Reboot with: fastboot reboot bootloader
+    echo.
+    pause
+    exit /b 1
+)
+
+REM 3c. Target partitions must exist before anything is written.
+for %%P in (boot_b sunuefi_esp sunuefi_root) do (
+    fastboot getvar partition-size:%%P 2>&1 | findstr /i "partition-size:%%P:" >nul
+    if ERRORLEVEL 1 (
+        echo [ERROR] Partition '%%P' was not found on the device.
+        echo This tablet has not been partitioned for Linux yet.
+        echo.
+        pause
+        exit /b 1
+    )
+)
+echo [INFO] Target partitions boot_b, sunuefi_esp, sunuefi_root verified.
 
 REM 4. Image file validation
 set BOOT_IMG=boot_sunuefi.img
@@ -113,7 +138,7 @@ REM 6. Safety confirmation
 echo ====================================================================
 echo                  ⚠️  CRITICAL SAFETY WARNING ⚠️
 echo ====================================================================
-echo 1. This will flash Linux SunUEFI into Slot B (boot_b, dtbo_b).
+echo 1. This will flash Linux SunUEFI into Slot B (boot_b only).
 echo 2. This will overwrite 'sunuefi_esp' and 'sunuefi_root' partitions.
 echo 3. Android on Slot A is preserved for dual-boot.
 echo 4. Ensure Bootloader is UNLOCKED and battery is above 30%%.
@@ -130,23 +155,23 @@ echo ====================================================================
 echo                   Starting Flashing Sequence
 echo ====================================================================
 
-echo --^> Step 1/5: Setting active slot to B...
+echo --^> Step 1/4: Setting active slot to B...
 fastboot set_active b
 if %ERRORLEVEL% neq 0 goto error
 
-echo --^> Step 2/5: Erasing dtbo_b...
-fastboot erase dtbo_b
-if %ERRORLEVEL% neq 0 goto error
+echo --^> Skipping dtbo_b: keeping the stock DTBO for the active slot.
+echo     Qualcomm ABL rejects an empty DTBO with "Device Error"; SunUEFI reads
+echo     its board DTB from vendor_boot_b plus the stock dtbo_b overlay.
 
-echo --^> Step 3/5: Flashing SunUEFI bootloader to boot_b...
+echo --^> Step 2/4: Flashing SunUEFI bootloader to boot_b...
 fastboot flash boot_b "%BOOT_IMG%"
 if %ERRORLEVEL% neq 0 goto error
 
-echo --^> Step 4/5: Flashing SunUEFI ESP to sunuefi_esp...
+echo --^> Step 3/4: Flashing SunUEFI ESP to sunuefi_esp...
 fastboot flash sunuefi_esp "%ESP_IMG%"
 if %ERRORLEVEL% neq 0 goto error
 
-echo --^> Step 5/5: Flashing Fedora 44 RootFS to sunuefi_root...
+echo --^> Step 4/4: Flashing Fedora 44 RootFS to sunuefi_root...
 fastboot flash sunuefi_root "%ROOT_IMG%"
 if %ERRORLEVEL% neq 0 goto error
 

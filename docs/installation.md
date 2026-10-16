@@ -30,11 +30,16 @@ Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B �
         ▼                                                               ▼
   【Slot A (原厂 Android)】                                       【Slot B (SunUEFI + Linux)】
   - boot_a                                                        - boot_b (SunUEFI 链式引导头)
-  - dtbo_a                                                        - dtbo_b (已清空，使用 UEFI 内建 DTB)
+  - dtbo_a                                                        - dtbo_b (保留原厂内容，供 ABL 校验)
   - init_boot_a                                                   - init_boot_b
   - super (Android 系统与厂商镜像)                                 - sunuefi_esp (512 MiB, FAT32)
   - userdata (原厂扣减 Linux 后的剩余空间)                         - sunuefi_root (468+ GiB, 高性能 F2FS)
 ```
+
+> **不要擦除 `dtbo_b`。** 高通 ABL 在启动时会校验活动槽位的整条引导链，空
+> DTBO 会被拒绝为 `Failed to load/authenticate boot image: Device Error`，
+> 实测会把平板卡在 Fastboot。SunUEFI 的板级 DTB 来自 `vendor_boot_b` 底包，
+> 叠加原厂 `dtbo_b` 增量片段，因此原厂内容必须留在原位。
 
 * **`sunuefi_esp` (512 MiB, FAT32)**：存放 SunUEFI EDK2 固件核心、合并设备树（DTB）、Linux 7.2 主线适配内核及 Initramfs；
 * **`sunuefi_root` (F2FS)**：存放 Fedora 44 GNOME 根文件系统。采用闪存友好的 F2FS 格式，彻底发挥高达数 GB/s 的 UFS 4.0 顺序与随机读写潜能；
@@ -80,11 +85,119 @@ Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B �
 4. 弹出醒目安全告知，要求用户在终端输入大写 `YES` 确认；
 5. 执行标准刷写序列：
    - 切换活动槽位至 B：`fastboot set_active b`
-   - 擦除冗余 DTBO：`fastboot erase dtbo_b`
    - 刷入引导头：`fastboot flash boot_b boot_sunuefi.img`
    - 刷入 ESP 分区：`fastboot flash sunuefi_esp sunuefi_esp.img`
    - 刷入系统根分区：`fastboot flash sunuefi_root pianoroot-fedora44-gnome-f2fs.img`
    - 自动重启：`fastboot reboot`
+
+   脚本不写 `dtbo_b`、`init_boot_b`、`vendor_boot_b`、`vbmeta_b`，也不擦除
+   `userdata`。需要逐条手动执行同样步骤时，见下一节。
+
+---
+
+## 三之二、 手动刷机（不使用一键脚本）
+
+一键脚本只是把下面这些命令包了一层。想自己控制每一步、或脚本在你的平台上跑不
+起来时，直接照本节操作。命令与脚本执行的是同一套写入，`dtbo_b` 一律不动。
+
+### 1. 从 Release 取哪些文件
+
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora-test/releases)
+下载发行包，只需要下面这些资产：
+
+| Release 资产 | 用途 | 刷到哪 |
+| --- | --- | --- |
+| `boot_sunuefi.img` | SunUEFI 链式引导头 | `boot_b` |
+| `sunuefi_esp.img` | ESP 分区镜像（固件核心、DTB、内核、initramfs） | `sunuefi_esp` |
+| `pianoroot-fedora44-gnome-f2fs.img.zst` | Fedora 44 GNOME 根文件系统（压缩） | `sunuefi_root` |
+| `SHA256SUMS` | 全部资产的 SHA256 清单 | 不刷入，只用于校验 |
+
+`piano-installer-*.zip` 和 `piano-switch-ksu-*.zip` 是给一键脚本和 Android 侧
+切换模块用的，手动刷机不需要。`.zst` 要先用 `zstd -d` 展开成 `.img` 再刷。
+
+### 2. 校验下载到的文件
+
+在存放这些文件的目录里执行（macOS 把 `sha256sum` 换成 `shasum -a 256`）：
+
+```sh
+sha256sum -c SHA256SUMS
+```
+
+清单里的路径写成 `./name`，所以必须在文件所在目录执行。三条都要是 `OK`；
+任何一条 `FAILED` 都说明文件损坏，重新下载，不要继续。手动核对单个文件：
+
+```sh
+sha256sum boot_sunuefi.img sunuefi_esp.img pianoroot-fedora44-gnome-f2fs.img.zst
+```
+
+### 3. 确认设备和槽位
+
+平板关机后长按**【电源键 + 音量减键】**进入 Fastboot，插好数据线，然后：
+
+```sh
+fastboot devices
+fastboot getvar product        # 必须是 piano
+fastboot getvar current-slot   # 记下当前槽位，回滚时要用
+fastboot getvar unlocked       # 必须是 yes
+fastboot getvar is-userspace   # 必须是 no
+```
+
+`product` 不是 `piano`、`unlocked` 不是 `yes`、或 `is-userspace` 是 `yes`
+（说明落在 fastbootd 而不是原厂 ABL）时，停下，不要写任何分区。
+
+### 4. 逐条刷写
+
+```sh
+# 1. 切到 B 槽（Android 保留在 A 槽）
+fastboot set_active b
+
+# 2. 展开根文件系统（只做一次）
+zstd -d pianoroot-fedora44-gnome-f2fs.img.zst
+
+# 3. 引导头 -> boot_b
+fastboot flash boot_b boot_sunuefi.img
+
+# 4. ESP -> sunuefi_esp
+fastboot flash sunuefi_esp sunuefi_esp.img
+
+# 5. 根文件系统 -> sunuefi_root（约 2 GiB，需要几分钟）
+fastboot flash sunuefi_root pianoroot-fedora44-gnome-f2fs.img
+
+# 6. 重启进系统
+fastboot reboot
+```
+
+每条命令都必须打印 `OKAY`。出现 `FAILED` 就停下，不要继续后面的步骤。
+
+**不要**执行 `fastboot erase dtbo_b`、`fastboot erase boot_b`、
+`fastboot erase userdata`、`fastboot -w`，也不要写 `abl`、`xbl`、`tz`、`modem`
+等引导链分区。
+
+### 5. 验证刷写结果
+
+`fastboot flash` 的 `OKAY` 只证明数据发完了，不证明分区内容正确。重启前可以
+读回校验（`sunuefi_esp` 是 512 MiB，读回需要几分钟）：
+
+```sh
+fastboot fetch sunuefi_esp /tmp/esp-readback.img
+sha256sum /tmp/esp-readback.img
+# 应与 sunuefi_esp.img 的 sha256 一致
+```
+
+设备不支持 `fastboot fetch` 时，改为启动后验证：能进 GNOME 桌面、`uname -r`
+是 release 对应的内核、`findmnt /` 显示 F2FS、`systemctl --failed` 为空。
+
+### 6. 回滚到 Android
+
+Linux 起不来时，把槽位切回 A 即可恢复 Android，**不需要**重刷任何分区：
+
+```sh
+fastboot set_active a
+fastboot reboot
+```
+
+要重新刷 Linux，先把 `fastboot getvar current-slot` 的结果与上一步一致地切回
+`b`，再重复第 4 节。`userdata` 一旦被清空无法恢复，这也是不要擦除它的原因。
 
 ---
 
