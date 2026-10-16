@@ -1,4 +1,4 @@
-.PHONY: test test-device-media plan clean
+.PHONY: test test-device-media plan clean build-rpms release-bundle
 
 test:
 	python3 tests/check_sources.py
@@ -51,3 +51,9 @@ plan:
 
 clean:
 	rm -rf build
+
+build-rpms:
+	./scripts/build-rpms.sh
+
+release-bundle:
+	./scripts/package-release-bundle.sh

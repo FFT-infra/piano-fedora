@@ -1,4 +1,94 @@
-# 安装、已有分区更新与验收
+# Xiaomi Pad 8 Pro (piano) 安装、分区与双系统指南
+
+本指南适用于在**小米平板 8 Pro（Xiaomi Pad 8 Pro / 代号 `piano` / 骁龙 8 至尊版 SM8750）**上从零全新安装 Fedora 44 GNOME 桌面系统，或者对已有 Linux 分区进行增量更新。
+
+---
+
+## 一、 前提要求与准备工作
+
+1. **设备已解锁 Bootloader**：
+   - 需通过小米官方社区申请并完成 BL 解锁流程；
+   - 刷入前请确保平板电量在 **30% 以上**（建议 50% 以上）。
+2. **电脑端工具链**：
+   - 电脑（Windows / macOS / Linux）已配置好 `fastboot` 与 `adb` 命令行工具环境变量（Android Platform Tools）；
+   - Linux 用户请确保配置了 Android 设备 udev 规则，或使用具备 `sudo` 权限的 shell。
+3. **重要数据备份**：
+   - 首次对平板进行分区调整时，原厂 Android 的 `userdata` 分区将被安全拆分为两部分（一半保留给 Android，一半分配给 Linux），**初次分区会清空 Android 用户数据，请提前完成外部备份**！
+
+---
+
+## 二、 存储与分区架构原理
+
+Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B 槽位（Slot A / Slot B）架构：
+
+```
+                    ┌────────────────────────────────────────┐
+                    │       UFS 4.0 物理闪存 (LUN 0-5)        │
+                    └───────────────────┬────────────────────┘
+                                        │
+        ┌───────────────────────────────┴───────────────────────────────┐
+        ▼                                                               ▼
+  【Slot A (原厂 Android)】                                       【Slot B (SunUEFI + Linux)】
+  - boot_a                                                        - boot_b (SunUEFI 链式引导头)
+  - dtbo_a                                                        - dtbo_b (已清空，使用 UEFI 内建 DTB)
+  - init_boot_a                                                   - init_boot_b
+  - super (Android 系统与厂商镜像)                                 - sunuefi_esp (512 MiB, FAT32)
+  - userdata (原厂扣减 Linux 后的剩余空间)                         - sunuefi_root (468+ GiB, 高性能 F2FS)
+```
+
+* **`sunuefi_esp` (512 MiB, FAT32)**：存放 SunUEFI EDK2 固件核心、合并设备树（DTB）、Linux 7.2 主线适配内核及 Initramfs；
+* **`sunuefi_root` (F2FS)**：存放 Fedora 44 GNOME 根文件系统。采用闪存友好的 F2FS 格式，彻底发挥高达数 GB/s 的 UFS 4.0 顺序与随机读写潜能；
+* **引导稳定性保障 (`qbootctl`)**：系统内置 `qbootctl.service`，每次 Linux 引导成功后自动向底层 GPT 标记 `Successful = 1`，ABL 启动计数器永不归零，**从根源彻底消除掉进 Fastboot 的硬件通病**。
+
+---
+
+## 三、 全新纯净安装（跨平台一键刷机，推荐）
+
+适用于已解锁 BL、已经由 SunUEFI 划分好分区（或需要全自动刷入）的平板。
+
+### 1. 获取 Release 资产
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora-test/releases) 下载最新版本的发行包：
+- `piano-installer-*.zip`：一键刷机脚本包（包含 `flash-linux.sh`、`flash-linux.bat`）；
+- `boot_sunuefi.img`：SunUEFI 引导头；
+- `sunuefi_esp.img`：SunUEFI ESP 分区镜像；
+- `pianoroot-fedora44-gnome-f2fs.img.zst`：Fedora 44 根文件系统压缩包；
+- `SHA256SUMS`：校验文件。
+
+将上述所有文件解压并放置在**同一本地目录**下。
+若 `pianoroot-fedora44-gnome-f2fs.img` 仍为 `.zst` 压缩格式：
+- **Linux / macOS**：运行 `zstd -d pianoroot-fedora44-gnome-f2fs.img.zst`；
+- **Windows**：使用 7-Zip（需支持 Zstd 插件）或 `zstd.exe` 解压出 `.img`。
+
+### 2. 进入 Fastboot 模式
+1. 将平板完全关机；
+2. 长按 **【电源键 + 音量减键】** 不放，直到屏幕亮起并显示米兔/FASTBOOT 图标；
+3. 使用原装或高质量 USB-C 数据线将平板连接至电脑。
+
+### 3. 执行一键刷机
+- **Linux / macOS 主机**：
+  ```bash
+  chmod +x flash-linux.sh
+  ./flash-linux.sh
+  ```
+- **Windows 主机**：
+  直接双击运行 `flash-linux.bat`。
+
+刷机脚本将全自动执行以下动作：
+1. 自动检查 `fastboot` 环境与设备在线状态；
+2. 校验设备产品代号确为 `piano`，避免误刷；
+3. 根据 `SHA256SUMS` 校验各镜像文件完整性；
+4. 弹出醒目安全告知，要求用户在终端输入大写 `YES` 确认；
+5. 执行标准刷写序列：
+   - 切换活动槽位至 B：`fastboot set_active b`
+   - 擦除冗余 DTBO：`fastboot erase dtbo_b`
+   - 刷入引导头：`fastboot flash boot_b boot_sunuefi.img`
+   - 刷入 ESP 分区：`fastboot flash sunuefi_esp sunuefi_esp.img`
+   - 刷入系统根分区：`fastboot flash sunuefi_root pianoroot-fedora44-gnome-f2fs.img`
+   - 自动重启：`fastboot reboot`
+
+---
+
+## 四、 首次安装与底层分区规划（进阶）
 
 安装材料由 `prepare-install.yml` 生成，实际操作由连接平板的 Linux 主机执行。
 Actions 不连接平板。构建成功、传输成功、Linux 启动成功分别记录。
@@ -120,3 +210,48 @@ Android 的 userdata 重建使用该 ROM 自身的 fs_mgr；计划阶段必须�
 Android 对新 userdata 的初始化，以及 Android→Linux、Linux→Android 和原厂
 Recovery。触屏、显示、网络、音频、传感器和充电需要单独的实际行为证据。
 这些项目未验收前，设备可用状态保持未验证。
+
+---
+
+## 五、 首次登录与桌面环境配置
+
+刷机完成后平板自动重启，片刻后即可直接进入流畅的 120Hz Fedora 44 GNOME 桌面：
+
+* **默认桌面用户**：`piano`
+* **默认登录密码**：`piano123456`
+* **首次改密**：登入桌面后，请按需要打开终端执行 `passwd` 设置个性化密码。
+
+### 核心特性默认状态
+* **120Hz 刷新率与触控**：默认开启 Mesa 硬件加速；触控服务已加载 5 阶自适应卡尔曼滤波与 24 像素死区防抖锁，窗口拖拽与书写零抖动；
+* **声学安全保护**：已通过内核及 ALSA UCM2 将 FS19xx 四功放硬截断在 -15dB 安全上限内，VA 麦克风提供 +40dB 硬件级拾音增益；
+* **电池与电源控制**：真机 `/hypervisor` 节点已通过软隔离屏蔽，GNOME 设置面板完美呈现原生双电芯电量百分比、休眠与合盖选项；
+* **触控即时提频**：`uperf-linux` 服务在后台实时监听触控输入，手指触碰瞬间 1ms 内拉高全大核频率，带来跟手体验。
+
+---
+
+## 六、 双系统无缝往返指南
+
+无需连接电脑，随时随地在 Linux 与 Android 之间快速往返：
+
+1. **从 Linux 切换回 Android**：
+   - 点击 GNOME 应用抽屉里的**「返回 Android」**图标；
+   - 或在终端输入 `piano-next-boot android --reboot`，系统将安全同步数据并重启进入 HyperOS。
+2. **从 Android 切换回 Linux**：
+   - 在 Android (HyperOS) 中安装并启用 `piano-switch-ksu` (KernelSU / SukiSU) 模块；
+   - 点击控制中心磁贴或模块界面中的**「进入 Linux」**，无需电脑介入即可切换回 Fedora。
+3. **开机硬件选单**：
+   - 开机屏幕亮起的 **前 3 秒内** 按下平板音量上/下键，可直接呼出 SunUEFI 图形引导菜单，随时自由选择。
+
+---
+
+## 七、 常见故障排查（FAQ & Troubleshooting）
+
+### Q1: 开机直接掉进 Fastboot 怎么解决？
+- **根本原因**：高通 ABL 在开机未收到明确 `Successful = 1` 标记时，会在连续重启后递减尝试次数，直至归零跌入 Fastboot。
+- **解决方案**：在系统稳定启动后，确保 `qbootctl.service` 正常运行，或者手动在终端执行 `sudo qbootctl -m`，将当前 Slot 标记为 `Successful: 1`。在 PC 端亦可运行 `fastboot set_active b` 重新激活 Linux 槽位。
+
+### Q2: 误将 Android 数据格式化了？
+- **恢复方案**：Slot A 始终保留着完整的原厂 Android 系统镜像（boot_a、init_boot_a、super 等）。若需要重置 Android，可在 Fastboot 模式下执行 `fastboot set_active a && fastboot erase userdata && fastboot reboot`，Android 将自动重建加密分区并完成首次开机引导。
+
+### Q3: Type-C 有线网络 SSH 无法连接？
+- **排查**：系统已将 USB NCM 接口静态配置为 `192.168.77.1/30`。请确保电脑端对应网卡手动配置为同一子网（例如 IP: `192.168.77.2`, 子网掩码: `255.255.255.252`），即可通过 `ssh piano@192.168.77.1` 直接登入。
