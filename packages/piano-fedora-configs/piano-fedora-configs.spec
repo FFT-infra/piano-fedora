@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora-test
@@ -61,6 +61,7 @@ chmod 0755 %{buildroot}%{_bindir}/* %{buildroot}%{_libexecdir}/*
 %{_unitdir}/piano-physical-platform.service
 %{_unitdir}/piano-boot-request-autoconfig.service
 %{_prefix}/lib/systemd/system-shutdown/f2fs-root-shutdown
+%{_unitdir}/piano-linux-debug.service
 %{_userunitdir}/piano-power-button.service
 
 %{_libexecdir}/piano-clock-restore
@@ -69,12 +70,19 @@ chmod 0755 %{buildroot}%{_bindir}/* %{buildroot}%{_libexecdir}/*
 %{_libexecdir}/piano-physical-platform
 %{_libexecdir}/piano-boot-request-autoconfig
 %{_prefix}/lib/piano/power-button
+%{_prefix}/lib/piano/piano-ram-hardware-prepare
+%{_prefix}/lib/piano/piano-disk-hardware-prepare
+%{_prefix}/lib/piano/piano_dma_routes.py
+%{_prefix}/lib/piano/piano_dma_contexts.py
+%{_prefix}/lib/piano/piano-boot-task-snapshot
 
 %{_bindir}/piano-collect-boot
 %{_bindir}/piano-next-boot
 %{_bindir}/piano-next-boot-configure
 %{_libexecdir}/piano-next-boot-helper
 /usr/local/sbin/piano-boot-request
+/usr/local/bin/piano-debug-bootstrap
+/usr/local/bin/piano-debug-stage
 
 %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf
 %{_prefix}/lib/tmpfiles.d/cpufreq-schedutil.conf
@@ -103,6 +111,9 @@ systemd-tmpfiles --create %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf %{_p
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service
 
 %changelog
+* Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 0.1.0-4
+- Package piano-ram-hardware-prepare, DMA route/context verifiers, and debug stage helpers into piano-fedora-configs
+
 * Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 0.1.0-3
 - Obsolete legacy piano-runtime, add boot-request autoconfig service and fix binary permissions
 

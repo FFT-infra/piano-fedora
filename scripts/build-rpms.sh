@@ -38,6 +38,7 @@ if [ "$HOST_ARCH" = "aarch64" ]; then
         "uperf-linux"
         "libssc"
         "iio-sensor-proxy-ssc"
+        "kernel-piano"
     )
 fi
 

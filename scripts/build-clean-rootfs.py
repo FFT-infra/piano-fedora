@@ -119,6 +119,7 @@ def plan(releasever, desktop, rpms_dir, output=None):
         "base_packages_count": len(base_pkgs),
         "desktop_packages_count": len(filtered_desktop_pkgs),
         "piano_packages": PIANO_PACKAGES,
+        "all_packages": all_packages,
         "total_packages_count": len(all_packages),
         "display_manager": desktops[desktop].get("display_manager", "gdm"),
         "dnf_binary": dnf_binary(),
@@ -146,6 +147,8 @@ def audit_rootfs(rootfs_dir):
     # 2. 抽查关键系统文件与守护服务
     key_checks = [
         "usr/lib/piano/power-button",
+        "usr/lib/piano/piano-ram-hardware-prepare",
+        "usr/lib/piano/piano-disk-hardware-prepare",
         "usr/libexec/piano-boot-request-autoconfig",
         "usr/bin/piano-next-boot",
         "usr/bin/piano-thp-live",
@@ -202,18 +205,19 @@ def execute(plan_data):
 
     rpms_dir = plan_data["rpms_dir"]
     releasever = plan_data["releasever"]
+    packages = plan_data.get("all_packages", plan_data["piano_packages"])
 
     cmd = [
         dnf,
         f"--installroot={root}",
+        "--use-host-config",
         f"--releasever={releasever}",
         f"--repofrompath=piano-local,{rpms_dir}",
-        "--repo=piano-local",
         "--setopt=install_weak_deps=False",
         "--setopt=tsflags=nodocs",
         "--nogpgcheck",
         "install", "-y",
-        *plan_data["piano_packages"]
+        *packages
     ]
 
     log_file = out / "assembly.log"

@@ -2,6 +2,7 @@
 """校验基于纯净 DNF 的 RootFS 装配脚本与计划契约。"""
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -83,6 +84,27 @@ def main():
             data_missing = json.loads(res_missing.stdout)
             check(data_missing.get("repo_status", {}).get("valid") is False,
                   "empty rpms-dir must be reported as invalid")
+
+    # 5. 守护进程依赖校验：piano-ram-hardware-prepare 及其 DMA 模块必须内置于 piano-fedora-configs
+    configs_pkg = ROOT / "packages" / "piano-fedora-configs"
+    prepare_bin = configs_pkg / "usr" / "lib" / "piano" / "piano-ram-hardware-prepare"
+    alias_link = configs_pkg / "usr" / "lib" / "piano" / "piano-disk-hardware-prepare"
+    dma_routes = configs_pkg / "usr" / "lib" / "piano" / "piano_dma_routes.py"
+    dma_ctx = configs_pkg / "usr" / "lib" / "piano" / "piano_dma_contexts.py"
+    spec_file = configs_pkg / "piano-fedora-configs.spec"
+
+    check(prepare_bin.is_file() and os.access(prepare_bin, os.X_OK),
+          "piano-ram-hardware-prepare must exist and be executable in piano-fedora-configs")
+    check(alias_link.is_symlink() and alias_link.readlink() == Path("piano-ram-hardware-prepare"),
+          "piano-disk-hardware-prepare symlink must exist in piano-fedora-configs")
+    check(dma_routes.is_file(), "piano_dma_routes.py must exist in piano-fedora-configs")
+    check(dma_ctx.is_file(), "piano_dma_contexts.py must exist in piano-fedora-configs")
+    if spec_file.is_file():
+        spec_text = spec_file.read_text(encoding="utf-8")
+        check("piano-ram-hardware-prepare" in spec_text,
+              "piano-fedora-configs.spec must package piano-ram-hardware-prepare")
+        check("piano-disk-hardware-prepare" in spec_text,
+              "piano-fedora-configs.spec must package piano-disk-hardware-prepare")
 
     if failures:
         for f in failures:
