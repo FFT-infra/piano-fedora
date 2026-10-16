@@ -37,21 +37,37 @@ def main():
         if not condition:
             failures.append(message)
 
-    # 1. 基础 plan 测试
-    res = run("--plan", "--releasever", "44")
-    check(res.returncode == 0, f"plan should succeed, got {res.returncode}: {res.stderr}")
-    if res.returncode == 0:
-        data = json.loads(res.stdout)
-        check(data.get("status") == "PLAN_READY", "plan status must be PLAN_READY")
-        check(data.get("distro") == "fedora", "distro must be fedora")
-        check(data.get("releasever") == "44", "releasever must be 44")
-        check(data.get("desktop") == "gnome", "desktop must be gnome")
-        check(EXPECTED_PIANO_PACKAGES.issubset(set(data.get("piano_packages", []))),
-              "all 9 expected piano RPM packages must be scheduled in plan")
+    # 1. 基础 plan 测试（使用包含模拟 rpm 的 fixture 仓库，确保在无预编译产物的 CI 环境中也能稳定通过）
+    with tempfile.TemporaryDirectory() as fixture_dir:
+        fixture_path = Path(fixture_dir)
+        (fixture_path / "repodata").mkdir(parents=True, exist_ok=True)
+        (fixture_path / "repodata" / "repomd.xml").write_text("<repomd/>\n", encoding="utf-8")
+        for pkg in EXPECTED_PIANO_PACKAGES:
+            (fixture_path / f"{pkg}-0.1.0-1.fc44.noarch.rpm").touch()
 
-        repo_st = data.get("repo_status", {})
-        check(repo_st.get("valid") is True, f"local RPM repository must be valid: {repo_st}")
-        check(len(repo_st.get("missing", [])) == 0, f"no missing RPM packages allowed: {repo_st.get('missing')}")
+        res = run("--plan", "--releasever", "44", "--rpms-dir", str(fixture_path))
+        check(res.returncode == 0, f"plan with fixture should succeed, got {res.returncode}: {res.stderr}")
+        if res.returncode == 0:
+            data = json.loads(res.stdout)
+            check(data.get("status") == "PLAN_READY", "plan status must be PLAN_READY")
+            check(data.get("distro") == "fedora", "distro must be fedora")
+            check(data.get("releasever") == "44", "releasever must be 44")
+            check(data.get("desktop") == "gnome", "desktop must be gnome")
+            check(EXPECTED_PIANO_PACKAGES.issubset(set(data.get("piano_packages", []))),
+                  "all 9 expected piano RPM packages must be scheduled in plan")
+            repo_st = data.get("repo_status", {})
+            check(repo_st.get("valid") is True, f"fixture repository must be valid: {repo_st}")
+            check(len(repo_st.get("missing", [])) == 0, f"no missing packages allowed: {repo_st.get('missing')}")
+
+    # 1.1 默认 plan 测试（不传 --rpms-dir，检查返回值与状态结构）
+    res_def = run("--plan", "--releasever", "44")
+    check(res_def.returncode == 0, f"default plan should succeed, got {res_def.returncode}: {res_def.stderr}")
+    if res_def.returncode == 0:
+        data_def = json.loads(res_def.stdout)
+        check(data_def.get("status") == "PLAN_READY", "default plan status must be PLAN_READY")
+        if (ROOT / "out" / "rpms" / "repodata" / "repomd.xml").is_file():
+            repo_st_def = data_def.get("repo_status", {})
+            check(repo_st_def.get("valid") is True, f"local out/rpms must be valid: {repo_st_def}")
 
     # 2. 拒绝非法版本号
     check(run("--plan", "--releasever", "rawhide").returncode == 2, "non-numeric releasever must exit 2")
