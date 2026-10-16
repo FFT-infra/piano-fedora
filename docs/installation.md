@@ -52,7 +52,11 @@ Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B �
 适用于已解锁 BL、已经由 SunUEFI 划分好分区（或需要全自动刷入）的平板。
 
 ### 1. 获取 Release 资产
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora-test/releases) 下载最新版本的发行包：
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora-test/releases)
+下载最新版本的发行包。注意仓库当前还没有任何 Release 与 tag，该链接暂时是空的；
+发布前请改用仓库内 `out/release-bundle/` 的产物，或先自行运行
+`./scripts/package-release-bundle.sh` 生成。
+
 - `piano-installer-*.zip`：一键刷机脚本包（包含 `flash-linux.sh`、`flash-linux.bat`）；
 - `boot_sunuefi.img`：SunUEFI 引导头；
 - `sunuefi_esp.img`：SunUEFI ESP 分区镜像；
@@ -103,7 +107,8 @@ Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B �
 ### 1. 从 Release 取哪些文件
 
 从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora-test/releases)
-下载发行包，只需要下面这些资产：
+下载发行包（Release 尚未发布时改用仓库内 `out/release-bundle/`），只需要下面
+这些资产：
 
 | Release 资产 | 用途 | 刷到哪 |
 | --- | --- | --- |
@@ -179,13 +184,32 @@ fastboot reboot
 读回校验（`sunuefi_esp` 是 512 MiB，读回需要几分钟）：
 
 ```sh
-fastboot fetch sunuefi_esp /tmp/esp-readback.img
-sha256sum /tmp/esp-readback.img
-# 应与 sunuefi_esp.img 的 sha256 一致
+fastboot fetch sunuefi_esp esp-readback.img
+sha256sum esp-readback.img sunuefi_esp.img
+# 两行哈希必须相同
 ```
 
-设备不支持 `fastboot fetch` 时，改为启动后验证：能进 GNOME 桌面、`uname -r`
-是 release 对应的内核、`findmnt /` 显示 F2FS、`systemctl --failed` 为空。
+该读回只在分区容量与镜像字节数相等时才有意义；先在设备上确认：
+
+```sh
+fastboot getvar partition-size:sunuefi_esp
+```
+
+结果应等于 `sunuefi_esp.img` 的字节数。容量更大时读回会带上分区尾部原有数据，
+哈希不会相同，此时改用下面的启动后验证。设备或 ABL 不支持 `fastboot fetch`
+时同样跳过这一步。
+
+启动后验证（三项都要满足）：
+
+```sh
+uname -r              # release 对应的内核版本
+findmnt /             # 根文件系统为 F2FS
+systemctl --failed    # 输出为空
+```
+
+能进入 GNOME 桌面是刷写成功的最直接证据。以上读回与启动后检查在本文档定稿时
+**尚未在真机上完整执行**（当时设备停在 Fastboot），只作为流程定义，不能当作
+已验收证据。
 
 ### 6. 回滚到 Android
 

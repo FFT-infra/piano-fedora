@@ -59,6 +59,12 @@
    - 默认桌面用户名：`piano`
    - 默认用户密码：`piano123456`（初次登入后建议通过 `passwd` 命令及时修改）
 
+> 不想用一键脚本、或需要自己控制每一步时，按
+> [手动刷机章节](docs/installation.md#三之二-手动刷机不使用一键脚本) 逐条执行。
+> 手动流程列出了 Release 中真正需要哪些资产、每条 `fastboot` 命令、SHA256
+> 校验方式、读回验证与回滚方法。**不要**擦除 `dtbo_b`：高通 ABL 会因此拒绝
+> 整条引导链并把平板卡在 Fastboot。
+
 ---
 
 ## 双系统免电脑无缝切换
@@ -76,14 +82,20 @@
 
 正式版本发布时，Releases 页面将提供以下经过完整真机复核的开箱即用交付物：
 
+资产文件名以 `scripts/package-release-bundle.sh` 的实际输出为准（不带版本后缀）：
+
 | 文件名 | 类型 | 说明 |
 |---|---|---|
-| `pianoroot-fedora44-gnome-f2fs-*.img.zst` | 根分区镜像 | 预装全套优化服务与驱动的 Fedora 44 根文件系统（Zstandard 高压缩） |
-| `sunuefi_esp-*.img` | 引导分区镜像 | 包含 SunUEFI EDK2、DTB、Linux 7.2.9 正式内核与 Initramfs 的完整 ESP 镜像 |
-| `boot_sunuefi-*.img` | BOOT 引导头 | 适配 ABL 链式引导的合体引导映像 |
-| `piano-switch-ksu-*.zip` | Android 模块 | KernelSU / SukiSU 专用免电脑切换回 Linux 模块 |
-| `piano-installer-*.zip` | 一键刷机脚本包 | 内含 `flash-linux.sh`（Shell）与 `flash-linux.bat`（Windows 批处理）及完整性校验工具 |
+| `pianoroot-fedora44-gnome-f2fs.img.zst` | 根分区镜像 | 预装全套优化服务与驱动的 Fedora 44 根文件系统（Zstandard 高压缩） |
+| `sunuefi_esp.img` | 引导分区镜像 | 包含 SunUEFI EDK2、DTB、Linux 7.2.9 正式内核与 Initramfs 的完整 ESP 镜像 |
+| `boot_sunuefi.img` | BOOT 引导头 | 适配 ABL 链式引导的合体引导映像 |
+| `piano-switch-ksu-<日期>.zip` | Android 模块 | KernelSU / SukiSU 专用免电脑切换回 Linux 模块 |
+| `piano-installer-<日期>.zip` | 一键刷机脚本包 | 内含 `flash-linux.sh`（Shell）、`flash-linux.bat`（Windows 批处理）与 `README-INSTALL.txt` |
 | `SHA256SUMS` | 校验哈希 | 各资产文件的 SHA-256 哈希校验列表 |
+
+> **发布状态**：仓库当前还没有任何 Release 与 tag，上面的 Releases 链接暂时
+> 指向空列表。发布前请先在本地跑 `./scripts/package-release-bundle.sh` 生成资产
+> 并打 tag；在此之前请使用仓库内 `out/release-bundle/` 的产物。
 
 ---
 
