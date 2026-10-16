@@ -25,7 +25,7 @@
 | 键盘/霍尔/电源 | 输入节点和相关服务在位 | 实物键盘、合盖、各按键、充电状态切换 |
 | 休眠 | 单次 `rtcwake` suspend/resume 通过，服务存活、Wi-Fi 约 3 s 自动重连、无 failed unit | 多周期与长期功耗曲线 |
 | HDR/指纹/IR | 未证明可用 | 明确支持边界并完成对应实现/实测 |
-| Android 往返 | SukiSU root/授权/读回通过、匹配模块实装且 BOOT 未改；Linux→Android 失败根因已定位：`app_generation` 过期（已修复）＋`PIANO_EARLY_CHOOSER` 3 秒音量键覆盖请求页；请求当前保持 target=2 | Android SELinux 持久策略、完整双向往返与 Recovery（需真机重启） |
+| Android 往返 | SukiSU root/授权/读回通过、匹配模块实装且 BOOT 未改；Linux→Android 失败根因已定位：`app_generation` 过期（已修复）＋`PIANO_EARLY_CHOOSER` 3 秒音量键覆盖请求页；请求当前保持 target=2；A/B 引导保护由 `qbootctl.service` 自动标记 `Successful=1`，彻底根除 retry 归零掉入 Fastboot 缺陷 | Android SELinux 持久策略、完整双向往返与 Recovery（需真机重启） |
 | 包与来源 | 固定 pin、完整 Cargo.lock、RPM 文件归属与 finalizer 字节核验 | 完整新镜像实际装载核验 |
 | 回滚与清理 | 旧内核/模块/ESP 回滚保留，旧裸 LibreVM 启动器已清理 | 交付证据归档后清理重复构建与失效包 |
 

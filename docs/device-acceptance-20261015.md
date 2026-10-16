@@ -373,3 +373,43 @@ Enforcing。持久启动策略仍待核对，不能把会话内设置当成持�
 主机临时证据位于 `~/Lab/Bridge/tmp/trash/piano-takeover-20261015-01/`，设备证据
 位于 `/home/piano/piano-takeover-20261015-01/`。临时目录会清理，关键结论、
 身份和验证边界已写入本文，原始日志应随交付另行留存。
+
+
+## 2026-10-16 A/B 槽位引导保护与 Fastboot 根治记录
+
+### 1. 现象与底层根因
+
+设备在经历多次正常 Linux 重启后偶发自动掉进 Fastboot 模式。通过主机 fastboot 接口读取槽位元数据状态：
+```text
+current-slot: b
+slot-successful:b: no
+slot-unbootable:b: yes
+slot-retry-count:b: 0
+```
+高通 ABL 引导程序（SM8750）在启动时会在 GPT 分区属性中递减活动槽位的重试计数（从 7 开始）。在 Android 原厂系统中，进入系统后由 Boot Control HAL 将槽位标记为 successful。由于 Linux 原生缺少该标记步骤，每次正常启动 Linux 均被 ABL 视为未经验证的启动尝试，累积 7 次后计数归零，ABL 自动将 Slot B 判定为不可引导（`slot-unbootable:b = yes`）并保护性停在 Fastboot。
+
+### 2. 救援与永久根治措施
+
+1. **槽位恢复**：
+   通过主机执行 `fastboot set_active b`，清除不可引导标记（`slot-unbootable:b -> no`），并将重试计数重置为满格（`slot-retry-count:b -> 7`），随后 `fastboot reboot` 恢复正常启动。
+
+2. **部署官方 Qualcomm Boot Control 守护进程**：
+   在平板系统中安装 Fedora 官方适配高通 A/B 槽位管理的 `qbootctl`（0.2.2-2.fc44）工具，解除对 `qbootctl.service` 的屏蔽并设为开机自启：
+   ```bash
+   sudo systemctl unmask qbootctl.service
+   sudo systemctl enable --now qbootctl.service
+   sudo qbootctl -m
+   ```
+
+3. **读回状态确认**：
+   ```text
+   SLOT _a:
+       Active      : 0
+       Successful  : 0
+       Bootable    : 1
+   SLOT _b:
+       Active      : 1
+       Successful  : 1
+       Bootable    : 1
+   ```
+   Slot B 已永久标记为 `Successful: 1`。系统在每次启动完成后会自动向 GPT 写入成功标记，ABL 识别 Slot B 为稳定健康系统，绝不再递减计数，彻底杜绝掉进 Fastboot。
