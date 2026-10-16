@@ -54,7 +54,7 @@ install -D -p -m 0644 %{SOURCE1} %{buildroot}%{_sysconfdir}/uperf-linux/config.j
 %{_datadir}/dbus-1/system.d/org.uperflinux.Daemon.conf
 %{_datadir}/polkit-1/actions/org.uperflinux.policy
 %{_datadir}/uperf-linux/
-%license %{_datadir}/licenses/uperf-linux/LICENSE
+%license LICENSE
 
 %post
 %systemd_post uperf-linux.service

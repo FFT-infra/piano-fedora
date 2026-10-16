@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora-test
@@ -18,6 +18,8 @@ Requires:       python3-evdev
 
 Obsoletes:      piano-session-fixes < 0.3.0
 Provides:       piano-session-fixes = %{version}-%{release}
+Obsoletes:      piano-runtime < 0.3.0
+Provides:       piano-runtime = %{version}-%{release}
 
 %description
 System integration, hardware platform fixes, and power management configuration
@@ -42,6 +44,7 @@ for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
 %install
 mkdir -p %{buildroot}
 cp -a usr etc %{buildroot}/
+chmod 0755 %{buildroot}%{_bindir}/* %{buildroot}%{_libexecdir}/*
 
 %files
 %config(noreplace) %{_sysconfdir}/systemd/system/qbootctl.service.d/piano.conf
@@ -56,6 +59,7 @@ cp -a usr etc %{buildroot}/
 %{_unitdir}/piano-clock-save.timer
 %{_unitdir}/piano-fake-tablet-mode.service
 %{_unitdir}/piano-physical-platform.service
+%{_unitdir}/piano-boot-request-autoconfig.service
 %{_prefix}/lib/systemd/system-shutdown/f2fs-root-shutdown
 %{_userunitdir}/piano-power-button.service
 
@@ -63,6 +67,7 @@ cp -a usr etc %{buildroot}/
 %{_libexecdir}/piano-clock-save
 %{_libexecdir}/piano-fake-tablet-mode
 %{_libexecdir}/piano-physical-platform
+%{_libexecdir}/piano-boot-request-autoconfig
 %{_prefix}/lib/piano/power-button
 
 %{_bindir}/piano-collect-boot
@@ -81,9 +86,9 @@ cp -a usr etc %{buildroot}/
 %{_datadir}/polkit-1/rules.d/49-piano-boot-request.rules
 
 %post
-%systemd_post piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service
+%systemd_post piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service
 %systemd_user_post piano-power-button.service
-systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service qbootctl.service || :
+systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service qbootctl.service || :
 systemctl --global enable piano-power-button.service || :
 if [ -x %{_bindir}/dconf ]; then
     %{_bindir}/dconf update || :
@@ -91,13 +96,16 @@ fi
 systemd-tmpfiles --create %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf %{_prefix}/lib/tmpfiles.d/cpufreq-schedutil.conf || :
 
 %preun
-%systemd_preun piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service
+%systemd_preun piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service
 %systemd_user_preun piano-power-button.service
 
 %postun
-%systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service
+%systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service
 
 %changelog
+* Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 0.1.0-3
+- Obsolete legacy piano-runtime, add boot-request autoconfig service and fix binary permissions
+
 * Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 0.1.0-2
 - Obsolete monolithic piano-session-fixes, add tmpfiles and machine-info tablet configs, drop conflicting plymouth bootlog
 

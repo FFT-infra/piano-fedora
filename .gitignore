@@ -8,6 +8,9 @@
 *.img
 *.img.gz
 *.img.zst
+*.tar.gz
+*.tar.xz
+*.rpm
 
 # Python
 __pycache__/

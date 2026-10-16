@@ -37,6 +37,7 @@ ffmpeg, and Sunshine streaming on Xiaomi Pad 8 Pro (piano).
 
 %install
 %meson_install
+rm -rf %{buildroot}%{_datadir}/doc/libva-v4l2 %{buildroot}%{_datadir}/licenses/libva-v4l2
 # Ensure msm alias exists so libva resolves the driver by DRM driver name
 if [ ! -e %{buildroot}%{_libdir}/dri/msm_drv_video.so ]; then
     ln -s v4l2_drv_video.so %{buildroot}%{_libdir}/dri/msm_drv_video.so

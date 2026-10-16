@@ -1,0 +1,13 @@
+[Unit]
+Description=Automatically configure SunUEFI boot request partition for dual-boot
+ConditionPathExists=!/etc/piano/boot-request.json
+After=local-fs.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/piano-boot-request-autoconfig
+
+[Install]
+WantedBy=multi-user.target

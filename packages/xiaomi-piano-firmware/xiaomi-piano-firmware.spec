@@ -27,12 +27,13 @@ Firmware binaries for Xiaomi Pad 8 Pro (piano, SM8750):
 
 %install
 mkdir -p %{buildroot}%{_firmwaredir}
-cp -a * %{buildroot}%{_firmwaredir}/
+cp -a firmware/* %{buildroot}%{_firmwaredir}/
 # Clean non-firmware metadata if present
-rm -f %{buildroot}%{_firmwaredir}/README* %{buildroot}%{_firmwaredir}/LICENSE* 2>/dev/null || true
+rm -f %{buildroot}%{_firmwaredir}/SHA256SUMS 2>/dev/null || true
 find %{buildroot}%{_firmwaredir} -type f -exec chmod 0644 {} \;
 
 %files
+%license LICENSES/*
 %{_firmwaredir}/*
 
 %changelog
