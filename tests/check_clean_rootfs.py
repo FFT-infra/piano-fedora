@@ -105,8 +105,18 @@ def main():
               "piano-fedora-configs.spec must package piano-ram-hardware-prepare")
         check("piano-disk-hardware-prepare" in spec_text,
               "piano-fedora-configs.spec must package piano-disk-hardware-prepare")
-        check("/usr/local/sbin/piano-debug-stage" in spec_text and "/usr/local/bin/piano-debug-stage" in spec_text,
-              "piano-fedora-configs.spec must package piano-debug-stage in both sbin and bin")
+        # Fedora merged-usr makes /usr/local/sbin a symlink to bin, so shipping
+        # both spellings of the same file makes rpm 6 abort the transaction with
+        # "file ... conflicts between attempted installs of <pkg> and <pkg>".
+        # Only the canonical /usr/local/bin path may appear in %files.
+        check("/usr/local/bin/piano-debug-stage" in spec_text,
+              "piano-fedora-configs.spec must package piano-debug-stage at /usr/local/bin")
+        check("\n/usr/local/sbin/piano-debug-stage\n" not in spec_text,
+              "piano-fedora-configs.spec must not list /usr/local/sbin/piano-debug-stage "
+              "(merged-usr alias of /usr/local/bin, duplicates the same inode)")
+        check("\n/usr/local/sbin/piano-debug-bootstrap\n" not in spec_text,
+              "piano-fedora-configs.spec must not list /usr/local/sbin/piano-debug-bootstrap "
+              "(merged-usr alias of /usr/local/bin, duplicates the same inode)")
 
     if failures:
         for f in failures:

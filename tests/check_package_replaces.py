@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""回归测试：Obsoletes/Provides 不得自匹配。
+"""回归测试：替换类元数据与 merged-usr 路径都不得让 DNF 事务自杀。
 
-实机教训（2026-10-17）：`piano-fedora-configs.spec` 写着
-
-    Obsoletes: piano-runtime < 0.3.0
-    Provides:  piano-runtime = %{version}-%{release}     # = 0.1.0-4
-
-0.1.0-4 低于 0.3.0，于是这个包把自己提供的 `piano-runtime` 也“淘汰”了。
-DNF 在解析时把同一个 NEVRA 排进事务两次，整个 installroot 装配直接失败：
+2026-10-17 的 installroot 装配连续失败，报错是
 
     file /usr/local/sbin/piano-debug-bootstrap conflicts between attempted
     installs of piano-fedora-configs-0.1.0-4.fc44.noarch and
     piano-fedora-configs-0.1.0-4.fc44.noarch
 
-结果是从没产出过任何镜像（`build/clean-distros/` 始终为空），而 release
-打包脚本静默回退到历史镜像。同一模式在 `sm8750-video-accel` 也出现过。
+第一轮把它当成 Obsoletes 自匹配（`Obsoletes: piano-runtime < 0.3.0` 对
+`Provides: piano-runtime = 0.1.0-4`）并改写了界限，但事务仍然失败。真正的
+原因是 Fedora merged-usr：`filesystem` 包把 `/usr/local/sbin` 做成指向
+`bin` 的符号链接，而 `%files` 同时列了 `/usr/local/bin/X` 与
+`/usr/local/sbin/X`。两者解析到同一个 inode，rpm 6 判成“包与自己冲突”，
+于是整个事务回滚。用只含这两个路径的最小 spec 可以在 Fedora 44 上稳定复现。
 
-本测试只读 spec 与已构建 RPM，不接触设备：
+Obsoletes 的界限仍然要求写成 `< %{version}-%{release}`：硬编码数字会在下次
+升版本后悄悄变成自匹配，属于同一个雷区。本测试只读 spec 与已构建 RPM：
 
-* 若 spec 同时 `Provides: X = <版本>` 与 `Obsoletes: X < <界限>`，
-  界限必须严格小于该包自身的 EVR，否则报错；
+* `Provides: X = <版本>` 与 `Obsoletes: X < <界限>` 同时出现时，界限必须严格
+  低于该包自身的 EVR；
+* `%files` 不得同时列出 merged-usr 别名路径；
 * 对 `out/rpms/` 里已构建的 RPM 复算一遍，捕获 spec 之外的漂移。
 """
 
@@ -114,6 +114,55 @@ def check_spec(path, failures):
             failures.append(
                 f"{path.parent.name}: Obsoletes {name} < {bound} also matches its own "
                 f"Provides {name} = {provides[name]}; DNF will schedule the package twice")
+    check_merged_usr_duplicates(path, text, failures)
+
+
+# Directories that are symlinks to a sibling under merged-usr. Listing the same
+# basename under both spellings makes rpm resolve them to one path and abort the
+# transaction with a "conflicts between attempted installs of <pkg> and <pkg>".
+MERGED_USR_ALIASES = {
+    "/usr/local/sbin": "/usr/local/bin",
+    "/sbin": "/usr/bin",
+    "/bin": "/usr/bin",
+    "/usr/sbin": "/usr/bin",
+}
+
+
+def merged_usr_files(text):
+    """Return the absolute paths listed in the spec's %files section."""
+    listed = []
+    in_files = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("%files"):
+            in_files = True
+            continue
+        if in_files and stripped.startswith("%") and not stripped.startswith("%{") \
+                and not stripped.startswith("%attr") and not stripped.startswith("%config") \
+                and not stripped.startswith("%doc") and not stripped.startswith("%dir") \
+                and not stripped.startswith("%license") and not stripped.startswith("%ghost"):
+            in_files = False
+            continue
+        if not in_files or not stripped.startswith("/"):
+            continue
+        listed.append(stripped.split()[0])
+    return listed
+
+
+def check_merged_usr_duplicates(path, text, failures):
+    resolved = {}
+    for entry in merged_usr_files(text):
+        for alias, canonical in MERGED_USR_ALIASES.items():
+            if entry.startswith(alias + "/"):
+                resolved.setdefault(canonical + entry[len(alias):], []).append(entry)
+                break
+        else:
+            resolved.setdefault(entry, []).append(entry)
+    for target, entries in sorted(resolved.items()):
+        if len(entries) > 1:
+            failures.append(
+                f"{path.parent.name}: %files lists merged-usr aliases {entries} which all "
+                f"resolve to {target}; rpm aborts the transaction with a self-conflict")
 
 
 def check_built_rpms(failures):
@@ -147,6 +196,21 @@ def check_built_rpms(failures):
                 failures.append(
                     f"{rpm.name}: Obsoletes {name} < {bound} matches its own "
                     f"Provides {name} = {prov_map[name]}")
+        listing = subprocess.run(["rpm", "-qp", "--qf", "[%{FILENAMES}\n]", str(rpm)],
+                                 capture_output=True, text=True).stdout
+        resolved = {}
+        for entry in listing.splitlines():
+            for alias, canonical in MERGED_USR_ALIASES.items():
+                if entry.startswith(alias + "/"):
+                    resolved.setdefault(canonical + entry[len(alias):], []).append(entry)
+                    break
+            else:
+                resolved.setdefault(entry, []).append(entry)
+        for target, entries in sorted(resolved.items()):
+            if len(entries) > 1:
+                failures.append(
+                    f"{rpm.name}: ships merged-usr aliases {entries} for one path {target}; "
+                    f"rpm 6 aborts the transaction with a self-conflict")
 
 
 def main():
@@ -162,7 +226,7 @@ def main():
         for item in failures:
             print(f"FAIL: {item}", file=sys.stderr)
         return 1
-    print("OK: 所有 Obsoletes 界限都严格低于自身 Provides，不会再自匹配导致事务失败")
+    print("OK: Obsoletes 界限严格低于自身 Provides，且没有任何包重复声明 merged-usr 别名路径")
     return 0
 
 

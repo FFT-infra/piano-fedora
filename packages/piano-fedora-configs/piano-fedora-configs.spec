@@ -17,15 +17,9 @@ Requires:       f2fs-tools
 Requires:       python3-evdev
 
 # Replaces the older standalone piano-runtime / piano-session-fixes packages.
-#
-# The bound must be `< %{version}-%{release}`, not a fixed number. With
-# `Obsoletes: piano-runtime < 0.3.0` and `Provides: piano-runtime = 0.1.0-4`,
-# the package obsoleted its own provide (0.1.0-4 < 0.3.0), so DNF scheduled the
-# same NEVRA twice and the whole installroot transaction aborted with
-# "file ... conflicts between attempted installs of
-# piano-fedora-configs-0.1.0-4.fc44.noarch and piano-fedora-configs-0.1.0-4.fc44.noarch".
-# Referencing %{version}-%{release} keeps the replacement working across future
-# bumps while never matching this package's own provide.
+# The bound is written as `< %{version}-%{release}` so it can never reach this
+# package's own provide; a hard-coded number silently becomes wrong the next
+# time the version is bumped.
 Obsoletes:      piano-session-fixes < %{version}-%{release}
 Provides:       piano-session-fixes = %{version}-%{release}
 Obsoletes:      piano-runtime < %{version}-%{release}
@@ -54,10 +48,19 @@ for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
 %install
 mkdir -p %{buildroot}
 cp -a usr etc %{buildroot}/
-ln -sf /usr/local/bin/piano-debug-bootstrap %{buildroot}/usr/local/sbin/piano-debug-bootstrap
-ln -sf /usr/local/bin/piano-debug-stage %{buildroot}/usr/local/sbin/piano-debug-stage
+# Fedora is merged-usr: /usr/local/sbin is a symlink to bin (owned by the
+# `filesystem` package). Listing both /usr/local/bin/X and /usr/local/sbin/X
+# therefore names the same inode twice, and rpm 6 aborts the whole transaction:
+#
+#   file /usr/local/sbin/piano-debug-bootstrap conflicts between attempted
+#   installs of piano-fedora-configs-0.1.0-4.fc44.noarch and
+#   piano-fedora-configs-0.1.0-4.fc44.noarch
+#
+# Only the canonical /usr/local/bin paths are shipped. Callers that spell the
+# rescue helper as /usr/local/sbin/... still work, because that directory is a
+# symlink to bin.
 chmod 0755 %{buildroot}%{_bindir}/* %{buildroot}%{_libexecdir}/*
-chmod 0755 %{buildroot}/usr/local/sbin/* %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || true
+chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || true
 
 %files
 %config(noreplace) %{_sysconfdir}/systemd/system/qbootctl.service.d/piano.conf
@@ -94,8 +97,6 @@ chmod 0755 %{buildroot}/usr/local/sbin/* %{buildroot}/usr/local/bin/* %{buildroo
 %{_bindir}/piano-next-boot-configure
 %{_libexecdir}/piano-next-boot-helper
 /usr/local/sbin/piano-boot-request
-/usr/local/sbin/piano-debug-bootstrap
-/usr/local/sbin/piano-debug-stage
 /usr/local/bin/piano-debug-bootstrap
 /usr/local/bin/piano-debug-stage
 

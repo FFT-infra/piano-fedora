@@ -216,6 +216,16 @@ def execute(plan_data):
     out = Path(plan_data["output"])
     root = out / "rootfs"
     out.mkdir(parents=True, exist_ok=True)
+
+    # DNF 事务失败时（历史上真发生过：Obsoletes 自匹配）会留下一个半装状态
+    # 的 installroot。旧代码直接复用这个目录，于是第二次运行会在残骸上叠装，
+    # 报出难以理解的冲突。除非显式 --resume，否则先清空再装。
+    if root.exists() and any(root.iterdir()):
+        if not plan_data.get("resume"):
+            print(f"--> Removing stale installroot at {root}")
+            shutil.rmtree(root)
+        else:
+            print(f"--> Reusing existing installroot at {root} (--resume)")
     root.mkdir(parents=True, exist_ok=True)
 
     dnf = dnf_binary()
@@ -411,6 +421,8 @@ def main():
                         help="装配后额外产出 F2FS raw 镜像与 .zst（需要 root 挂载权限）")
     parser.add_argument("--size-mib", type=int,
                         help="镜像容量 MiB（默认 8192，即通用交付测试容量）")
+    parser.add_argument("--resume", action="store_true",
+                        help="复用已存在的 installroot，不先清空（默认清空，避免在失败残骸上叠装）")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--plan", action="store_true", help="打印组装计划与本地 RPM 源验证")
     mode.add_argument("--execute", action="store_true", help="执行装配并生成 clean rootfs")
@@ -429,6 +441,7 @@ def main():
             p["build_image"] = bool(args.image)
             if args.size_mib:
                 p["root_size_mib"] = args.size_mib
+            p["resume"] = bool(args.resume)
             res = execute(p)
             print(json.dumps({
                 "status": res["status"],
