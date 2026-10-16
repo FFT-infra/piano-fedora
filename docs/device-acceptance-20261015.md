@@ -413,3 +413,38 @@ slot-retry-count:b: 0
        Bootable    : 1
    ```
    Slot B 已永久标记为 `Successful: 1`。系统在每次启动完成后会自动向 GPT 写入成功标记，ABL 识别 Slot B 为稳定健康系统，绝不再递减计数，彻底杜绝掉进 Fastboot。
+
+## 2026-10-16 上游生态对齐与多媒体/底座配置加固
+
+根据对全网上游（`yzddmr6/xiaomipad-8pro-mainline` v0.4.0、`sources/debian-piano`、`slwyts/Project-SunUEFI`）的系统审查，完成以下 5 项上游具备但此前遗漏的系统级加固并实机复核：
+
+1. **WirePlumber 相机隔离（平息 DMA 报错与 CAMSS 竞争）**：
+   - 部署 `/etc/wireplumber/wireplumber.conf.d/50-piano-camera.conf`：禁用 WirePlumber 的 `monitor.libcamera` 并将 `Qualcomm Camera Subsystem` 设为 `device.disabled = true`；
+   - 消除 WirePlumber 后台持续报错 `Could not open any dma-buf provider`，确保物理 ISP 节点由 `piano-camerad` 独占，桌面应用经由 `v4l2loopback` 消费标准流。
+
+2. **DMA Heap 与按键 uaccess 权限加固**：
+   - 部署 `/etc/udev/rules.d/70-piano-camera.rules`：声明 `/dev/dma_heap/system` 的 `TAG+="uaccess"` 和 `video` 属组（`0660`）；
+   - 部署 `/etc/udev/rules.d/70-piano-power-button.rules`：为 `pmic_pwrkey` 和 `hall_lid` 输入事件附加 `TAG+="uaccess"`；
+   - 将桌面普通用户 `piano` 加入 `audio,video,input,render` 组；
+   - 实测桌面应用申请系统 DMA Buffer 权限通过（`getfacl` 确认 `user:piano:rw-` 生效）。
+
+3. **总线频宽与功耗统计模块开机自启**：
+   - 在 `/etc/modules-load.d/` 固化部署 `piano-bwmon.conf`（`icc-bwmon`）与 `piano-stats.conf`（`qcom_stats`）；
+   - 避开 `80-drivers.rules` 对 `of:*` coldplug 过滤的影响，确保开机自动加载 APPS->EBI1 互联总线频宽投票与 RPMh 低功耗状态统计模块。
+
+4. **休眠保护与深度挂起策略锁定**：
+   - 部署 `/etc/systemd/sleep.conf.d/piano.conf`：
+     ```ini
+     [Sleep]
+     AllowSuspend=yes
+     AllowHibernation=no
+     AllowHybridSleep=no
+     AllowSuspendThenHibernate=no
+     SuspendState=mem
+     MemorySleepMode=deep
+     ```
+   - 执行 `systemctl mask hibernate.target hybrid-sleep.target suspend-then-hibernate.target`，阻断未适配的磁盘休眠操作，保护内存与文件系统状态。
+
+5. **崩溃日志掉电归档服务启用**：
+   - 启用 `piano-pstore-save.service`（`multi-user.target.wants`）；
+   - 保证在系统发生异常静默重启或断电后，自动将 `/sys/fs/pstore/*`（ramoops 内存 `0xa3500000`）持久化至 `/var/lib/piano/pstore/`。
