@@ -40,6 +40,7 @@ test:
 	python3 tests/check_image_workflow.py
 	python3 tests/check_runtime_extras.py
 	python3 tests/check_rootfs_finalize.py
+	python3 tests/check_clean_rootfs.py
 
 # 在平板上执行，MEDIA_OUTPUT 必须是新的证据目录。
 test-device-media:
@@ -48,6 +49,9 @@ test-device-media:
 RELEASEVER ?= 44
 plan:
 	python3 scripts/build-fedora-rootfs.py --plan --releasever $(RELEASEVER)
+
+plan-clean:
+	python3 scripts/build-clean-rootfs.py --plan --releasever $(RELEASEVER)
 
 clean:
 	rm -rf build

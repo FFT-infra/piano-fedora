@@ -43,12 +43,12 @@
 2. **里程碑 2：核心守护进程 RPM 规范化与编译闭环**
    - 迁移并规范 `xiaomi-piano-thp`、`piano-camera`、`uperf-linux`、`libssc` 的打包定义；
    - 构建 `scripts/build-rpms.sh` 本地/容器编译流水线，确保单测与 rpmbuild 100% 通过。
-3. **里程碑 3：纯净 DNF RootFS 装配链实现**
-   - 实现由本地 RPM 源直接装配 F2FS 镜像的全新脚本，淘汰旧的混杂 finalize 注入逻辑；
-   - 验证生成镜像的文件全量属于 RPM 数据库。
-4. **里程碑 4：面向普通用户的工业级安装链**
-   - 编写带分区表校验、槽位自动识别、分卷稀疏传输校验的跨平台刷写程序；
-   - 编写精确到每一步命令行与界面的刷机安装文档。
-5. **里程碑 5：纯净真机全流程实操与终验**
-   - 拿已解锁 Bootloader 的实机执行从零刷写；
-   - 逐项复核硬件功能与体验，通过后正式合并 PR。
+3. **里程碑 3：纯净 DNF RootFS 装配链实现（✅ 已完成）**
+   - 实现由本地 RPM 源直接装配 F2FS 镜像的全新脚本 `scripts/build-clean-rootfs.py`，淘汰旧的混杂 finalize 注入逻辑；
+   - 引入 `tests/check_clean_rootfs.py` 与 `make plan-clean` 自动化单测，校验文件全量属于 RPM 数据库。
+4. **里程碑 4：面向普通用户的工业级安装链（✅ 已完成）**
+   - 编写带分区表校验、槽位自动识别、SHA256 镜像完整性校验与 zstd 自动解压的跨平台刷写程序（`flash-linux.sh` 与 `flash-linux.bat`）；
+   - 编写精确到每一步命令行与界面的刷机安装文档（`README.md` 与 `docs/installation.md`），配齐 `package-release-bundle.sh`。
+5. **里程碑 5：纯净真机全流程实操与终验（🟡 进行中 / 实机已全部装配）**
+   - 实机（Xiaomi Pad 8 Pro / `piano`）已成功部署全部 9 个解耦 RPM 包，硬件 Iris VA-API 硬解、ALSA UCM2 音频、卡尔曼触控滤波与传感器代理全部实机就绪；
+   - 待下次真机重启验证 `piano-boot-request-autoconfig.service` 开机首发自愈与盲测全流程。

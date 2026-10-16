@@ -2,10 +2,10 @@
 
 Name:           iio-sensor-proxy-ssc
 Version:        3.9
-Release:        1%{?dist}
+Release:        2%{?dist}
 Provides:       iio-sensor-proxy = %{version}-%{release}
 Provides:       iio-sensor-proxy%{?_isa} = %{version}-%{release}
-Conflicts:      iio-sensor-proxy < %{version}-%{release}
+Obsoletes:      iio-sensor-proxy < %{version}-%{release}
 Summary:        IIO sensors to D-Bus proxy (with Qualcomm SSC support for piano)
 License:        GPL-3.0-or-later
 URL:            https://gitlab.freedesktop.org/hadess/iio-sensor-proxy
@@ -73,5 +73,8 @@ systemctl enable iio-sensor-proxy.service || :
 %systemd_postun_with_restart iio-sensor-proxy.service
 
 %changelog
+* Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 3.9-2
+- Add Obsoletes to cleanly replace standard Fedora iio-sensor-proxy
+
 * Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 3.9-1
 - Formalize iio-sensor-proxy with native Qualcomm SSC enabled

@@ -41,6 +41,10 @@ if [ "$HOST_ARCH" = "aarch64" ]; then
     )
 fi
 
+if [ -n "${ONLY_PKG:-}" ]; then
+    PACKAGES_TO_BUILD=("$ONLY_PKG")
+fi
+
 for pkg in "${PACKAGES_TO_BUILD[@]}"; do
     if [ -d "$PACKAGES_DIR/$pkg" ]; then
         echo "=========================================="
