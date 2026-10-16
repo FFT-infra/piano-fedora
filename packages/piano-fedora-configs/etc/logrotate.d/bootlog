@@ -1,0 +1,9 @@
+/var/log/boot.log {
+    missingok
+    notifempty
+    copytruncate
+    daily
+    rotate 7
+    dateext
+    dateformat -%Y%m%d-%H%M%S
+}

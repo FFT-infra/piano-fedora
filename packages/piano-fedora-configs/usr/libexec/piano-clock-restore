@@ -1,0 +1,14 @@
+#!/bin/sh
+# Boot-time clock floor. This device's PMIC RTC reads 1970 and refuses set_time
+# (rtc-pm8xxx gates writes behind the allow-set-time DT property), so the clock
+# starts in the past and rpm/dnf signature checks fail before NTP can help.
+set -eu
+STAMP=/var/lib/piano-clock/last
+[ -r "$STAMP" ] || exit 0
+saved=$(cat "$STAMP" 2>/dev/null || echo 0)
+case "$saved" in ''|*[!0-9]*) exit 0 ;; esac
+now=$(date -u +%s)
+if [ "$saved" -gt 1735689600 ] && [ "$saved" -gt "$now" ]; then
+  date -u -s "@$saved"
+  logger -t piano-clock "restored clock floor to $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fi

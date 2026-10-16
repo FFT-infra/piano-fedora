@@ -1,0 +1,139 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-2.0-only
+# Expose SW_TABLET_MODE to GNOME Mutter for auto-rotation and tablet gestures
+
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+import evdev
+from evdev import UInput, ecodes
+
+POLL_SEC = 0.2
+USER_SHELL_DELAY_TICKS = 25
+UINPUT_MIN_UID = 1000
+NOBODY_UID = 65534
+GDM_CMD_ARG = b"--mode=gdm"
+SHELL_COMM = b"gnome-shell"
+
+_ui = None
+_stopping = False
+
+
+def log(msg):
+    print(f"piano-fake-tablet-mode: {msg}", file=sys.stderr, flush=True)
+
+
+def get_real_lid_device():
+    for path in evdev.list_devices():
+        try:
+            dev = evdev.InputDevice(path)
+            caps = dev.capabilities()
+            if dev.name in ("gpio-keys", "soc:piano-hall-ml"):
+                if ecodes.EV_SW in caps and ecodes.SW_LID in caps[ecodes.EV_SW]:
+                    return dev
+        except Exception:
+            continue
+    return None
+
+
+def set_tablet_mode(enabled):
+    if _ui:
+        _ui.write(ecodes.EV_SW, ecodes.SW_TABLET_MODE, 1 if enabled else 0)
+        _ui.syn()
+
+
+def graphical_user_shell_running():
+    try:
+        iterator = os.scandir("/proc")
+    except OSError:
+        return False
+    with iterator:
+        for entry in iterator:
+            if not entry.name.isdigit():
+                continue
+            try:
+                st = entry.stat()
+                with open(f"/proc/{entry.name}/comm", "rb") as f:
+                    comm = f.read().strip()
+            except (FileNotFoundError, PermissionError):
+                continue
+            if st.st_uid < UINPUT_MIN_UID or st.st_uid == NOBODY_UID:
+                continue
+            if comm != SHELL_COMM:
+                continue
+            try:
+                with open(f"/proc/{entry.name}/cmdline", "rb") as f:
+                    cmdline = f.read()
+            except (FileNotFoundError, PermissionError):
+                continue
+            if GDM_CMD_ARG in cmdline:
+                continue
+            return True
+    return False
+
+
+def handle_signal(_signum, _frame):
+    global _stopping
+    _stopping = True
+
+
+def main():
+    global _ui
+
+    if os.geteuid() != 0:
+        log("FATAL: must run as root")
+        sys.exit(1)
+
+    cap = {
+        ecodes.EV_SW: [ecodes.SW_TABLET_MODE],
+        ecodes.EV_KEY: [ecodes.KEY_WAKEUP],
+    }
+    try:
+        _ui = UInput(cap, name="Fake Tablet Mode Switch",
+                     vendor=0x1234, product=0x5678)
+    except Exception as e:
+        log(f"FATAL: cannot create uinput device: {e}")
+        sys.exit(1)
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    real_dev = get_real_lid_device()
+    if real_dev:
+        log(f"found physical lid switch at {real_dev.path}")
+    else:
+        log("no physical SW_LID found, managing virtual SW_TABLET_MODE")
+
+    set_tablet_mode(False)
+    log("SW_TABLET_MODE=OFF; waiting for graphical user shell")
+
+    shell_ticks = 0
+    enabled = False
+    try:
+        while not _stopping:
+            if graphical_user_shell_running():
+                if shell_ticks < USER_SHELL_DELAY_TICKS:
+                    shell_ticks += 1
+                if not enabled and shell_ticks == USER_SHELL_DELAY_TICKS:
+                    set_tablet_mode(True)
+                    enabled = True
+                    log("SW_TABLET_MODE=ON")
+            else:
+                shell_ticks = 0
+                if enabled:
+                    set_tablet_mode(False)
+                    enabled = False
+                    log("SW_TABLET_MODE=OFF; graphical user shell exited")
+            time.sleep(POLL_SEC)
+    finally:
+        if enabled:
+            set_tablet_mode(False)
+        _ui.close()
+
+
+if __name__ == "__main__":
+    main()
