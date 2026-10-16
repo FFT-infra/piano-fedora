@@ -150,6 +150,8 @@ fi
 
 # 4. Resolve and copy/compress RootFS image
 ROOT_FOUND=$(resolve_candidate "$ROOT_IN" \
+    "$REPO_ROOT/build/clean-distros/fedora-44-gnome/pianoroot-fedora44-gnome-f2fs.img.zst" \
+    "$REPO_ROOT/build/clean-distros/fedora-44-gnome/pianoroot-fedora44-gnome-f2fs.img" \
     "$REPO_ROOT/../mipad8p-piano/out/offline-bringup-20261011-r2/deploy-bundle/pianoroot.f2fs.img.zst" \
     "$REPO_ROOT/out/deploy-stage-20261014/pianoroot.f2fs.img.zst" || true)
 
