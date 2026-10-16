@@ -12,7 +12,6 @@ ExclusiveArch:  aarch64
 
 BuildRequires:  systemd-rpm-macros
 Requires:       systemd
-Requires:       kmod(v4l2loopback)
 
 Provides:       piano-camera-daemon = %{version}-%{release}
 
