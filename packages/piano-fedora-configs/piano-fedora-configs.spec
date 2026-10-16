@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora-test
@@ -16,6 +16,9 @@ Requires:       util-linux
 Requires:       f2fs-tools
 Requires:       python3-evdev
 
+Obsoletes:      piano-session-fixes < 0.3.0
+Provides:       piano-session-fixes = %{version}-%{release}
+
 %description
 System integration, hardware platform fixes, and power management configuration
 for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
@@ -27,6 +30,8 @@ for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
 - Power key and hall sensor udev, sleep, and user service rules
 - Interconnect bwmon and RPMh stats module auto-loading
 - Dual-boot SunUEFI / Android return launchers and polkit rules
+- CPU schedutil 2ms rate limit tuning for instantaneous touch response
+- Static tablet chassis identification for systemd and desktop
 
 %prep
 %autosetup
@@ -46,7 +51,6 @@ cp -a usr etc %{buildroot}/
 %config(noreplace) %{_sysconfdir}/udev/rules.d/70-piano-camera.rules
 %config(noreplace) %{_sysconfdir}/udev/rules.d/70-piano-power-button.rules
 %config(noreplace) %{_sysconfdir}/wireplumber/wireplumber.conf.d/50-piano-camera.conf
-%config(noreplace) %{_sysconfdir}/logrotate.d/bootlog
 %config(noreplace) %{_sysconfdir}/dconf/db/local.d/00-power
 
 %{_unitdir}/piano-clock-restore.service
@@ -69,6 +73,10 @@ cp -a usr etc %{buildroot}/
 %{_libexecdir}/piano-next-boot-helper
 /usr/local/sbin/piano-boot-request
 
+%{_prefix}/lib/tmpfiles.d/piano-machine-info.conf
+%{_prefix}/lib/tmpfiles.d/cpufreq-schedutil.conf
+%{_datadir}/piano/machine-info
+
 %{_datadir}/applications/org.sunuefi.ReturnAndroid.desktop
 %{_datadir}/applications/org.sunuefi.BootMenu.desktop
 %{_datadir}/polkit-1/actions/org.sunuefi.boot-request.policy
@@ -82,6 +90,7 @@ systemctl --global enable piano-power-button.service || :
 if [ -x %{_bindir}/dconf ]; then
     %{_bindir}/dconf update || :
 fi
+systemd-tmpfiles --create %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf %{_prefix}/lib/tmpfiles.d/cpufreq-schedutil.conf || :
 
 %preun
 %systemd_preun piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service
@@ -91,5 +100,8 @@ fi
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service
 
 %changelog
+* Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 0.1.0-2
+- Obsolete monolithic piano-session-fixes, add tmpfiles and machine-info tablet configs, drop conflicting plymouth bootlog
+
 * Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 0.1.0-1
 - Initial package for Xiaomi Pad 8 Pro (piano)
