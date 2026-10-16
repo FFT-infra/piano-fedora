@@ -16,9 +16,19 @@ Requires:       util-linux
 Requires:       f2fs-tools
 Requires:       python3-evdev
 
-Obsoletes:      piano-session-fixes < 0.3.0
+# Replaces the older standalone piano-runtime / piano-session-fixes packages.
+#
+# The bound must be `< %{version}-%{release}`, not a fixed number. With
+# `Obsoletes: piano-runtime < 0.3.0` and `Provides: piano-runtime = 0.1.0-4`,
+# the package obsoleted its own provide (0.1.0-4 < 0.3.0), so DNF scheduled the
+# same NEVRA twice and the whole installroot transaction aborted with
+# "file ... conflicts between attempted installs of
+# piano-fedora-configs-0.1.0-4.fc44.noarch and piano-fedora-configs-0.1.0-4.fc44.noarch".
+# Referencing %{version}-%{release} keeps the replacement working across future
+# bumps while never matching this package's own provide.
+Obsoletes:      piano-session-fixes < %{version}-%{release}
 Provides:       piano-session-fixes = %{version}-%{release}
-Obsoletes:      piano-runtime < 0.3.0
+Obsoletes:      piano-runtime < %{version}-%{release}
 Provides:       piano-runtime = %{version}-%{release}
 
 %description

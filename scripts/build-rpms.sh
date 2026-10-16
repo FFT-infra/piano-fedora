@@ -109,6 +109,13 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
             exit 1
         fi
 
+        # rpmbuild leaves the previous run's RPM in BUILD_TMP/RPMS, and the
+        # collection step at the end copies everything it finds there. Without
+        # clearing the package's own output first, a rebuild that fails to
+        # produce a new RPM silently re-publishes the stale one — which is how a
+        # fixed spec still shipped the old Obsoletes.
+        find "$BUILD_TMP/RPMS" -type f -name "${pkg}-*.rpm" -delete 2>/dev/null || true
+
         # kernel-piano is a packaging-only spec around a prebuilt kernel tree.
         # Stage that tree as Source0 before the generic source handling runs.
         if [ "$pkg" = "kernel-piano" ]; then

@@ -20,7 +20,10 @@ Requires:       libva%{?_isa}
 Requires:       libdrm%{?_isa}
 
 Provides:       libva-v4l2-iris = %{version}-%{release}
-Obsoletes:      libva-v4l2-iris < 1.0.0-2
+# `< %{version}-%{release}`, not a fixed bound. With `Obsoletes:
+# libva-v4l2-iris < 1.0.0-2` against `Provides: libva-v4l2-iris = 1.0.0-1`, the
+# package obsoleted its own provide and DNF tried to install it twice.
+Obsoletes:      libva-v4l2-iris < %{version}-%{release}
 
 %description
 Qualcomm Iris (VPU35, SM8750) hardware video acceleration backend for Linux via
