@@ -185,6 +185,57 @@ def stage_boot_diagnostics(root):
             "[Service]\nRestartSec=1\n",
         "etc/piano/camera.conf":
             "PIANO_CAMERA_OUTPUT=nv12\n",
+        "etc/wireplumber/wireplumber.conf.d/50-piano-camera.conf":
+            "# Applications get the cameras from the v4l2loopback devices that\n"
+            "# piano-camerad feeds with the hardware ISP output. The CAMSS capture nodes\n"
+            "# belong to the daemon, and libcamera must not claim the sensors.\n"
+            "wireplumber.profiles = {\n"
+            "  main = {\n"
+            "    monitor.libcamera = disabled\n"
+            "  }\n"
+            "}\n"
+            "monitor.v4l2.rules = [\n"
+            "  {\n"
+            "    matches = [ { device.product.name = \"Qualcomm Camera Subsystem\" } ]\n"
+            "    actions = { update-props = { device.disabled = true } }\n"
+            "  }\n"
+            "]\n",
+        "etc/udev/rules.d/70-piano-camera.rules":
+            "# libcamera allocates frame buffers from the system DMA heap (see\n"
+            "# /usr/lib/piano/camera-start); let video group members and the active\n"
+            "# session user open it.\n"
+            'SUBSYSTEM=="dma_heap", KERNEL=="system", GROUP="video", MODE="0660", TAG+="uaccess"\n',
+        "etc/udev/rules.d/70-piano-power-button.rules":
+            "# Let the active session user open the power key and the keyboard-cover\n"
+            "# lid switch: the piano-power-button user service owns both (see\n"
+            "# /usr/lib/piano/power-button).  The power key is grabbed; the lid switch\n"
+            "# is only read, so its state stays visible to logind and GNOME.\n"
+            'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="pmic_pwrkey", TAG+="uaccess"\n'
+            'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="hall_lid", TAG+="uaccess"\n',
+        "etc/modules-load.d/piano-bwmon.conf":
+            "# CPU bandwidth monitors: icc-bwmon samples each CPU cluster's memory\n"
+            "# traffic and votes on the APPS->EBI1 interconnect path.\n"
+            "icc-bwmon\n",
+        "etc/modules-load.d/piano-stats.conf":
+            "# RPMh sleep statistics: /sys/kernel/debug/qcom_stats counters for the\n"
+            "# AOSS/CX/DDR low-power modes and the ADSP/CDSP subsystems.\n"
+            "qcom_stats\n",
+        "etc/systemd/sleep.conf.d/piano.conf":
+            "# SPDX-License-Identifier: BSD-2-Clause-Patent\n"
+            "[Sleep]\n"
+            "AllowSuspend=yes\n"
+            "AllowHibernation=no\n"
+            "AllowHybridSleep=no\n"
+            "AllowSuspendThenHibernate=no\n"
+            "SuspendState=mem\n"
+            "MemorySleepMode=deep\n",
+        "etc/systemd/system/qbootctl.service.d/piano.conf":
+            "# qbootctl finds the slots through the partition labels. Right after the\n"
+            "# switch to the root filesystem udev may not have recreated them yet, and\n"
+            "# qbootctl then fails with \"No slots found\": wait for both boot partitions.\n"
+            "[Unit]\n"
+            "Wants=dev-disk-by\\x2dpartlabel-boot_a.device dev-disk-by\\x2dpartlabel-boot_b.device\n"
+            "After=dev-disk-by\\x2dpartlabel-boot_a.device dev-disk-by\\x2dpartlabel-boot_b.device\n",
     }
     for name, text in files.items():
         target = safe_destination(root, name)
@@ -568,9 +619,9 @@ def main():
     chroot(root, "/usr/sbin/depmod", "-a", m["kernel_release"])
     # 正式 root 的服务及账号在目标树中配置，绝不启动构建机上的设备服务。
     if subprocess.run(["chroot", str(root), "id", "piano"], capture_output=True).returncode:
-        chroot(root, "useradd", "--create-home", "--groups", "wheel", "--shell", "/bin/bash", "piano")
+        chroot(root, "useradd", "--create-home", "--groups", "wheel,audio,video,input,render", "--shell", "/bin/bash", "piano")
     chroot(root, "groupadd", "--force", "--system", "librevm")
-    chroot(root, "usermod", "--append", "--groups", "librevm", "piano")
+    chroot(root, "usermod", "--append", "--groups", "librevm,audio,video,input,render", "piano")
     # 默认登录口令（上游 1b3c538 同款）；root 仍锁定，wheel 也不加 NOPASSWD。
     set_login_password(root)
     piano_field = shadow_password(root, DEFAULT_PIANO_LOGIN)
@@ -581,6 +632,15 @@ def main():
     gdm = root / "etc/gdm/custom.conf"
     gdm.parent.mkdir(parents=True, exist_ok=True)
     gdm.write_text("[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=piano\n")
+    # 解除早期对 qbootctl 的屏蔽，开机自动执行向 ABL 标记成功槽位，彻底根治 fastboot 掉入
+    qboot_mask = root / "etc/systemd/system/qbootctl.service"
+    if qboot_mask.is_symlink() and qboot_mask.readlink() == Path("/dev/null"):
+        qboot_mask.unlink()
+    # 屏蔽未适配且破坏内存状态的磁盘休眠目标，锁定为 deep 挂起
+    for unit in ("hibernate.target", "hybrid-sleep.target", "suspend-then-hibernate.target"):
+        p = root / "etc/systemd/system" / unit
+        if not p.exists() and not p.is_symlink():
+            p.symlink_to("/dev/null")
     # 先写入自建时钟/策略单元及依赖配置，再让 systemctl 查找并启用它们。
     hardware_files = stage_piano_hardware_fixes(root)
     diagnostic_files = stage_boot_diagnostics(root)
@@ -593,7 +653,8 @@ def main():
                 "piano-fake-tablet-mode.service", "xiaomi-charger-mode.service",
                 "librevm-daemon.service", "uperf-linux.service",
                 "piano-clock-restore.service", "piano-clock-save.service",
-                "piano-clock-save.timer", "piano-selinux-policy.service"]
+                "piano-clock-save.timer", "piano-selinux-policy.service",
+                "piano-pstore-save.service", "qbootctl.service"]
     chroot(root, "systemctl", "enable", *services)
     chroot(root, "systemctl", "--global", "enable", "piano-power-button.service")
     if shutil.which("dconf") or (root / "usr/bin/dconf").exists():

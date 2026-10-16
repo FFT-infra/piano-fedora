@@ -31,6 +31,7 @@
     "rmtfs",
     "tqftpserv",
     "fastrpc",
+    "qbootctl",
     "alsa-utils",
     "alsa-ucm",
     "rtkit",

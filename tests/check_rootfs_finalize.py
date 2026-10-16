@@ -355,6 +355,18 @@ def main():
         touch_drop = root / "etc/systemd/system/piano-touch.service.d/20-fast-restart.conf"
         assert "RestartSec=1" in touch_drop.read_text()
         assert (root / "etc/piano/camera.conf").read_text() == "PIANO_CAMERA_OUTPUT=nv12\n"
+        wp = root / "etc/wireplumber/wireplumber.conf.d/50-piano-camera.conf"
+        assert "monitor.libcamera = disabled" in wp.read_text()
+        dma_rules = root / "etc/udev/rules.d/70-piano-camera.rules"
+        assert 'SUBSYSTEM=="dma_heap"' in dma_rules.read_text() and 'TAG+="uaccess"' in dma_rules.read_text()
+        bwmon = root / "etc/modules-load.d/piano-bwmon.conf"
+        assert "icc-bwmon" in bwmon.read_text()
+        stats = root / "etc/modules-load.d/piano-stats.conf"
+        assert "qcom_stats" in stats.read_text()
+        sleep_conf = root / "etc/systemd/sleep.conf.d/piano.conf"
+        assert "MemorySleepMode=deep" in sleep_conf.read_text()
+        qboot_drop = root / "etc/systemd/system/qbootctl.service.d/piano.conf"
+        assert "boot_a.device" in qboot_drop.read_text()
         assert (root / "usr/bin/piano-collect-boot").stat().st_mode & 0o111
         check_debug_handoff(root, staged)
         check_piano_hardware_fixes(root)
