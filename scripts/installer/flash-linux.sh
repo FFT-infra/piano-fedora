@@ -165,25 +165,104 @@ if [ -z "$ESP_IMG" ]; then
 fi
 
 # Auto-detect RootFS image
+# ROOT_HASH_FILE is what SHA256SUMS names; ROOT_UNPACKED is true when it is a
+# .zst that still has to be expanded. Verification runs before decompression,
+# so the checksum is always computed on the published artifact.
+ROOT_HASH_FILE=""
+ROOT_UNPACKED=0
 if [ -z "$ROOT_IMG" ]; then
     if FOUND=$(find_file "pianoroot-fedora44-gnome-f2fs.img" "pianoroot.f2fs.sparse.img" "pianoroot.f2fs.img"); then
         ROOT_IMG="$FOUND"
+        ROOT_HASH_FILE="$FOUND"
     elif FOUND_ZST=$(find_file "pianoroot-fedora44-gnome-f2fs.img.zst" "pianoroot.f2fs.sparse.img.zst"); then
-        echo -e "[INFO] Found compressed rootfs archive: ${YELLOW}${FOUND_ZST}${NC}"
-        TARGET_UNPACK="${FOUND_ZST%.zst}"
-        if command -v zstd &>/dev/null; then
-            echo -e "[INFO] Decompressing rootfs with zstd: $TARGET_UNPACK ..."
-            zstd -d -k --rm "$FOUND_ZST" -o "$TARGET_UNPACK"
-            ROOT_IMG="$TARGET_UNPACK"
-        else
-            echo -e "${RED}[ERROR] 'zstd' command not found to decompress rootfs archive!${NC}"
-            echo "Please install zstd (sudo dnf install zstd / brew install zstd) or extract manually."
-            exit 1
-        fi
+        ROOT_HASH_FILE="$FOUND_ZST"
+        ROOT_UNPACKED=1
     else
         echo -e "${RED}[ERROR] Missing RootFS image (pianoroot-fedora44-gnome-f2fs.img)!${NC}"
         exit 1
     fi
+else
+    ROOT_HASH_FILE="$ROOT_IMG"
+    case "$ROOT_IMG" in
+        *.zst) ROOT_UNPACKED=1 ;;
+    esac
+fi
+
+# 5. Integrity verification (SHA256SUMS)
+# Manifest entries are written by package-release-bundle.sh as "./name", so a
+# bare "$name$" match would never hit and the whole check would silently pass.
+manifest_hash() {
+    awk -v want="$1" '
+        {
+            name = $2
+            sub(/^\*/, "", name)
+            sub(/^\.\//, "", name)
+            if (name == want) { print $1; exit }
+        }
+    ' "$WORK_DIR/SHA256SUMS"
+}
+
+if [ "$SKIP_CHECKSUM" -eq 0 ]; then
+    if [ ! -f "$WORK_DIR/SHA256SUMS" ]; then
+        echo -e "${RED}[ERROR] Missing SHA256SUMS next to the images.${NC}"
+        echo "Refusing to flash unverified images. Re-download the Release bundle,"
+        echo "or pass --skip-checksum only if you verified the images yourself."
+        exit 1
+    fi
+    echo -e "[INFO] Verifying image integrity with SHA256SUMS..."
+    CHKSUM_TOOL=""
+    if command -v sha256sum &>/dev/null; then
+        CHKSUM_TOOL="sha256sum"
+    elif command -v shasum &>/dev/null; then
+        CHKSUM_TOOL="shasum -a 256"
+    else
+        echo -e "${RED}[ERROR] Neither sha256sum nor shasum is available.${NC}"
+        echo "Install coreutils (Linux) or use --skip-checksum after verifying manually."
+        exit 1
+    fi
+
+    for target_file in "$BOOT_IMG" "$ESP_IMG" "$ROOT_HASH_FILE"; do
+        target_name=$(basename "$target_file")
+        expected_hash=$(manifest_hash "$target_name")
+        if [ -z "$expected_hash" ]; then
+            # A manually extracted .img is not listed; the manifest names the
+            # .zst it came from, so fall back to verifying that archive.
+            archive="${target_file}.zst"
+            archive_name="${target_name}.zst"
+            if [ -f "$archive" ] && [ -n "$(manifest_hash "$archive_name")" ]; then
+                target_file="$archive"
+                target_name="$archive_name"
+                expected_hash=$(manifest_hash "$target_name")
+            fi
+        fi
+        if [ -z "$expected_hash" ]; then
+            echo -e "${RED}[ERROR] ${target_name} is not listed in SHA256SUMS.${NC}"
+            echo "The image set does not match the published manifest. Re-download."
+            exit 1
+        fi
+        actual_hash=$($CHKSUM_TOOL "$target_file" | awk '{print $1}')
+        if [ "$actual_hash" != "$expected_hash" ]; then
+            echo -e "${RED}[ERROR] SHA256 mismatch for ${target_name}!${NC}"
+            echo "  Expected: $expected_hash"
+            echo "  Actual  : $actual_hash"
+            echo "The image file appears corrupted. Please re-download."
+            exit 1
+        fi
+        echo -e "  ${GREEN}✓${NC} ${target_name} checksum valid."
+    done
+fi
+
+# 6. Expand a compressed rootfs only after its published digest is confirmed.
+if [ "$ROOT_UNPACKED" -eq 1 ]; then
+    TARGET_UNPACK="${ROOT_HASH_FILE%.zst}"
+    if ! command -v zstd &>/dev/null; then
+        echo -e "${RED}[ERROR] 'zstd' command not found to decompress rootfs archive!${NC}"
+        echo "Please install zstd (sudo dnf install zstd / brew install zstd) or extract manually."
+        exit 1
+    fi
+    echo -e "[INFO] Decompressing rootfs with zstd: $TARGET_UNPACK ..."
+    zstd -d -f "$ROOT_HASH_FILE" -o "$TARGET_UNPACK"
+    ROOT_IMG="$TARGET_UNPACK"
 fi
 
 echo -e "[INFO] Flashing targets resolved:"
@@ -191,37 +270,7 @@ echo -e "  - Boot image   : ${GREEN}${BOOT_IMG}${NC} ($(stat -c%s "$BOOT_IMG" 2>
 echo -e "  - ESP image    : ${GREEN}${ESP_IMG}${NC} ($(stat -c%s "$ESP_IMG" 2>/dev/null || stat -f%z "$ESP_IMG") bytes)"
 echo -e "  - RootFS image : ${GREEN}${ROOT_IMG}${NC} ($(stat -c%s "$ROOT_IMG" 2>/dev/null || stat -f%z "$ROOT_IMG") bytes)"
 
-# 5. Integrity verification (SHA256SUMS)
-if [ "$SKIP_CHECKSUM" -eq 0 ] && [ -f "$WORK_DIR/SHA256SUMS" ]; then
-    echo -e "[INFO] Verifying image integrity with SHA256SUMS..."
-    CHKSUM_TOOL=""
-    if command -v sha256sum &>/dev/null; then
-        CHKSUM_TOOL="sha256sum"
-    elif command -v shasum &>/dev/null; then
-        CHKSUM_TOOL="shasum -a 256"
-    fi
-
-    if [ -n "$CHKSUM_TOOL" ]; then
-        for target_file in "$BOOT_IMG" "$ESP_IMG" "$ROOT_IMG"; do
-            target_name=$(basename "$target_file")
-            expected_hash=$(grep -E "[[:space:]]\*?${target_name}$" "$WORK_DIR/SHA256SUMS" | awk '{print $1}' || true)
-            if [ -n "$expected_hash" ]; then
-                actual_hash=$($CHKSUM_TOOL "$target_file" | awk '{print $1}')
-                if [ "$actual_hash" != "$expected_hash" ]; then
-                    echo -e "${RED}[ERROR] SHA256 mismatch for ${target_name}!${NC}"
-                    echo "  Expected: $expected_hash"
-                    echo "  Actual  : $actual_hash"
-                    echo "The image file appears corrupted. Please re-download."
-                    exit 1
-                else
-                    echo -e "  ${GREEN}✓${NC} ${target_name} checksum valid."
-                fi
-            fi
-        done
-    fi
-fi
-
-# 6. Safety Confirmation
+# 7. Safety Confirmation
 if [ "$AUTO_CONFIRM" -eq 0 ]; then
     echo -e "\n${YELLOW}${BOLD}⚠️  CRITICAL SAFETY WARNING ⚠️${NC}"
     echo "1. This action will write Linux SunUEFI to Slot B (boot_b, dtbo_b)."

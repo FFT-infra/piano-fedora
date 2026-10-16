@@ -21,7 +21,11 @@ if %ERRORLEVEL% neq 0 (
 REM 2. Device connection check
 echo [INFO] Checking connected Fastboot devices...
 fastboot devices > "%TEMP%\piano_fb_devices.txt" 2>nul
-for /f %%i in ("%TEMP%\piano_fb_devices.txt") do set DEVICE_FOUND=%%i
+REM "usebackq" is required: a plain quoted string is read as a literal filename.
+set DEVICE_FOUND=
+for /f "usebackq tokens=1" %%i in ("%TEMP%\piano_fb_devices.txt") do (
+    if not defined DEVICE_FOUND set DEVICE_FOUND=%%i
+)
 if "%DEVICE_FOUND%"=="" (
     echo [ERROR] No device detected in Fastboot mode!
     echo Please make sure:
@@ -87,7 +91,25 @@ echo   - ESP    : %ESP_IMG%
 echo   - RootFS : %ROOT_IMG%
 echo.
 
-REM 5. Safety confirmation
+REM 5. Integrity verification against SHA256SUMS
+if not exist "SHA256SUMS" (
+    echo [ERROR] SHA256SUMS not found next to the images.
+    echo Refusing to flash unverified images. Re-download the Release bundle.
+    pause
+    exit /b 1
+)
+echo [INFO] Verifying image integrity with SHA256SUMS...
+for %%F in ("%BOOT_IMG%" "%ESP_IMG%" "%ROOT_IMG%") do (
+    call :verify_one "%%~nxF" "%%~fF"
+    if errorlevel 1 (
+        pause
+        exit /b 1
+    )
+)
+echo [INFO] All image checksums match.
+echo.
+
+REM 6. Safety confirmation
 echo ====================================================================
 echo                  ⚠️  CRITICAL SAFETY WARNING ⚠️
 echo ====================================================================
@@ -152,3 +174,55 @@ echo [ERROR] An error occurred during fastboot flashing!
 echo Please check device connection and error logs above.
 pause
 exit /b 1
+
+:verify_one
+REM %1 = file name as listed in SHA256SUMS, %2 = full path
+setlocal enabledelayedexpansion
+set "EXPECTED="
+for /f "usebackq tokens=1,2" %%a in ("SHA256SUMS") do (
+    set "NAME=%%b"
+    set "NAME=!NAME:*/=!"
+    if /i "!NAME!"=="%~1" if not defined EXPECTED set "EXPECTED=%%a"
+)
+REM An extracted .img is not listed; the manifest lists the .zst it came from.
+if not defined EXPECTED (
+    set "ARCHIVE=%~1.zst"
+    for /f "usebackq tokens=1,2" %%a in ("SHA256SUMS") do (
+        set "NAME=%%b"
+        set "NAME=!NAME:*/=!"
+        if /i "!NAME!"=="!ARCHIVE!" if not defined EXPECTED set "EXPECTED=%%a"
+    )
+    if defined EXPECTED (
+        if not exist "%~2.zst" (
+            echo [ERROR] %~1 is not listed in SHA256SUMS and %~1.zst is missing.
+            echo Keep the downloaded .zst next to the extracted image so it can be verified.
+            endlocal & exit /b 1
+        )
+        echo [INFO] Verifying the source archive %~1.zst for %~1...
+        call :verify_hash "%~1.zst" "%~2.zst" "!EXPECTED!"
+        endlocal & exit /b %ERRORLEVEL%
+    )
+)
+if not defined EXPECTED (
+    echo [ERROR] %~1 is not listed in SHA256SUMS. Re-download the Release bundle.
+    endlocal & exit /b 1
+)
+call :verify_hash "%~1" "%~2" "!EXPECTED!"
+endlocal & exit /b %ERRORLEVEL%
+
+:verify_hash
+REM %1 = label, %2 = full path, %3 = expected hash
+setlocal enabledelayedexpansion
+set "ACTUAL="
+for /f "skip=1 tokens=* delims=" %%h in ('certutil -hashfile "%~2" SHA256 ^| findstr /r /v "^CertUtil"') do (
+    if not defined ACTUAL set "ACTUAL=%%h"
+)
+set "ACTUAL=!ACTUAL: =!"
+if /i not "!ACTUAL!"=="%~3" (
+    echo [ERROR] SHA256 mismatch for %~1
+    echo   Expected: %~3
+    echo   Actual  : !ACTUAL!
+    endlocal & exit /b 1
+)
+echo   OK %~1
+endlocal & exit /b 0
