@@ -16,6 +16,13 @@ DTBO 的 fragment 编号不能作为数量或兼容性证明。新编 DTBO 的�
 
 运行 `make test`。原生 ARM64 检查执行真实 BusyBox、ELF 依赖闭包和隔离 guest 中的根身份函数；缺少所需环境时明确标记跳过。Actions 的 host-check 同时使用 x86_64 和 ARM64 runner。
 
+其中两项检查读 SunUEFI checkout（默认 `../mipad8p-piano/sources/Project-SunUEFI`，可用 `PIANO_TEST_SUNUEFI` 指定）：补丁应用性对照 `git show HEAD:` 的原文摘要，载荷预检对照应用补丁之后的 helper 摘要。所以该 checkout 要同时满足 HEAD 等于 sources.lock.json 固定的 commit、且工作树已套上本仓库的补丁 series；只满足一半就会失败，报错里的“上游已更新”或“校验器内容变了”说的是摘要不符，不代表补丁或校验器本身被改动。
+
+```sh
+git -C <checkout> rev-parse HEAD                     # 应等于 sources.lock.json 的 SunUEFI commit
+python3 scripts/apply-patches.py --sunuefi <checkout>  # 载荷预检要的是打过补丁的工作树
+```
+
 根探测固定调用 `/usr/bin/blkid`，避免 BusyBox 同名 applet 改变 util-linux 参数和输出含义。缺动态库、非法 cpio 路径、断链、不同启动入口或混用 ABL/SunUEFI 都必须拒绝。根分区仍以 GPT PARTNAME、文件系统 LABEL 与 TYPE 三者匹配，写挂载前再次核对。
 
 正式构建：
