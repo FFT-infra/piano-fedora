@@ -194,6 +194,45 @@ adb       shell 权限可用
 current-slot: a
 ```
 
+### Linux 启动：引导链通了，init 卡在版本检查
+
+切到 Slot B 后，设备成功进入 Linux：USB gadget `1209:8751` 枚举，
+`192.168.77.1` ping 通，`/dev/ttyACM0` 出现。这证明 SunUEFI 引导头、
+内核、initramfs 与 `init` 脚本都正常执行。
+
+但设备停在 initramfs 救援 shell（提示符 `~ #`），说明 `init` 走进了
+`fail()`。原因是内核版本不匹配：
+
+```
+设备 ESP 的 /etc/piano/kernel-release   7.2.9-piano-gnome-g184e09d96775
+CI 产物 rootfs 的 kernel_release        7.2.9-piano-gnome-g07c1f92db62b
+```
+
+`init` 里有这条检查：
+
+```sh
+[ -d "/sysroot/usr/lib/modules/$release" ] || fail 'Matching distro modules are missing'
+```
+
+ESP 声明 `g184e09d`，rootfs 里只有 `g07c1f92` 的模块，检查失败。
+
+10-15 的验收记录（`device-acceptance-20261015.md`）写的是从
+`g184e09d96775` 增量更新到 `g07c1f92db62b`。也就是说 ESP 被回退到了
+更新前的版本，而 rootfs 仍是更新后的。
+
+修复材料已备好，在 `builder:~/Lab/Bridge/tmp/trash/linux-fix/`：
+
+```
+esp-g07c1f92.img    6804540f1cc31a6a73a4708645e493ed332028528c92e3bf8f8c37b6d80decd6
+boot-g07c1f92.img   d67fb74a4e7094bcccade80612686088a46bd88344e26df729f25465caa11362
+```
+
+两者来自 `builder:~/piano-boot/ci-artifacts/bundle-38724183062/extracted/`，
+`bundle-manifest.json` 的 `kernel_release` 为 `g07c1f92db62b`，
+与 rootfs 一致。`apply.sh` 会切槽、刷 ESP、重启并等待 SSH。
+
+`boot_b` 分区不用动，它里面的 SunUEFI 引导头工作正常。
+
 两槽内容：
 
 | 槽位 | 内容 | 验证状态 |
