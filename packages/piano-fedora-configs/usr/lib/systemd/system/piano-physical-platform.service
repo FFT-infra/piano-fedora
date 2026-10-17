@@ -1,0 +1,14 @@
+[Unit]
+Description=Mask hypervisor devicetree node to restore GNOME battery and tablet power
+DefaultDependencies=no
+After=sys-firmware-devicetree-base.mount
+Before=sysinit.target
+ConditionPathExists=/sys/firmware/devicetree/base/hypervisor/compatible
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/piano-physical-platform
+
+[Install]
+WantedBy=sysinit.target

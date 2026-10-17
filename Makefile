@@ -1,4 +1,4 @@
-.PHONY: test test-device-media plan clean
+.PHONY: test test-device-media plan clean build-rpms release-bundle
 
 test:
 	python3 tests/check_sources.py
@@ -40,6 +40,12 @@ test:
 	python3 tests/check_image_workflow.py
 	python3 tests/check_runtime_extras.py
 	python3 tests/check_rootfs_finalize.py
+	python3 tests/check_clean_rootfs.py
+	python3 tests/check_flash_script_guard.py
+	python3 tests/check_kernel_package.py
+	python3 tests/check_package_replaces.py
+	python3 tests/check_release_provenance.py
+	python3 tests/check_manual_flash_flow.py
 
 # 在平板上执行，MEDIA_OUTPUT 必须是新的证据目录。
 test-device-media:
@@ -49,5 +55,14 @@ RELEASEVER ?= 44
 plan:
 	python3 scripts/build-fedora-rootfs.py --plan --releasever $(RELEASEVER)
 
+plan-clean:
+	python3 scripts/build-clean-rootfs.py --plan --releasever $(RELEASEVER)
+
 clean:
 	rm -rf build
+
+build-rpms:
+	./scripts/build-rpms.sh
+
+release-bundle:
+	./scripts/package-release-bundle.sh

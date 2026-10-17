@@ -1,0 +1,14 @@
+[org/gnome/settings-daemon/plugins/media-keys]
+power-static=['']
+
+[org/gnome/settings-daemon/plugins/power]
+power-button-action='nothing'
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='nothing'
+
+[org/gnome/desktop/session]
+idle-delay=uint32 300
+
+[org/gnome/desktop/screensaver]
+lock-enabled=true
+lock-delay=uint32 0
