@@ -1,5 +1,11 @@
 # 2026-10-17 设备状态与恢复记录
 
+> **已过时。** 本文写于根因确认之前，其中"只能走官方售后"和
+> "EDL 被签名拦截"两条结论已被 2026-10-18 的定位推翻。实际根因是
+> UFS LUN4 的槽位类型 GUID 归属错位，修复过程见
+> [槽位 GUID 错位导致无法启动](slot-guid-corruption-20261018.md)。
+> 本文保留作为当时的证据快照，不再代表当前状态。
+
 ## 结论
 
 平板当前的失败点不在本 PR 的 Release 资产，也不在 `dtbo_b` 内容或
@@ -9,10 +15,7 @@
 完全一致。
 
 现有证据把故障边界收敛到 ABL 的槽位/GPT 校验或底层存储状态，而不是镜像
-内容。设备目前已经关机，需要人工长按电源键重新开机；开机后若仍进入
-Fastboot，只能走官方售后，或由具备小米签名 Firehose programmer 的服务端
-恢复。**在设备恢复并跑通一次完整手动刷机之前，PR 的真机盲测合并门槛仍未
-满足。**
+内容。（事后确认：这个方向是对的，只是当时无法读回设备 GPT 来证实。）
 
 ## 当前状态
 
@@ -100,8 +103,9 @@ slot B，五个分区全部 `OKAY`：
 ERROR: Only nop and sig tag can be recevied before authentication.
 ```
 
-因此无法在不具备小米签名认证材料的情况下只读设备 GPT。断电退出 EDL
-后设备关机，未再自动回到 Fastboot。
+（事后更正：`xbl_s_devprg_ns.melf` 就是 SM8750 的 Firehose
+programmer，报错是 Firehose 层的鉴权要求，不是文件选错。改用公开的
+免认证版本后 EDL 读写正常。）
 
 ## ABL 静态分析
 
@@ -159,13 +163,13 @@ PR 已通过真机盲测。
 1. **人工重新开机**：长按电源键约 15 秒，再按电源键正常开机；若仍进入
    Fastboot，先只跑 `fastboot getvar all` 和 `oem fbreason`，不要写任何
    分区。
-2. **官方售后 / 小米授权维修**：这是当前最稳妥的恢复路径。说明设备卡在
-   Fastboot，`LoadImageAndAuth` 对所有镜像失败，且 EDL 需要签名
-   programmer；不要要求维修人员先擦 `userdata`。
-3. **具备签名 Firehose 材料的服务端**：只有在能提供与
-   `piano_images_OS3.0.5.0.WPYCNXM_16.0` 匹配的签名 programmer 时，才考虑
-   通过 EDL 只读核对 GPT/UFS Boot LUN，再决定是否修复。不要用来源不明的
-   programmer 写 GPT。
+2. **官方售后 / 小米授权维修**：当时认为这是最稳妥的路径。
+3. **具备签名 Firehose 材料的服务端**：当时认为需要小米签名的
+   programmer。
+
+（事后更正：以上第 2、3 条都不必要。免认证的 SM8750 programmer
+可用，修复只需交换 GPT 里的 8 个类型 GUID。详见
+[槽位 GUID 错位导致无法启动](slot-guid-corruption-20261018.md)。）
 
 ## 禁止操作
 
@@ -178,3 +182,6 @@ PR 已通过真机盲测。
 * 使用非原厂或未签名的 Firehose programmer。
 
 这些操作可能让当前仍可进入 Fastboot 的设备进一步失去可恢复性。
+
+（事后更正：最后一条过于笼统。免认证 programmer 只读 GPT 是安全的，
+真正需要避免的是在没有备份的情况下写分区表。）
