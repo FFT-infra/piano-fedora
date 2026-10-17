@@ -49,6 +49,20 @@ def main():
         failures.append("package-release-bundle.sh has no staleness guard")
     if "PROVENANCE.txt" not in code:
         failures.append("package-release-bundle.sh does not write PROVENANCE.txt")
+    # 引导头规范守卫（Header v4 / 96MB / AVB0 / live-memory / NEXTv1 target: 2）
+    if "verify_boot_image" not in code:
+        failures.append("package-release-bundle.sh does not define or call verify_boot_image")
+    if "header_version != 4" not in code and "header_version == 4" not in code:
+        failures.append("package-release-bundle.sh does not enforce Android Boot Header v4")
+    if "100663296" not in code:
+        failures.append("package-release-bundle.sh does not enforce 96 MiB partition size (100663296 bytes)")
+    if "AVB0" not in code:
+        failures.append("package-release-bundle.sh does not verify AVB signature / footer (AVB0)")
+    if "SUNUEFI-SPLITv1" not in code:
+        failures.append("package-release-bundle.sh does not verify 24GB live-memory dynamic mapping (SUNUEFI-SPLITv1)")
+    if "SUNUEFI-NEXTv1" not in code or "target != 2" not in code:
+        failures.append("package-release-bundle.sh does not enforce NEXTv1 default boot target: 2 (Linux)")
+
     if "--allow-stale" not in body:
         failures.append("package-release-bundle.sh has no --allow-stale escape hatch")
 
@@ -74,6 +88,37 @@ def main():
         failures.append("resolve_candidate does not mark explicit paths")
     if not re.search(r"printf\s+'%s\\tfallback", code):
         failures.append("resolve_candidate does not mark fallback paths")
+
+
+    # 产物物理契约（若 out/release-bundle/boot_sunuefi.img 已生成，必须严格校验）
+    out_boot = ROOT / "out" / "release-bundle" / "boot_sunuefi.img"
+    if out_boot.is_file():
+        import struct, zlib
+        data = out_boot.read_bytes()
+        if len(data) != 100663296:
+            failures.append(f"out/release-bundle/boot_sunuefi.img size {len(data)} != 100663296 (not 96 MiB)")
+        elif data[:8] != b"ANDROID!":
+            failures.append(f"out/release-bundle/boot_sunuefi.img bad magic: {data[:8]!r}")
+        else:
+            hver = struct.unpack_from("<I", data, 40)[0]
+            if hver != 4:
+                failures.append(f"out/release-bundle/boot_sunuefi.img is Header v{hver}, expected Header v4")
+            if b"AVB0" not in data:
+                failures.append("out/release-bundle/boot_sunuefi.img lacks AVB0 footer")
+            if b"SUNUEFI-SPLITv1\0" not in data:
+                failures.append("out/release-bundle/boot_sunuefi.img lacks SUNUEFI-SPLITv1 (live-memory)")
+            npos = data.find(b"SUNUEFI-NEXTv1\0")
+            if npos == -1:
+                failures.append("out/release-bundle/boot_sunuefi.img lacks SUNUEFI-NEXTv1")
+            else:
+                raw = data[npos:npos+64]
+                t = struct.unpack_from("<I", raw, 32)[0]
+                stored_crc = struct.unpack_from("<I", raw, 36)[0]
+                rc = bytearray(raw); rc[36:40] = bytes(4)
+                if zlib.crc32(rc) != stored_crc:
+                    failures.append("out/release-bundle/boot_sunuefi.img NEXTv1 CRC mismatch")
+                if t != 2:
+                    failures.append(f"out/release-bundle/boot_sunuefi.img default target is {t}, expected 2 (Linux)")
 
     if failures:
         for item in failures:

@@ -156,6 +156,63 @@ record_provenance() {
     PROVENANCE_ROWS+=("$asset|$source")
 }
 
+# Verify that a candidate boot image meets all Xiaomi Pad 8 Pro (piano) requirements:
+# 1. Android boot header version 4 (offset 40 == 4, magic == ANDROID!)
+# 2. Partition capacity exactly 96 MiB (100,663,296 bytes)
+# 3. AVB signature / footer present (magic AVB0)
+# 4. SunUEFI live-memory map envelope present (SUNUEFI-SPLITv1)
+# 5. SunUEFI NEXTv1 request page points by default to target: 2 (Linux) with valid CRC
+verify_boot_image() {
+    local img="$1"
+    python3 - <<'PY' "$img"
+import sys, struct, zlib
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.is_file():
+    sys.exit(f"Error: Boot image does not exist: {path}")
+
+size = path.stat().st_size
+if size != 100663296:
+    sys.exit(f"Error: Boot image size {size} != 100663296 bytes (expected exact 96 MiB partition image, got {size // (1024*1024)} MiB)")
+
+with path.open("rb") as f:
+    header = f.read(4096)
+    if header[:8] != b"ANDROID!":
+        sys.exit(f"Error: Invalid Android boot magic: {header[:8]!r}")
+    header_version = struct.unpack_from("<I", header, 40)[0]
+    if header_version != 4:
+        sys.exit(f"Error: Boot image is Header v{header_version}, but SM8750 (piano) ABL strictly requires Header v4!")
+
+    f.seek(0)
+    data = f.read()
+    if b"AVB0" not in data:
+        sys.exit("Error: Boot image lacks AVB footer / signature (magic AVB0 not found)")
+
+    if b"SUNUEFI-SPLITv1\0" not in data:
+        sys.exit("Error: Boot image lacks SUNUEFI-SPLITv1 layout (24GB live-memory dynamic mapping missing)")
+
+    next_pos = data.find(b"SUNUEFI-NEXTv1\0")
+    if next_pos == -1:
+        sys.exit("Error: Boot image lacks SUNUEFI-NEXTv1 request pages")
+
+    raw = data[next_pos:next_pos + 64]
+    ver, rsize = struct.unpack_from("<II", raw, 16)
+    seq = struct.unpack_from("<Q", raw, 24)[0]
+    target = struct.unpack_from("<I", raw, 32)[0]
+    stored_crc = struct.unpack_from("<I", raw, 36)[0]
+    raw_for_crc = bytearray(raw); raw_for_crc[36:40] = bytes(4)
+    calc_crc = zlib.crc32(raw_for_crc)
+    if stored_crc != calc_crc:
+        sys.exit(f"Error: SUNUEFI-NEXTv1 CRC mismatch: stored {stored_crc:#x} != calc {calc_crc:#x}")
+    if target != 2:
+        sys.exit(f"Error: SUNUEFI-NEXTv1 default target is {target}, expected 2 (Linux)")
+
+print(f"    Verified Boot Image: Header v4 (96MB), AVB0 OK, live-memory OK, NEXTv1 target=2 (Linux)")
+PY
+}
+
+
 # Extract the kernel release baked into an ESP image's /EFI/Piano/stable/Image.
 esp_kernel_release() {
     local img="$1" tmp
@@ -209,7 +266,9 @@ EOF
 
 # 2. Resolve and copy Boot image
 BOOT_ROW=$(resolve_candidate "$BOOT_IN" \
+    "$REPO_ROOT/build/bundle/boot_sunuefi.img" \
     "$REPO_ROOT/build/bundle/boot.img" \
+    "$REPO_ROOT/build/packaged/boot_sunuefi.img" \
     "$REPO_ROOT/build/packaged/boot.img" \
     "$REPO_ROOT/out/device-boot-a485-20261015/boot_linux.img" \
     "$REPO_ROOT/out/artifacts/uefi-a485-38560284113/extracted/PianoUEFI-product.img" \
@@ -219,6 +278,8 @@ if [ -n "$BOOT_ROW" ]; then
     BOOT_FOUND="${BOOT_ROW%%$'\t'*}"
     BOOT_ORIGIN="${BOOT_ROW##*$'\t'}"
     [ "$BOOT_ORIGIN" = explicit ] || reject_stale_source boot_sunuefi.img "$BOOT_FOUND" || exit 1
+    echo "--> Verifying candidate boot image: $BOOT_FOUND"
+    verify_boot_image "$BOOT_FOUND"
     echo "--> Copying boot image: $BOOT_FOUND"
     cp -v "$BOOT_FOUND" "$OUT_DIR/boot_sunuefi.img"
     record_provenance boot_sunuefi.img "$BOOT_FOUND"
@@ -298,6 +359,11 @@ if [ -f "$OUT_DIR/sunuefi_esp.img" ]; then
     else
         echo "    ESP kernel release : unknown (mtype unavailable or no Image)"
     fi
+fi
+
+if [ -f "$OUT_DIR/boot_sunuefi.img" ]; then
+    echo "--> Verifying packaged boot_sunuefi.img contract..."
+    verify_boot_image "$OUT_DIR/boot_sunuefi.img"
 fi
 
 # 7. Write the provenance record next to the assets.
