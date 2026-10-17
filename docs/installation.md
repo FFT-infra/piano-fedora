@@ -128,12 +128,22 @@ Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B �
 sha256sum -c SHA256SUMS
 ```
 
-清单里的路径写成 `./name`，所以必须在文件所在目录执行。三条都要是 `OK`；
-任何一条 `FAILED` 都说明文件损坏，重新下载，不要继续。手动核对单个文件：
+清单里的路径写成 `./name`，所以必须在文件所在目录执行。清单覆盖发布包里
+**全部**资产（含一键脚本与 Android 切换模块），而手动刷机只下载其中三个；
+因此没下载的那几行会报 `No such file or directory`，这是正常的，不是损坏。
+需要关心的是：
+
+* `boot_sunuefi.img`、`sunuefi_esp.img`、
+  `pianoroot-fedora44-gnome-f2fs.img.zst` 三行必须是 `OK`；
+* 任何一行出现 `FAILED`，说明该文件损坏，重新下载，不要继续。
+
+手动核对单个文件（只查要用到的三个，不受其它行影响）：
 
 ```sh
 sha256sum boot_sunuefi.img sunuefi_esp.img pianoroot-fedora44-gnome-f2fs.img.zst
 ```
+
+把输出与 `SHA256SUMS` 里对应的三行逐一比对，三组哈希都必须一致。
 
 ### 3. 确认设备和槽位
 

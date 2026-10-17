@@ -81,6 +81,38 @@
    > 镜像与 `.zst`。回归测试见 `tests/check_release_provenance.py`。
    > 另一个更早的缺陷是 `kernel-piano` RPM 是空壳（vmlinuz 与 DTB 均 0 字节），
    > 已改为强制打包真实内核载荷，见 `tests/check_kernel_package.py`。
+
+   > **2026-10-17 再补充：装配链此前一次都没成功过。**
+   > 上面两条修完仍然产不出镜像，继续排查后确认是两个各自独立的缺陷：
+   >
+   > 1. **merged-usr 别名重复声明**。`filesystem` 包把 `/usr/local/sbin`
+   >    做成指向 `bin` 的符号链接，而 `piano-fedora-configs` 的 `%files`
+   >    同时列了 `/usr/local/bin/piano-debug-bootstrap` 与
+   >    `/usr/local/sbin/piano-debug-bootstrap`。两条记录解析到同一个
+   >    inode，rpm 6 判成“包与自己冲突”，整个 1783 包的事务回滚：
+   >
+   >        file /usr/local/sbin/piano-debug-bootstrap conflicts between
+   >        attempted installs of piano-fedora-configs-0.1.0-4.fc44.noarch
+   >        and piano-fedora-configs-0.1.0-4.fc44.noarch
+   >
+   >    最小复现（只含这两个路径 + `Requires: filesystem`）在 Fedora 44 上
+   >    稳定触发。中间一度误判成 Obsoletes 自匹配，改界限后事务照样失败，
+   >    说明那个诊断是错的。现在只发 canonical 的 `/usr/local/bin` 路径；
+   >    调用方写 `/usr/local/sbin/...` 仍然可用，因为该目录就是 `bin` 的软链。
+   >    `tests/check_package_replaces.py` 同时检查 spec 的 `%files` 与
+   >    `out/rpms/` 里已构建的 RPM，杜绝复发。
+   > 2. **装配列表里没有 `kernel-piano`**。空壳 RPM 修好之后没有任何一步把
+   >    它装进镜像，新 rootfs 的 `/usr/lib/modules/` 是空的，而 ESP 里烧的
+   >    是 7.2.9 内核——系统能引导，然后没有任何驱动。现在 kernel-piano 是
+   >    必装项并纳入仓库校验，审计阶段还会核对
+   >    `/usr/lib/modules` 恰好一个 release、存在 `modules.dep`/`modules.builtin`、
+   >    `/boot` 存在 `vmlinuz-*`，任一不满足就不发布镜像。
+   >
+   > 实测：builder 上 1785 个包的事务首次跑通（`Complete!`）。
+   > 另外 `build-clean-rootfs.py` 现在默认先清空 installroot，避免在失败
+   > 残骸上叠装；镜像产物同时写 `root-image-manifest.json` 并记录
+   > `kernel_release`，打包脚本靠它做 ESP/rootfs 的内核一致性交叉校验
+   > （此前只写了 `image-manifest.json`，该校验一直被静默跳过）。
 5. **里程碑 5：纯净真机全流程实操与终验（🟡 进行中 / 实机已全部装配）**
    - 实机（Xiaomi Pad 8 Pro / `piano`）已成功部署全部 9 个解耦 RPM 包，硬件 Iris VA-API 硬解、ALSA UCM2 音频、卡尔曼触控滤波与传感器代理全部实机就绪；
    - 待下次真机重启验证 `piano-boot-request-autoconfig.service` 开机首发自愈与盲测全流程。
