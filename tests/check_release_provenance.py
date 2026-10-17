@@ -107,6 +107,16 @@ def main():
                 failures.append(f"out/release-bundle/boot_sunuefi.img is Header v{hver}, expected Header v4")
             if b"AVB0" not in data:
                 failures.append("out/release-bundle/boot_sunuefi.img lacks AVB0 footer")
+            else:
+                footer = data[-64:]
+                if footer[:4] == b"AVBf":
+                    orig_sz, vb_off, vb_sz = struct.unpack_from(">QQQ", footer, 12)
+                    vbmeta = data[vb_off:vb_off + vb_sz]
+                    if vbmeta[:4] == b"AVB0":
+                        auth_sz = struct.unpack_from(">Q", vbmeta, 12)[0]
+                        algo = struct.unpack_from(">I", vbmeta, 28)[0]
+                        if algo != 2 or auth_sz == 0:
+                            failures.append(f"out/release-bundle/boot_sunuefi.img lacks valid SHA256_RSA4096 AVB signature (algo={algo}, auth_sz={auth_sz})")
             if b"SUNUEFI-SPLITv1\0" not in data:
                 failures.append("out/release-bundle/boot_sunuefi.img lacks SUNUEFI-SPLITv1 (live-memory)")
             exp_gen = bytes.fromhex("2b191f0dd3bca52d20950ec58199f95b")

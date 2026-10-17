@@ -188,6 +188,15 @@ with path.open("rb") as f:
     data = f.read()
     if b"AVB0" not in data:
         sys.exit("Error: Boot image lacks AVB footer / signature (magic AVB0 not found)")
+    footer = data[-64:]
+    if footer[:4] == b"AVBf":
+        orig_sz, vb_off, vb_sz = struct.unpack_from(">QQQ", footer, 12)
+        vbmeta = data[vb_off:vb_off + vb_sz]
+        if vbmeta[:4] == b"AVB0":
+            auth_sz = struct.unpack_from(">Q", vbmeta, 12)[0]
+            algo = struct.unpack_from(">I", vbmeta, 28)[0]
+            if algo != 2 or auth_sz == 0:
+                sys.exit(f"Error: Boot image lacks valid SHA256_RSA4096 AVB signature (algo={algo}, auth_sz={auth_sz})")
 
     if b"SUNUEFI-SPLITv1\0" not in data:
         sys.exit("Error: Boot image lacks SUNUEFI-SPLITv1 layout (24GB live-memory dynamic mapping missing)")
@@ -215,7 +224,7 @@ with path.open("rb") as f:
     if target != 2:
         sys.exit(f"Error: SUNUEFI-NEXTv1 default target is {target}, expected 2 (Linux)")
 
-print(f"    Verified Boot Image: Header v4 (96MB), AVB0 OK, live-memory OK (2b191f0d), NEXTv1 target=2 (Linux)")
+print(f"    Verified Boot Image: Header v4 (96MB), AVB0 RSA4096 OK, live-memory OK (2b191f0d), NEXTv1 target=2 (Linux)")
 PY
 }
 
@@ -283,6 +292,38 @@ if [ -n "$BOOT_ROW" ]; then
     BOOT_FOUND="${BOOT_ROW%%$'\t'*}"
     BOOT_ORIGIN="${BOOT_ROW##*$'\t'}"
     [ "$BOOT_ORIGIN" = explicit ] || reject_stale_source boot_sunuefi.img "$BOOT_FOUND" || exit 1
+
+    # Ensure candidate boot image is signed with SHA256_RSA4096 for stock ABL AVB compliance
+    if ! python3 -c '
+import sys, struct
+data = open(sys.argv[1], "rb").read()
+footer = data[-64:]
+if footer[:4] != b"AVBf": sys.exit(1)
+orig_sz, vb_off, vb_sz = struct.unpack_from(">QQQ", footer, 12)
+vbmeta = data[vb_off:vb_off + vb_sz]
+auth_sz = struct.unpack_from(">Q", vbmeta, 12)[0]
+algo = struct.unpack_from(">I", vbmeta, 28)[0]
+sys.exit(0 if (algo == 2 and auth_sz > 0) else 1)
+' "$BOOT_FOUND" 2>/dev/null; then
+        echo "--> Signing $BOOT_FOUND with SHA256_RSA4096 AVB footer..."
+        if command -v avbtool >/dev/null 2>&1; then
+            KEY_DIR="$(mktemp -d -p "$HOME/Lab/Bridge/tmp/trash" 2>/dev/null || mktemp -d)"
+            KEY_FILE="$KEY_DIR/avb_key.pem"
+            openssl genrsa -out "$KEY_FILE" 4096 2>/dev/null
+            avbtool add_hash_footer --image "$BOOT_FOUND" \
+                --partition_name boot --partition_size 100663296 \
+                --algorithm SHA256_RSA4096 --key "$KEY_FILE" \
+                --rollback_index 1788220800 \
+                --prop com.android.build.boot.os_version:15 \
+                --prop com.android.build.boot.fingerprint:Xiaomi/piano/piano:15/AQ3A.250226.002/OS3.0.309.0.WPYCNXM:user/release-keys \
+                --prop com.android.build.boot.security_patch:2026-09-01
+            rm -rf "$KEY_DIR"
+        else
+            echo "Error: avbtool not found to sign boot image" >&2
+            exit 1
+        fi
+    fi
+
     echo "--> Verifying candidate boot image: $BOOT_FOUND"
     verify_boot_image "$BOOT_FOUND"
     echo "--> Copying boot image: $BOOT_FOUND"
