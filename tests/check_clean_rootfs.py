@@ -127,6 +127,16 @@ def main():
               "piano-fedora-configs.spec must not list /usr/local/sbin/piano-debug-bootstrap "
               "(merged-usr alias of /usr/local/bin, duplicates the same inode)")
 
+    # 6. 装配后必须清空 /dev、/proc、/sys、/run。DNF/chroot 会在这些目录
+    #    留下普通文件（例如 /dev/null）和宿主运行状态（/run/dnf、/run/sshd）。
+    #    package_release.py 的 scan_root() 会拒绝非空运行时树，F2FS 也不该带它们。
+    source = TOOL.read_text(encoding="utf-8")
+    check("Clearing transient /dev, /proc, /sys and /run entries" in source,
+          "build-clean-rootfs.py must clear transient runtime directories before imaging")
+    for runtime_dir in ("dev", "proc", "sys", "run"):
+        check(f'"{runtime_dir}"' in source,
+              f"build-clean-rootfs.py must clear /{runtime_dir}")
+
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)

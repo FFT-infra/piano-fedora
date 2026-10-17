@@ -367,6 +367,19 @@ def execute(plan_data):
         except subprocess.CalledProcessError:
             pass
 
+    # 清空 DNF/chroot 留下的运行时树。它们不是镜像内容：/dev 下会出现
+    # 普通文件 null，/run 下会出现 dnf、sshd、selinux-policy 等宿主状态。
+    # package_release.py 会（正确地）拒绝这种树，F2FS 镜像也不应带它们。
+    print("--> Clearing transient /dev, /proc, /sys and /run entries...")
+    for runtime_dir in ("dev", "proc", "sys", "run"):
+        runtime_path = root / runtime_dir
+        runtime_path.mkdir(parents=True, exist_ok=True)
+        for child in list(runtime_path.iterdir()):
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+
     # 执行审计
     print("--> Running post-assembly RPM provenance audit...")
     audit_res = audit_rootfs(root)

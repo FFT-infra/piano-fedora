@@ -108,11 +108,18 @@
    >    `/usr/lib/modules` 恰好一个 release、存在 `modules.dep`/`modules.builtin`、
    >    `/boot` 存在 `vmlinuz-*`，任一不满足就不发布镜像。
    >
-   > 实测：builder 上 1785 个包的事务首次跑通（`Complete!`）。
-   > 另外 `build-clean-rootfs.py` 现在默认先清空 installroot，避免在失败
-   > 残骸上叠装；镜像产物同时写 `root-image-manifest.json` 并记录
-   > `kernel_release`，打包脚本靠它做 ESP/rootfs 的内核一致性交叉校验
-   > （此前只写了 `image-manifest.json`，该校验一直被静默跳过）。
+   > 实测：builder 上 1785 个包的事务首次跑通（`Complete!`），最终审计为
+   > 1784 个已安装 RPM。另外 `build-clean-rootfs.py` 现在默认先清空
+   > installroot，避免在失败残骸上叠装；镜像产物同时写
+   > `root-image-manifest.json` 并记录 `kernel_release`，打包脚本靠它做
+   > ESP/rootfs 的内核一致性交叉校验（此前只写了 `image-manifest.json`，
+   > 该校验一直被静默跳过）。
+   >
+   > 镜像完成后又发现第三处：DNF/chroot 在 rootfs 留下 `/dev/null` 普通文件
+   > 和 `/run/dnf`、`/run/selinux-policy` 等宿主状态。`package_release.py`
+   > 会正确拒绝非空的 `/dev`、`/proc`、`/sys`、`/run`，所以 ESP 打包仍会
+   > 失败。装配脚本现在在审计和成像前清空这四个运行时目录，回归测试见
+   > `tests/check_clean_rootfs.py`。
 5. **里程碑 5：纯净真机全流程实操与终验（🟡 进行中 / 实机已全部装配）**
    - 实机（Xiaomi Pad 8 Pro / `piano`）已成功部署全部 9 个解耦 RPM 包，硬件 Iris VA-API 硬解、ALSA UCM2 音频、卡尔曼触控滤波与传感器代理全部实机就绪；
    - 待下次真机重启验证 `piano-boot-request-autoconfig.service` 开机首发自愈与盲测全流程。
