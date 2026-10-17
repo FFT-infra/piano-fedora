@@ -137,6 +137,17 @@ def main():
         check(f'"{runtime_dir}"' in source,
               f"build-clean-rootfs.py must clear /{runtime_dir}")
 
+    # 7. 装配后必须规范化启动器软链接、修剪 nodocs 悬空手册与宿主内核构建目录链接、初始化 machine-id。
+    #    避免 SunUEFI 的 package_release.py 静态扫描时判定符号链接逃逸或绝对宿主悬空。
+    check("normalize_launcher_links" in source,
+          "build-clean-rootfs.py must normalize launcher links")
+    check("prune_missing_manpage_links" in source,
+          "build-clean-rootfs.py must prune missing manpage links")
+    check("prune_kernel_module_links" in source,
+          "build-clean-rootfs.py must prune dangling kernel module build links")
+    check("sanitize_rootfs_identity" in source,
+          "build-clean-rootfs.py must sanitize rootfs machine identity")
+
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)

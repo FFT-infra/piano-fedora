@@ -22,11 +22,14 @@ import json
 import os
 import platform
 import shutil
+import posixpath
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from piano_artifacts import guest_resolve, safe_destination
 RPMS_DEFAULT = ROOT / "out" / "rpms"
 PROFILES = ROOT / "scripts" / "profiles"
 DISTROS = ROOT / "build" / "clean-distros"
@@ -244,6 +247,90 @@ def audit_rootfs(rootfs_dir):
     }
 
 
+
+def normalize_launcher_links(root):
+    """收敛 Fedora 启动器中依赖 guest 根处 .. 截断的相对链接。"""
+    binary = safe_destination(root, "usr/bin")
+    changes = {}
+    if not binary.is_dir():
+        return changes
+    for path in sorted(binary.iterdir()):
+        if not path.is_symlink() or path.readlink().is_absolute():
+            continue
+        target, depth, escaped = str(path.readlink()), 2, False
+        for part in Path(target).parts:
+            if part == "..":
+                escaped |= depth == 0
+                depth = max(0, depth - 1)
+            else:
+                depth += 1
+        if not escaped:
+            continue
+        parts = Path(target).parts
+        leading = 0
+        while leading < len(parts) and parts[leading] == "..":
+            leading += 1
+        if leading < 3 or parts[leading:leading + 2] != ("usr", "share") or ".." in parts[leading:]:
+            raise ValueError("unexpected escaping launcher link: " + path.name)
+        normalized = posixpath.normpath("/usr/bin/" + target)
+        resolved = guest_resolve(root, normalized)
+        if not normalized.startswith("/usr/share/") or not resolved.is_relative_to(root / "usr/share") or not resolved.is_file():
+            raise ValueError("unexpected escaping launcher link: " + path.name)
+        relative = posixpath.relpath(normalized, "/usr/bin")
+        path.unlink()
+        path.symlink_to(relative)
+        changes[path.relative_to(root).as_posix()] = {"original": target, "target": relative}
+    return changes
+
+
+def prune_missing_manpage_links(root):
+    """nodocs 会留下 alternatives 与 man 目录两端的手册链接。"""
+    missing = []
+    for relative in ("etc/alternatives", "usr/share/man"):
+        folder = safe_destination(root, relative)
+        if not folder.is_dir():
+            continue
+        for path in folder.rglob("*"):
+            if path.is_symlink():
+                target = guest_resolve(root, "/" + path.relative_to(root).as_posix())
+                if target.is_relative_to(root / "usr/share/man") and not target.exists():
+                    missing.append(path)
+    for path in missing:
+        path.unlink()
+    return [p.relative_to(root).as_posix() for p in missing]
+
+
+def prune_kernel_module_links(root):
+    """清理内核安装时留下的宿主构建树软链接。"""
+    modules_dir = root / "usr" / "lib" / "modules"
+    removed = []
+    if modules_dir.is_dir():
+        for rel_dir in modules_dir.iterdir():
+            if rel_dir.is_dir():
+                for link_name in ("build", "source"):
+                    link_p = rel_dir / link_name
+                    if link_p.is_symlink():
+                        target = os.readlink(link_p)
+                        if target.startswith(("/home/", "/tmp/")) or not link_p.exists():
+                            link_p.unlink()
+                            removed.append(link_p.relative_to(root).as_posix())
+    return removed
+
+
+def sanitize_rootfs_identity(root):
+    """重置机器唯一 ID，确保镜像不带特定主机身份。"""
+    machine = root / "etc" / "machine-id"
+    if machine.exists():
+        machine.chmod(0o644)
+        machine.write_text("", encoding="utf-8")
+        machine.chmod(0o444)
+    dbus = root / "var" / "lib" / "dbus" / "machine-id"
+    dbus.parent.mkdir(parents=True, exist_ok=True)
+    if dbus.exists() or dbus.is_symlink():
+        dbus.unlink()
+    dbus.symlink_to("/etc/machine-id")
+
+
 def execute(plan_data):
     out = Path(plan_data["output"])
     root = out / "rootfs"
@@ -379,6 +466,12 @@ def execute(plan_data):
                 shutil.rmtree(child)
             else:
                 child.unlink()
+
+    print("--> Normalizing launcher symlinks, pruning dangling links and sanitizing identity...")
+    normalize_launcher_links(root)
+    prune_missing_manpage_links(root)
+    prune_kernel_module_links(root)
+    sanitize_rootfs_identity(root)
 
     # 执行审计
     print("--> Running post-assembly RPM provenance audit...")

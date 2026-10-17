@@ -120,6 +120,16 @@
    > 会正确拒绝非空的 `/dev`、`/proc`、`/sys`、`/run`，所以 ESP 打包仍会
    > 失败。装配脚本现在在审计和成像前清空这四个运行时目录，回归测试见
    > `tests/check_clean_rootfs.py`。
+   >
+   > 第四与第五处（ESP 打包静态扫描拦截）：
+   > 1. `gnome-weather` 启动器包含多层 `..`（7 层），导致 `package_release.py`
+   >    的 `scan_root` 相对路径解析弹出越界报错；
+   > 2. `usr/lib/modules/<ver>/build` 符号链接指向 GitHub Actions runner 构建机绝对路径
+   >    （`/home/runner/...`），被判定为宿主悬空绝对符号链接。
+   > 装配脚本已内置 `normalize_launcher_links`、`prune_missing_manpage_links`、
+   > `prune_kernel_module_links` 与 `sanitize_rootfs_identity`，并经实机验证
+   > 成功生成全新 `boot.img`、`esp.img`（512 MiB FAT32，内核确为 `7.2.9-piano-gnome-g184e09d96775`）
+   > 与带校验的全新 F2FS 镜像（8 GiB，79,153 条项比对全过）。
 5. **里程碑 5：纯净真机全流程实操与终验（🟡 进行中 / 实机已全部装配）**
    - 实机（Xiaomi Pad 8 Pro / `piano`）已成功部署全部 9 个解耦 RPM 包，硬件 Iris VA-API 硬解、ALSA UCM2 音频、卡尔曼触控滤波与传感器代理全部实机就绪；
    - 待下次真机重启验证 `piano-boot-request-autoconfig.service` 开机首发自愈与盲测全流程。
