@@ -60,6 +60,8 @@ def main():
         failures.append("package-release-bundle.sh does not verify AVB signature / footer (AVB0)")
     if "SUNUEFI-SPLITv1" not in code:
         failures.append("package-release-bundle.sh does not verify 24GB live-memory dynamic mapping (SUNUEFI-SPLITv1)")
+    if "2b191f0dd3bca52d20950ec58199f95b" not in code:
+        failures.append("package-release-bundle.sh does not verify live-memory app_generation (2b191f0dd3bca52d20950ec58199f95b)")
     if "SUNUEFI-NEXTv1" not in code or "target != 2" not in code:
         failures.append("package-release-bundle.sh does not enforce NEXTv1 default boot target: 2 (Linux)")
 
@@ -107,6 +109,9 @@ def main():
                 failures.append("out/release-bundle/boot_sunuefi.img lacks AVB0 footer")
             if b"SUNUEFI-SPLITv1\0" not in data:
                 failures.append("out/release-bundle/boot_sunuefi.img lacks SUNUEFI-SPLITv1 (live-memory)")
+            exp_gen = bytes.fromhex("2b191f0dd3bca52d20950ec58199f95b")
+            if exp_gen not in data:
+                failures.append("out/release-bundle/boot_sunuefi.img lacks verified live-memory app_generation")
             npos = data.find(b"SUNUEFI-NEXTv1\0")
             if npos == -1:
                 failures.append("out/release-bundle/boot_sunuefi.img lacks SUNUEFI-NEXTv1")
@@ -119,6 +124,9 @@ def main():
                     failures.append("out/release-bundle/boot_sunuefi.img NEXTv1 CRC mismatch")
                 if t != 2:
                     failures.append(f"out/release-bundle/boot_sunuefi.img default target is {t}, expected 2 (Linux)")
+                gen = raw[40:56]
+                if gen != exp_gen:
+                    failures.append(f"out/release-bundle/boot_sunuefi.img app_generation {gen.hex()} != {exp_gen.hex()}")
 
     if failures:
         for item in failures:

@@ -192,6 +192,10 @@ with path.open("rb") as f:
     if b"SUNUEFI-SPLITv1\0" not in data:
         sys.exit("Error: Boot image lacks SUNUEFI-SPLITv1 layout (24GB live-memory dynamic mapping missing)")
 
+    expected_gen = bytes.fromhex("2b191f0dd3bca52d20950ec58199f95b")
+    if expected_gen not in data:
+        sys.exit("Error: Boot image lacks verified 24GB live-memory app_generation (2b191f0dd3bca52d20950ec58199f95b)")
+
     next_pos = data.find(b"SUNUEFI-NEXTv1\0")
     if next_pos == -1:
         sys.exit("Error: Boot image lacks SUNUEFI-NEXTv1 request pages")
@@ -200,6 +204,9 @@ with path.open("rb") as f:
     ver, rsize = struct.unpack_from("<II", raw, 16)
     seq = struct.unpack_from("<Q", raw, 24)[0]
     target = struct.unpack_from("<I", raw, 32)[0]
+    gen = raw[40:56]
+    if gen != expected_gen:
+        sys.exit(f"Error: SUNUEFI-NEXTv1 app_generation {gen.hex()} != expected {expected_gen.hex()}")
     stored_crc = struct.unpack_from("<I", raw, 36)[0]
     raw_for_crc = bytearray(raw); raw_for_crc[36:40] = bytes(4)
     calc_crc = zlib.crc32(raw_for_crc)
@@ -208,7 +215,7 @@ with path.open("rb") as f:
     if target != 2:
         sys.exit(f"Error: SUNUEFI-NEXTv1 default target is {target}, expected 2 (Linux)")
 
-print(f"    Verified Boot Image: Header v4 (96MB), AVB0 OK, live-memory OK, NEXTv1 target=2 (Linux)")
+print(f"    Verified Boot Image: Header v4 (96MB), AVB0 OK, live-memory OK (2b191f0d), NEXTv1 target=2 (Linux)")
 PY
 }
 
@@ -270,8 +277,6 @@ BOOT_ROW=$(resolve_candidate "$BOOT_IN" \
     "$REPO_ROOT/build/bundle/boot.img" \
     "$REPO_ROOT/build/packaged/boot_sunuefi.img" \
     "$REPO_ROOT/build/packaged/boot.img" \
-    "$REPO_ROOT/out/device-boot-a485-20261015/boot_linux.img" \
-    "$REPO_ROOT/out/artifacts/uefi-a485-38560284113/extracted/PianoUEFI-product.img" \
     "$REPO_ROOT/../mipad8p-piano/out/offline-bringup-20261011-r2/deploy-bundle/boot.img" || true)
 
 if [ -n "$BOOT_ROW" ]; then
