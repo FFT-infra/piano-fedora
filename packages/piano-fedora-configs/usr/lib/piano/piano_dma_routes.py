@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Read actual kernel-owned per-master route ABI. No module load/MMIO/marker."""
 import argparse
 import json

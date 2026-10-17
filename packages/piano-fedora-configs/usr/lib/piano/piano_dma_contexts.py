@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Validate actual kernel-managed identity and stage1 DMA context evidence.
 
 No modules, maps, block access or ready marker. The kernel compares stage1
