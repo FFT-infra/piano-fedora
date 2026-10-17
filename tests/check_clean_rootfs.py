@@ -23,6 +23,10 @@ EXPECTED_PIANO_PACKAGES = {
     "xiaomi-piano-firmware",
 }
 
+# The device kernel ships from the same local repo. It is listed separately
+# because a "clean" rootfs without it boots with no modules at all.
+EXPECTED_KERNEL_PACKAGE = "kernel-piano"
+
 
 def run(*args):
     return subprocess.run(
@@ -43,7 +47,7 @@ def main():
         fixture_path = Path(fixture_dir)
         (fixture_path / "repodata").mkdir(parents=True, exist_ok=True)
         (fixture_path / "repodata" / "repomd.xml").write_text("<repomd/>\n", encoding="utf-8")
-        for pkg in EXPECTED_PIANO_PACKAGES:
+        for pkg in EXPECTED_PIANO_PACKAGES | {EXPECTED_KERNEL_PACKAGE}:
             (fixture_path / f"{pkg}-0.1.0-1.fc44.noarch.rpm").touch()
 
         res = run("--plan", "--releasever", "44", "--rpms-dir", str(fixture_path))
@@ -56,9 +60,14 @@ def main():
             check(data.get("desktop") == "gnome", "desktop must be gnome")
             check(EXPECTED_PIANO_PACKAGES.issubset(set(data.get("piano_packages", []))),
                   "all 9 expected piano RPM packages must be scheduled in plan")
+            check(EXPECTED_KERNEL_PACKAGE in data.get("all_packages", []),
+                  "kernel-piano must be scheduled in the clean assembly; without it "
+                  "the image boots with an empty /usr/lib/modules")
             repo_st = data.get("repo_status", {})
             check(repo_st.get("valid") is True, f"fixture repository must be valid: {repo_st}")
             check(len(repo_st.get("missing", [])) == 0, f"no missing packages allowed: {repo_st.get('missing')}")
+            check(EXPECTED_KERNEL_PACKAGE in repo_st.get("packages", {}),
+                  "kernel-piano must be resolved from the local RPM repo")
 
     # 1.1 默认 plan 测试（不传 --rpms-dir，检查返回值与状态结构）
     res_def = run("--plan", "--releasever", "44")

@@ -43,6 +43,13 @@ PIANO_PACKAGES = [
     "xiaomi-piano-firmware",
 ]
 
+# The device kernel is not in the Fedora repositories: it is packaged by
+# packages/kernel-piano and installed from the same local repo. It used to be
+# missing from this list, so a "clean" assembly produced a root filesystem with
+# an empty /usr/lib/modules while the ESP booted a 7.2.9 kernel - the system
+# came up with no drivers at all. It is required, not optional.
+KERNEL_PACKAGE = "kernel-piano"
+
 DEFAULT_USER = "piano"
 DEFAULT_PASS = "piano123456"
 
@@ -82,15 +89,16 @@ def inspect_rpm_repo(rpms_dir):
     if not repodata.is_file():
         return {"valid": False, "error": f"missing repodata/repomd.xml in {rpms_path}", "packages": {}}
 
+    required = PIANO_PACKAGES + [KERNEL_PACKAGE]
     found_pkgs = {}
     for p in sorted(rpms_path.glob("*.rpm")):
         name = p.name
-        for expected in PIANO_PACKAGES:
+        for expected in required:
             if name.startswith(expected + "-") or name == expected:
                 found_pkgs[expected] = str(p)
                 break
 
-    missing = set(PIANO_PACKAGES) - set(found_pkgs.keys())
+    missing = set(required) - set(found_pkgs.keys())
     return {
         "valid": len(missing) == 0,
         "missing": sorted(missing),
@@ -115,7 +123,8 @@ def plan(releasever, desktop, rpms_dir, output=None):
     # 移除被替换的原装包（如原版 iio-sensor-proxy 由 iio-sensor-proxy-ssc 替代）
     filtered_desktop_pkgs = [p for p in desktop_pkgs if p != "iio-sensor-proxy"]
 
-    all_packages = base_pkgs + filtered_desktop_pkgs + PIANO_PACKAGES
+    # kernel-piano first: everything the device needs hangs off its modules.
+    all_packages = [KERNEL_PACKAGE] + base_pkgs + filtered_desktop_pkgs + PIANO_PACKAGES
     out_dir = Path(output or DISTROS / f"fedora-{releasever}-{desktop}").resolve()
 
     # 镜像容量与 label 取自 product.json，和 ESP/首次分区规划共用同一份记录。
@@ -136,7 +145,7 @@ def plan(releasever, desktop, rpms_dir, output=None):
         "output": str(out_dir),
         "base_packages_count": len(base_pkgs),
         "desktop_packages_count": len(filtered_desktop_pkgs),
-        "piano_packages": PIANO_PACKAGES,
+        "piano_packages": PIANO_PACKAGES + [KERNEL_PACKAGE],
         "all_packages": all_packages,
         "total_packages_count": len(all_packages),
         "display_manager": desktops[desktop].get("display_manager", "gdm"),
@@ -180,6 +189,26 @@ def audit_rootfs(rootfs_dir):
     ]
     missing_files = [f for f in key_checks if not (root / f).exists()]
 
+    # The kernel must be present and its modules directory must match the
+    # release the ESP will boot. An empty /usr/lib/modules produces a system
+    # that boots and then has no drivers at all; that shipped once because
+    # kernel-piano was missing from the package list.
+    kernel_release = installed_kernel_release(root)
+    kernel_problems = []
+    if kernel_release is None:
+        modules = root / "usr" / "lib" / "modules"
+        found = sorted(p.name for p in modules.iterdir()) if modules.is_dir() else []
+        kernel_problems.append(
+            "expected exactly one kernel release under /usr/lib/modules, found "
+            + (", ".join(found) if found else "none"))
+    else:
+        if not any((root / "usr" / "lib" / "modules" / kernel_release / name).is_file()
+                   for name in ("modules.dep", "modules.builtin")):
+            kernel_problems.append(
+                f"/usr/lib/modules/{kernel_release} has no modules.dep or modules.builtin")
+        if not any((root / "boot").glob("vmlinuz-*")):
+            kernel_problems.append("/boot has no vmlinuz-*")
+
     # 3. 审计 /usr/bin 与 /usr/libexec 下的专有二进制所有权
     unowned_binaries = []
     audit_targets = [
@@ -201,7 +230,8 @@ def audit_rootfs(rootfs_dir):
 
     passed = (len(missing_piano_pkgs) == 0 and
               len(missing_files) == 0 and
-              len(unowned_binaries) == 0)
+              len(unowned_binaries) == 0 and
+              len(kernel_problems) == 0)
 
     return {
         "audit_passed": passed,
@@ -209,6 +239,8 @@ def audit_rootfs(rootfs_dir):
         "missing_piano_packages": missing_piano_pkgs,
         "missing_key_files": missing_files,
         "unowned_binaries": unowned_binaries,
+        "kernel_release": kernel_release,
+        "kernel_problems": kernel_problems,
     }
 
 
@@ -367,7 +399,11 @@ def build_image(out, root, plan_data):
     """
     size_mib = int(plan_data.get("root_size_mib") or 8192)
     img = out / "pianoroot-fedora44-gnome-f2fs.img"
-    manifest = out / "image-manifest.json"
+    # The name matters: package-release-bundle.sh reads root-image-manifest.json
+    # from the image's directory to cross-check that the ESP kernel and the
+    # rootfs modules are the same build. Writing only image-manifest.json left
+    # that check silently skipped.
+    manifest = out / "root-image-manifest.json"
     tool = ROOT / "scripts" / "build-f2fs-image.py"
     if not tool.is_file():
         raise RootfsError(f"missing image builder: {tool}")
@@ -397,6 +433,12 @@ def build_image(out, root, plan_data):
     subprocess.run(["zstd", "-T0", "-19", "-f", str(img), "-o", str(zst)], check=True)
 
     record = json.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else {}
+    kernel_release = installed_kernel_release(root)
+    if kernel_release:
+        record["kernel_release"] = kernel_release
+        manifest.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    # Keep the historical filename as a copy so existing readers still work.
+    (out / "image-manifest.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     return {
         "image": str(img),
         "image_bytes": img.stat().st_size,
@@ -405,9 +447,27 @@ def build_image(out, root, plan_data):
         "zst_bytes": zst.stat().st_size,
         "zst_sha256": sha256(zst),
         "size_mib": size_mib,
+        "kernel_release": kernel_release,
         "verify": record.get("verify"),
         "status": record.get("status"),
     }
+
+
+def installed_kernel_release(root):
+    """Return the single kernel release installed in the rootfs, or None.
+
+    The ESP boots one specific kernel release and the modules must carry the
+    same string or nothing loads. An empty /usr/lib/modules or more than one
+    release means the image is not a matched set; both are reported loudly by
+    the caller instead of being papered over.
+    """
+    modules = Path(root) / "usr" / "lib" / "modules"
+    if not modules.is_dir():
+        return None
+    releases = sorted(p.name for p in modules.iterdir() if p.is_dir())
+    if len(releases) == 1:
+        return releases[0]
+    return None
 
 
 def main():
