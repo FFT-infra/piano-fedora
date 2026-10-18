@@ -656,6 +656,12 @@ def main():
             if args.size_mib:
                 p["root_size_mib"] = args.size_mib
             p["resume"] = bool(args.resume)
+            # 整个 execute() 必须以 root 跑。dnf 用 sudo 建出来的文件属 root，
+            # 后续清理 /dev、写 policy、成像再读回都要 root 权限；否则会在
+            # "Clearing transient /dev..." 处 Permission denied。
+            # 用 re-exec 而不是局部提权，避免同一份逻辑在两种权限下分叉。
+            if os.geteuid() != 0 and shutil.which("sudo"):
+                os.execvp("sudo", ["sudo", sys.executable, *sys.argv])
             res = execute(p)
             print(json.dumps({
                 "status": res["status"],
