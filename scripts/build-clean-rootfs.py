@@ -47,6 +47,19 @@ PIANO_PACKAGES = [
     "xiaomi-piano-firmware",
 ]
 
+# The legacy aggregate runtime is optional: when it is present it supplies
+# librevm/crosvm/VA-API and older session files, but the clean matrix specs are
+# the primary owners of those payloads. Keeping it out of PIANO_PACKAGES means
+# a clean rootfs does not fail just because the aggregate runtime was not
+# shipped, while a rootfs that does install it still gets normal RPM ownership.
+LEGACY_OPTIONAL_PACKAGES = [
+    "piano-runtime",
+    "piano-session-fixes",
+    "librevm",
+    "piano-crosvm",
+    "libva-v4l2-iris",
+]
+
 # The device kernel is not in the Fedora repositories: it is packaged by
 # packages/kernel-piano and installed from the same local repo. It used to be
 # missing from this list, so a "clean" assembly produced a root filesystem with
@@ -531,14 +544,6 @@ def execute(plan_data):
         hostname_path.parent.mkdir(parents=True, exist_ok=True)
         hostname_path.write_text("piano\n", encoding="utf-8")
 
-    # 配置 SELinux 为 permissive 模式并预留 .autorelabel，避免因离线装配缺少全量标签导致 systemd 在挂载 API 文件系统时拒绝访问冻结
-    selinux_conf = root / "etc" / "selinux" / "config"
-    if selinux_conf.is_file():
-        text = selinux_conf.read_text(encoding="utf-8")
-        if "SELINUX=enforcing" in text:
-            selinux_conf.write_text(text.replace("SELINUX=enforcing", "SELINUX=permissive"), encoding="utf-8")
-    (root / ".autorelabel").touch()
-
     # 辅助 chroot 执行工具
     def run_chroot(cmd_args, stdin_text=None):
         base_cmd = ["chroot", str(root), *cmd_args]
@@ -647,6 +652,10 @@ def execute(plan_data):
         if os.geteuid() != 0 and shutil.which("sudo"):
             cmd = ["sudo", *cmd]
         subprocess.run(cmd, check=True)
+        # Relabeling replaces the filesystem metadata the image ships. Any
+        # pre-existing .autorelabel marker would otherwise force a second,
+        # unbounded SELinux relabel on first boot and hide a broken build.
+        (root / ".autorelabel").unlink(missing_ok=True)
     else:
         print("--> NOTE: no file_contexts found; skipping SELinux labeling")
 

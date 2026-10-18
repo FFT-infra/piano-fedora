@@ -179,6 +179,12 @@ def main():
     check("count_selinux_labels" in source and "selinux_labels" in source,
           "build-clean-rootfs.py audit must count security.selinux labels and fail "
           "when file_contexts exists but nothing is labelled")
+    check('replace("SELINUX=enforcing", "SELINUX=permissive")' not in source,
+          "build-clean-rootfs.py must keep the Fedora SELinux mode; labels are "
+          "the build output, not a reason to silently switch to permissive")
+    check('(root / ".autorelabel").unlink(missing_ok=True)' in source,
+          "build-clean-rootfs.py must remove any pre-existing .autorelabel marker "
+          "after applying labels")
 
     # 11. GNOME 会话总线。Fedora 44 的 GDM Wayland 启动器直接执行
     #     dbus-run-session；该文件来自 dbus-daemon 子包。pam_systemd.so
