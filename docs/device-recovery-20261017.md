@@ -5,6 +5,11 @@
 > UFS LUN4 的槽位类型 GUID 归属错位，修复过程见
 > [槽位 GUID 错位导致无法启动](slot-guid-corruption-20261018.md)。
 > 本文保留作为当时的证据快照，不再代表当前状态。
+>
+> 后续还有一层：GUID 修好之后 Linux 仍停在 initramfs 救援 shell，
+> 原因是纯净装配链漏了 `/etc/piano/root-policy.json`，且 DMA 校验器
+> 哈希与 RPM 载荷不一致。见
+> [initramfs 交接失败](initramfs-handoff-failure-20261018.md)。
 
 ## 结论
 

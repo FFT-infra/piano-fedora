@@ -46,6 +46,19 @@
 3. **里程碑 3：纯净 DNF RootFS 装配链实现（✅ 已完成）**
    - 实现由本地 RPM 源直接装配 F2FS 镜像的全新脚本 `scripts/build-clean-rootfs.py`，淘汰旧的混杂 finalize 注入逻辑；
    - 引入 `tests/check_clean_rootfs.py` 与 `make plan-clean` 自动化单测，校验文件全量属于 RPM 数据库。
+
+   > **2026-10-18 更正：这条曾经写成"已完成"，但产出的镜像起不来。**
+   > 装配链漏了 `apply-rootfs-policy.py`，镜像里没有
+   > `/etc/piano/root-policy.json`，也没有 udev 的 Android 分区保护规则。
+   > initramfs 在 chroot 之后立刻运行 `piano-disk-hardware-prepare`，
+   > 它的 `require_ram()` 第一件事就是读这个文件，读不到直接 REFUSED，
+   > 系统停在救援 shell。旧流水线 `build-image.yml` 调过这个脚本，新链路
+   > 没有。另外装配脚本自己写的那份 fstab 和策略脚本写的内容不一致
+   > （`compress_algorithm` vs `data_flush`），现在只保留策略脚本一个来源。
+   > 审计项已增加 `root-policy.json`、udev 规则和 `fstab`，缺任意一个就
+   > 不发布镜像。详见
+   > [initramfs 交接失败](initramfs-handoff-failure-20261018.md)。
+
 4. **里程碑 4：面向普通用户的工业级安装链（🟡 代码完成，真机未验收）**
    - 编写带设备身份校验、目标分区存在性/容量校验、SHA256 镜像完整性校验与
      zstd 自动解压的跨平台刷写程序（`flash-linux.sh` 与 `flash-linux.bat`）；
