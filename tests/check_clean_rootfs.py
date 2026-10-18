@@ -165,6 +165,21 @@ def main():
           "build-clean-rootfs.py must not write its own fstab; apply-rootfs-policy.py "
           "is the single source of truth")
 
+    # 10. SELinux 标签。DNF 只写文件内容，不写 security.selinux xattr；旧流水线
+    #     靠 build-image.yml 里的 setfiles 补，这条链漏了，2026-10-19 的镜像
+    #     selinux_labels=0，systemd 在 enforcing 下给 /dev/shm、/dev/pts、
+    #     /sys/fs/* 打标签被拒，报 "Failed to mount API filesystems" 后冻结。
+    #     标签数此前没有任何检查覆盖，所以漏掉时审计照样全绿。
+    relabel = ROOT / "scripts" / "relabel-selinux.py"
+    check(relabel.is_file(),
+          "scripts/relabel-selinux.py must exist: DNF does not write security.selinux")
+    check("relabel-selinux.py" in source,
+          "build-clean-rootfs.py must invoke relabel-selinux.py so the image "
+          "carries security.selinux labels")
+    check("count_selinux_labels" in source and "selinux_labels" in source,
+          "build-clean-rootfs.py audit must count security.selinux labels and fail "
+          "when file_contexts exists but nothing is labelled")
+
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)

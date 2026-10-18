@@ -248,6 +248,19 @@ def audit_rootfs(rootfs_dir):
               len(unowned_binaries) == 0 and
               len(kernel_problems) == 0)
 
+    # SELinux 标签数：DNF 不写 security.selinux，必须由 relabel 步骤补。
+    # 这个数曾经是 0 而审计照样通过，因为没有任何一项检查覆盖它，
+    # 结果 systemd 在 enforcing 下拒绝打标签并冻结。
+    selinux_problems = []
+    contexts = root / "etc" / "selinux" / "targeted" / "contexts" / "files" / "file_contexts"
+    labeled = count_selinux_labels(root)
+    if contexts.is_file() and labeled == 0:
+        selinux_problems.append(
+            "rootfs has file_contexts but no security.selinux xattrs; "
+            "systemd would abort with 'Failed to mount API filesystems'")
+    if selinux_problems:
+        passed = False
+
     return {
         "audit_passed": passed,
         "total_rpms_installed": len(installed_rpm_names),
@@ -256,8 +269,30 @@ def audit_rootfs(rootfs_dir):
         "unowned_binaries": unowned_binaries,
         "kernel_release": kernel_release,
         "kernel_problems": kernel_problems,
+        "selinux_labels": labeled,
+        "selinux_problems": selinux_problems,
     }
 
+
+
+def count_selinux_labels(root):
+    """统计 rootfs 里带 security.selinux xattr 的文件数。
+
+    只做计数，不做匹配：这里要回答的是"标签有没有打"，不是"打得对不对"。
+    打错由 relabel-selinux.py 的规则集和 tests 覆盖。
+    """
+    total = 0
+    skip = {"dev", "proc", "sys", "run"}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        for name in filenames:
+            try:
+                if os.listxattr(os.path.join(dirpath, name),
+                                follow_symlinks=False).count("security.selinux"):
+                    total += 1
+            except OSError:
+                continue
+    return total
 
 
 def normalize_launcher_links(root):
@@ -576,6 +611,23 @@ def execute(plan_data):
     prune_kernel_module_links(root)
     sanitize_rootfs_identity(root)
     prune_rpm_transient(root)
+
+    # SELinux 标签：DNF 只写文件内容，不写 security.selinux xattr。旧流水线
+    # （build-image.yml）在 staging 之后跑一次 setfiles；这条装配链漏了那一步，
+    # 产出的镜像 selinux_labels=0，systemd 在 enforcing 下给 /dev/shm、
+    # /dev/pts、/sys/fs/* 打标签时被拒，直接 "Failed to mount API
+    # filesystems" 并冻结。setfiles 是 aarch64 二进制，交叉装配时不可用，
+    # 所以用等价的 Python 实现按 file_contexts 逐条写。
+    contexts = root / "etc" / "selinux" / "targeted" / "contexts" / "files" / "file_contexts"
+    if contexts.is_file():
+        print("--> Applying SELinux labels from file_contexts...")
+        relabel = ROOT / "scripts" / "relabel-selinux.py"
+        cmd = [sys.executable, str(relabel), str(root), str(contexts)]
+        if os.geteuid() != 0 and shutil.which("sudo"):
+            cmd = ["sudo", *cmd]
+        subprocess.run(cmd, check=True)
+    else:
+        print("--> NOTE: no file_contexts found; skipping SELinux labeling")
 
     # 执行审计
     print("--> Running post-assembly RPM provenance audit...")

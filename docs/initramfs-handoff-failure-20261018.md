@@ -129,3 +129,37 @@ piano_dma_contexts.py 的 sha256 ==  prepare 里的 CONTEXT_CHECKER_SHA256
 
 修复后仍需在真机上重新做一次盲测：刷入新镜像、确认 `init` 走完
 `chroot` 交接、systemd 起来、SSH 可达。
+
+---
+
+## 2026-10-19 补充：卡点是 Fedora systemd，不是 initramfs
+
+前两节把失败定位在 initramfs 阶段，这个判断错了。
+
+实机屏幕显示最后停在：
+
+```
+[  OK  ] Found device dev-disk-by\x2dlabel-SUNUEFI_ESP.device
+```
+
+这一行是 Fedora systemd 的 udev 单元，说明内核早已完成
+`switch_root`，跑的是 rootfs 里的 systemd（`systemd-zram-setup`、
+`plymouth-start`、`cryptsetup.target` 都是 Fedora 单元，initramfs 里
+只有 busybox）。失败点在 systemd 启动阶段的文件系统挂载。
+
+此前针对 initramfs 的改动（替换引导头、清 misc 的 BCB、加载黑名单）
+都不在这个阶段，因此看不到效果。
+
+当时 rootfs 的 fstab 由 `apply-rootfs-policy.py` 写入：
+
+```
+LABEL=PIANOROOT / f2fs defaults,noatime,data_flush,fsync_mode=strict 0 0
+LABEL=SUNUEFI_ESP /boot/efi vfat umask=0077,nofail 0 2
+```
+
+其中 `data_flush`、`fsync_mode=strict` 是本项目自己加的挂载参数，
+未经真机验证。systemd 卡在 ESP device 被发现之后，与
+`boot-efi.mount`／`local-fs.target` 的行为一致。
+
+判断依赖一张屏幕照片。没有它的时候只能从 rootfs 内容反推，代价是
+连续多轮盲改——这也说明这类启动问题需要先把启动日志拿到手。
