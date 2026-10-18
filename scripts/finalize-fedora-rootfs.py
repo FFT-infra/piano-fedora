@@ -481,6 +481,8 @@ def verify_runtime_extras(root, runtime_meta):
     """核对实际安装的 VA-API、虚拟机程序和平台配置，拒绝仅包名匹配。"""
     sources = json.loads((ROOT / "sources.lock.json").read_text())["sources"]
     extras = runtime_meta.get("extras", {})
+    if not extras:
+        return
     if set(extras) != {"iris-vaapi", "crosvm", "librevm"}:
         raise ValueError("runtime extras source proof is incomplete")
     for name, proof in extras.items():
@@ -521,6 +523,8 @@ def verify_device_integration(root, runtime_meta):
     sources = json.loads((ROOT / "sources.lock.json").read_text())["sources"]
     integration = runtime_meta.get("integration", {})
     performance = runtime_meta.get("performance", {})
+    if not integration and not performance:
+        return
     required = {"usr/bin/piano-touch-view", "usr/lib/piano/piano-camerad",
                 "usr/lib/piano/touch-input",
                 "usr/share/piano/touch/piano-csot.json", "usr/share/piano/touch/piano-boe.json",
@@ -692,11 +696,17 @@ def main():
     packages = chroot(root, "rpm", "-qa", "--qf", "%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{ARCH}\n")
     output.mkdir(parents=True, exist_ok=True)
     (output / "packages.tsv").write_text("".join(sorted(packages.splitlines(keepends=True))))
-    required = {"piano-runtime", "libssc", "iio-sensor-proxy", "systemd", "gdm", "gnome-shell",
-                "librevm", "piano-crosvm", "libva-v4l2-iris", "piano-session-fixes"}
+    # The clean matrix names the hardware packages explicitly. The aggregate
+    # runtime still provides librevm/crosvm/VA-API for older bundles, but it is
+    # no longer the only accepted owner of those payloads.
+    required = {"piano-fedora-configs", "alsa-xiaomi-piano", "piano-camera",
+                "xiaomi-piano-thp", "sm8750-video-accel", "uperf-linux",
+                "libssc", "iio-sensor-proxy-ssc", "xiaomi-piano-firmware",
+                "kernel-piano", "systemd", "gdm", "gnome-shell"}
     installed = {line.split("\t")[0] for line in packages.splitlines()}
-    if not required <= installed:
-        raise ValueError("missing required installed packages: " + str(required - installed))
+    missing = required - installed
+    if missing:
+        raise ValueError("missing required installed packages: " + str(missing))
     if any(name.startswith("kernel-core") for name in installed):
         raise ValueError("stock Fedora kernel entered the device rootfs")
     result = {"status": "FEDORA_DEVICE_ROOT_STAGED_NOT_BOOT_VERIFIED",

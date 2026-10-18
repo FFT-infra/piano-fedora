@@ -13,6 +13,22 @@ on:
         description: "gnome / kde / server"
         required: false
         default: "gnome"
+      piano_rpms_run_id:
+        description: "提供 piano-rpms 的成功 run；发布构建必须显式固定"
+        required: true
+        default: ""
+      runtime_run_id:
+        description: "提供 piano-fedora-runtime 的成功 run；发布构建必填"
+        required: true
+        default: ""
+      mesa_run_id:
+        description: "提供 piano-fedora-mesa 的成功 run；发布构建必填"
+        required: true
+        default: ""
+      ffmpeg_run_id:
+        description: "提供 piano-fedora-ffmpeg 的成功 run；发布构建必填"
+        required: true
+        default: ""
 
 permissions:
   contents: read
@@ -26,41 +42,181 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve the exact RPM inputs
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PIANO_RPMS_RUN: ${{ inputs.piano_rpms_run_id }}
+          RUNTIME_RUN: ${{ inputs.runtime_run_id }}
+          MESA_RUN: ${{ inputs.mesa_run_id }}
+          FFMPEG_RUN: ${{ inputs.ffmpeg_run_id }}
+        run: |
+          set -euo pipefail
+          test -n "$PIANO_RPMS_RUN" || {
+            echo "piano_rpms_run_id is required for a release rootfs" >&2
+            exit 2
+          }
+          for pair in "runtime_run_id:$RUNTIME_RUN" \
+                      "mesa_run_id:$MESA_RUN" "ffmpeg_run_id:$FFMPEG_RUN"; do
+            name=${pair%%:*}; value=${pair#*:}
+            test -n "$value" || { echo "$name is required for a release rootfs" >&2; exit 2; }
+          done
+          python3 scripts/resolve-artifact-run.py --workflow build-piano-rpms.yml \
+            --artifact piano-rpms --run-id "$PIANO_RPMS_RUN" --output-key piano_rpms_run
+          python3 scripts/resolve-artifact-run.py --workflow build-device-runtime.yml \
+            --artifact piano-fedora-runtime --run-id "$RUNTIME_RUN" --output-key runtime_run
+          python3 scripts/resolve-artifact-run.py --workflow build-mesa.yml \
+            --artifact piano-fedora-mesa --run-id "$MESA_RUN" --output-key mesa_run
+          python3 scripts/resolve-artifact-run.py --workflow host-check.yml \
+            --artifact piano-fedora-ffmpeg --run-id "$FFMPEG_RUN" --output-key ffmpeg_run
+
       - name: Install podman
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq podman zstd
+          sudo apt-get install -y -qq podman zstd rpm createrepo-c python3
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-rpms
+          path: build/in/piano-rpms
+          run-id: ${{ steps.source.outputs.piano_rpms_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-fedora-runtime
+          path: build/in/runtime
+          run-id: ${{ steps.source.outputs.runtime_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-fedora-mesa
+          path: build/in/mesa
+          run-id: ${{ steps.source.outputs.mesa_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-fedora-ffmpeg
+          path: build/in/ffmpeg
+          run-id: ${{ steps.source.outputs.ffmpeg_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull Fedora image
         run: sudo podman pull "registry.fedoraproject.org/fedora:${{ inputs.releasever }}"
 
-      - name: Build rootfs
+      - name: Build the audited clean rootfs
+        env:
+          PIANO_RPMS_RUN: ${{ steps.source.outputs.piano_rpms_run }}
+          RUNTIME_RUN: ${{ steps.source.outputs.runtime_run }}
+          MESA_RUN: ${{ steps.source.outputs.mesa_run }}
+          FFMPEG_RUN: ${{ steps.source.outputs.ffmpeg_run }}
         run: |
           set -euo pipefail
-          sudo python3 scripts/build-fedora-rootfs.py \
+          # The release rootfs is one audited DNF installroot. All local RPMs
+          # (matrix, runtime, Mesa and FFmpeg) are copied into one repository
+          # before the transaction, so there is no second upgrade phase in
+          # build-image and no silent dependency on a developer checkout.
+          rm -rf build/local-rpms
+          mkdir -p build/local-rpms
+          cp -a build/in/piano-rpms/. build/local-rpms/
+          test -f build/in/runtime/manifest.json
+          test -f build/in/mesa/manifest.json
+          test -f build/in/ffmpeg/manifest.json
+          mkdir -p build/in/runtime-extracted build/in/mesa-extracted build/in/ffmpeg-extracted
+          tar -I zstd -xf build/in/runtime/*.tar.zst -C build/in/runtime-extracted
+          tar -I zstd -xf build/in/mesa/*.tar.zst -C build/in/mesa-extracted
+          tar -I zstd -xf build/in/ffmpeg/*.tar.zst -C build/in/ffmpeg-extracted
+          cp build/in/runtime-extracted/rpms/*.rpm build/local-rpms/
+          cp build/in/mesa-extracted/rpms/*.rpm build/local-rpms/
+          cp build/in/ffmpeg-extracted/rpms/*.rpm build/local-rpms/
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+
+          repo = Path("build/local-rpms")
+          for manifest_path, key in (
+                  ("build/in/piano-rpms/piano-rpms-manifest.json", "files"),
+                  ("build/in/runtime-extracted/manifest.json", "rpms"),
+                  ("build/in/mesa-extracted/manifest.json", "rpms"),
+                  ("build/in/ffmpeg-extracted/manifest.json", "rpms")):
+              manifest = json.loads(Path(manifest_path).read_text())
+              rows = manifest.get(key)
+              assert isinstance(rows, dict) and rows, manifest_path
+              for name, row in rows.items():
+                  path = repo / name
+                  assert path.is_file(), f"merged repository lacks {name}"
+                  assert path.stat().st_size == row["bytes"], name
+                  assert hashlib.sha256(path.read_bytes()).hexdigest() == row["sha256"], name
+          print("OK: every merged RPM matches its producer manifest")
+          PY
+          createrepo_c --update build/local-rpms
+          test -f build/local-rpms/repodata/repomd.xml
+          path="build/clean-distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
+          sudo rm -rf "$path"
+          sudo python3 scripts/build-clean-rootfs.py \
             --execute \
             --releasever "${{ inputs.releasever }}" \
-            --desktop "${{ inputs.desktop }}"
+            --desktop "${{ inputs.desktop }}" \
+            --rpms-dir build/local-rpms \
+            --output "$path"
 
       - name: Inspect result
         run: |
           set -euo pipefail
-          OUT="build/distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
+          OUT="build/clean-distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
           test -d "$OUT/rootfs"
-          # 部分目录由 root 拥有，普通用户 du 会报权限错误并返回非零。
           sudo du -sh "$OUT/rootfs"
-          cat "$OUT/manifest.json"
+          cat "$OUT/clean-manifest.json"
+          python3 - "$OUT/clean-manifest.json" \
+            build/in/runtime-extracted/manifest.json \
+            build/in/mesa-extracted/manifest.json \
+            build/in/ffmpeg-extracted/manifest.json <<'PY'
+          import json, os, sys
+          record = json.load(open(sys.argv[1]))
+          audit = record["audit"]
+          assert record["status"] == "BUILT_AND_AUDITED"
+          assert audit["audit_passed"] is True
+          assert not audit["missing_session_packages"]
+          kernel_release = json.load(open("build/in/piano-rpms/piano-rpms-manifest.json"))["kernel_release"]
+          assert audit["kernel_release"] == kernel_release, (
+              f"rootfs kernel {audit['kernel_release']} != RPM matrix kernel {kernel_release}")
+          for path in ("usr/bin/dbus-daemon", "usr/bin/dbus-run-session",
+                       "usr/lib64/security/pam_systemd.so"):
+              assert path not in audit["missing_files"]
+          # The local repository is the only install transaction. Record the
+          # producer manifests so build-image can verify the exact components
+          # that DNF actually consumed, rather than a second install.
+          record["local_inputs"] = {
+              "piano_rpms_run": os.environ["PIANO_RPMS_RUN"],
+              "runtime_run": os.environ["RUNTIME_RUN"],
+              "mesa_run": os.environ["MESA_RUN"],
+              "ffmpeg_run": os.environ["FFMPEG_RUN"],
+              "piano_rpms_manifest_sha256": __import__("hashlib").sha256(
+                  open("build/in/piano-rpms/piano-rpms-manifest.json", "rb").read()).hexdigest(),
+              "runtime_manifest_sha256": __import__("hashlib").sha256(
+                  open(sys.argv[2], "rb").read()).hexdigest(),
+              "mesa_manifest_sha256": __import__("hashlib").sha256(
+                  open(sys.argv[3], "rb").read()).hexdigest(),
+              "ffmpeg_manifest_sha256": __import__("hashlib").sha256(
+                  open(sys.argv[4], "rb").read()).hexdigest(),
+          }
+          with open(sys.argv[1], "w") as stream:
+              json.dump(record, stream, indent=2)
+              stream.write("\n")
+          print("OK: audited clean rootfs includes the GNOME session bus")
+          PY
           sudo du -sh "$OUT/rootfs"/* | sort -rh | head -10
 
       - name: Package rootfs
         run: |
           set -euo pipefail
-          OUT="build/distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
-          # rootfs 里 root 拥有的文件普通用户读不了，打包同样需要 root。
+          OUT="build/clean-distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
           sudo tar -I 'zstd -10 -T0' -cf "rootfs-${{ inputs.releasever }}-${{ inputs.desktop }}.tar.zst" \
             --numeric-owner --xattrs --xattrs-include='*' --acls --selinux \
-            -C "$OUT" rootfs manifest.json packages.tsv
+            -C "$OUT" rootfs clean-manifest.json
           sudo chown "$(id -u):$(id -g)" "rootfs-${{ inputs.releasever }}-${{ inputs.desktop }}.tar.zst"
           ls -lh rootfs-*.tar.zst
 
@@ -76,7 +232,7 @@ jobs:
         if: failure()
         run: |
           set -euo pipefail
-          for log in build/distros/*/build.log; do
+          for log in build/clean-distros/*/assembly.log; do
             if [ -f "$log" ]; then sudo tail -n 80 "$log"; fi
           done
 
@@ -85,6 +241,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rootfs-diagnostics
-          path: build/distros/*/build.log
+          path: build/clean-distros/*/assembly.log
           if-no-files-found: warn
           retention-days: 7

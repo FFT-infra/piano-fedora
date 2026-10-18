@@ -1,0 +1,176 @@
+name: build-piano-rpms
+
+# Build the local Fedora RPM repository consumed by build-rootfs.yml.
+# Several packages compile native user-space code, and kernel-piano embeds the
+# exact Image/modules consumed by the ESP. This workflow never touches a device.
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_run_id:
+        description: "Successful build-kernel run with kernel-release-7.2.9 and kernel-sdk-7.2.9"
+        required: true
+        default: "38777633742"
+      releasever:
+        description: "Fedora release (must match product.json)"
+        required: false
+        default: "44"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  rpms:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the exact kernel and SDK run
+        id: kernel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KERNEL_RUN: ${{ inputs.kernel_run_id }}
+        run: |
+          set -euo pipefail
+          test -n "$KERNEL_RUN"
+          python3 scripts/resolve-artifact-run.py \
+            --workflow build-kernel.yml \
+            --artifact kernel-release-7.2.9 \
+            --artifact kernel-sdk-7.2.9 \
+            --run-id "$KERNEL_RUN" \
+            --output-key run_id
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kernel-release-7.2.9
+          path: build/in/kernel
+          run-id: ${{ steps.kernel.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kernel-sdk-7.2.9
+          path: build/in/sdk
+          run-id: ${{ steps.kernel.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install the native RPM builder
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq podman zstd rpm createrepo-c \
+            python3 git tar xz-utils patch
+
+      - name: Unpack the matching kernel payload
+        id: payload
+        run: |
+          set -euo pipefail
+          mkdir -p build/kernel
+          tar -I zstd -xf build/in/kernel/kernel-release-7.2.9.tar.zst -C build/kernel
+          test -s build/kernel/Image
+          test -s build/kernel/System.map
+          test -s build/kernel/config
+          test -d build/kernel/lib/modules
+          test -f build/in/sdk/kernel-gunyah-source.json
+          kernel_release=$(python3 -c 'import json; print(json.load(open("build/kernel/manifest.json"))["kernel_release"])')
+          test -n "$kernel_release"
+          echo "kernel_release=$kernel_release" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch the pinned SunUEFI tree and its board DTB
+        id: source
+        run: |
+          set -euo pipefail
+          python3 scripts/checkout-sources.py --output build/sources --mode boot
+          test -s build/sources/sunuefi/vendor/piano-linux/board.dtb
+          sunuefi_commit=$(git -C build/sources/sunuefi rev-parse HEAD)
+          echo "sunuefi_commit=$sunuefi_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Build the local RPM matrix in Fedora
+        env:
+          PIANO_RELEASE: ${{ inputs.releasever }}
+        run: |
+          set -euo pipefail
+          rm -rf out/rpms build/rpm-tmp
+          mkdir -p out/rpms
+          # The Ubuntu host only orchestrates. Fedora supplies the distro
+          # macros, BuildRequires, and native aarch64 compiler used by every
+          # spec in packages/.
+          sudo podman run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            --env PIANO_RELEASE="$PIANO_RELEASE" \
+            "registry.fedoraproject.org/fedora:$PIANO_RELEASE" \
+            bash -euo pipefail -c '
+              dnf -y install rpm-build redhat-rpm-config dnf5-plugins \
+                git curl tar xz zstd patch createrepo_c \
+                gcc gcc-c++ make cmake meson ninja-build \
+                systemd-rpm-macros json-devel glib2-devel \
+                libqmi-devel libmbim-devel protobuf-c-devel \
+                protobuf-c-compiler protobuf-compiler python3-devel \
+                vala libva-devel libdrm-devel pkgconf-pkg-config
+              git config --global --add safe.directory /workspace
+              git config --global --add safe.directory /workspace/build/sources/sunuefi
+              export KERNEL_PAYLOAD=/workspace/build/kernel
+              export BOARD_DTB=/workspace/build/sources/sunuefi/vendor/piano-linux/board.dtb
+              export TMPDIR=/workspace/build/rpm-tmp
+              mkdir -p "$TMPDIR"
+              ./scripts/build-rpms.sh /workspace/out/rpms
+            '
+
+      - name: Verify the exact matrix and repository
+        run: |
+          set -euo pipefail
+          test -f out/rpms/repodata/repomd.xml
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+
+          required = {
+              "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
+              "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
+              "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
+          }
+          repo = Path("out/rpms")
+          files = {}
+          for path in sorted(repo.glob("*.rpm")):
+              data = path.read_bytes()
+              files[path.name] = {
+                  "bytes": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              }
+          names = {name.rsplit("-", 2)[0] for name in files}
+          missing = sorted(required - names)
+          assert not missing, f"missing RPM packages: {missing}"
+          assert (repo / "repodata/repomd.xml").is_file(), "missing repository metadata"
+          Path("piano-rpms-manifest.json").write_text(json.dumps({
+              "status": "PIANO_RPMS_BUILT",
+              "releasever": "${{ inputs.releasever }}",
+              "kernel_run": "${{ steps.kernel.outputs.run_id }}",
+              "kernel_release": "${{ steps.payload.outputs.kernel_release }}",
+              "sunuefi_commit": "${{ steps.source.outputs.sunuefi_commit }}",
+              "files": files,
+          }, indent=2) + "\n")
+          print("OK: built", len(files), "RPMs")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: piano-rpms
+          path: |
+            out/rpms/
+            piano-rpms-manifest.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Preserve failed RPM diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: piano-rpms-diagnostics
+          path: |
+            build/rpm-tmp/**/*.log
+            build/rpm-tmp/**/BUILD/**/*.log
+          if-no-files-found: warn
+          retention-days: 7

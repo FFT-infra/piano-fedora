@@ -177,19 +177,6 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     (root / "ffmpeg-manifest.json").write_bytes(saved)
 
 
-def install_step():
-    lines = (ROOT / ".github/workflows/build-image.yml").read_text().splitlines()
-    start = lines.index("      - name: Install the native Fedora device RPMs")
-    run = lines.index("        run: |", start) + 1
-    body = []
-    for line in lines[run:]:
-        if line.strip() and not line.startswith("          "):
-            break
-        body.append(line[10:])
-    assert body, "RPM installation step is empty"
-    return "\n".join(body)
-
-
 def step_body(workflow, name):
     """取出某个 step 的 run 脚本体，缩进去掉一层。env 块在 run 之前，不混入。"""
     lines = (ROOT / workflow).read_text().splitlines()
@@ -256,7 +243,8 @@ def resolve_step_env(root, workflows, artifacts, runs):
     return env, output
 
 
-def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_run=""):
+def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_run="",
+                rootfs_run="", mesa_run="", ffmpeg_run="", release_mode="false"):
     workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
                  "build-mesa.yml", "host-check.yml"]
     artifacts = ["rootfs-44-gnome", "kernel-release-7.2.9", "kernel-sdk-7.2.9",
@@ -266,7 +254,9 @@ def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_
     env, output = resolve_step_env(root, workflows, artifacts, runs)
     env.update(ROOTFS_ARTIFACT="rootfs-44-gnome", KERNEL_ARTIFACT=kernel_artifact,
                RUNTIME_ARTIFACT=runtime_artifact,
-               KERNEL_RUN=kernel_run, RUNTIME_RUN=runtime_run)
+               KERNEL_RUN=kernel_run, RUNTIME_RUN=runtime_run,
+               ROOTFS_RUN=rootfs_run, MESA_RUN=mesa_run,
+               FFMPEG_RUN=ffmpeg_run, RELEASE_MODE=release_mode)
     result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
                              step_body(".github/workflows/build-image.yml", "Resolve successful input runs")],
                             cwd=ROOT, env=env, capture_output=True, text=True)
@@ -394,6 +384,36 @@ def check_kernel_unpack(root):
         "the SDK tar leaked into build/kernel (glob instead of exact archive)"
 
 
+def check_clean_rootfs_release_entry():
+    """build-rootfs must produce the audited tree, never the old base only."""
+    rootfs = (ROOT / ".github/workflows/build-rootfs.yml").read_text()
+    assert "scripts/build-clean-rootfs.py" in rootfs, (
+        "build-rootfs.yml still invokes the unaudited base-tree generator")
+    assert "scripts/build-fedora-rootfs.py" not in rootfs, (
+        "the release workflow must not use the legacy base-tree backend")
+    assert "--rpms-dir build/local-rpms" in rootfs
+    assert "piano-rpms" in rootfs
+    assert "piano_rpms_run_id" in rootfs
+    assert "clean-manifest.json" in rootfs
+    assert 'record["status"] == "BUILT_AND_AUDITED"' in rootfs
+    assert "missing_session_packages" in rootfs
+    assert "usr/bin/dbus-run-session" in rootfs
+    assert "usr/lib64/security/pam_systemd.so" in rootfs
+    assert 'os.environ["RUNTIME_RUN"]' in rootfs
+    assert 'os.environ["MESA_RUN"]' in rootfs
+    assert 'os.environ["FFMPEG_RUN"]' in rootfs
+
+    image = (ROOT / ".github/workflows/build-image.yml").read_text()
+    assert "Reject a base rootfs without the GNOME session bus" in image, (
+        "build-image must reject any rootfs that did not pass the clean audit")
+    assert 'record["status"] == "BUILT_AND_AUDITED"' in image
+    assert 'for package in ("dbus-daemon", "systemd-pam")' in image
+    assert 'record["audit"]["selinux_labels"] > 0' in image
+    assert 'assert mode == "enforcing"' in image
+    assert 'assert not (root / ".autorelabel").exists()' in image
+    assert "the sealed kernel payload is staged after this audit" in image
+
+
 def check_uefi_sealer(root):
     sealer = module("uefi_sealer", ROOT / "scripts/seal-uefi-source.py")
     image = root / "uefi.img"
@@ -442,39 +462,8 @@ def main():
         check_image_kernel_tiers(root / "tiers")
         check_bundle_kernel_resolution(root / "bundle-kernel")
         check_kernel_unpack(root / "unpack")
-        host, container = root / "host", root / "container"
-        host.mkdir()
-        container.mkdir()
-        # 宿主可以解析 product.json；容器只提供 bash 与 dnf。
-        (container / "bash").symlink_to("/bin/bash")
-        executable(host / "sudo", 'exec "$@"\n')
-        executable(host / "podman", '''
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        run|--rm) shift ;;
-        -v|-w) shift 2 ;;
-        --env|-e) export "$2"; shift 2 ;;
-        registry.fedoraproject.org/fedora:44) shift; break ;;
-        *) printf 'Unexpected podman argument: %s\\n' "$1" >&2; exit 2 ;;
-    esac
-done
-PATH="$PIANO_CONTAINER_PATH" exec "$@"
-''')
-        executable(container / "dnf", 'printf "%s\\n" "$@" >"$PIANO_CAPTURE"\n')
-        capture = root / "dnf-arguments"
-        env = {**os.environ, "PATH": str(host) + os.pathsep + os.environ["PATH"],
-               "PIANO_CONTAINER_PATH": str(container), "PIANO_CAPTURE": str(capture),
-               "GITHUB_WORKSPACE": str(ROOT)}
-        result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c", install_step()],
-                                cwd=ROOT, env=env, capture_output=True, text=True)
-        assert result.returncode == 0, result.stderr
-        arguments = capture.read_text().splitlines()
-        assert "--releasever=44" in arguments, arguments
-        assert "--installroot=/workspace/build/device-root/rootfs" in arguments, arguments
-        assert "install" in arguments and "/workspace/build/runtime/rpms/*.rpm" in arguments, arguments
-        assert "/workspace/build/mesa/rpms/*.rpm" in arguments, arguments
-        assert "--setopt=localpkg_gpgcheck=0" in arguments, arguments
-    print("OK: container entry, A830v1 device tables and sealed bundle identity checks")
+        check_clean_rootfs_release_entry()
+    print("OK: audited rootfs entry, A830v1 device tables and sealed bundle identity checks")
 
 
 if __name__ == "__main__":
