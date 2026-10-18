@@ -189,6 +189,12 @@ def audit_rootfs(rootfs_dir):
         "usr/lib64/dri/v4l2_drv_video.so",
         "usr/lib/systemd/system/piano-boot-request-autoconfig.service",
         "etc/systemd/system/qbootctl.service.d/piano.conf",
+        # initramfs 在 chroot 之后立刻运行 piano-disk-hardware-prepare，
+        # 它的 require_ram() 直接读 root-policy.json。缺这个文件，
+        # 系统就停在 initramfs 救援 shell。
+        "etc/piano/root-policy.json",
+        "etc/udev/rules.d/01-piano-protect-android.rules",
+        "etc/fstab",
     ]
     missing_files = [f for f in key_checks if not (root / f).exists()]
 
@@ -347,6 +353,16 @@ def execute(plan_data):
             print(f"--> Reusing existing installroot at {root} (--resume)")
     root.mkdir(parents=True, exist_ok=True)
 
+    # RPM scriptlet 在首次安装时就要往 installroot 里写临时文件。空目录没有
+    # /var/tmp，dnf 会在 unpack 阶段就报一堆
+    # "error creating temporary file /var/tmp/rpm-tmp.XXXX: No such file or
+    # directory"，最后以 transaction failed 收场。先建好这几个目录再装。
+    bootstrap_dirs = ("var/tmp", "var/log", "run", "tmp")
+    for name in bootstrap_dirs:
+        (root / name).mkdir(parents=True, exist_ok=True)
+    (root / "tmp").chmod(0o1777)
+    (root / "var/tmp").chmod(0o1777)
+
     dnf = dnf_binary()
     if not dnf:
         raise RootfsError("dnf or dnf5 is required for rootfs assembly")
@@ -376,21 +392,15 @@ def execute(plan_data):
     with log_file.open("w") as stream:
         subprocess.run(cmd, stdout=stream, stderr=subprocess.STDOUT, check=True)
 
-    # 配置默认用户、主机名、fstab 与系统环境
-    print("--> Setting up piano user, fstab and default services...")
-    # 设置 fstab
-    fstab_path = root / "etc" / "fstab"
-    fstab_path.parent.mkdir(parents=True, exist_ok=True)
-    fstab_text = (
-        "/dev/disk/by-partlabel/sunuefi_root  /          f2fs  rw,noatime,compress_algorithm=zstd,compress_chksum,atgc,gc_merge  0 0\n"
-        "/dev/disk/by-partlabel/sunuefi_esp   /boot/efi  vfat  umask=0077,shortname=winnt  0 2\n"
-    )
+    # 配置默认用户、主机名与系统环境。fstab 由后面的 apply-rootfs-policy 写，
+    # 这里不再重复一份，避免两处内容漂移（这里曾经写的是 compress_algorithm
+    # 版本，策略脚本写的是 data_flush 版本）。
+    print("--> Setting up piano user and default services...")
     hostname_path = root / "etc" / "hostname"
     if os.geteuid() != 0 and shutil.which("sudo"):
-        subprocess.run(["sudo", "tee", str(fstab_path)], input=fstab_text, text=True, check=True, stdout=subprocess.DEVNULL)
         subprocess.run(["sudo", "tee", str(hostname_path)], input="piano\n", text=True, check=True, stdout=subprocess.DEVNULL)
     else:
-        fstab_path.write_text(fstab_text, encoding="utf-8")
+        hostname_path.parent.mkdir(parents=True, exist_ok=True)
         hostname_path.write_text("piano\n", encoding="utf-8")
 
     # 辅助 chroot 执行工具
@@ -453,6 +463,19 @@ def execute(plan_data):
             run_chroot(["systemctl", "enable", service])
         except subprocess.CalledProcessError:
             pass
+
+    # 根分区策略：/etc/fstab、/etc/piano/root-policy.json 与 udev 只读保护规则。
+    # 旧流水线（build-image.yml）在 stage-rootfs-payload 之后调
+    # apply-rootfs-policy.py；纯净装配链一直没有这一步，于是镜像里既没有
+    # root-policy.json 也没有保护规则。piano-ram-hardware-prepare 的
+    # require_ram() 第一件事就是读 root-policy.json，读不到就 REFUSED，
+    # initramfs 的 chroot 因此失败并停在救援 shell。
+    print("--> Applying root partition policy (fstab, root-policy.json, udev rules)...")
+    policy_cmd = [sys.executable, str(ROOT / "scripts" / "apply-rootfs-policy.py"),
+                  "--rootfs", str(root)]
+    if os.geteuid() != 0 and shutil.which("sudo"):
+        policy_cmd = ["sudo", *policy_cmd]
+    subprocess.run(policy_cmd, check=True)
 
     # 清空 DNF/chroot 留下的运行时树。它们不是镜像内容：/dev 下会出现
     # 普通文件 null，/run 下会出现 dnf、sshd、selinux-policy 等宿主状态。

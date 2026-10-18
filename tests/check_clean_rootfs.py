@@ -148,6 +148,23 @@ def main():
     check("sanitize_rootfs_identity" in source,
           "build-clean-rootfs.py must sanitize rootfs machine identity")
 
+    # 8. 根分区策略必须在成像前落地。initramfs 在 chroot 之后立刻运行
+    #    piano-disk-hardware-prepare，它的 require_ram() 直接读
+    #    /etc/piano/root-policy.json；缺这个文件系统就停在救援 shell。
+    #    旧流水线 build-image.yml 调了 apply-rootfs-policy.py，纯净装配链
+    #    一直没有这一步，2026-10-17 的镜像因此缺文件、无法启动。
+    check("apply-rootfs-policy.py" in source,
+          "build-clean-rootfs.py must invoke apply-rootfs-policy.py so the image "
+          "carries /etc/piano/root-policy.json, fstab and the udev protection rule")
+    check("root-policy.json" in source,
+          "build-clean-rootfs.py audit must require /etc/piano/root-policy.json")
+
+    # 9. fstab 只能有一处来源。装配脚本曾经自己写一份（compress_algorithm
+    #    版本），策略脚本又写一份（data_flush 版本），两者会漂移。
+    check("compress_algorithm=zstd" not in source,
+          "build-clean-rootfs.py must not write its own fstab; apply-rootfs-policy.py "
+          "is the single source of truth")
+
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)
