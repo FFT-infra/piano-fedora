@@ -164,11 +164,17 @@ def audit_rootfs(rootfs_dir):
         raise RootfsError(f"not a valid rootfs directory: {root}")
 
     # 1. 验证 RPM 数据库完整性与 9 个 piano 核心包安装状态
+    #    这里必须用 rpm 而不是直接读 sqlite：rpm 会打开 WAL 并看到最新事务。
+    #    曾经直接按文件大小判断，结果镜像里的库是 0 张表（WAL 未合并就被删），
+    #    而源目录一切正常。total_rpms_installed 为 0 时下面会显式失败。
     res = subprocess.run(
         ["rpm", "--root", str(root), "-qa"],
         capture_output=True, text=True, check=True
     )
     installed_rpm_names = set(res.stdout.splitlines())
+    if not installed_rpm_names:
+        raise RootfsError(
+            f"rpm database at {root} reports no packages; the rootfs is unusable")
     missing_piano_pkgs = []
     for expected in PIANO_PACKAGES:
         found = any(pkg.startswith(expected + "-") for pkg in installed_rpm_names)
@@ -324,17 +330,40 @@ def prune_kernel_module_links(root):
 
 
 def prune_rpm_transient(root):
-    """删掉 rpm 数据库的临时文件。
+    """把 rpm 数据库的 WAL 合并进主库，再删掉临时文件。
 
     rpmdb 是 SQLite，查询时会生成 -shm/-wal 和 .rpm.lock。审计步骤用
     `rpm --root` 打开数据库，这些文件随之出现又消失；如果它们被打进镜像，
     读回比对就会因为 mtime 变化报
     "rootfs metadata/content mismatch: ...rpmdb.sqlite-shm: mtime_ns"。
-    它们不是数据库内容，重建时由 SQLite 自行生成。
+
+    但不能直接删：如果 -wal 里还有未合并的事务，删掉就等于丢数据。
+    实测过这个坑——镜像里的 rpmdb.sqlite 变成 0 张表，源目录却是 50 张。
+    所以先跑一次 wal_checkpoint(TRUNCATE)，确认合并成功再删。
     """
     rpm_dir = root / "usr" / "lib" / "sysimage" / "rpm"
-    if not rpm_dir.is_dir():
+    database = rpm_dir / "rpmdb.sqlite"
+    if not database.is_file():
         return
+    import sqlite3
+    connection = sqlite3.connect(database)
+    try:
+        # TRUNCATE 会把 WAL 内容写回主库并把 WAL 截断为零长度。
+        busy, remaining, checkpointed = connection.execute(
+            "PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        if busy or remaining:
+            raise RootfsError(
+                f"rpm database WAL could not be checkpointed "
+                f"(busy={busy}, remaining={remaining}); refusing to drop it "
+                "because that would lose package records")
+        tables = connection.execute(
+            "SELECT count(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
+        if tables == 0:
+            raise RootfsError(
+                "rpm database has no tables after checkpoint; the image would "
+                "contain no package records")
+    finally:
+        connection.close()
     for name in ("rpmdb.sqlite-shm", "rpmdb.sqlite-wal", ".rpm.lock"):
         target = rpm_dir / name
         if target.exists() or target.is_symlink():
