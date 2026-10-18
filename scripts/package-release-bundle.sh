@@ -184,6 +184,10 @@ with path.open("rb") as f:
     if header_version != 4:
         sys.exit(f"Error: Boot image is Header v{header_version}, but SM8750 (piano) ABL strictly requires Header v4!")
 
+    os_version = struct.unpack_from("<I", header, 16)[0]
+    if os_version == 0:
+        sys.exit("Error: Boot image header os_version at offset 16 is 0; SM8750 (piano) ABL requires non-zero os_version!")
+
     f.seek(0)
     data = f.read()
     if b"AVB0" not in data:
@@ -293,36 +297,50 @@ if [ -n "$BOOT_ROW" ]; then
     BOOT_ORIGIN="${BOOT_ROW##*$'\t'}"
     [ "$BOOT_ORIGIN" = explicit ] || reject_stale_source boot_sunuefi.img "$BOOT_FOUND" || exit 1
 
-    # Ensure candidate boot image is signed with SHA256_RSA4096 for stock ABL AVB compliance
-    if ! python3 -c '
-import sys, struct
-data = open(sys.argv[1], "rb").read()
+    # Ensure candidate boot image has non-zero os_version (required by SM8750 ABL)
+    # and is signed with SHA256_RSA4096 for stock ABL AVB compliance
+    python3 - <<'PY' "$BOOT_FOUND"
+import sys, struct, os, tempfile, subprocess
+path = sys.argv[1]
+with open(path, "rb") as f:
+    data = bytearray(f.read())
+
+os_ver = struct.unpack_from("<I", data, 16)[0]
+needs_osver = (os_ver == 0)
+
+needs_sign = True
 footer = data[-64:]
-if footer[:4] != b"AVBf": sys.exit(1)
-orig_sz, vb_off, vb_sz = struct.unpack_from(">QQQ", footer, 12)
-vbmeta = data[vb_off:vb_off + vb_sz]
-auth_sz = struct.unpack_from(">Q", vbmeta, 12)[0]
-algo = struct.unpack_from(">I", vbmeta, 28)[0]
-sys.exit(0 if (algo == 2 and auth_sz > 0) else 1)
-' "$BOOT_FOUND" 2>/dev/null; then
-        echo "--> Signing $BOOT_FOUND with SHA256_RSA4096 AVB footer..."
-        if command -v avbtool >/dev/null 2>&1; then
-            KEY_DIR="$(mktemp -d -p "$HOME/Lab/Bridge/tmp/trash" 2>/dev/null || mktemp -d)"
-            KEY_FILE="$KEY_DIR/avb_key.pem"
-            openssl genrsa -out "$KEY_FILE" 4096 2>/dev/null
-            avbtool add_hash_footer --image "$BOOT_FOUND" \
-                --partition_name boot --partition_size 100663296 \
-                --algorithm SHA256_RSA4096 --key "$KEY_FILE" \
-                --rollback_index 1788220800 \
-                --prop com.android.build.boot.os_version:15 \
-                --prop com.android.build.boot.fingerprint:Xiaomi/piano/piano:15/AQ3A.250226.002/OS3.0.309.0.WPYCNXM:user/release-keys \
-                --prop com.android.build.boot.security_patch:2026-09-01
-            rm -rf "$KEY_DIR"
-        else
-            echo "Error: avbtool not found to sign boot image" >&2
-            exit 1
-        fi
-    fi
+if footer[:4] == b"AVBf":
+    orig_sz, vb_off, vb_sz = struct.unpack_from(">QQQ", footer, 12)
+    vbmeta = data[vb_off:vb_off + vb_sz]
+    if vbmeta[:4] == b"AVB0":
+        auth_sz = struct.unpack_from(">Q", vbmeta, 12)[0]
+        algo = struct.unpack_from(">I", vbmeta, 28)[0]
+        if algo == 2 and auth_sz > 0 and not needs_osver:
+            needs_sign = False
+
+if needs_osver or needs_sign:
+    print(f"--> Patching os_version and signing {path} with SHA256_RSA4096...")
+    if footer[:4] == b"AVBf":
+        orig_sz = struct.unpack_from(">QQQ", footer, 12)[0]
+        data = data[:orig_sz]
+    # Android 15 (15 << 14) and 2026-09 ((26 << 4) | 9 = 425) -> 0x1e0001a9
+    struct.pack_into("<I", data, 16, 0x1e0001a9)
+    with open(path, "wb") as f:
+        f.write(data)
+    with tempfile.TemporaryDirectory() as td:
+        key = os.path.join(td, "key.pem")
+        subprocess.run(["openssl", "genrsa", "-out", key, "4096"], check=True, capture_output=True)
+        subprocess.run([
+            "avbtool", "add_hash_footer", "--image", path,
+            "--partition_name", "boot", "--partition_size", "100663296",
+            "--algorithm", "SHA256_RSA4096", "--key", key,
+            "--rollback_index", "1788220800",
+            "--prop", "com.android.build.boot.os_version:15",
+            "--prop", "com.android.build.boot.fingerprint:Xiaomi/piano/piano:15/AQ3A.250226.002/OS3.0.309.0.WPYCNXM:user/release-keys",
+            "--prop", "com.android.build.boot.security_patch:2026-09-01"
+        ], check=True)
+PY
 
     echo "--> Verifying candidate boot image: $BOOT_FOUND"
     verify_boot_image "$BOOT_FOUND"

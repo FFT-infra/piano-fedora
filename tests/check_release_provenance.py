@@ -105,6 +105,9 @@ def main():
             hver = struct.unpack_from("<I", data, 40)[0]
             if hver != 4:
                 failures.append(f"out/release-bundle/boot_sunuefi.img is Header v{hver}, expected Header v4")
+            osver = struct.unpack_from("<I", data, 16)[0]
+            if osver == 0:
+                failures.append("out/release-bundle/boot_sunuefi.img has os_version==0 at offset 16 (SM8750 ABL requires non-zero os_version)")
             if b"AVB0" not in data:
                 failures.append("out/release-bundle/boot_sunuefi.img lacks AVB0 footer")
             else:
