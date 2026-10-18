@@ -467,13 +467,21 @@ def execute(plan_data):
     # 配置默认用户、主机名与系统环境。fstab 由后面的 apply-rootfs-policy 写，
     # 这里不再重复一份，避免两处内容漂移（这里曾经写的是 compress_algorithm
     # 版本，策略脚本写的是 data_flush 版本）。
-    print("--> Setting up piano user and default services...")
+    print("--> Setting up piano user, SELinux mode and default services...")
     hostname_path = root / "etc" / "hostname"
     if os.geteuid() != 0 and shutil.which("sudo"):
         subprocess.run(["sudo", "tee", str(hostname_path)], input="piano\n", text=True, check=True, stdout=subprocess.DEVNULL)
     else:
         hostname_path.parent.mkdir(parents=True, exist_ok=True)
         hostname_path.write_text("piano\n", encoding="utf-8")
+
+    # 配置 SELinux 为 permissive 模式并预留 .autorelabel，避免因离线装配缺少全量标签导致 systemd 在挂载 API 文件系统时拒绝访问冻结
+    selinux_conf = root / "etc" / "selinux" / "config"
+    if selinux_conf.is_file():
+        text = selinux_conf.read_text(encoding="utf-8")
+        if "SELINUX=enforcing" in text:
+            selinux_conf.write_text(text.replace("SELINUX=enforcing", "SELINUX=permissive"), encoding="utf-8")
+    (root / ".autorelabel").touch()
 
     # 辅助 chroot 执行工具
     def run_chroot(cmd_args, stdin_text=None):
