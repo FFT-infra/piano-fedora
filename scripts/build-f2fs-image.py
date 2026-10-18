@@ -58,6 +58,20 @@ def require_mount_privilege():
             "mounting the image needs root; run this tool under sudo "
             f"(current euid {os.geteuid()})"
         )
+    # root 也可能没有 loop 权限：容器（orbstack、docker --privileged=false）
+    # 和受限的 user namespace 都允许 mkfs.f2fs 成功，却在 losetup 时返回
+    # EPERM，最终只看到 "failed to setup loop device"。先探一次。
+    probe = subprocess.run(
+        ["losetup", "-f"], capture_output=True, text=True
+    )
+    if probe.returncode != 0:
+        raise ImageError(
+            "no usable loop device on this host: "
+            f"{probe.stderr.strip() or probe.stdout.strip()}. "
+            "The F2FS import mounts the image through a loop device, so it "
+            "cannot run inside a container without loop access. Run the "
+            "imaging step on a host that has /dev/loop-control and CAP_SYS_ADMIN."
+        )
 
 
 def sha256(path):
