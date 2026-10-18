@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import posixpath
 import subprocess
@@ -175,11 +176,22 @@ def audit_rootfs(rootfs_dir):
     if not installed_rpm_names:
         raise RootfsError(
             f"rpm database at {root} reports no packages; the rootfs is unusable")
+    installed_package_names = {
+        re.match(r"(.+?)-\d", name).group(1)  # e.g. dbus-daemon-1.16...
+        for name in installed_rpm_names
+        if re.match(r"(.+?)-\d", name)
+    }
     missing_piano_pkgs = []
     for expected in PIANO_PACKAGES:
         found = any(pkg.startswith(expected + "-") for pkg in installed_rpm_names)
         if not found:
             missing_piano_pkgs.append(expected)
+    # These two subpackages are not pulled by any dependency closure when
+    # install_weak_deps=0. They are the difference between a rootfs that
+    # boots to a dark desktop and one that reaches all of mult-user/graphical.*
+    session_packages = ("dbus-daemon", "systemd-pam")
+    missing_session_pkgs = [name for name in session_packages
+                             if name not in installed_package_names]
 
     # 2. 抽查关键系统文件与守护服务
     key_checks = [
@@ -201,6 +213,13 @@ def audit_rootfs(rootfs_dir):
         "etc/piano/root-policy.json",
         "etc/udev/rules.d/01-piano-protect-android.rules",
         "etc/fstab",
+        # dbus-daemon supplies dbus-daemon(1)/dbus-run-session(1); GDM's
+        # gdm-wayland-session uses the latter to create a private session bus.
+        "usr/bin/dbus-daemon",
+        "usr/bin/dbus-run-session",
+        # systemd-pam supplies pam_systemd.so; without it logind never
+        # creates /run/user/<uid>, so the session bus cannot start.
+        "usr/lib64/security/pam_systemd.so",
     ]
     missing_files = [f for f in key_checks if not (root / f).exists()]
 
@@ -244,6 +263,7 @@ def audit_rootfs(rootfs_dir):
                 unowned_binaries.append(rel_path)
 
     passed = (len(missing_piano_pkgs) == 0 and
+              len(missing_session_pkgs) == 0 and
               len(missing_files) == 0 and
               len(unowned_binaries) == 0 and
               len(kernel_problems) == 0)
@@ -265,6 +285,7 @@ def audit_rootfs(rootfs_dir):
         "audit_passed": passed,
         "total_rpms_installed": len(installed_rpm_names),
         "missing_piano_packages": missing_piano_pkgs,
+        "missing_session_packages": missing_session_pkgs,
         "missing_key_files": missing_files,
         "unowned_binaries": unowned_binaries,
         "kernel_release": kernel_release,

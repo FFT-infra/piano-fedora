@@ -180,6 +180,22 @@ def main():
           "build-clean-rootfs.py audit must count security.selinux labels and fail "
           "when file_contexts exists but nothing is labelled")
 
+    # 11. GNOME 会话总线。Fedora 44 的 GDM Wayland 启动器直接执行
+    #     dbus-run-session；该文件来自 dbus-daemon 子包。pam_systemd.so
+    #     来自 systemd-pam，负责让 logind 建出 /run/user/<uid>。两者在
+    #     install_weak_deps=False 时都不在任何依赖闭包里。真机上漏掉后的
+    #     表现是面板已点亮但桌面黑屏，日志为
+    #     "Unable to run session message bus"。
+    for package in ("dbus-daemon", "systemd-pam"):
+        check(package in source,
+              f"build-clean-rootfs.py audit must require the {package} subpackage")
+    for path in ("usr/bin/dbus-daemon", "usr/bin/dbus-run-session",
+                 "usr/lib64/security/pam_systemd.so"):
+        check(path in source,
+              f"build-clean-rootfs.py audit must require {path}")
+    check("missing_session_packages" in source,
+          "build-clean-rootfs.py audit must report missing session packages")
+
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)

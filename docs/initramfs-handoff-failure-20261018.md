@@ -163,3 +163,26 @@ LABEL=SUNUEFI_ESP /boot/efi vfat umask=0077,nofail 0 2
 
 判断依赖一张屏幕照片。没有它的时候只能从 rootfs 内容反推，代价是
 连续多轮盲改——这也说明这类启动问题需要先把启动日志拿到手。
+
+## 2026-10-19 再补充：initramfs 确实在执行，SELinux 是主障碍
+
+用探针确定了链路：在 `init` 的 `export PATH` 之后立刻 `poweroff -f`，
+设备 30 秒内完全关机且 USB 无任何枚举。说明 boot.img ramdisk 里的
+init 一直在正常执行，此前"改了没效果"不是没跑到。
+
+同一探针也证明：`switch_root` 前写 `/etc/selinux/config` 为 disabled
+**不能**阻止 systemd 的 `Permission denied`。内核
+`CONFIG_SECURITY_SELINUX_BOOTPARAM is not set`，启动参数也走不通。
+enforcing 状态来自 selinuxfs 挂载时加载的内置 policy。
+
+DNF 装配的 rootfs 缺的是旧流水线 `build-image.yml:192` 的 `setfiles` 一步。
+对照 10-15 那份能启动的 rootfs：`/usr/bin/ls` 有 `bin_t`、393/400 有标签；
+新装配的是 0。补上 78815 个标签后，systemd 越过了
+`Failed to mount API filesystems`，但随即卡在
+`Failed at step EXEC spawning /usr/sbin/modprobe: Permission denied`，
+`systemd-udevd` 同样失败，导致 `dev-zram0.device` 等 45 秒超时。
+
+USB gadget 也一直没起来（`udc_selection_ambiguous_or_absent`），
+所以拿不到 ACM 串口日志；作为替代，让 initramfs 把诊断写进 misc 分区
+再经 EDL 读回。这个办法本身也没成功：misc 里只有 `bootonce-bootloader`，
+说明写盘时 `/dev/sda12` 尚不存在。

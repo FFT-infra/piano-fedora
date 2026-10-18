@@ -7,7 +7,7 @@
 
 | 项目 | 当前证据 | 尚需完成 |
 | --- | --- | --- |
-| 系统与分区 | F2FS 根、ESP、GNOME、SELinux Enforcing 已启动 | 冷启动重复、Recovery 与完整恢复演练 |
+| 系统与分区 | F2FS 根、ESP、GNOME、SELinux Enforcing 已启动；黑屏根因已定位为会话总线子包缺失，设备热修复后进入桌面 | **从原始 GPT/UFS 布局开始的完整 PR 冷启动验收**、Recovery 与完整恢复演练 |
 | 正式内核 | Iris + 八项 built-in Gunyah 整核构建、模块核对、真机重启通过 | 更新后的标准 CI 与完整交付包重建 |
 | Gunyah | 正式内核、/dev/gunyah、RM 实时交接、单 vCPU VM_START 与正常退出通过 | 控制台交互体验；后续内核更新后复测 |
 | VM 数据与生命周期 | 64 MiB ext4 写入/读回通过；virtio-net 打通（`NET_OK=1 NET_RX=2`）；三轮 disk+net 与一轮有界失败退出通过；每轮无 hub 残留、无僵尸、PID/socket 全清 | 无（GUI 交互待人手操作） |
@@ -26,8 +26,21 @@
 | 休眠 | 单次 `rtcwake` suspend/resume 通过，服务存活、Wi-Fi 约 3 s 自动重连、无 failed unit | 多周期与长期功耗曲线 |
 | HDR/指纹/IR | 未证明可用 | 明确支持边界并完成对应实现/实测 |
 | Android 往返 | SukiSU root/授权/读回通过、匹配模块实装且 BOOT 未改；Linux→Android 失败根因已定位：`app_generation` 过期（已修复）＋`PIANO_EARLY_CHOOSER` 3 秒音量键覆盖请求页；请求当前保持 target=2；A/B 引导保护由 `qbootctl.service` 自动标记 `Successful=1`，彻底根除 retry 归零掉入 Fastboot 缺陷 | Android SELinux 持久策略、完整双向往返与 Recovery（需真机重启） |
-| 包与来源 | 固定 pin、完整 Cargo.lock、RPM 文件归属与 finalizer 字节核验 | 完整新镜像实际装载核验 |
+| 包与来源 | 固定 pin、完整 Cargo.lock、RPM 文件归属与 finalizer 字节核验；`dbus-daemon`/`systemd-pam` 已加入装配审计 | **从发布 RootFS/ESP 重新生成镜像并从 GPT 起点实际装载核验** |
 | 回滚与清理 | 旧内核/模块/ESP 回滚保留，旧裸 LibreVM 启动器已清理 | 交付证据归档后清理重复构建与失效包 |
 
 临时目录会定期清理。当前可用系统、匹配模块、原厂 BOOT/GPT 和回滚材料
 在完成替代与恢复验证之前保留；失效或重复包不能作为可安装交付物。
+
+2026-10-19 的黑屏热修复只证明缺失 `dbus-daemon` 与 `systemd-pam` 会让
+GDM 在面板点亮后退出，不能作为 PR 交付验收。最终 PR 必须从原始
+GPT/UFS 分区开始，使用本流水线重新生成的 RootFS 与 ESP 完成冷启动，
+并按
+[黑屏事故记录](display-session-black-screen-20261019.md#最终-pr-验收门槛)
+保留桌面与重启证据。
+
+目前现有 ESP 的 release 是 `7.2.9-piano-gnome-g07c1f92db62b`，而
+`/var/tmp/piano-image/rootfs` 的模块目录是
+`7.2.9-piano-gnome-g184e09d96775`。这两份资产不配套，不能直接组成
+发布候选；最终验收必须使用同一次流水线产出、release 一致的 ESP 与
+RootFS。
