@@ -323,6 +323,24 @@ def prune_kernel_module_links(root):
     return removed
 
 
+def prune_rpm_transient(root):
+    """删掉 rpm 数据库的临时文件。
+
+    rpmdb 是 SQLite，查询时会生成 -shm/-wal 和 .rpm.lock。审计步骤用
+    `rpm --root` 打开数据库，这些文件随之出现又消失；如果它们被打进镜像，
+    读回比对就会因为 mtime 变化报
+    "rootfs metadata/content mismatch: ...rpmdb.sqlite-shm: mtime_ns"。
+    它们不是数据库内容，重建时由 SQLite 自行生成。
+    """
+    rpm_dir = root / "usr" / "lib" / "sysimage" / "rpm"
+    if not rpm_dir.is_dir():
+        return
+    for name in ("rpmdb.sqlite-shm", "rpmdb.sqlite-wal", ".rpm.lock"):
+        target = rpm_dir / name
+        if target.exists() or target.is_symlink():
+            target.unlink()
+
+
 def sanitize_rootfs_identity(root):
     """重置机器唯一 ID，确保镜像不带特定主机身份。"""
     machine = root / "etc" / "machine-id"
@@ -520,6 +538,7 @@ def execute(plan_data):
     prune_missing_manpage_links(root)
     prune_kernel_module_links(root)
     sanitize_rootfs_identity(root)
+    prune_rpm_transient(root)
 
     # 执行审计
     print("--> Running post-assembly RPM provenance audit...")
