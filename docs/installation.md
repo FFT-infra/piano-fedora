@@ -1,28 +1,21 @@
 # Xiaomi Pad 8 Pro (piano) 安装、分区与双系统指南
 
-本指南适用于在**小米平板 8 Pro（Xiaomi Pad 8 Pro / 代号 `piano` / 骁龙 8 至尊版 SM8750）**上从零全新安装 Fedora 44 GNOME 桌面系统，或者对已有 Linux 分区进行增量更新。
+本指南讲两件事：在**小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）**上从零安装 Fedora 44 GNOME，以及对已有 Linux 分区做增量更新。
 
 ---
 
 ## 一、 前提要求与准备工作
 
-1. **设备已解锁 Bootloader**：
-   - 需通过小米官方社区申请并完成 BL 解锁流程；
-   - 刷入前请确保平板电量在 **30% 以上**（建议 50% 以上）。
-2. **电脑端工具链**：
-   - 电脑（Windows / macOS / Linux）已配置好 `fastboot` 与 `adb` 命令行工具环境变量（Android Platform Tools）；
-   - Linux 用户请确保配置了 Android 设备 udev 规则，或使用具备 `sudo` 权限的 shell。
-   - 需要安装期注入 SSH 公钥时，另装 `mtools`（提供 `mcopy`）：Fedora
-     `sudo dnf install mtools`，Ubuntu/Debian `sudo apt install mtools`，
-     macOS `brew install mtools`。不注入公钥时不需要它。
-3. **重要数据备份**：
-   - 首次对平板进行分区调整时，原厂 Android 的 `userdata` 分区将被安全拆分为两部分（一半保留给 Android，一半分配给 Linux），**初次分区会清空 Android 用户数据，请提前完成外部备份**！
+1. **解锁 Bootloader**：通过小米官方渠道完成 BL 解锁。刷入前电量保持 **30% 以上**，建议 50%。
+2. **电脑端工具**：装好 Android Platform Tools，`fastboot` 与 `adb` 在 PATH 里。Linux 主机还要配好设备 udev 规则，或者用有 `sudo` 权限的 shell。
+   - 要注入 SSH 公钥时再装 `mtools`（提供 `mcopy`）：Fedora `sudo dnf install mtools`，Ubuntu/Debian `sudo apt install mtools`，macOS `brew install mtools`。不注入公钥就不需要它。
+3. **备份数据**：首次分区会把原厂 `userdata` 一分为二，一半留给 Android，一半给 Linux。**这一步会清空 Android 用户数据，先备份到电脑或外置存储。**
 
 ---
 
 ## 二、 存储与分区架构原理
 
-Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B 槽位（Slot A / Slot B）架构：
+平板用 UFS 4.0 闪存，配合高通 A/B 槽位（Slot A / Slot B）：
 
 ```
                     ┌────────────────────────────────────────┐
@@ -39,14 +32,11 @@ Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B �
   - userdata (原厂扣减 Linux 后的剩余空间)                         - sunuefi_root (468+ GiB, 高性能 F2FS)
 ```
 
-> **不要擦除 `dtbo_b`。** 高通 ABL 在启动时会校验活动槽位的整条引导链，空
-> DTBO 会被拒绝为 `Failed to load/authenticate boot image: Device Error`，
-> 实测会把平板卡在 Fastboot。SunUEFI 的板级 DTB 来自 `vendor_boot_b` 底包，
-> 叠加原厂 `dtbo_b` 增量片段，因此原厂内容必须留在原位。
+> **不要擦除 `dtbo_b`。** 高通 ABL 启动时校验活动槽位的整条引导链，空 DTBO 会被拒绝，报 `Failed to load/authenticate boot image: Device Error`，平板卡在 Fastboot。SunUEFI 的板级 DTB 来自 `vendor_boot_b` 底包，再叠加原厂 `dtbo_b` 的增量片段，原厂内容必须留在原位。
 
-* **`sunuefi_esp` (512 MiB, FAT32)**：存放 SunUEFI EDK2 固件核心、合并设备树（DTB）、Linux 7.2 主线适配内核及 Initramfs；
-* **`sunuefi_root` (F2FS)**：存放 Fedora 44 GNOME 根文件系统。采用闪存友好的 F2FS 格式，彻底发挥高达数 GB/s 的 UFS 4.0 顺序与随机读写潜能；
-* **引导稳定性保障 (`qbootctl`)**：系统内置 `qbootctl.service`，每次 Linux 引导成功后自动向底层 GPT 标记 `Successful = 1`，ABL 启动计数器永不归零，**从根源彻底消除掉进 Fastboot 的硬件通病**。
+* **`sunuefi_esp`（512 MiB，FAT32）**：SunUEFI EDK2 固件、合并设备树（DTB）、Linux 7.2 适配内核与 initramfs。
+* **`sunuefi_root`（F2FS）**：Fedora 44 GNOME 根文件系统。F2FS 为闪存设计，能发挥 UFS 4.0 的顺序与随机读写性能。
+* **引导稳定性（`qbootctl`）**：`qbootctl.service` 在每次 Linux 引导成功后向底层 GPT 写入 `Successful = 1`，ABL 的启动计数器不会归零。
 
 ---
 
