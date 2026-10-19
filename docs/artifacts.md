@@ -1,6 +1,6 @@
 # 构建与交付产物
 
-目标是 Fedora 44/GNOME + F2FS 的主机构建集合。平板启动、首次分区和本机 BOOT 包装需要另行验收；构建阶段停在设备写入之前。
+目标是 Fedora 44/GNOME + F2FS 的主机构建集合。构建阶段停在设备写入之前；平板启动、首次分区和本机 BOOT 包装另行验收。
 
 | 产物 | 生产入口 | 集成关系 |
 | --- | --- | --- |
@@ -11,22 +11,22 @@
 | A830v1 Mesa RPM | build-mesa.yml | 固定 Fedora 源 RPM 与 piano 补丁，复用 Fedora 配方；从实际 RPM 核对 Gallium/Turnip 芯片表 |
 | FFmpeg RPM | host-check 调用的 build-ffmpeg.yml | 固定 Fedora 源 RPM，沿用 SunUEFI BSP 补丁启用 H.264/HEVC v4l2m2m 解码器；build-ffmpeg 是 workflow_call 复用件，实际 run 的 workflow_id 是 host-check；原生构建及设备解码仍待验证 |
 | 设备运行时 RPM | build-device-runtime.yml | Fedora 原生触控/笔、相机程序、传感器、BOOT 请求工具、拓扑与设备配置；外部模块匹配 SDK；另含 VA-API、crosvm、LibreVM 和平台配置 RPM |
-| 设备 rootfs、initramfs、F2FS raw 镜像 | build-image.yml | 同一 job 安装设备、Mesa 与 FFmpeg RPM，核对已安装包及解码器注册，运行上游完整 rootfs 检查，配置服务、清理身份、设置 SELinux 标签并完整读回验证 |
+| 设备 rootfs、initramfs、F2FS raw 镜像 | build-image.yml | 同一 job 安装设备、Mesa 与 FFmpeg RPM，核对已安装包及解码器注册。随后运行上游完整 rootfs 检查，配置服务，清理身份，设置 SELinux 标签，最后完整读回验证 |
 | ESP、Linux boot.img、交付集合 | build-bundle.yml | 从集成记录取得准确内核，调用上游 DTB/mkbootimg/ESP 包装，核对全部文件和展开 root 镜像 |
 
 ## 一致性要求
 
-每份 initramfs、运行时和最终 rootfs manifest 都引用完整 kernel manifest 的 SHA256。kernel release 相同不足以证明配置相同；最终组合必须匹配这份摘要。
+每份 initramfs、运行时和最终 rootfs manifest 都引用完整 kernel manifest 的 SHA256。kernel release 相同不足以证明配置相同，最终组合必须匹配这份摘要。
 
 F2FS 镜像同时绑定 rootfs、内核、运行时、Mesa、FFmpeg 和 initramfs 六份清单的 SHA256。rootfs 清单引用实际消费的运行时、Mesa 与 FFmpeg 清单，并记录实际 RPM 清单的摘要。
 
-组件分目录解包。基础树、内核、UEFI、运行时、Mesa、FFmpeg 和 initramfs 不共享 manifest 路径。跨 run 查找仅接受成功且未过期的 artifact；SDK 与内核从同一次 run 获取。内核只允许标准 kernel-release-7.2.9，SDK 是独立 artifact，二者从同一成功 run 获取。
+组件分目录解包。基础树、内核、UEFI、运行时、Mesa、FFmpeg 和 initramfs 不共享 manifest 路径。跨 run 查找只接受成功且未过期的 artifact。内核只允许标准 kernel-release-7.2.9；SDK 是独立 artifact，两者必须取自同一次成功 run。
 镜像和 bundle 只解包准确命名的内核 archive，拒绝旧 kernel-experimental-gunyah
 与 piano-fedora-runtime-gunyah 产物。Gunyah 已由标准内核和标准 runtime 消费，
 SDK 内携带源码派生证明。source-runs.json 记录 kernel_run 与 kernel_artifact，
 bundle 按记录下载并要求其为标准档。
 
-clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel run。DNF 事务先安装 `kernel-piano`，因此 rootfs 本来就有唯一 `/usr/lib/modules/<release>`；build-image 不再要求该目录为空，而是要求恰好一个 release、由 `kernel-piano` 拥有，并逐文件比对封存内核 manifest。release 字符串相同但模块字节不同仍会失败，避免 ESP 与 rootfs 跨 run 混装。
+clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel run。DNF 事务先安装 `kernel-piano`，所以 rootfs 本来就有唯一的 `/usr/lib/modules/<release>`。build-image 不要求该目录为空，而是要求恰好一个 release、归属 `kernel-piano`，并逐文件比对封存内核 manifest。release 字符串相同但模块字节不同仍会失败，避免 ESP 与 rootfs 跨 run 混装。
 
 所有 `workflow_dispatch` 入口都必须先在 `main` 注册。`build-piano-rpms.yml` 是 `workflow_call` 复用件，由已注册的 `host-check` 启动；`build-rootfs` 按 `host-check.yml` 解析该 run 的 `piano-rpms` artifact，不能再直接查询一个只在 PR 分支存在的 workflow。
 
@@ -34,7 +34,7 @@ clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel r
 
 导入使用 GNU tar 的 pax、全部 xattr namespace、ACL、numeric owner 与 SELinux 恢复选项。逐条核对文件内容、UID/GID、mode、mtime、软链接目标、硬链接关系、全部 xattr、capability 与目标 SELinux 标签。属性读取错误会失败，目录大小不参与跨文件系统比较。
 
-镜像先卸载，再运行 `fsck.f2fs -f --dry-run`，并核对检查前后镜像摘要不变。随后以 `ro,norecovery` 挂载读回，卸载后才生成最终镜像摘要。仅有 fsck 退出 0 或小 fixture 通过不证明完整交付通过。
+镜像先卸载，再运行 `fsck.f2fs -f --dry-run`，核对检查前后镜像摘要不变。随后以 `ro,norecovery` 挂载读回；卸载后才生成最终镜像摘要。仅有 fsck 退出 0 或小 fixture 通过不证明完整交付通过。
 
 通用交付包的 8192 MiB 是测试镜像容量。本机目标容量已按真实 GPT 对半计算并记录在 product.json；prepare-install.yml 在独立副本中完成离线扩容、设备配置与完整读回后输出 sparse 传输文件，不依赖首次开机自动扩容。
 
