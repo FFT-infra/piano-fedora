@@ -219,6 +219,15 @@ jobs:
           assert "kernel-piano" not in audit["missing_piano_packages"], (
               "the clean install transaction did not install kernel-piano")
           modules = pathlib.Path(record["output"]) / "rootfs/usr/lib/modules"
+          if not modules.is_dir():
+              # Print what is actually on disk before asserting, so a path
+              # mismatch is diagnosable from the log alone.
+              out = pathlib.Path(record["output"])
+              print("module dir missing:", modules)
+              for probe in (out, out / "rootfs", pathlib.Path("build/clean-distros/fedora-44-gnome")):
+                  print("probe", probe, "exists" if probe.exists() else "missing")
+                  if probe.exists():
+                      print("  entries:", sorted(p.name for p in probe.iterdir())[:12])
           releases = sorted(p.name for p in modules.iterdir() if p.is_dir()) if modules.is_dir() else []
           assert releases == [kernel_release], (
               f"kernel-piano module tree {releases} != matrix release {kernel_release}")
