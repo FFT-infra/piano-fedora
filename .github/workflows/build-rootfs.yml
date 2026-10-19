@@ -127,13 +127,17 @@ jobs:
           rm -rf build/local-rpms
           mkdir -p build/local-rpms
           cp -a build/in/piano-rpms/. build/local-rpms/
-          test -f build/in/runtime/manifest.json
-          test -f build/in/mesa/manifest.json
-          test -f build/in/ffmpeg/manifest.json
           mkdir -p build/in/runtime-extracted build/in/mesa-extracted build/in/ffmpeg-extracted
+          # The runtime/Mesa/FFmpeg artifacts carry their manifest *inside* the
+          # tarball, so it can only be checked after extraction. Checking
+          # build/in/<component>/manifest.json before this line always failed
+          # and killed the step in under a second.
           tar -I zstd -xf build/in/runtime/*.tar.zst -C build/in/runtime-extracted
           tar -I zstd -xf build/in/mesa/*.tar.zst -C build/in/mesa-extracted
           tar -I zstd -xf build/in/ffmpeg/*.tar.zst -C build/in/ffmpeg-extracted
+          test -f build/in/runtime-extracted/manifest.json
+          test -f build/in/mesa-extracted/manifest.json
+          test -f build/in/ffmpeg-extracted/manifest.json
           cp build/in/runtime-extracted/rpms/*.rpm build/local-rpms/
           cp build/in/mesa-extracted/rpms/*.rpm build/local-rpms/
           cp build/in/ffmpeg-extracted/rpms/*.rpm build/local-rpms/
