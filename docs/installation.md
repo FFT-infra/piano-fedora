@@ -339,17 +339,14 @@ fastboot getvar partition-size:userdata
 fastboot getvar partition-size:sunuefi_esp
 ```
 
-进入一个能读到块设备的 shell。Android 侧用 `adb shell` 加 `su`；如果设备
-已经在 Linux，则可以在本机直接读 `/dev/sda`。先确认扇区大小，后面的所有
-换算都依赖它：
+进入一个能读块设备的 shell。Android 侧用 `adb shell` 加 `su`；设备已经跑着 Linux 时，可以直接在本机读 `/dev/sda`。先确认扇区大小，后面的换算都依赖它：
 
 ```sh
 cat /sys/block/sda/queue/physical_block_size   # 这台设备是 4096
 sgdisk --print /dev/sda
 ```
 
-`sgdisk --print` 会给出总扇区数、First/Last usable sector，以及每个分区的
-起止扇区。把完整输出另存一份，作为本次安装的 GPT 基线。
+`sgdisk --print` 给出总扇区数、First/Last usable sector 和每个分区的起止扇区。把完整输出存一份，作为本次安装的 GPT 基线。
 
 #### 2. 算容量
 
@@ -372,10 +369,7 @@ sunuefi_root 起始扇区 = 向下对齐 1 MiB(ESP 起始扇区 - root 扇区)
 userdata     起始扇区保持不变，最后扇区改为 root 起始扇区 - 1
 ```
 
-1 MiB 对齐会把起始扇区往前推，所以实际容量只会大于等于请求值，Android 与
-Linux 两侧相差不超过 2 MiB。用 `scripts/plan-first-partition.py --dump` 可以
-离线核对这套算术：把 `sgdisk --print` 的输出保存成文件，它会给出同样的边界
-和容量，不接触设备。
+1 MiB 对齐会把起始扇区往前推，实际容量只会大于等于请求值，Android 与 Linux 两侧相差不超过 2 MiB。可以离线核对这套算术：把 `sgdisk --print` 的输出存成文件，用 `scripts/plan-first-partition.py --dump` 跑一遍，它给出同样的边界和容量，不接触设备。
 
 #### 3. 写 GPT
 
@@ -402,8 +396,7 @@ sgdisk --typecode=<n_esp>:EF00 /dev/sda
 sync
 ```
 
-`--delete` 会同时重写主 GPT 和备份 GPT。写完立刻回读核对，任何一项不一致就
-停下，不要继续往下走：
+`--delete` 会同时重写主 GPT 和备份 GPT。写完立刻回读核对；任何一项不一致就停下：
 
 ```sh
 sgdisk --verify /dev/sda
@@ -415,21 +408,18 @@ sgdisk --print /dev/sda
 
 #### 4. 让 Android 重建 userdata
 
-分区变短后，原加密 userdata 不再可信。回到 Fastboot 显式擦除：
+分区变短后，原来的加密 userdata 不再可信。回到 Fastboot 显式擦除：
 
 ```sh
 fastboot erase userdata
 fastboot reboot
 ```
 
-等 Android 首次开机完成，`adb shell getprop sys.boot_completed` 返回 `1`。
-这一步不能跳；跳过会出现 Android 反复重启或加密失败。
+等 Android 首次开机完成，`adb shell getprop sys.boot_completed` 返回 `1`。这一步不能跳过，否则 Android 会反复重启或加密失败。
 
 #### 5. 刷入 Linux
 
-Android 初始化完成后关机，按【电源键 + 音量减键】进入原厂 Fastboot，确认
-`current-slot` 仍是 `a`，然后按下面「三之二、手动刷机」的逐条命令刷入
-`boot_b`、`sunuefi_esp`、`sunuefi_root`，最后 `fastboot reboot`。
+Android 初始化完成后关机，按【电源键 + 音量减键】进入原厂 Fastboot，确认 `current-slot` 仍是 `a`，再按「三之二、手动刷机」的逐条命令刷入 `boot_b`、`sunuefi_esp`、`sunuefi_root`，最后 `fastboot reboot`。
 
 > 手动路径没有 `install-f2fs.py apply` 的自动回读校验。每刷一个分区后自己执行 `fastboot getvar partition-size:<name>` 和镜像的 `sha256sum`，把结果记进本次会话。分区写错只能靠原厂包恢复，userdata 里的数据无法恢复。
 
