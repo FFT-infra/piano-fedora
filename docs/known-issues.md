@@ -16,6 +16,14 @@
 `IRQ…: set affinity failed(-22)` 与 CMA 分配失败出现在关机 CPU 路径上，属既有
 噪声，未发现新增故障。
 
+## 刷写与读回
+
+原厂 ABL 不实现 `fastboot fetch`。主机 fastboot 37.0.0 认得这个子命令，设备
+回 `Device does not support fetch command`，宿主上留下一个 0 字节读回文件。
+`sunuefi_esp` 分区也比镜像大（537899008 对 536870912 字节），即使换了支持
+`fetch` 的引导器，整份哈希也不会等于镜像摘要。读回只能作辅助证据，刷写正确
+与否最终以启动后的 `uname -r`、`findmnt /` 和 GNOME 桌面为准。
+
 ## 双系统切换
 
 Linux → Android 的自动切换尚未通过验收。已定位两个独立原因：
