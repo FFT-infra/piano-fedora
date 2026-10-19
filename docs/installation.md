@@ -300,47 +300,34 @@ ls /usr/lib/modules/
 如果 `/usr/lib/modules/` 下没有同名目录，说明 rootfs 与 ESP 的内核不是一套，
 系统能起来但没有任何驱动。
 
-能进入 GNOME 桌面是刷写成功的最直接证据。以上读回与启动后检查必须在从原始
-GPT/UFS 重新分区的这台设备上执行；构建成功、热修复启动或历史资产启动都不能
-当作 PR 验收证据。
+能进 GNOME 桌面就是刷写成功最直接的证据。上面的读回与启动后检查要在从原始 GPT/UFS 重新分区的设备上执行；构建成功、热修复启动、历史资产启动都不能当作 PR 验收证据。
 
 ### 6. 回滚到 Android
 
-Linux 起不来时，把槽位切回 A 即可恢复 Android，**不需要**重刷任何分区：
+Linux 起不来时，把槽位切回 A 就能恢复 Android，**不需要**重刷任何分区：
 
 ```sh
 fastboot set_active a
 fastboot reboot
 ```
 
-要重新刷 Linux，先把 `fastboot getvar current-slot` 的结果与上一步一致地切回
-`b`，再重复第 4 节。`userdata` 一旦被清空无法恢复，这也是不要擦除它的原因。
+要重新刷 Linux，先把槽位按 `fastboot getvar current-slot` 的结果切回 `b`，再重复第 4 节。`userdata` 清空后无法恢复，所以不要擦除它。
 
 ---
 
 ## 四、 从原始 GPT/UFS 开始的首次安装
 
-安装材料由 `prepare-install.yml` 生成，实际操作由连接平板的 Linux 主机执行。
-Actions 不连接平板。构建成功、传输成功、Linux 启动成功分别记录。
+安装材料由 `prepare-install.yml` 生成，实际操作由连接平板的 Linux 主机执行；Actions 不接触平板。构建成功、传输成功、Linux 启动成功三项分别记录。
 
-已有 `sunuefi_root` 和 `sunuefi_esp` 时使用下面的更新入口。首次分区的 `install-f2fs.py apply` 会清空 userdata，不能用于更新。
+已经有 `sunuefi_root` 与 `sunuefi_esp` 时走下面的更新入口。`install-f2fs.py apply` 会清空 userdata，不能用它做更新。
 
-自动化的首装路径由 `install-f2fs.py plan` 与 `apply` 完成同一套分区、擦除与
-传输。命令、run id 记录、产物契约和 PR 验收门槛见[维护与验收](internals.md)。
+自动化的首装走 `install-f2fs.py plan` 与 `apply`，完成同一套分区、擦除与传输。命令、run id 记录、产物契约与 PR 验收门槛见[维护与验收](internals.md)。
 
-`device-boot/boot-request.json` 必须记录首装 Android 所在的
-`/dev/disk/by-partlabel/boot_a`，其 `app_generation` 必须与
-`deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。请求页写在
-`boot_a` 的合体 BOOT 内，Linux 启动镜像才写入 `boot_b`；不要把请求配置
-改成 `boot_b`。`root-install` 已在 `etc/piano/boot-request.json` 写入同一份
-配置，首启后也不要猜测设备名或改槽。否则 Linux 的“返回 Android”和后续
-启动请求会失败。
+`device-boot/boot-request.json` 必须记录首装 Android 所在的 `/dev/disk/by-partlabel/boot_a`，`app_generation` 要与 `deploy-bundle/PianoUEFI-product.img` 里的 APPv1 载荷一致。请求页写在 `boot_a` 的合体 BOOT 内，只有 Linux 启动镜像写 `boot_b`；不要把请求配置改到 `boot_b`。`root-install` 已在 `etc/piano/boot-request.json` 写入同一份配置，首启后也不要猜设备名或改槽，否则“返回 Android”和后续启动请求都会失败。
 
 ### 手动分区（不使用安装脚本）
 
-脚本之外的路径就是原厂 Fastboot 加 `sgdisk`。下面每一步都可以单独核对，
-适合容量与 `product.json` 不同、或者想自己控制边界的设备。**这些命令会
-清空 userdata，执行前先备份 Android 数据。**
+不脚本的路径就是原厂 Fastboot 加 `sgdisk`。每一步都能单独核对，适合容量与 `product.json` 不一致、或者想自己控制边界的设备。**这些命令会清空 userdata，执行前先备份 Android 数据。**
 
 #### 1. 读取真实 GPT
 
