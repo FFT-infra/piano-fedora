@@ -89,15 +89,18 @@ jobs:
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           if [ "$(jq -r '.auto | length' build/upstream-drift.json)" -eq 0 ]; then
             echo "白名单没有漂移，跳过"
             exit 0
           fi
-          branch="upstream-bump/$(date -u +%Y%m%d)"
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
-            echo "已有未合并的 $branch，本轮不再开新 PR"
+          branch="upstream-bump/$(date -u +%Y%m%d)-$RUN_ID"
+          open=$(gh pr list --state open --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("upstream-bump/"))] | length')
+          if [ "$open" -gt 0 ]; then
+            echo "已有未合并的上游跟进 PR，本轮不再开新的"
             exit 0
           fi
           python3 scripts/upstream-watch.py bump --pr-body build/upstream-bump.md
