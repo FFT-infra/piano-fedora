@@ -77,6 +77,18 @@ def load_manifest(rpms_dir):
     return data
 
 
+def github_api(path):
+    """gh api，失败时给出可读原因而不是裸 traceback。"""
+    try:
+        return json.loads(subprocess.check_output(["gh", "api", path], text=True,
+                                                  stderr=subprocess.PIPE))
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or b"").decode("utf-8", "replace").strip()
+        raise PublishError(f"gh api {path} failed: {detail or error.returncode}") from error
+    except (OSError, ValueError) as error:
+        raise PublishError(f"gh api {path} failed: {error}") from error
+
+
 def verify_run(run_id):
     """只接受 workflow_id 是 host-check 的成功 run。
 
@@ -89,10 +101,8 @@ def verify_run(run_id):
     repository = os.environ.get("GITHUB_REPOSITORY")
     if not repository:
         raise PublishError("GITHUB_REPOSITORY is required")
-    run = json.loads(subprocess.check_output(
-        ["gh", "api", f"repos/{repository}/actions/runs/{run_id}"], text=True))
-    workflow = json.loads(subprocess.check_output(
-        ["gh", "api", f"repos/{repository}/actions/workflows/host-check.yml"], text=True))
+    run = github_api(f"repos/{repository}/actions/runs/{run_id}")
+    workflow = github_api(f"repos/{repository}/actions/workflows/host-check.yml")
     if run.get("workflow_id") != workflow.get("id"):
         raise PublishError(f"run {run_id} is not a host-check run")
     if (run.get("status"), run.get("conclusion")) != ("completed", "success"):

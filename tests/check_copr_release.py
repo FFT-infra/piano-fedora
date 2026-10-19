@@ -118,7 +118,7 @@ def test_run_id_validation(module, monkeypatch):
     monkeypatch.setenv("GITHUB_REPOSITORY", "FFT-infra/piano-fedora")
     expect_error(module, lambda: module.verify_run("not-a-run"), "invalid run id")
 
-    def fake_check_output(args, text=True):
+    def fake_check_output(args, text=True, **kwargs):
         if args[-1].endswith("host-check.yml"):
             return json.dumps({"id": 42})
         return json.dumps({"workflow_id": 7, "status": "completed", "conclusion": "success"})
@@ -130,7 +130,7 @@ def test_run_id_validation(module, monkeypatch):
 def test_failed_run_rejected(module, monkeypatch):
     monkeypatch.setenv("GITHUB_REPOSITORY", "FFT-infra/piano-fedora")
 
-    def fake_check_output(args, text=True):
+    def fake_check_output(args, text=True, **kwargs):
         if args[-1].endswith("host-check.yml"):
             return json.dumps({"id": 42})
         return json.dumps({"workflow_id": 42, "status": "completed", "conclusion": "failure"})
