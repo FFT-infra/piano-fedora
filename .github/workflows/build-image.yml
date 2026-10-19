@@ -179,6 +179,7 @@ jobs:
           # rpm queries and the SELinux/config reads.
           root = Path(sys.argv[1]).resolve()
           record = json.loads((root.parent / "clean-manifest.json").read_text())
+          ROOT = os.environ["GITHUB_WORKSPACE"]
           assert record["status"] == "BUILT_AND_AUDITED"
           assert record["audit"]["audit_passed"] is True
           local = record.get("local_inputs", {})
@@ -211,9 +212,20 @@ jobs:
           # print the database state so an empty read is diagnosable.
           db_dir = root / "usr/lib/sysimage/rpm"
           print("rpmdb:", sorted(p.name for p in db_dir.iterdir())[:8] if db_dir.is_dir() else "missing")
-          installed = subprocess.check_output(
-              ["sudo", "rpm", "--root", str(root), "-qa"],
-              text=True, stderr=subprocess.STDOUT).splitlines()
+          # The runner is Ubuntu, whose rpm (4.18) cannot read the rpm 6
+          # sqlite database Fedora 44 ships: `rpm --root ... -qa` returns no
+          # packages and exits 0. Query through the Fedora image instead, the
+          # same way build-rootfs assembles the tree.
+          def fedora_rpm(*args):
+              command = [
+                  "sudo", "podman", "run", "--rm",
+                  "-v", f"{root.parent}:/rootfs", "-v", f"{ROOT}:/workspace",
+                  "-w", "/workspace", "--entrypoint", "/usr/bin/rpm",
+                  "registry.fedoraproject.org/fedora:44", "--root", "/rootfs/rootfs", *args,
+              ]
+              return subprocess.check_output(command, text=True, stderr=subprocess.STDOUT).splitlines()
+
+          installed = fedora_rpm("-qa")
           print("rpm -qa count:", len(installed))
           names = {line.rsplit("-", 2)[0] for line in installed}
           required = {
@@ -225,9 +237,7 @@ jobs:
           }
           missing = sorted(required - names)
           assert not missing, f"rootfs lacks release packages: {missing}"
-          owner = subprocess.check_output(
-              ["sudo", "rpm", "--root", str(root), "-qf",
-               f"/usr/lib/modules/{releases[0]}/modules.dep"], text=True).strip()
+          owner = fedora_rpm("-qf", f"/usr/lib/modules/{releases[0]}/modules.dep")[0].strip()
           assert owner.rsplit("-", 2)[0] == "kernel-piano", owner
           print("OK: rootfs was assembled in one audited installroot and "
                 "kernel-piano owns the module tree")
@@ -238,18 +248,31 @@ jobs:
           set -euo pipefail
           root=build/device-root/rootfs
           python3 - "$root" <<'PY'
-          import json, subprocess, sys
+          import json, os, subprocess, sys
           from pathlib import Path
           # rpm refuses a relative --root ("arguments to --root (-r) must
           # begin with a /"). Resolve once and use the absolute path for both
           # rpm queries and the SELinux/config reads.
           root = Path(sys.argv[1]).resolve()
+          ROOT = os.environ["GITHUB_WORKSPACE"]
           record = json.loads((root.parent / "clean-manifest.json").read_text())
           audit = record["audit"]
           assert record["status"] == "BUILT_AND_AUDITED"
           assert audit["audit_passed"] is True
-          installed = subprocess.check_output(
-              ["sudo", "rpm", "--root", str(root), "-qa"], text=True).splitlines()
+          # The runner is Ubuntu, whose rpm (4.18) cannot read the rpm 6
+          # sqlite database Fedora 44 ships: `rpm --root ... -qa` returns no
+          # packages and exits 0. Query through the Fedora image instead, the
+          # same way build-rootfs assembles the tree.
+          def fedora_rpm(*args):
+              command = [
+                  "sudo", "podman", "run", "--rm",
+                  "-v", f"{root.parent}:/rootfs", "-v", f"{ROOT}:/workspace",
+                  "-w", "/workspace", "--entrypoint", "/usr/bin/rpm",
+                  "registry.fedoraproject.org/fedora:44", "--root", "/rootfs/rootfs", *args,
+              ]
+              return subprocess.check_output(command, text=True, stderr=subprocess.STDOUT).splitlines()
+
+          installed = fedora_rpm("-qa")
           names = {line.rsplit("-", 2)[0] for line in installed}
           for package in ("dbus-daemon", "systemd-pam"):
               assert package in names, package
