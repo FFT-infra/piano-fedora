@@ -1,0 +1,145 @@
+name: publish-copr
+
+# Publish the user-space RPMs from one exact host-check run to Fedora COPR.
+# COPR rebuilds them from the SRPMs the matrix produced, so the published
+# repository is reproducible from source rather than a binary upload. This
+# workflow never touches a device.
+on:
+  workflow_dispatch:
+    inputs:
+      rpms_run_id:
+        description: "Successful host-check run that produced the piano-rpms artifact"
+        required: true
+        default: ""
+      kernel_run_id:
+        description: "Expected build-kernel run bound in the matrix manifest"
+        required: true
+        default: "38777633742"
+      project:
+        description: "COPR project (owner/name)"
+        required: true
+        default: "fft-infra/piano-fedora"
+      execute:
+        description: "false = validate only (dry-run); true = upload and wait for builds"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    if: ${{ !inputs.execute }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the exact RPM matrix run
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RPMS_RUN: ${{ inputs.rpms_run_id }}
+        run: |
+          set -euo pipefail
+          test -n "$RPMS_RUN"
+          python3 scripts/resolve-artifact-run.py \
+            --workflow host-check.yml \
+            --artifact piano-rpms \
+            --run-id "$RPMS_RUN" \
+            --output-key rpms_run
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-rpms
+          path: build/in/piano-rpms
+          run-id: ${{ steps.source.outputs.rpms_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate the artifact without publishing
+        run: |
+          set -euo pipefail
+          python3 scripts/publish-copr.py \
+            --run-id "${{ steps.source.outputs.rpms_run }}" \
+            --kernel-run-id "${{ inputs.kernel_run_id }}" \
+            --project "${{ inputs.project }}" \
+            --rpms build/in/piano-rpms \
+            --record build/copr-publication.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: copr-publication
+          path: build/copr-publication.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    if: ${{ inputs.execute }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the exact RPM matrix run
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RPMS_RUN: ${{ inputs.rpms_run_id }}
+        run: |
+          set -euo pipefail
+          test -n "$RPMS_RUN"
+          python3 scripts/resolve-artifact-run.py \
+            --workflow host-check.yml \
+            --artifact piano-rpms \
+            --run-id "$RPMS_RUN" \
+            --output-key rpms_run
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-rpms
+          path: build/in/piano-rpms
+          run-id: ${{ steps.source.outputs.rpms_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Require COPR credentials
+        env:
+          COPR_LOGIN: ${{ secrets.COPR_LOGIN }}
+          COPR_TOKEN: ${{ secrets.COPR_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Missing secrets must fail loudly here rather than half-publishing.
+          test -n "$COPR_LOGIN" || { echo "COPR_LOGIN is not configured" >&2; exit 2; }
+          test -n "$COPR_TOKEN" || { echo "COPR_TOKEN is not configured" >&2; exit 2; }
+
+      - name: Install copr-cli
+        run: |
+          set -euo pipefail
+          python3 -m venv build/copr-venv
+          build/copr-venv/bin/pip install --quiet --disable-pip-version-check \
+            "copr-cli==2.4"
+          build/copr-venv/bin/copr-cli --version
+
+      - name: Publish the exact matrix to COPR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COPR_LOGIN: ${{ secrets.COPR_LOGIN }}
+          COPR_TOKEN: ${{ secrets.COPR_TOKEN }}
+          COPR_CLI: build/copr-venv/bin/copr-cli
+        run: |
+          set -euo pipefail
+          python3 scripts/publish-copr.py \
+            --run-id "${{ steps.source.outputs.rpms_run }}" \
+            --kernel-run-id "${{ inputs.kernel_run_id }}" \
+            --project "${{ inputs.project }}" \
+            --rpms build/in/piano-rpms \
+            --record build/copr-publication.json \
+            --execute
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: copr-publication
+          path: build/copr-publication.json
+          if-no-files-found: error
+          retention-days: 30

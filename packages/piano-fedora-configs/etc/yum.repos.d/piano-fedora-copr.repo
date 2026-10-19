@@ -1,0 +1,14 @@
+[copr:copr.fedorainfracloud.org:fft-infra:piano-fedora]
+name=Copr repo for piano-fedora (Xiaomi Pad 8 Pro) - $basearch
+baseurl=https://download.copr.fedorainfracloud.org/results/fft-infra/piano-fedora/fedora-$releasever-$basearch/
+type=rpm-md
+skip_if_unavailable=True
+gpgcheck=1
+gpgkey=https://download.copr.fedorainfracloud.org/results/fft-infra/piano-fedora/pubkey.gpg
+repo_gpgcheck=0
+enabled=1
+# kernel-piano is published to this repository for auditing, but a user-space
+# DNF update cannot replace the Image SunUEFI boots from the ESP. Installing it
+# would desync the running kernel from /usr/lib/modules and from the ESP, so it
+# is excluded by default. Kernel updates ship in the release bundle.
+exclude=kernel-piano*

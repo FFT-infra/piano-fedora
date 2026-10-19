@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        4%{?dist}
+Release:        5%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora-test
@@ -63,6 +63,7 @@ chmod 0755 %{buildroot}%{_bindir}/* %{buildroot}%{_libexecdir}/*
 chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || true
 
 %files
+%config(noreplace) %{_sysconfdir}/yum.repos.d/piano-fedora-copr.repo
 %config(noreplace) %{_sysconfdir}/systemd/system/qbootctl.service.d/piano.conf
 %config(noreplace) %{_sysconfdir}/systemd/sleep.conf.d/piano.conf
 %config(noreplace) %{_sysconfdir}/modules-load.d/piano-bwmon.conf
@@ -127,6 +128,9 @@ systemd-tmpfiles --create %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf %{_p
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service
 
 %changelog
+* Mon Oct 19 2026 FFT-infra <dev@piano.invalid> - 0.1.0-5
+- Ship the COPR repository definition, with kernel-piano excluded from upgrades
+
 * Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 0.1.0-4
 - Package piano-ram-hardware-prepare, DMA route/context verifiers, and debug stage helpers into piano-fedora-configs
 

@@ -148,7 +148,8 @@ jobs:
                 systemd-rpm-macros json-devel glib2-devel \
                 libqmi-devel libmbim-devel protobuf-c-devel \
                 protobuf-c-compiler protobuf-compiler python3-devel \
-                vala libva-devel libdrm-devel pkgconf-pkg-config
+                vala libva-devel libdrm-devel pkgconf-pkg-config \
+                mesa-libEGL-devel mesa-libGLES-devel mesa-libgbm-devel
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory /workspace/build/sources/sunuefi
               export KERNEL_PAYLOAD=/workspace/build/kernel
