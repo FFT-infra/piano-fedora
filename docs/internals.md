@@ -1,17 +1,12 @@
 # 维护与验收
 
-这一页面向维护者：流水线从哪进入、产物之间怎么绑定、run id 怎么传、PR 什么时候
-算设备验收通过。只想装系统的读者看[安装指南](installation.md)。
+本页面向维护者：流水线从哪进入，产物之间怎么绑定，run id 怎么传，PR 什么时候算设备验收通过。只装系统的读者看[安装指南](installation.md)。
 
 上游 pin 与跟进规则见[上游跟踪](upstream.md)，产物定义见[部署产物](artifacts.md)。
 
 ## 流水线入口
 
-PR 分支里的 workflow 不等于 Actions 里可启动的入口。GitHub 只为默认分支
-`main` 上已注册的 workflow 提供 `workflow_dispatch`；只在 PR 分支新增的
-`build-piano-rpms.yml` 在分支状态下查不到 workflow_id。发布链因此统一从
-已经注册的 `host-check` 启动 RPM 矩阵复用作，再由 `build-rootfs` 按
-`host-check.yml` 解析同一次 run 的 `piano-rpms` artifact。
+PR 分支里的 workflow 不等于 Actions 里能启动的入口。GitHub 只给默认分支 `main` 上已注册的 workflow 提供 `workflow_dispatch`；只在 PR 分支新增的 `build-piano-rpms.yml` 在分支状态下查不到 workflow_id。所以发布链统一从已注册的 `host-check` 启动 RPM 矩阵复用作，再由 `build-rootfs` 按 `host-check.yml` 解析同一次 run 的 `piano-rpms` artifact。
 
 ```text
 host-check (build_piano_rpms=true, kernel_run_id=...)
@@ -32,10 +27,7 @@ build-bundle
 
 ## Actions 材料
 
-手动运行 `prepare-install`，选择完整 deploy-bundle 的 run、首装固定为
-`android_slot=_a`。Linux 容量留空时使用 `product.json`。
-这一阶段不再需要公钥：SSH 公钥在刷写时用 `--ssh-key` 注入，私钥和公钥都不进
-Actions。三个 artifact 分别为：
+手动运行 `prepare-install`，选择完整 deploy-bundle 的 run，首装固定 `android_slot=_a`。Linux 容量留空时用 `product.json`。这一步不需要公钥：SSH 公钥在刷写时用 `--ssh-key` 注入，公钥和私钥都不进 Actions。三个 artifact 是：
 
 | artifact | 内容 |
 | --- | --- |
@@ -43,19 +35,13 @@ Actions。三个 artifact 分别为：
 | boot-tools | 同核心的 selector、Android 静态原生工具、产品固件、自包含安装入口 |
 | host-boot-tool | 静态宿主 BOOT 重打包工具及来源记录 |
 
-boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。
-安装入口位于 boot-tools 的 `installer/scripts`；其中的锁定上游代码带源码清单，
-不需要在设备主机重新编译。普通发行版主机需要 Python 3、adb、fastboot；
-BOOT 准备使用 Actions 提供的宿主工具。
+boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。安装入口在 boot-tools 的 `installer/scripts`，锁定的上游代码附带源码清单，不需要在设备主机上重编译。普通发行版主机需要 Python 3、adb、fastboot；BOOT 准备用 Actions 提供的宿主工具。
 
 ## 本机 BOOT
 
-先确认当前原 BOOT 完整摘要、槽位和系统版本。`prepare-device-boot.py` 使用
-这些明确输入和同核心的 Actions 工具生成 `boot_android.img`、`boot_linux.img`
-及 `boot-request.json`。普通 Android 为默认目标。
+先确认当前原 BOOT 的完整摘要、槽位和系统版本。`prepare-device-boot.py` 用这些输入和同核心的 Actions 工具生成 `boot_android.img`、`boot_linux.img` 与 `boot-request.json`。默认目标是普通 Android。
 
-包装后恢复必须得到完整原 BOOT 的同一 SHA256。Linux 持久请求、只读预览、
-改回 Android 后的再次完整恢复都要成功。文件检查不替代真机旁路和 Recovery 验收。
+包装后恢复必须得到完整原 BOOT 的同一 SHA256。Linux 持久请求、只读预览和改回 Android 后的再次完整恢复都要成功。文件检查替代不了真机旁路和 Recovery 验收。
 
 使用 `python3 scripts/prepare-device-boot.py --help` 查看文件参数。
 原 BOOT、生成的设备 BOOT、安装记录和私钥均留在本地，不进入代码仓库。
