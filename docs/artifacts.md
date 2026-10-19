@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | UEFI 产品 | build-uefi.yml | 使用固定 SunUEFI 配方；保留原始 manifest |
 | Image、完整模块、SDK | build-kernel.yml | 内建 F2FS/SELinux/Gunyah，强制 rootfstype=f2fs；SDK 绑定同一配置和 Module.symvers |
-| Fedora 矩阵 RPM | host-check 调用的 build-piano-rpms.yml | 构建九类硬件/运行时 RPM 和匹配内核的 kernel-piano；workflow_call 复用件由已注册的 host-check 启动，artifact 仍由 piano-rpms job 产出 |
+| Fedora 矩阵 RPM | host-check 调用的 build-piano-rpms.yml | 构建九类硬件/运行时 RPM 和匹配内核的 kernel-piano；同一 job 产出对应 SRPM，供 COPR 从源码重建；workflow_call 复用件由已注册的 host-check 启动，artifact 仍由 piano-rpms job 产出 |
 | Fedora 基础树 | build-rootfs.yml | 原生 DNF installroot，记录容器 ID 和实际 RPM，排除发行版 kernel |
 | A830v1 Mesa RPM | build-mesa.yml | 固定 Fedora 源 RPM 与 piano 补丁，复用 Fedora 配方；从实际 RPM 核对 Gallium/Turnip 芯片表 |
 | FFmpeg RPM | host-check 调用的 build-ffmpeg.yml | 固定 Fedora 源 RPM，沿用 SunUEFI BSP 补丁启用 H.264/HEVC v4l2m2m 解码器；build-ffmpeg 是 workflow_call 复用件，实际 run 的 workflow_id 是 host-check；原生构建及设备解码仍待验证 |
@@ -55,3 +55,7 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 2026-10-10 的完整 Actions 构建及下载后的本地校验已通过，包括组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷和 boot.img 组件。该段记录 2026-10-10 的主机构建验收；后续 Fedora 已在本机 F2FS 启动，最新内核、媒体和运行时证据见[设备验收](device-acceptance-20261015.md)。首次分区、恢复材料及 Android 往返仍需各自的设备证明。
 
 上游安装器保留 ext4 合同；本仓库新增独立的 F2FS 初装入口和本机 BOOT 文件准备入口。工具路径、Actions 材料、破坏性操作门禁和真机验收边界见[首次安装](installation.md)。新增实现的实际构建、包装和设备验收状态分别以对应 manifest 与会话记录为准。
+
+## COPR 软件源
+
+`piano-rpms` artifact 同时包含二进制 RPM、`srpms/` 和 `piano-rpms-manifest.json`。`publish-copr.yml` 只接受一次精确的 host-check run，校验每个 RPM 与 SRPM 的大小和 SHA256，再交给 COPR 从 SRPM 重建用户态包。内核包会发布进仓库但被 `.repo` 的 `exclude=kernel-piano*` 排除。流程、启用与回滚见[COPR 软件源](copr-repository.md)。
