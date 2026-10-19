@@ -2,7 +2,7 @@
 """编译 SunUEFI 里真正要发货的 Gunyah RM 交接代码，跑接受与拒绝路径。
 
 这里不做字节级 DTB 对照：那需要对真实 libfdt 跑真实抓取的 payload DTB 与
-继承 FDT 对照，证据在宿主侧工作目录（见 docs/device-acceptance-20261015.md）。
+继承 FDT 对照，主机侧的结论记在 docs/virtualization.md。
 本测试负责的是策略本身——把 uefi-live-memory + uefi-live-rm 之后的原文抽出来，
 配一个语义等价的假 FdtLib 编译，确认只有「恰好一个匹配节点 + 16 字节非零
 capability 对」才会改写目标树的 reg，其余输入一律保留原值。
