@@ -49,6 +49,11 @@ with tempfile.TemporaryDirectory() as tmp:
     alias.symlink_to("v4l2_drv_video.so")
     proof = {"extras": extras, "session_fixes": session}
     m.verify_runtime_extras(root, proof)
+    # The clean matrix owns these files through separate specs. A manifest from
+    # that path has no legacy extras proof and is accepted only as an explicit
+    # absence, not as a partially populated payload.
+    m.verify_runtime_extras(root, {})
+
     def reject(bad):
         try:
             m.verify_runtime_extras(root, bad)

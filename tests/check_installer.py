@@ -65,6 +65,14 @@ def main():
         upstream = SimpleNamespace(_new_header=new_header, parse_gpt=lambda *unused: gpt,
             LINUX_TYPE=uuid.UUID("0fc63daf-8483-4772-8e79-3d69d8477de4").bytes_le,
             ESP_TYPE=uuid.UUID("c12a7328-f81f-11d2-ba4b-00a0c93ec93b").bytes_le)
+    installer.require_install_slot("_a", existing=False)
+    installer.require_install_slot("_b", existing=True)
+    try:
+        installer.require_install_slot("_b", existing=False)
+    except ValueError as error:
+        assert "first install requires Android Slot A" in str(error), error
+    else:
+        raise AssertionError("first install accepted Android Slot B")
     mbr = bytes(510) + b"\x55\xaa" + bytes(3584)
     plan = installer.partition_plan(gpt)
     _, changed, original = installer.new_gpt(upstream, gpt, plan, mbr)
@@ -86,7 +94,7 @@ def main():
         pass
     else:
         raise AssertionError("modified plan was accepted")
-    print("OK: first GPT byte preservation, CRC, half capacity, deterministic new entries and stale-plan rejection" +
+    print("OK: first GPT byte preservation, CRC, half capacity, Slot A contract, deterministic new entries and stale-plan rejection" +
           ("; actual pinned parser exercised" if args.sunuefi else "; byte oracle exercised"))
 
 

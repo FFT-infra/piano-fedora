@@ -1,0 +1,11 @@
+[Unit]
+Description=Piano clock floor from the last saved time
+DefaultDependencies=no
+After=systemd-remount-fs.service
+Before=sysinit.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/piano-clock-restore
+[Install]
+WantedBy=sysinit.target

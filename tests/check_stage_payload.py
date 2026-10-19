@@ -239,9 +239,25 @@ def main():
                   "must not claim device testing")
 
         # 同一个 release 重复安装：拒绝。
-        check(run("--rootfs", str(good), "--kernel", str(kernel),
-                  "--sunuefi", str(SUNUEFI)).returncode == 2,
-              "re-staging the same release should be rejected")
+        repeated = run("--rootfs", str(good), "--kernel", str(kernel),
+                       "--sunuefi", str(SUNUEFI))
+        check(repeated.returncode == 0,
+              f"matching existing module tree should be idempotent: {repeated.stderr.strip()}")
+        if repeated.returncode == 0:
+            check(json.loads(repeated.stdout).get("modules_status") == "matched-existing",
+                  "idempotent staging must identify the existing module tree")
+
+        # 同 release 但模块字节不同：拒绝，不能把跨 run 的内核当成本次产物。
+        drift_tree = make_rootfs(tmp / "module-drift")
+        source_modules = kernel / "modules" / "lib" / "modules" / RELEASE
+        target_modules = drift_tree / "usr/lib/modules" / RELEASE
+        shutil.copytree(source_modules, target_modules)
+        changed = next(target_modules.rglob("*.ko"))
+        changed.write_bytes(changed.read_bytes() + b"drift")
+        drift_result = run("--rootfs", str(drift_tree), "--kernel", str(kernel),
+                           "--sunuefi", str(SUNUEFI))
+        check(drift_result.returncode == 2,
+              "a same-release module tree with different bytes must be rejected")
 
         # 校验器摘要漂移：拒绝。
         tampered = tmp / "sunuefi"
@@ -262,7 +278,7 @@ def main():
         for item in failures:
             print(f"FAIL: {item}", file=sys.stderr)
         return 1
-    print("OK: rootfs payload staging, bootstrap preconditions and reject paths behave")
+    print("OK: rootfs payload staging matches the DNF module tree and rejects drift")
     return 0
 
 

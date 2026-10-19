@@ -37,19 +37,23 @@ def step_body(workflow, name):
 
 
 def check_artifact_consumed():
-    """镜像 workflow 必须解析、下载并安装 piano-fedora-ffmpeg，否则重建白做。"""
+    """RootFS 装配必须消费 piano-fedora-ffmpeg，镜像阶段只做字节核验。"""
     # build-ffmpeg.yml 是 workflow_call 复用件，未在 registry 单独注册；实际 run 的
-    # workflow_id 是 host-check。解析必须按 host-check 走，不能按未注册的 build-ffmpeg。
-    resolve = step_body(".github/workflows/build-image.yml", "Resolve successful input runs")
+    # workflow_id 是 host-check。RootFS 构建必须显式解析这个 run，不能按未注册的
+    # build-ffmpeg 求解。
+    resolve = step_body(".github/workflows/build-rootfs.yml", "Resolve the exact RPM inputs")
     assert "--workflow host-check.yml" in resolve, "the FFmpeg run is not resolved via host-check"
     assert "--workflow build-ffmpeg.yml" not in resolve, \
         "build-ffmpeg.yml is a reusable callee, not a registered workflow id"
     assert "--artifact piano-fedora-ffmpeg" in resolve, "the FFmpeg artifact name is not requested"
-    workflow = (ROOT / ".github/workflows/build-image.yml").read_text()
+    workflow = (ROOT / ".github/workflows/build-rootfs.yml").read_text()
     assert "name: piano-fedora-ffmpeg" in workflow, "the FFmpeg artifact is not downloaded"
-    install = step_body(".github/workflows/build-image.yml", "Install the native Fedora device RPMs")
-    assert "/workspace/build/ffmpeg/rpms/*.rpm" in install, \
-        "the rebuilt FFmpeg RPMs are never installed into the rootfs"
+    assemble = step_body(".github/workflows/build-rootfs.yml", "Build the audited clean rootfs")
+    assert "build/in/ffmpeg-extracted/rpms/*.rpm" in assemble, \
+        "the rebuilt FFmpeg RPMs are not copied into the single audited repository"
+    image = (ROOT / ".github/workflows/build-image.yml").read_text()
+    assert "Install the native Fedora device RPMs" not in image, \
+        "build-image still performs a second rootfs install transaction"
     finalize = step_body(".github/workflows/build-image.yml", "Finalize services and the rootfs identity")
     assert "--ffmpeg build/ffmpeg" in finalize, "the finalizer does not verify the installed FFmpeg"
 

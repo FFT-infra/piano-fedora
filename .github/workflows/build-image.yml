@@ -21,13 +21,29 @@ on:
         required: false
         default: "8192"
       kernel_run_id:
-        description: "固定内核与 SDK 的成功 run，留空解析最新"
+        description: "固定内核与 SDK 的成功 run（发布构建必填）"
         required: false
         default: ""
       runtime_run_id:
-        description: "固定设备运行时的成功 run，必须与内核摘要匹配"
+        description: "固定设备运行时的成功 run（发布构建必填）"
         required: false
         default: ""
+      rootfs_run_id:
+        description: "固定已审计 RootFS 的成功 run（发布构建必填）"
+        required: false
+        default: ""
+      mesa_run_id:
+        description: "固定 Mesa 的成功 run（发布构建必填）"
+        required: false
+        default: ""
+      ffmpeg_run_id:
+        description: "固定 FFmpeg 的成功 run（发布构建必填）"
+        required: false
+        default: ""
+      release_mode:
+        description: "发布构建必须为 true，禁止自动选择最新 artifact"
+        required: false
+        default: "false"
 
 permissions:
   contents: read
@@ -59,6 +75,10 @@ jobs:
           RUNTIME_ARTIFACT: ${{ inputs.runtime_artifact }}
           KERNEL_RUN: ${{ inputs.kernel_run_id }}
           RUNTIME_RUN: ${{ inputs.runtime_run_id }}
+          ROOTFS_RUN: ${{ inputs.rootfs_run_id }}
+          MESA_RUN: ${{ inputs.mesa_run_id }}
+          FFMPEG_RUN: ${{ inputs.ffmpeg_run_id }}
+          RELEASE_MODE: ${{ inputs.release_mode }}
         run: |
           set -euo pipefail
           # 正式产物统一包含 Gunyah；旧实验产物不进入新交付链。
@@ -73,16 +93,27 @@ jobs:
             exit 2
           }
           echo "kernel_tier=$KERNEL_TIER" >> "$GITHUB_OUTPUT"
-          python3 scripts/resolve-artifact-run.py --workflow build-rootfs.yml --artifact "$ROOTFS_ARTIFACT" --output-key rootfs_run
-          kernel_args=(); runtime_args=()
+          if [ "$RELEASE_MODE" = true ]; then
+            for pair in "rootfs_run_id:$ROOTFS_RUN" "kernel_run_id:$KERNEL_RUN" \
+                        "runtime_run_id:$RUNTIME_RUN" "mesa_run_id:$MESA_RUN" \
+                        "ffmpeg_run_id:$FFMPEG_RUN"; do
+              name=${pair%%:*}; value=${pair#*:}
+              test -n "$value" || { echo "$name is required in release_mode" >&2; exit 2; }
+            done
+          fi
+          rootfs_args=(); kernel_args=(); runtime_args=(); mesa_args=(); ffmpeg_args=()
+          if [ -n "$ROOTFS_RUN" ]; then rootfs_args+=(--run-id "$ROOTFS_RUN"); fi
           if [ -n "$KERNEL_RUN" ]; then kernel_args+=(--run-id "$KERNEL_RUN"); fi
           if [ -n "$RUNTIME_RUN" ]; then runtime_args+=(--run-id "$RUNTIME_RUN"); fi
+          if [ -n "$MESA_RUN" ]; then mesa_args+=(--run-id "$MESA_RUN"); fi
+          if [ -n "$FFMPEG_RUN" ]; then ffmpeg_args+=(--run-id "$FFMPEG_RUN"); fi
+          python3 scripts/resolve-artifact-run.py --workflow build-rootfs.yml --artifact "$ROOTFS_ARTIFACT" --output-key rootfs_run "${rootfs_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml "${kernel_artifacts[@]}" --output-key kernel_run "${kernel_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-device-runtime.yml --artifact "$RUNTIME_ARTIFACT" --output-key runtime_run "${runtime_args[@]}"
-          python3 scripts/resolve-artifact-run.py --workflow build-mesa.yml --artifact piano-fedora-mesa --output-key mesa_run
+          python3 scripts/resolve-artifact-run.py --workflow build-mesa.yml --artifact piano-fedora-mesa --output-key mesa_run "${mesa_args[@]}"
           # build-ffmpeg.yml 是 workflow_call 复用件，未单独注册；实际 run 的 workflow_id
           # 是 host-check。按已注册的 host-check 解析，artifact 名仍是 piano-fedora-ffmpeg。
-          python3 scripts/resolve-artifact-run.py --workflow host-check.yml --artifact piano-fedora-ffmpeg --output-key ffmpeg_run
+          python3 scripts/resolve-artifact-run.py --workflow host-check.yml --artifact piano-fedora-ffmpeg --output-key ffmpeg_run "${ffmpeg_args[@]}"
 
       - uses: actions/download-artifact@v4
         with:
@@ -134,6 +165,86 @@ jobs:
           tar -I zstd -xf build/in/ffmpeg/*.tar.zst -C build/ffmpeg
           python3 scripts/checkout-sources.py --output build/sources --mode boot
 
+      - name: Require a fully assembled release rootfs
+        env:
+          KERNEL_RUN: ${{ steps.source.outputs.kernel_run }}
+        run: |
+          set -euo pipefail
+          root=build/device-root/rootfs
+          python3 - "$root" <<'PY'
+          import json, os, subprocess, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          record = json.loads((root.parent / "clean-manifest.json").read_text())
+          assert record["status"] == "BUILT_AND_AUDITED"
+          assert record["audit"]["audit_passed"] is True
+          local = record.get("local_inputs", {})
+          kernel = json.loads(Path("build/kernel/manifest.json").read_text())
+          assert local.get("kernel_run") == os.environ["KERNEL_RUN"], (
+              "rootfs kernel run differs from the build-image kernel run: "
+              f"{local.get('kernel_run')!r} != {os.environ['KERNEL_RUN']!r}")
+          assert record["audit"]["kernel_release"] == kernel["kernel_release"], (
+              "rootfs kernel release differs from the sealed kernel: "
+              f"{record['audit']['kernel_release']!r} != {kernel['kernel_release']!r}")
+          assert record["audit"]["selinux_labels"] > 0
+          assert not record["audit"]["selinux_problems"]
+          config = (root / "etc/selinux/config").read_text()
+          mode = next(line.split("=", 1)[1] for line in config.splitlines()
+                      if line.startswith("SELINUX="))
+          assert mode == "enforcing"
+          assert not (root / ".autorelabel").exists()
+          modules = root / "usr/lib/modules"
+          releases = sorted(p.name for p in modules.iterdir() if p.is_dir()) if modules.is_dir() else []
+          assert len(releases) == 1, (
+              "the clean rootfs must carry exactly the kernel-piano module "
+              f"tree; found {releases}")
+          assert not any(p.is_symlink() for p in modules.iterdir()), (
+              "the clean rootfs module root must not contain aliases")
+          assert (modules / releases[0] / "modules.dep").is_file(), (
+              "the clean rootfs kernel-piano tree lacks modules.dep")
+          installed = subprocess.check_output(
+              ["rpm", "--root", str(root), "-qa"], text=True).splitlines()
+          names = {line.rsplit("-", 2)[0] for line in installed}
+          required = {
+              "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
+              "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
+              "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
+              "piano-runtime", "librevm", "piano-crosvm", "libva-v4l2-iris",
+              "mesa-dri-drivers", "ffmpeg-free", "kernel-piano",
+          }
+          missing = sorted(required - names)
+          assert not missing, f"rootfs lacks release packages: {missing}"
+          owner = subprocess.check_output(
+              ["rpm", "--root", str(root), "-qf",
+               f"/usr/lib/modules/{releases[0]}/modules.dep"], text=True).strip()
+          assert owner.rsplit("-", 2)[0] == "kernel-piano", owner
+          print("OK: rootfs was assembled in one audited installroot and "
+                "kernel-piano owns the module tree")
+          PY
+
+      - name: Reject a base rootfs without the GNOME session bus
+        run: |
+          set -euo pipefail
+          root=build/device-root/rootfs
+          python3 - "$root" <<'PY'
+          import json, subprocess, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          record = json.loads((root.parent / "clean-manifest.json").read_text())
+          audit = record["audit"]
+          assert record["status"] == "BUILT_AND_AUDITED"
+          assert audit["audit_passed"] is True
+          installed = subprocess.check_output(
+              ["rpm", "--root", str(root), "-qa"], text=True).splitlines()
+          names = {line.rsplit("-", 2)[0] for line in installed}
+          for package in ("dbus-daemon", "systemd-pam"):
+              assert package in names, package
+          for path in ("usr/bin/dbus-daemon", "usr/bin/dbus-run-session",
+                       "usr/lib64/security/pam_systemd.so"):
+              assert (root / path).exists(), path
+          print("OK: base rootfs carries the GNOME session bus")
+          PY
+
       - name: Validate and stage the sealed kernel payload
         run: |
           set -euo pipefail
@@ -152,22 +263,6 @@ jobs:
           PY
           sudo python3 scripts/stage-rootfs-payload.py --rootfs build/device-root/rootfs --kernel build/kernel --sunuefi build/sources/sunuefi
           sudo python3 scripts/apply-rootfs-policy.py --rootfs build/device-root/rootfs
-
-      - name: Install the native Fedora device RPMs
-        env:
-          PIANO_SCRATCH: ${{ github.workspace }}/build/image-tmp
-        run: |
-          set -euo pipefail
-          release=$(python3 -c 'import json; print(json.load(open("product.json"))["target"]["releasever"])')
-          sudo podman run --rm --env PIANO_RELEASE="$release" \
-            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
-            "registry.fedoraproject.org/fedora:$release" bash -euo pipefail -c '
-              dnf -y --installroot=/workspace/build/device-root/rootfs --releasever="$PIANO_RELEASE" --use-host-config \
-                --setopt=install_weak_deps=False --setopt=localpkg_gpgcheck=0 install \
-                /workspace/build/runtime/rpms/*.rpm /workspace/build/mesa/rpms/*.rpm \
-                /workspace/build/ffmpeg/rpms/*.rpm \
-                erofs-utils device-mapper python3-gobject
-            '
 
       - name: Finalize services and the rootfs identity
         run: |

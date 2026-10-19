@@ -1,0 +1,7 @@
+[Unit]
+Description=Periodic clock save
+[Timer]
+OnCalendar=hourly
+Persistent=false
+[Install]
+WantedBy=timers.target

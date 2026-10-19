@@ -1,0 +1,9 @@
+#!/bin/sh
+# Persist the current time for piano-clock-restore. Never persist a bogus past
+# time: a device that boots in 1970 must not overwrite a good stamp.
+set -eu
+now=$(date -u +%s)
+[ "$now" -gt 1735689600 ] || exit 0
+mkdir -p /var/lib/piano-clock
+printf '%s\n' "$now" > /var/lib/piano-clock/.last.tmp
+mv /var/lib/piano-clock/.last.tmp /var/lib/piano-clock/last

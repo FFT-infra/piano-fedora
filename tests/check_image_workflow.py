@@ -62,9 +62,9 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     write = lambda name, value: (root / name).write_text(json.dumps(value))
     raw = b"verified fixture raw bytes"
-    for name in ("esp.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst"):
+    for name in ("sunuefi_esp.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst"):
         (root / name).write_bytes(b"fixture")
-    (root / "boot.img").write_bytes(b"ANDROID!fixture")
+    (root / "boot_sunuefi.img").write_bytes(b"ANDROID!fixture")
     write("kernel-manifest.json", {"kernel_release": "fixture"})
     kernel = digest(root / "kernel-manifest.json")
     identity = {"kernel_release": "fixture", "kernel_manifest_sha256": kernel}
@@ -77,10 +77,18 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
                                                 "hevc_v4l2m2m": " V..... hevc_v4l2m2m"}})
     write("rootfs-manifest.json", {**identity, **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
                                                 for name in ("runtime", "mesa", "ffmpeg")}})
+    # esp-manifest.json is produced upstream and keeps its internal esp.img /
+    # boot.img keys; verify-bundle maps them to the release asset names.
     write("esp-manifest.json", {"kernel_manifest_sha256": kernel,
           "esp_files": ["/EFI/Piano/stable/" + name for name in ("Image", "board.dtb", "initramfs", "boot.img")],
-          "files": {name: {"sha256": digest(root / name), "bytes": (root / name).stat().st_size}
-                    for name in ("esp.img", "boot.img", "PianoUEFI-product.img")}})
+          "files": {
+              "esp.img": {"sha256": digest(root / "sunuefi_esp.img"),
+                           "bytes": (root / "sunuefi_esp.img").stat().st_size},
+              "boot.img": {"sha256": digest(root / "boot_sunuefi.img"),
+                            "bytes": (root / "boot_sunuefi.img").stat().st_size},
+              "PianoUEFI-product.img": {"sha256": digest(root / "PianoUEFI-product.img"),
+                                         "bytes": (root / "PianoUEFI-product.img").stat().st_size},
+          }})
     proof = {key: True for key in ("file_content_checked", "numeric_owner_checked", "mode_checked", "symlink_targets_checked",
                                    "hardlink_groups_checked", "mtime_checked", "xattr_checked", "fsck_read_only", "fsck_ran_unmounted")}
     proof.update(fsck_exit=0, fsck_changed_image=False, xattr_read_errors_ignored=False, selinux_labels=1)
@@ -177,19 +185,6 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     (root / "ffmpeg-manifest.json").write_bytes(saved)
 
 
-def install_step():
-    lines = (ROOT / ".github/workflows/build-image.yml").read_text().splitlines()
-    start = lines.index("      - name: Install the native Fedora device RPMs")
-    run = lines.index("        run: |", start) + 1
-    body = []
-    for line in lines[run:]:
-        if line.strip() and not line.startswith("          "):
-            break
-        body.append(line[10:])
-    assert body, "RPM installation step is empty"
-    return "\n".join(body)
-
-
 def step_body(workflow, name):
     """取出某个 step 的 run 脚本体，缩进去掉一层。env 块在 run 之前，不混入。"""
     lines = (ROOT / workflow).read_text().splitlines()
@@ -256,7 +251,8 @@ def resolve_step_env(root, workflows, artifacts, runs):
     return env, output
 
 
-def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_run=""):
+def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_run="",
+                rootfs_run="", mesa_run="", ffmpeg_run="", release_mode="false"):
     workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
                  "build-mesa.yml", "host-check.yml"]
     artifacts = ["rootfs-44-gnome", "kernel-release-7.2.9", "kernel-sdk-7.2.9",
@@ -266,7 +262,9 @@ def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_
     env, output = resolve_step_env(root, workflows, artifacts, runs)
     env.update(ROOTFS_ARTIFACT="rootfs-44-gnome", KERNEL_ARTIFACT=kernel_artifact,
                RUNTIME_ARTIFACT=runtime_artifact,
-               KERNEL_RUN=kernel_run, RUNTIME_RUN=runtime_run)
+               KERNEL_RUN=kernel_run, RUNTIME_RUN=runtime_run,
+               ROOTFS_RUN=rootfs_run, MESA_RUN=mesa_run,
+               FFMPEG_RUN=ffmpeg_run, RELEASE_MODE=release_mode)
     result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
                              step_body(".github/workflows/build-image.yml", "Resolve successful input runs")],
                             cwd=ROOT, env=env, capture_output=True, text=True)
@@ -360,6 +358,39 @@ def check_bundle_kernel_resolution(root):
     assert result.returncode != 0, "bundle accepted an out-of-allowlist kernel_artifact"
 
 
+def check_bundle_image_binding(root):
+    """The image manifest must identify the exact build-image run being bundled."""
+    root.mkdir(parents=True)
+    image = root / "build/in/image"
+    image.mkdir(parents=True)
+    record = {
+        "kernel_run": "7001",
+        "rootfs_run": "7002",
+        "runtime_run": "7003",
+        "mesa_run": "7004",
+        "ffmpeg_run": "7005",
+        "image_run": "7100",
+        "image_source_commit": "1" * 40,
+    }
+    (image / "source-runs.json").write_text(json.dumps(record))
+    output = root / "github-output"
+    output.write_text("")
+    env = {**os.environ, "ROOT_RUN": "7100", "GITHUB_OUTPUT": str(output)}
+    result = subprocess.run(
+        ["/bin/bash", "-euo", "pipefail", "-c",
+         step_body(".github/workflows/build-bundle.yml",
+                   "Require one integrated image source record")],
+        cwd=root, env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    env["ROOT_RUN"] = "7199"
+    result = subprocess.run(
+        ["/bin/bash", "-euo", "pipefail", "-c",
+         step_body(".github/workflows/build-bundle.yml",
+                   "Require one integrated image source record")],
+        cwd=root, env=env, capture_output=True, text=True)
+    assert result.returncode != 0, "bundle accepted an image record from another run"
+
+
 def check_kernel_unpack(root):
     """实际跑 unpack step：相邻 SDK 归档不能被 glob 解进 build/kernel。"""
     root.mkdir()
@@ -392,6 +423,62 @@ def check_kernel_unpack(root):
     assert (work / "build/kernel/KERNEL-MARKER").is_file(), "the kernel archive was not extracted"
     assert not (work / "build/kernel/SDK-MARKER").exists(), \
         "the SDK tar leaked into build/kernel (glob instead of exact archive)"
+
+
+def check_clean_rootfs_release_entry():
+    """build-rootfs must produce the audited tree, never the old base only."""
+    rootfs = (ROOT / ".github/workflows/build-rootfs.yml").read_text()
+    assert "scripts/build-clean-rootfs.py" in rootfs, (
+        "build-rootfs.yml still invokes the unaudited base-tree generator")
+    assert "scripts/build-fedora-rootfs.py" not in rootfs, (
+        "the release workflow must not use the legacy base-tree backend")
+    assert "--rpms-dir build/local-rpms" in rootfs
+    assert "piano-rpms" in rootfs
+    assert "piano_rpms_run_id" in rootfs
+    assert "clean-manifest.json" in rootfs
+    assert 'record["status"] == "BUILT_AND_AUDITED"' in rootfs
+    assert "missing_session_packages" in rootfs
+    assert "usr/bin/dbus-run-session" in rootfs
+    assert "usr/lib64/security/pam_systemd.so" in rootfs
+    assert 'os.environ["RUNTIME_RUN"]' in rootfs
+    assert 'os.environ["MESA_RUN"]' in rootfs
+    assert 'os.environ["FFMPEG_RUN"]' in rootfs
+
+    image = (ROOT / ".github/workflows/build-image.yml").read_text()
+    assert "Reject a base rootfs without the GNOME session bus" in image, (
+        "build-image must reject any rootfs that did not pass the clean audit")
+    assert 'record["status"] == "BUILT_AND_AUDITED"' in image
+    assert 'for package in ("dbus-daemon", "systemd-pam")' in image
+    assert 'record["audit"]["selinux_labels"] > 0' in image
+    assert 'assert mode == "enforcing"' in image
+    assert 'assert not (root / ".autorelabel").exists()' in image
+    assert "kernel-piano owns the module tree" in image
+    assert "the clean rootfs must carry exactly the kernel-piano module" in image
+    assert '"kernel-piano"' in image
+    assert '["rpm", "--root", str(root), "-qf",' in image
+    assert 'local.get("kernel_run") == os.environ["KERNEL_RUN"]' in image
+    assert 'record["audit"]["kernel_release"] == kernel["kernel_release"]' in image
+    assert '"kernel_run": kernel_run' in rootfs
+
+
+def check_bundle_asset_names():
+    """deploy-bundle、安装器与文档必须共用一套发布文件名。"""
+    bundle = (ROOT / ".github/workflows/build-bundle.yml").read_text()
+    verifier = (ROOT / "scripts/verify-bundle.py").read_text()
+    installer = (ROOT / "scripts/install-f2fs.py").read_text()
+    updater = (ROOT / "scripts/update-f2fs.py").read_text()
+    for name in ("sunuefi_esp.img", "boot_sunuefi.img"):
+        assert f"bundle/{name}" in bundle, f"build-bundle does not emit {name}"
+        assert name in verifier, f"verify-bundle does not require {name}"
+        assert name in installer, f"first-install installer does not read {name}"
+        assert name in (ROOT / "docs/artifacts.md").read_text(), f"artifact docs omit {name}"
+        assert name in (ROOT / "docs/installation.md").read_text(), f"install docs omit {name}"
+    assert "test ! -e bundle/esp.img" in bundle
+    assert "test ! -e bundle/boot.img" in bundle
+    assert 'bundle / "boot_sunuefi.img"' in updater
+    assert 'bundle / "sunuefi_esp.img"' in updater
+    assert 'bundle / "esp.img"' not in installer
+    assert 'bundle / "boot.img"' not in updater
 
 
 def check_uefi_sealer(root):
@@ -441,40 +528,11 @@ def main():
         check_uefi_sealer(root / "uefi-source")
         check_image_kernel_tiers(root / "tiers")
         check_bundle_kernel_resolution(root / "bundle-kernel")
+        check_bundle_image_binding(root / "bundle-image-binding")
         check_kernel_unpack(root / "unpack")
-        host, container = root / "host", root / "container"
-        host.mkdir()
-        container.mkdir()
-        # 宿主可以解析 product.json；容器只提供 bash 与 dnf。
-        (container / "bash").symlink_to("/bin/bash")
-        executable(host / "sudo", 'exec "$@"\n')
-        executable(host / "podman", '''
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        run|--rm) shift ;;
-        -v|-w) shift 2 ;;
-        --env|-e) export "$2"; shift 2 ;;
-        registry.fedoraproject.org/fedora:44) shift; break ;;
-        *) printf 'Unexpected podman argument: %s\\n' "$1" >&2; exit 2 ;;
-    esac
-done
-PATH="$PIANO_CONTAINER_PATH" exec "$@"
-''')
-        executable(container / "dnf", 'printf "%s\\n" "$@" >"$PIANO_CAPTURE"\n')
-        capture = root / "dnf-arguments"
-        env = {**os.environ, "PATH": str(host) + os.pathsep + os.environ["PATH"],
-               "PIANO_CONTAINER_PATH": str(container), "PIANO_CAPTURE": str(capture),
-               "GITHUB_WORKSPACE": str(ROOT)}
-        result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c", install_step()],
-                                cwd=ROOT, env=env, capture_output=True, text=True)
-        assert result.returncode == 0, result.stderr
-        arguments = capture.read_text().splitlines()
-        assert "--releasever=44" in arguments, arguments
-        assert "--installroot=/workspace/build/device-root/rootfs" in arguments, arguments
-        assert "install" in arguments and "/workspace/build/runtime/rpms/*.rpm" in arguments, arguments
-        assert "/workspace/build/mesa/rpms/*.rpm" in arguments, arguments
-        assert "--setopt=localpkg_gpgcheck=0" in arguments, arguments
-    print("OK: container entry, A830v1 device tables and sealed bundle identity checks")
+        check_clean_rootfs_release_entry()
+        check_bundle_asset_names()
+    print("OK: audited rootfs entry, A830v1 device tables and sealed bundle identity checks")
 
 
 if __name__ == "__main__":

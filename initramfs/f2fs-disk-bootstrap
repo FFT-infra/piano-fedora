@@ -214,6 +214,13 @@ if [ -f /etc/piano/boot-task-snapshot ]; then
     done
     [ -f /sysroot/run/piano-boot-task-snapshot.ready ] || log 'Diagnostic task snapshot could not be armed'
 fi
+# 高通看门狗：CONFIG_QCOM_WDT=m 一旦绑定就会启动硬件计时器，默认约 30 秒
+# 超时后芯片直接复位，表现为系统启动完成后跌回 UEFI。Fedora 侧没有
+# watchdog 服务为它喂狗，所以在交接前禁用。写成 rootfs 里的文件而不是
+# initramfs 里的：udev 的 hwdb 匹配在真实 root 上才会触发加载。
+mkdir -p /sysroot/etc/modprobe.d
+printf 'blacklist qcom_wdt\n' >/sysroot/etc/modprobe.d/piano-blacklist-watchdog.conf
+log 'WATCHDOG_DISABLED: qcom_wdt blacklisted before switch_root'
 exec switch_root -c /dev/console /sysroot /usr/lib/systemd/systemd \
     --log-target=kmsg --log-level=info >/sysroot/dev/kmsg 2>&1
 fail 'switch_root failed'

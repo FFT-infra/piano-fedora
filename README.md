@@ -43,10 +43,22 @@
 2. 电脑已配置好 `fastboot` 与 `adb` 命令行工具环境变量；
 3. 从 [GitHub Releases](https://github.com/FFT-infra/piano-fedora-test/releases) 下载最新版本的完整镜像包与刷机工具。
 
-### 三步极速刷机
-1. **进入 Fastboot 模式**：
-   将平板彻底关机，长按 `电源键 + 音量减键` 直至屏幕亮起并显示米兔/FASTBOOT 标志，使用 USB 数据线连接电脑。
-2. **执行一键刷写**：
+### 安装入口：先分区，再一键刷写
+
+**原始或全新 GPT/UFS 设备不能直接运行一键脚本。** 首次安装必须先按
+[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)
+完成分区、擦除 userdata、Android 首次开机，然后才能使用一键脚本。
+
+一键脚本只适用于已经由 `install-f2fs.py apply` 建立 `sunuefi_esp` /
+`sunuefi_root` 的平板，并且 Android 当前槽位必须是 A：
+
+1. **准备同一套材料**：从同一次成功 `build-bundle` run 下载完整
+   `deploy-bundle`；再用该精确的 bundle run 运行 `prepare-install`，下载
+   `root-install`。不要混用历史镜像或不同 run 的资产。
+2. **进入原厂 Fastboot**：将平板彻底关机，长按 `电源键 + 音量减键`，
+   直到显示米兔/FASTBOOT 标志；连接 USB 后确认
+   `fastboot getvar current-slot` 返回 `a`。
+3. **执行一键刷写**：
    - **Linux / macOS**：
      ```bash
      chmod +x flash-linux.sh
@@ -54,10 +66,16 @@
      ```
    - **Windows**：
      双击运行 `flash-linux.bat`。
-3. **开机与登录**：
+4. **开机与登录**：
    刷写完成后平板将自动重启并进入 Fedora 44 GNOME 桌面：
    - 默认桌面用户名：`piano`
    - 默认用户密码：`piano123456`（初次登入后建议通过 `passwd` 命令及时修改）
+
+> 不想用一键脚本、或需要自己控制每一步时，按
+> [手动刷机章节](docs/installation.md#三之二-手动刷机不使用一键脚本) 逐条执行。
+> 手动流程列出了 Release 中真正需要哪些资产、每条 `fastboot` 命令、SHA256
+> 校验方式、读回验证与回滚方法。**不要**擦除 `dtbo_b`：高通 ABL 会因此拒绝
+> 整条引导链并把平板卡在 Fastboot。
 
 ---
 
@@ -76,14 +94,24 @@
 
 正式版本发布时，Releases 页面将提供以下经过完整真机复核的开箱即用交付物：
 
+发布主链以 `build-bundle` 的 `deploy-bundle` artifact 为准：
+
 | 文件名 | 类型 | 说明 |
 |---|---|---|
-| `pianoroot-fedora44-gnome-f2fs-*.img.zst` | 根分区镜像 | 预装全套优化服务与驱动的 Fedora 44 根文件系统（Zstandard 高压缩） |
-| `sunuefi_esp-*.img` | 引导分区镜像 | 包含 SunUEFI EDK2、DTB、Linux 7.2.9 正式内核与 Initramfs 的完整 ESP 镜像 |
-| `boot_sunuefi-*.img` | BOOT 引导头 | 适配 ABL 链式引导的合体引导映像 |
-| `piano-switch-ksu-*.zip` | Android 模块 | KernelSU / SukiSU 专用免电脑切换回 Linux 模块 |
-| `piano-installer-*.zip` | 一键刷机脚本包 | 内含 `flash-linux.sh`（Shell）与 `flash-linux.bat`（Windows 批处理）及完整性校验工具 |
+| `pianoroot.f2fs.img.zst` | 基础根分区 | 流水线封存的 Fedora 44 GNOME 根文件系统；首装需先经 `prepare-install` 扩容 |
+| `sunuefi_esp.img` | 引导分区镜像 | 包含 SunUEFI EDK2、DTB、Linux 7.2.9 正式内核与 Initramfs 的完整 ESP 镜像 |
+| `boot_sunuefi.img` | BOOT 引导头 | 适配 ABL 链式引导的合体引导映像 |
+| `piano-switch-ksu-<日期>.zip` | Android 模块 | KernelSU / SukiSU 专用免电脑切换回 Linux 模块 |
+| `piano-installer-<日期>.zip` | 一键刷机脚本包 | 内含 `flash-linux.sh`（Shell）、`flash-linux.bat`（Windows 批处理）与 `README-INSTALL.txt` |
 | `SHA256SUMS` | 校验哈希 | 各资产文件的 SHA-256 哈希校验列表 |
+
+> **发布状态**：仓库当前还没有任何 Release 与 tag，上面的 Releases 链接暂时
+> 指向空列表。发布资产只能取自 `build-bundle` 的 `deploy-bundle`，不能把历史
+> `out/` 目录重新打包后当作当前产物。首装流程见
+> [安装指南](docs/installation.md)。
+>
+> `scripts/package-release-bundle.sh` 是本地/历史兼容打包器，不是当前发布
+> 主入口；它保留旧二进制合同，不能替代 `build-bundle` 的来源链。
 
 ---
 
@@ -94,6 +122,7 @@
 - **[系统架构与分层设计](docs/architecture.md)**：Fedora 44、SunUEFI 与 Android 的系统边界定义；
 - **[首次安装与已有分区更新](docs/installation.md)**：详细的分区结构计算、GPT 安全检查与增量部署契约；
 - **[交付物与构建流水线](docs/artifacts.md)**：Kernel、RPM、Initramfs 与最终 Bundle 的组装标准；
+- **[RPM 架构重构与真机验收路线](docs/pr-rebuild-roadmap.md)**：两层解耦构建流水线与纯净实机盲测规划；
 - **[真机验收与稳定性记录](docs/device-acceptance-20261015.md)**：DPU 关屏修复、触控滤波实测、VA-API 与 A/B 槽位引导保护根因；
 - **[全网上游同步与追溯](docs/upstream-sync.md)**：对标上游仓库（SunUEFI、yzddmr6、code002-2）的同步记录；
 - **[Gunyah 虚拟化架构](docs/virtualization.md)**：SM8750 上的 Gunyah 虚拟机生命周期、大页配置与网络桥接。

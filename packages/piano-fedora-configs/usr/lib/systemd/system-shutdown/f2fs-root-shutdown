@@ -1,0 +1,4 @@
+#!/bin/sh
+# Flush F2FS checkpoints and remount / read-only on system shutdown
+mount -o remount,ro / 2>/dev/null || :
+sync 2>/dev/null || :

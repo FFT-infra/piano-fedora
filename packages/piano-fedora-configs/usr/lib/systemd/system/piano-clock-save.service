@@ -1,0 +1,12 @@
+[Unit]
+Description=Save the current time for the next boot
+DefaultDependencies=no
+Before=shutdown.target
+After=local-fs.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/piano-clock-save
+ExecStop=/usr/libexec/piano-clock-save
+[Install]
+WantedBy=multi-user.target

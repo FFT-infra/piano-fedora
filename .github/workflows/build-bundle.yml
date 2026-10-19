@@ -62,6 +62,25 @@ jobs:
           run-id: ${{ steps.src.outputs.root_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Require one integrated image source record
+        env:
+          ROOT_RUN: ${{ steps.src.outputs.root_run }}
+        run: |
+          set -euo pipefail
+          test "$(find build/in/image -maxdepth 1 -type f -name 'source-runs.json' | wc -l)" -eq 1
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          record = json.loads(Path("build/in/image/source-runs.json").read_text())
+          required = ("kernel_run", "rootfs_run", "runtime_run", "mesa_run",
+                      "ffmpeg_run", "image_run", "image_source_commit")
+          missing = [name for name in required if not record.get(name)]
+          assert not missing, f"integrated image record lacks source runs: {missing}"
+          assert record["image_run"] == os.environ["ROOT_RUN"], (
+              f"image_run {record['image_run']} != resolved build-image run {os.environ['ROOT_RUN']}")
+          print("OK: integrated image source runs:", {name: record[name] for name in required})
+          PY
+
       - uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.uefi_artifact }}
@@ -152,7 +171,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p bundle
-          sudo cp build/packaged/esp.img build/packaged/boot.img build/packaged/PianoUEFI-product.img bundle/
+          # The deploy-bundle uses the same names as the documented fastboot
+          # commands. Keeping generic esp.img/boot.img here forced the
+          # installer and manual instructions onto two naming contracts.
+          sudo cp build/packaged/esp.img bundle/sunuefi_esp.img
+          sudo cp build/packaged/boot.img bundle/boot_sunuefi.img
+          sudo cp build/packaged/PianoUEFI-product.img bundle/
+          # Retired generic names stay out of the release artifact. If a
+          # consumer still reads them, fail here instead of publishing two
+          # identities for the same payload.
+          test ! -e bundle/esp.img
+          test ! -e bundle/boot.img
           cp build/in/image/pianoroot.f2fs.img.zst bundle/
           cp build/in/image/diagnostic-abl-storage.tar.zst bundle/
           cp build/in/image/root-image-manifest.json build/in/image/source-runs.json build/in/image/runtime-manifest.json bundle/

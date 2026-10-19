@@ -16,6 +16,15 @@ on:
         required: false
         type: boolean
         default: false
+      build_piano_rpms:
+        description: "同时构建 Fedora 矩阵 RPM（含匹配的 kernel-piano）"
+        required: false
+        type: boolean
+        default: false
+      kernel_run_id:
+        description: "build_piano_rpms=true 时必填：已成功的 build-kernel run"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -30,6 +39,12 @@ jobs:
     uses: ./.github/workflows/package-install.yml
     with:
       prepare_run: ${{ inputs.package_prepare_run }}
+  piano-rpms:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_piano_rpms }}
+    uses: ./.github/workflows/build-piano-rpms.yml
+    with:
+      kernel_run_id: ${{ inputs.kernel_run_id }}
+      releasever: "44"
   checks:
     env:
       PIANO_TEST_SUNUEFI: ${{ github.workspace }}/build/test-sources/sunuefi

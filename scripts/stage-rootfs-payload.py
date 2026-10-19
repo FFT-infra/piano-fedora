@@ -5,7 +5,9 @@
 Debian 版才有：
 
 1. `stage_piano_kernel_modules.py` 把内核产物里的模块装进
-   `usr/lib/modules/<release>`。缺了它，引导脚本第 126 行的
+   `usr/lib/modules/<release>`。clean rootfs 已由同一个 kernel-piano RPM
+   安装模块时，这一步核验现有树与封存内核完全一致并幂等通过。缺了它，
+   引导脚本第 126 行的
    `[ -d /sysroot/usr/lib/modules/$release ]` 会失败，启动直接进救援。
 2. `stage_piano_ram_hardware.py` 放 `piano-ram-hardware-prepare` 和它依赖的
    两个校验模块。缺了它，第 128 行的可执行检查会失败。
@@ -84,10 +86,62 @@ def load_kernel(kernel):
     return record, release, modules
 
 
+def module_index(base):
+    """Describe every regular file and symlink in one kernel release tree."""
+    base = Path(base)
+    rows = {}
+    for path in sorted(base.rglob("*")):
+        relative = path.relative_to(base).as_posix()
+        if path.is_symlink():
+            rows[relative] = {"kind": "symlink", "target": str(path.readlink())}
+            continue
+        if relative in ("build", "source"):
+            continue
+        if relative.startswith(("build/", "source/")):
+            raise StageError(f"unexpected development directory: {relative}")
+        if not path.is_file():
+            continue
+        rows[relative] = {
+            "kind": "file",
+            "bytes": path.stat().st_size,
+            "sha256": sha256(path),
+        }
+    return rows
+
+
+def same_module_tree(destination, modules):
+    """Compare the kernel-owned part of the installed RPM tree.
+
+    clean rootfs intentionally installs kernel-piano in the one audited DNF
+    transaction. build-image then consumes the sealed kernel artifact and must
+    prove the package payload matches that artifact. The runtime artifact adds
+    its ABI-matched external modules under updates/, and finalize verifies that
+    separate surface against the runtime manifest. Those files are not part of
+    kernel-piano and must not make this comparison fail.
+    """
+    installed = module_index(destination)
+    sealed = module_index(modules)
+    sealed_paths = set(sealed)
+    installed_kernel = {name: row for name, row in installed.items()
+                        if name in sealed_paths or not name.startswith("updates/")}
+    if installed_kernel != sealed:
+        missing = sorted(set(sealed) - set(installed))
+        extra = sorted(set(installed_kernel) - set(sealed))
+        changed = sorted(name for name in set(installed_kernel) & set(sealed)
+                         if installed_kernel[name] != sealed[name])
+        raise ValueError(
+            f"installed {destination.name} module tree differs from the sealed "
+            f"kernel artifact (missing={missing[:5]}, extra={extra[:5]}, "
+            f"changed={changed[:5]})")
+
+
 def stage_modules(rootfs, kernel, release, modules):
     destination = safe_target(rootfs, Path("usr/lib/modules") / release)
     if destination.exists() or destination.is_symlink():
-        raise StageError(f"kernel release already staged: {release}")
+        if not destination.is_dir() or destination.is_symlink():
+            raise StageError(f"kernel release is not a directory: {release}")
+        same_module_tree(destination, modules)
+        return destination, "matched-existing"
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(modules, destination, symlinks=True)
     # 开发用的 build/source 链接指向构建机路径，运行时不适用。
@@ -97,7 +151,7 @@ def stage_modules(rootfs, kernel, release, modules):
             link.unlink()
         elif link.exists():
             raise StageError(f"unexpected real development directory: {name}")
-    return destination
+    return destination, "staged"
 
 
 def stage_hardware(rootfs, sunuefi):
@@ -185,7 +239,7 @@ def stage(rootfs, kernel, sunuefi):
     safe_destination(rootfs, "usr/lib/modules")
 
     record, release, modules = load_kernel(kernel)
-    destination = stage_modules(rootfs, kernel, release, modules)
+    destination, module_status = stage_modules(rootfs, kernel, release, modules)
     staged = stage_hardware(rootfs, sunuefi)
 
     module_files = sorted(
@@ -221,6 +275,7 @@ def stage(rootfs, kernel, sunuefi):
         "kernel_commit": record.get("source_commit"),
         "modules_installed": len(module_files),
         "modules_path": str(destination.relative_to(rootfs)),
+        "modules_status": module_status,
         "hardware_prepare": sorted(staged),
         "hardware_prepare_alias": "usr/lib/piano/piano-disk-hardware-prepare",
         "selinux": selinux,

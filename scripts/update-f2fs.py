@@ -20,7 +20,7 @@ spec.loader.exec_module(installer)
 
 
 def _linux_dtb(bundle):
-    data = (bundle / "boot.img").read_bytes()
+    data = (bundle / "boot_sunuefi.img").read_bytes()
     require(len(data) >= 4096 and data[:8] == b"ANDROID!" and struct.unpack_from("<I", data, 40)[0] == 2,
             "expected the sealed Linux BOOT v2 container")
     kernel, ramdisk, second = (struct.unpack_from("<I", data, x)[0] for x in (8, 16, 24))
@@ -147,7 +147,7 @@ def execute_update(upstream, device, plan, bundle, root_install, boot, stock_boo
         stage("factory_identity_slot_and_both_capacities_validated")
         generic = json.loads((bundle / "bundle-manifest.json").read_text())
         root = json.loads((root_install / "root-install-manifest.json").read_text())
-        targets = (("sunuefi_esp", bundle / "esp.img", generic["files"]["esp.img"]),
+        targets = (("sunuefi_esp", bundle / "sunuefi_esp.img", generic["files"]["sunuefi_esp.img"]),
                    ("sunuefi_root", root_install / "pianoroot.f2fs.sparse.img", root["transport"]))
         # 在第一笔写入前重新核对两份输入，避免 ESP 已写后才发现 root 被替换。
         for _, image, metadata in targets:

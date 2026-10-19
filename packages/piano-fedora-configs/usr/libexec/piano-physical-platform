@@ -1,0 +1,23 @@
+#!/bin/sh
+# systemd reads this exported property; the kernel retains its original OF tree.
+# Preserve the RM subtree and a read-only copy of the original sysfs export.
+set -eu
+tree=/sys/firmware/devicetree/base/hypervisor
+state=/run/piano-physical-platform
+[ -d "$tree" ] || exit 0
+[ -f "$tree/compatible" ] || exit 0
+compatible=$(tr '\000' '\n' <"$tree/compatible")
+case "$compatible" in
+    *gunyah*) ;;
+    *) echo 'piano: refusing to mask an unknown hypervisor' >&2; exit 1 ;;
+esac
+mkdir -p "$state/original" "$state/view"
+mount --bind "$tree" "$state/original"
+mount -o remount,bind,ro "$state/original"
+mount -t tmpfs -o mode=0755,nosuid,nodev,noexec tmpfs "$state/view"
+cp -a "$state/original/." "$state/view/"
+rm "$state/view/compatible"
+mount -o remount,ro,nosuid,nodev,noexec "$state/view"
+mount --bind "$state/view" "$tree"
+touch "$state/ready"
+echo 'piano: physical platform export ready; Gunyah RM subtree preserved'

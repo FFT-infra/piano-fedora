@@ -11,10 +11,12 @@ from piano_artifacts import sha256, verify_uefi_source
 
 PROJECT = Path(__file__).resolve().parents[1]
 
-REQUIRED = {"esp.img", "boot.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst",
+REQUIRED = {"sunuefi_esp.img", "boot_sunuefi.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst",
             "root-image-manifest.json", "kernel-manifest.json", "initramfs-manifest.json",
             "esp-manifest.json", "runtime-manifest.json", "mesa-manifest.json",
             "ffmpeg-manifest.json", "rootfs-manifest.json", "source-runs.json", "uefi-source.json"}
+ASSETS = {"sunuefi_esp.img": "esp.img", "boot_sunuefi.img": "boot.img",
+          "PianoUEFI-product.img": "PianoUEFI-product.img"}
 
 
 def verify(root):
@@ -36,10 +38,10 @@ def verify(root):
     expected_paths = {"/EFI/Piano/stable/" + p for p in ("Image", "board.dtb", "initramfs", "boot.img")}
     if set(esp["esp_files"]) != expected_paths:
         raise ValueError("ESP layout differs from the actual firmware loader")
-    for name in ("esp.img", "boot.img", "PianoUEFI-product.img"):
-        row = esp["files"][name]
-        if sha256(root / name) != row["sha256"] or (root / name).stat().st_size != row["bytes"]:
-            raise ValueError("upstream-packaged component changed: " + name)
+    for asset, packaged in ASSETS.items():
+        row = esp["files"][packaged]
+        if sha256(root / asset) != row["sha256"] or (root / asset).stat().st_size != row["bytes"]:
+            raise ValueError("upstream-packaged component changed: " + asset)
     image = read("root-image-manifest.json")
     for component in ("rootfs", "kernel", "runtime", "mesa", "ffmpeg", "initramfs"):
         if image.get(component + "_manifest_sha256") != sha256(root / (component + "-manifest.json")):
@@ -75,9 +77,12 @@ def verify(root):
             raise ValueError("compressed root image failed to decode")
     if expanded != image["bytes"] or raw_hash.hexdigest() != image["sha256"]:
         raise ValueError("compressed root image differs from the verified raw image")
-    with (root / "boot.img").open("rb") as f:
+    with (root / "boot_sunuefi.img").open("rb") as f:
         if f.read(8) != b"ANDROID!":
             raise ValueError("Linux boot payload is not an Android boot container")
+    inventory = {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
+                 for p in sorted(root.iterdir()) if p.is_file()
+                 and p.name not in ("bundle-manifest.json", "SHA256SUMS")}
     return {"status": "HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED",
             "kernel_release": kernel["kernel_release"], "kernel_manifest_sha256": kernel_hash,
             "mesa_manifest_sha256": sha256(root / "mesa-manifest.json"),
@@ -86,6 +91,7 @@ def verify(root):
                            "bytes": image["bytes"], "verification": proof},
             "source_runs": source_runs, "uefi_source_verified": True, "device_tested": False,
             "device_operation_performed": False,
+            "files": inventory,
             "deployment_requirements": ["recoverable device backup", "userdata/data-handling choice",
                                         "current stock BOOT and slot/generation provisioning"]}
 
@@ -98,8 +104,6 @@ def main():
     root = args.bundle.resolve()
     result = verify(root)
     if args.write_manifest:
-        result["files"] = {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
-                           for p in sorted(root.iterdir()) if p.is_file() and p.name not in ("bundle-manifest.json", "SHA256SUMS")}
         (root / "bundle-manifest.json").write_text(json.dumps(result, indent=2) + "\n")
         (root / "SHA256SUMS").write_text("".join(sha256(p) + "  " + p.name + "\n"
                                               for p in sorted(root.iterdir()) if p.is_file() and p.name != "SHA256SUMS"))
