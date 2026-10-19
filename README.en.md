@@ -1,0 +1,91 @@
+# Fedora 44 for Xiaomi Pad 8 Pro (piano)
+
+English | [简体中文](README.md)
+
+Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 Elite SM8750). The boot chain is SunUEFI (EDK2). The kernel is a mainline Linux 7.2.9 port. The root filesystem is F2FS. The tablet switches between Linux and the stock HyperOS without a PC.
+
+> **Risk**: installing this port unlocks the bootloader, rewrites the GPT, and writes the A/B slots and the boot chain. A careless step can brick the tablet or destroy all data. Back up the device before you start. This project ships under the [MIT license](LICENSE) as is. The authors take no responsibility for damaged hardware, lost data, or a voided warranty.
+
+## Hardware status
+
+| Module | Status | Notes |
+|---|---|---|
+| Display | ✅ | 3200×2136 at 120 Hz, Mesa 26.2.3 Turnip (Adreno 830) |
+| Touch | ✅ | Kalman filter, 24 px dead zone, orthogonal axis lock |
+| Video | ✅ | Iris V4L2 M2M VA-API: H.264, HEVC 8/10-bit, VP9 4K 60 fps; keyframe hardware encoding |
+| Power | ✅ | Dual-cell battery reporting, deep suspend |
+| Boot | ✅ | `qbootctl.service` writes `Successful: 1`, so the ABL counter cannot drop to Fastboot |
+| Camera | ✅ | `piano-camerad` streams NV12 straight from the ISP |
+| Audio | ✅ | Speaker amp capped at 215 (-15 dB), microphone gain +40 dB |
+| Scheduling | ✅ | `uperf-linux` raises frequency on touch |
+| Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
+| Sensors | ✅ | `iio-sensor-proxy` reads accelerometer, ambient light, proximity, compass |
+| Virtualization | ✅ | `/dev/gunyah`, `librevm`, 2 MB pages, virtio-net |
+| Dual boot | ✅ | `piano-next-boot` on Linux, `piano-switch-ksu` on Android |
+| Stylus | 🟡 | Daemon and Type 29 protocol are ready; a physical drawing test is pending |
+| Fingerprint / IR / HDR | ❌ | Require closed TEE firmware; mainline does not support them |
+
+## Install
+
+1. Unlock the bootloader and set up `fastboot`.
+2. On a device with the stock GPT, follow [First install from the stock GPT/UFS](docs/installation.md#四-从原始-gptufs-开始的首次安装) to create the partitions, erase `userdata`, and let Android boot once. **The one-step script does not work without this step.**
+3. Use the `deploy-bundle` from one successful `build-bundle` run, and the `root-install` that `prepare-install` produced from that same bundle run. Do not mix assets from different runs.
+4. Power off. Hold `Power + Volume Down` until Fastboot appears. Check that `fastboot getvar current-slot` returns `a`. Then run:
+
+   ```bash
+   ./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub   # Linux / macOS
+   ```
+
+   On Windows, double-click `flash-linux.bat`. That path does not inject a key.
+
+5. The tablet reboots into GNOME. The user is `piano` and the default password is `piano123456`. Run `passwd` after the first login. If you passed `--ssh-key`, you can log in with that key instead.
+
+For step-by-step control, follow [Manual flashing](docs/installation.md#三之二-手动刷机不使用一键脚本). That section lists every `fastboot` command, the SHA256 checks, the read-back verification, and the rollback. **Never erase `dtbo_b`**: the ABL rejects the whole boot chain when it is missing.
+
+### Switching between systems
+
+- Linux to Android: click "Return to Android" in the app grid, or run `piano-next-boot android --reboot`.
+- Android to Linux: install and enable the `piano-switch-ksu` module, then tap its tile in Quick Settings.
+- Boot menu: press a volume key within 3 seconds of power-on, or click "SunUEFI boot menu" on the desktop.
+
+## Release artifacts
+
+A release comes from the `deploy-bundle` artifact of `build-bundle`. The `root-install` directory comes from `prepare-install` running on the same bundle run:
+
+| File | Contents |
+|---|---|
+| `boot_sunuefi.img` | Boot header for the ABL chain |
+| `sunuefi_esp.img` | SunUEFI EDK2, DTB, Linux 7.2.9 kernel, initramfs |
+| `pianoroot.f2fs.img.zst` | Sealed Fedora 44 GNOME root filesystem; `prepare-install` expands it for a first install |
+| `root-install/` | Expanded sparse root image and its manifest |
+| `piano-switch-ksu-<date>.zip` | Android-side switch module |
+| `SHA256SUMS` | Hashes of every asset |
+
+The repository has no release and no tag yet. The assets exist only as workflow artifacts. `scripts/package-release-bundle.sh` is a local compatibility packer, not the release entry point.
+
+## Documentation
+
+- [Architecture](docs/architecture.md): the boundary between Fedora, SunUEFI, and Android
+- [Installation and partitioning](docs/installation.md): partition sizing, GPT checks, one-step and manual flashing, first login
+- [Artifacts and pipeline](docs/artifacts.md): how the kernel, RPMs, initramfs, and bundle are assembled
+- [Maintenance and acceptance](docs/internals.md): pipeline entry points, artifact binding, run id plumbing, PR gate
+- [COPR repository](docs/copr-repository.md): online upgrades for userspace packages, and the rollback boundary (the kernel is not included)
+- [Upstream tracking](docs/upstream.md): current pin, drift dashboard, follow-up rules
+- [Known issues](docs/known-issues.md): open problems and items under observation
+- [Gunyah virtualization](docs/virtualization.md): VM lifecycle and networking on SM8750
+- [Gaps before public distribution](docs/public-release-gaps.md): build inputs still tied to this one device and this one person
+
+Debug logs, incident write-ups, and handoff notes stay out of the repository.
+
+## Build and check
+
+```bash
+make test                  # offline suite: GPT math, image and metadata checks
+make plan RELEASEVER=44    # print the Fedora 44 root filesystem plan
+```
+
+The pipeline lives in `.github/workflows/`: `build-rpms` → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`. Each stage accepts artifacts only from a successful run of the previous one. See [docs/internals.md](docs/internals.md).
+
+## License
+
+Our own code is MIT, see [LICENSE](LICENSE). Third-party upstream components and kernel patches keep their own licenses, see [sources.lock.json](sources.lock.json) and [NOTICE](NOTICE).

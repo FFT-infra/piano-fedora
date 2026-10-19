@@ -1,144 +1,91 @@
-# ⚠️ 实验性移植仓库（风险告知与免责声明）
-
-> **【重要警告】**
->
-> 1. 本项目为**早期高度实验性的主线 Linux 移植工程**，主要面向底层驱动逆向、硬件适配与极客开发者，**绝非面向普通消费者的日用稳定版本**；
-> 2. 刷入第三方 Linux 系统涉及**解锁 Bootloader、改写底层 GUID 分区表（GPT）、擦写高通 A/B 槽位及设备启动链**。任何不规范的操作均可能导致设备变砖、硬件永久损坏或用户数据完全丢失；
-> 3. 在尝试构建或刷入本项目前，请务必**自行充分评估技术风险**，并提前使用专业工具完整备份设备所有物理 LUN 分区及个人重要数据；
-> 4. 项目开发者与贡献者不对任何因使用本项目而造成的设备硬件损毁、数据丢失或保修失效承担任何连带或直接责任。
-
----
-
 # Fedora 44 for Xiaomi Pad 8 Pro (piano)
 
-原生运行在**小米平板 8 Pro（代号 `piano` / 搭载高通骁龙 8 至尊版 SM8750）**上的 Fedora 44 (Rawhide) + GNOME 桌面系统。基于 Linux 7.2 主线适配内核与 SunUEFI 引导架构，支持与原厂 HyperOS (Android) 免电脑双系统无缝往返，Linux 根文件系统采用闪存优化的高性能 F2FS。
+[English](README.en.md) | 简体中文
 
----
+在小米平板 8 Pro（代号 `piano`，高通骁龙 8 至尊版 SM8750）上原生运行 Fedora 44 + GNOME。引导链是 SunUEFI（EDK2），内核是 Linux 7.2.9 主线适配，根文件系统用 F2FS，可以与原厂 HyperOS 双系统免电脑往返。
 
-## 硬件支持状态
+> **风险提示**：刷入涉及解锁 Bootloader、改写 GPT、擦写 A/B 槽位与启动链。操作不规范可能让设备变砖或丢失全部数据。动手前自行备份。本项目按 [MIT 许可证](LICENSE) 原样提供，作者不承担设备损坏、数据丢失或保修失效的责任。
 
-| 模块 | 状态 | 详细说明 |
+## 硬件支持
+
+| 模块 | 状态 | 说明 |
 |---|---|---|
-| **显示与渲染** | ✅ 完美 | 3200×2136 @ 120Hz，Mesa 26.2.3 Turnip (Adreno 830) 原生硬件加速，锁屏与息屏无撕裂或花屏 |
-| **触控交互** | ✅ 完美 | 引入自适应卡尔曼时域滤波、24 像素死区防抖与正交轴向锁，校准物理 DPI，消除高频抖动 |
-| **视频编解码** | ✅ 完美 | 打通 Iris V4L2 M2M VA-API 硬件解码（支持 H.264、HEVC 8/10-bit、VP9 4K 60fps）；支持强制关键帧硬件编码 |
-| **电源与电池** | ✅ 完美 | 屏蔽 `/hypervisor` 节点以恢复 GNOME 原生双电芯电量监控与电源管理，支持深度挂起（Deep Sleep） |
-| **引导稳定性** | ✅ 完美 | 部署官方 `qbootctl.service` 自动写入 `Successful: 1`，彻底根除 ABL 计数归零掉入 Fastboot 的缺陷 |
-| **相机中继** | ✅ 良好 | `piano-camerad` 后台常驻，硬件 ISP 直出 NV12 格式（CPU 占用约 4%），配合 Mesa Turnip 修复彻底消除斜条纹 |
-| **音频与声学** | ✅ 良好 | 内核级硬件限制 FourSemi 功放上限为 215 (-15dB) 物理防炸音圈，麦克风硬件增益补偿 +40dB |
-| **性能调度** | ✅ 良好 | `uperf-linux` 常驻后台实现触控即时提频，滑动后平滑回落，极大提升桌面操作跟手度 |
-| **无线连接** | ✅ 良好 | Wi-Fi 6E/7 正常联网连接，蓝牙控制器正常激活与扫描 |
-| **传感器** | ✅ 良好 | `iio-sensor-proxy` 正常采集加速度计、环境光、接近与罗盘传感器数据 |
-| **虚拟化** | ✅ 良好 | 正式内核开放 `/dev/gunyah`，`librevm` 常驻后台，支持 2MB 大页与 virtio-net 网络桥接 |
-| **双系统往返** | ✅ 良好 | Linux 端 `piano-next-boot` 工具已对齐引导槽位，Android 端配合 SukiSU 模块实现免电脑一键切换 |
-| **手写笔** | 🟡 就绪 | 触控笔守护服务与 Type 29 协议栈已就绪，驱动节点常驻监听，等待实物划线终验 |
-| **指纹 / IR / HDR**| ❌ 不支持 | 无对应硬件节点或深度依赖闭源 TEE 专有固件，开源主线明确不支持 |
+| 显示与渲染 | ✅ | 3200×2136 @ 120Hz，Mesa 26.2.3 Turnip（Adreno 830）硬件加速 |
+| 触控 | ✅ | 卡尔曼滤波、24 像素死区防抖、正交轴向锁 |
+| 视频编解码 | ✅ | Iris V4L2 M2M VA-API：H.264、HEVC 8/10-bit、VP9 4K 60fps；关键帧硬件编码 |
+| 电源与电池 | ✅ | 双电芯电量监控，支持深度挂起 |
+| 引导稳定性 | ✅ | `qbootctl.service` 写入 `Successful: 1`，避免 ABL 计数归零掉进 Fastboot |
+| 相机 | ✅ | `piano-camerad` 常驻，ISP 直出 NV12 |
+| 音频 | ✅ | 功放上限 215（-15 dB）防炸音圈，麦克风增益 +40 dB |
+| 性能调度 | ✅ | `uperf-linux` 触控提频 |
+| 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
+| 传感器 | ✅ | `iio-sensor-proxy` 采集加速度计、环境光、接近、罗盘 |
+| 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、2 MB 大页、virtio-net |
+| 双系统往返 | ✅ | `piano-next-boot`（Linux 侧）与 `piano-switch-ksu`（Android 侧） |
+| 手写笔 | 🟡 | 守护服务与 Type 29 协议就绪，等待实物划线终验 |
+| 指纹 / IR / HDR | ❌ | 依赖闭源 TEE 固件，主线不支持 |
 
----
+## 安装
 
-## 快速安装指南
+1. 解锁 Bootloader，准备好 `fastboot`。
+2. 原始 GPT 的设备先按[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)分区、擦除 `userdata`、让 Android 首次开机。**没有这一步，一键脚本不能运行。**
+3. 用同一次成功 `build-bundle` 的 `deploy-bundle`，以及该 bundle run 产出的 `root-install`，不要混用不同 run 的资产。
+4. 关机后长按 `电源键 + 音量减键` 进入 Fastboot，确认 `fastboot getvar current-slot` 返回 `a`，然后执行：
 
-### 前置准备
-1. 小米平板 8 Pro 已通过官方渠道解锁 Bootloader；
-2. 电脑已配置好 `fastboot` 与 `adb` 命令行工具环境变量；
-3. 从 [GitHub Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载最新版本的完整镜像包与刷机工具。
+   ```bash
+   ./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub   # Linux / macOS
+   ```
 
-### 安装入口：先分区，再一键刷写
+   Windows 双击 `flash-linux.bat`（不自动注入公钥）。
 
-**原始或全新 GPT/UFS 设备不能直接运行一键脚本。** 首次安装必须先按
-[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)
-完成分区、擦除 userdata、Android 首次开机，然后才能使用一键脚本。
+5. 刷完自动重启进入 GNOME。用户名 `piano`，默认密码 `piano123456`，登录后尽快用 `passwd` 修改。传了 `--ssh-key` 就可以直接用密钥登录。
 
-一键脚本只适用于已经由 `install-f2fs.py apply` 建立 `sunuefi_esp` /
-`sunuefi_root` 的平板，并且 Android 当前槽位必须是 A：
+需要逐步控制时按[手动刷机](docs/installation.md#三之二-手动刷机不使用一键脚本)执行，那里列了每条 `fastboot` 命令、SHA256 校验、读回验证和回滚方法。**不要擦除 `dtbo_b`**，ABL 会因此拒绝整条引导链。
 
-1. **准备同一套材料**：从同一次成功 `build-bundle` run 下载完整
-   `deploy-bundle`；再用该精确的 bundle run 运行 `prepare-install`，下载
-   `root-install`。不要混用历史镜像或不同 run 的资产。
-2. **进入原厂 Fastboot**：将平板彻底关机，长按 `电源键 + 音量减键`，
-   直到显示米兔/FASTBOOT 标志；连接 USB 后确认
-   `fastboot getvar current-slot` 返回 `a`。
-3. **执行一键刷写**：
-   - **Linux / macOS**：
-     ```bash
-     chmod +x flash-linux.sh
-     ./flash-linux.sh
-     ```
-   - **Windows**：
-     双击运行 `flash-linux.bat`。
-4. **开机与登录**：
-   刷写完成后平板将自动重启并进入 Fedora 44 GNOME 桌面：
-   - 默认桌面用户名：`piano`
-   - 默认用户密码：`piano123456`（初次登入后建议通过 `passwd` 命令及时修改）
+### 双系统切换
 
-> 不想用一键脚本、或需要自己控制每一步时，按
-> [手动刷机章节](docs/installation.md#三之二-手动刷机不使用一键脚本) 逐条执行。
-> 手动流程列出了 Release 中真正需要哪些资产、每条 `fastboot` 命令、SHA256
-> 校验方式、读回验证与回滚方法。**不要**擦除 `dtbo_b`：高通 ABL 会因此拒绝
-> 整条引导链并把平板卡在 Fastboot。
+- Linux → Android：应用抽屉点「返回 Android」，或执行 `piano-next-boot android --reboot`。
+- Android → Linux：安装并启用 `piano-switch-ksu` 模块，下拉控制中心点快捷磁贴。
+- 引导菜单：开机 3 秒内按音量键，或桌面点「SunUEFI 启动选择菜单」。
 
----
+## 发布产物
 
-## 双系统免电脑无缝切换
+正式 Release 取自 `build-bundle` 的 `deploy-bundle`，`root-install` 由同一 bundle run 的 `prepare-install` 产出：
 
-- **从 Linux 切换回 Android**：
-  在 GNOME 应用抽屉点击**「返回 Android」**（或在终端执行 `piano-next-boot android --reboot`），系统将自动保存下步启动目标并重启进入 HyperOS。
-- **从 Android 切换回 Linux**：
-  在 Android 系统中安装并启用配套的 `piano-switch-ksu` 模块，在下拉控制中心点击快捷磁贴即可一键重启进入 Fedora。
-- **开机引导菜单**：
-  开机前 3 秒内按音量键可直接唤出 SunUEFI 引导菜单，亦可在桌面点击**「SunUEFI 启动选择菜单」**进入。
+| 文件 | 说明 |
+|---|---|
+| `boot_sunuefi.img` | 适配 ABL 链式引导的引导头 |
+| `sunuefi_esp.img` | SunUEFI EDK2、DTB、Linux 7.2.9 内核与 initramfs |
+| `pianoroot.f2fs.img.zst` | 封存的 Fedora 44 GNOME 根文件系统，首装经 `prepare-install` 扩容 |
+| `root-install/` | 扩容后的 sparse 根镜像与清单 |
+| `piano-switch-ksu-<日期>.zip` | Android 侧切换模块 |
+| `SHA256SUMS` | 各资产哈希 |
 
----
+仓库目前还没有 Release 与 tag，上面的资产只以 workflow artifact 形式存在。`scripts/package-release-bundle.sh` 是本地兼容打包器，不是发布主入口。
 
-## GitHub Release 资产清单
+## 文档
 
-正式版本发布时，Releases 页面将提供以下经过完整真机复核的开箱即用交付物：
-
-发布主链以 `build-bundle` 的 `deploy-bundle` artifact 为准：
-
-| 文件名 | 类型 | 说明 |
-|---|---|---|
-| `pianoroot.f2fs.img.zst` | 基础根分区 | 流水线封存的 Fedora 44 GNOME 根文件系统；首装需先经 `prepare-install` 扩容 |
-| `sunuefi_esp.img` | 引导分区镜像 | 包含 SunUEFI EDK2、DTB、Linux 7.2.9 正式内核与 Initramfs 的完整 ESP 镜像 |
-| `boot_sunuefi.img` | BOOT 引导头 | 适配 ABL 链式引导的合体引导映像 |
-| `piano-switch-ksu-<日期>.zip` | Android 模块 | KernelSU / SukiSU 专用免电脑切换回 Linux 模块 |
-| `piano-installer-<日期>.zip` | 一键刷机脚本包 | 内含 `flash-linux.sh`（Shell）、`flash-linux.bat`（Windows 批处理）与 `README-INSTALL.txt` |
-| `SHA256SUMS` | 校验哈希 | 各资产文件的 SHA-256 哈希校验列表 |
-
-> **发布状态**：仓库当前还没有任何 Release 与 tag，上面的 Releases 链接暂时
-> 指向空列表。发布资产只能取自 `build-bundle` 的 `deploy-bundle`，不能把历史
-> `out/` 目录重新打包后当作当前产物。首装流程见
-> [安装指南](docs/installation.md)。
->
-> `scripts/package-release-bundle.sh` 是本地/历史兼容打包器，不是当前发布
-> 主入口；它保留旧二进制合同，不能替代 `build-bundle` 的来源链。
-
----
-
-## 开发者与架构文档
-
-深入的技术设计、全链路构建脚本与单测验证规范统一整理在 `docs/` 目录下：
-
-- **[系统架构与分层设计](docs/architecture.md)**：Fedora 44、SunUEFI 与 Android 的系统边界定义；
-- **[首次安装与已有分区更新](docs/installation.md)**：详细的分区结构计算、GPT 安全检查与增量部署契约；
-- **[交付物与构建流水线](docs/artifacts.md)**：Kernel、RPM、Initramfs 与最终 Bundle 的组装标准；
-- **[维护与验收](docs/internals.md)**：流水线入口、产物绑定、run id 传递与 PR 验收门槛；
-- **[COPR 软件源](docs/copr-repository.md)**：用户态包的在线升级源、发布校验与回滚边界（内核不在升级范围内）；
-- **[上游跟踪](docs/upstream.md)**：当前 pin、自动漂移看板与跟进规则；
-- **[已知问题](docs/known-issues.md)**：仍未解决与仍在观察的问题清单；
-- **[Gunyah 虚拟化架构](docs/virtualization.md)**：SM8750 上的 Gunyah 虚拟机生命周期、大页配置与网络桥接；
-- **[公开分发前的个人化与许可缺口](docs/public-release-gaps.md)**：哪些构建期输入还绑着这一台设备、这一个人。
+- [系统架构](docs/architecture.md)：Fedora、SunUEFI 与 Android 的边界
+- [安装与分区](docs/installation.md)：分区计算、GPT 检查、一键与手动刷写、首次登录
+- [交付物与流水线](docs/artifacts.md)：内核、RPM、initramfs 与 bundle 的组装标准
+- [维护与验收](docs/internals.md)：流水线入口、产物绑定、run id 传递、PR 门槛
+- [COPR 软件源](docs/copr-repository.md)：用户态包在线升级与回滚边界（内核不在内）
+- [上游跟踪](docs/upstream.md)：当前 pin、漂移看板、跟进规则
+- [已知问题](docs/known-issues.md)：未解决与观察中的问题
+- [Gunyah 虚拟化](docs/virtualization.md)：SM8750 上的虚拟机生命周期与网络
+- [公开分发前的缺口](docs/public-release-gaps.md)：构建期仍绑着这一台设备、这一个人的输入
 
 本地调试记录、事故复盘和交接笔记不入库。
 
-## 本地检查与构建
+## 构建与检查
 
 ```bash
-make test                  # 运行全套 40 项单测（离线 GPT 计算、镜像与元数据校验）
+make test                  # 全套离线单测：GPT 计算、镜像与元数据校验
 make plan RELEASEVER=44    # 打印 Fedora 44 根文件系统生成计划
 ```
 
-## 许可协议
+流水线入口是 `.github/workflows/`：`build-rpms` → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`，每一步只接受上一次成功 run 的产物。细节见 [docs/internals.md](docs/internals.md)。
 
-- 本仓库自有代码遵循 [MIT 许可证](LICENSE)；
-- 引用的第三方上游组件与内核补丁各自保留原许可证，详见 [sources.lock.json](sources.lock.json)。
+## 许可
+
+仓库自有代码遵循 [MIT](LICENSE)，第三方上游组件与内核补丁保留各自许可证，见 [sources.lock.json](sources.lock.json) 与 [NOTICE](NOTICE)。

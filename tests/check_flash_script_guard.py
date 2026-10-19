@@ -122,9 +122,9 @@ def check_docs():
     # A stock tablet has no sunuefi_esp/sunuefi_root. The top-level README
     # previously called the one-click installer a three-step first install,
     # which sends users straight to a script that must reject their device.
-    for required in ("原始或全新 GPT/UFS 设备不能直接运行一键脚本",
+    for required in ("原始 GPT", "一键脚本不能运行",
                      "docs/installation.md#四-从原始-gptufs-开始的首次安装",
-                     "Android 当前槽位必须是 A",
+                     "current-slot` 返回 `a`",
                      "build-bundle", "deploy-bundle", "prepare-install",
                      "root-install"):
         if required not in readme:
