@@ -556,26 +556,26 @@ sparse 文件使用 RAW 与显式零 FILL，不使用 DONT_CARE；其完整展�
 * **默认登录密码**：`piano123456`
 * **首次改密**：登入桌面后，请按需要打开终端执行 `passwd` 设置个性化密码。
 
-### 核心特性默认状态
-* **120Hz 刷新率与触控**：默认开启 Mesa 硬件加速；触控服务已加载 5 阶自适应卡尔曼滤波与 24 像素死区防抖锁，窗口拖拽与书写零抖动；
-* **声学安全保护**：已通过内核及 ALSA UCM2 将 FS19xx 四功放硬截断在 -15dB 安全上限内，VA 麦克风提供 +40dB 硬件级拾音增益；
-* **电池与电源控制**：真机 `/hypervisor` 节点已通过软隔离屏蔽，GNOME 设置面板完美呈现原生双电芯电量百分比、休眠与合盖选项；
-* **触控即时提频**：`uperf-linux` 服务在后台实时监听触控输入，手指触碰瞬间 1ms 内拉高全大核频率，带来跟手体验。
+### 默认状态
+* **120 Hz 与触控**：Mesa 硬件加速默认开启；触控服务加载 5 阶自适应卡尔曼滤波与 24 像素死区防抖。
+* **声学保护**：内核与 ALSA UCM2 把 FS19xx 四功放截断在 -15 dB；麦克风有 +40 dB 硬件增益。
+* **电池与电源**：`/hypervisor` 节点已软隔离，GNOME 显示原生双电芯电量，支持休眠与合盖。
+* **触控提频**：`uperf-linux` 监听触控输入，触点按下后 1 ms 内拉高全大核频率。
 
 ---
 
 ## 六、 双系统无缝往返指南
 
-无需连接电脑，随时随地在 Linux 与 Android 之间快速往返：
+切换不需要电脑。
 
 1. **从 Linux 切换回 Android**：
    - 点击 GNOME 应用抽屉里的**「返回 Android」**图标；
-   - 或在终端输入 `piano-next-boot android --reboot`，系统将安全同步数据并重启进入 HyperOS。
+   - 或在终端输入 `piano-next-boot android --reboot`，系统同步数据后重启进入 HyperOS。
 2. **从 Android 切换回 Linux**：
    - 在 Android (HyperOS) 中安装并启用 `piano-switch-ksu` (KernelSU / SukiSU) 模块；
-   - 点击控制中心磁贴或模块界面中的**「进入 Linux」**，无需电脑介入即可切换回 Fedora。
-3. **开机硬件选单**：
-   - 开机屏幕亮起的 **前 3 秒内** 按下平板音量上/下键，可直接呼出 SunUEFI 图形引导菜单，随时自由选择。
+   - 点击控制中心磁贴或模块界面里的**「进入 Linux」**，即可切回 Fedora。
+3. **开机引导菜单**：
+   - 开机亮屏后的 **前 3 秒内** 按音量上/下键，呼出 SunUEFI 图形引导菜单。
 
 ---
 
@@ -609,14 +609,13 @@ ls /usr/lib/modules/          # 有与 uname -r 同名的目录
 
 ---
 
-## 七、 常见故障排查（FAQ & Troubleshooting）
+## 七、 常见故障排查
 
 ### Q1: 开机直接掉进 Fastboot 怎么解决？
-- **根本原因**：高通 ABL 在开机未收到明确 `Successful = 1` 标记时，会在连续重启后递减尝试次数，直至归零跌入 Fastboot。
-- **解决方案**：在系统稳定启动后，确保 `qbootctl.service` 正常运行，或者手动在终端执行 `sudo qbootctl -m`，将当前 Slot 标记为 `Successful: 1`。在 PC 端亦可运行 `fastboot set_active b` 重新激活 Linux 槽位。
+高通 ABL 在开机时没收到明确的 `Successful = 1` 标记，会在连续重启后递减尝试次数，归零后掉进 Fastboot。系统稳定启动后，确认 `qbootctl.service` 在运行，或手动执行 `sudo qbootctl -m` 把当前槽标记为 `Successful: 1`。在电脑端也可以执行 `fastboot set_active b` 重新激活 Linux 槽位。
 
 ### Q2: 误将 Android 数据格式化了？
-- **恢复方案**：Slot A 始终保留着完整的原厂 Android 系统镜像（boot_a、init_boot_a、super 等）。若需要重置 Android，可在 Fastboot 模式下执行 `fastboot set_active a && fastboot erase userdata && fastboot reboot`，Android 将自动重建加密分区并完成首次开机引导。
+Slot A 保留着完整的原厂 Android 分区（`boot_a`、`init_boot_a`、`super` 等）。在 Fastboot 里执行 `fastboot set_active a && fastboot erase userdata && fastboot reboot`，Android 会重建加密分区并走首次开机引导。
 
 ### Q3: Type-C 有线网络 SSH 无法连接？
-- **排查**：系统已将 USB NCM 接口静态配置为 `192.168.77.1/30`。请确保电脑端对应网卡手动配置为同一子网（例如 IP: `192.168.77.2`, 子网掩码: `255.255.255.252`），即可通过 `ssh piano@192.168.77.1` 直接登入。
+系统把 USB NCM 接口静态配置为 `192.168.77.1/30`。把电脑端对应网卡配到同一子网（例如 IP `192.168.77.2`，掩码 `255.255.255.252`），然后 `ssh piano@192.168.77.1`。
