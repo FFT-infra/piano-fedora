@@ -35,6 +35,25 @@ def run(*args):
     )
 
 
+def check_runtime_packages_installed():
+    """设备运行时包必须在安装集合里，不能是"有就装"。
+
+    run 39272565632 之前它们被列成 LEGACY_OPTIONAL，纯净 rootfs 因此没有
+    librevm、crosvm、Iris VA-API 和 piano-runtime，build-image 最后一步才
+    报缺包。这里锁住安装集合。
+    """
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location(
+        "clean_rootfs", ROOT / "scripts/build-clean-rootfs.py")
+    module = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    planned = set(module.PIANO_PACKAGES) | set(module.RUNTIME_PACKAGES) | {module.KERNEL_PACKAGE}
+    for name in ("piano-runtime", "librevm", "piano-crosvm", "libva-v4l2-iris",
+                 "kernel-piano", "piano-fedora-configs"):
+        assert name in planned, f"{name} is not part of the install set"
+    assert "piano-runtime" not in module.LEGACY_OPTIONAL_PACKAGES
+
+
 def check_audit_field_names():
     """workflow 读的审计字段必须在脚本的输出里真实存在。
 
@@ -52,6 +71,7 @@ def check_audit_field_names():
 
 def main():
     check_audit_field_names()
+    check_runtime_packages_installed()
     failures = []
 
     def check(condition, message):

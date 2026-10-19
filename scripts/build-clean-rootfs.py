@@ -47,17 +47,23 @@ PIANO_PACKAGES = [
     "xiaomi-piano-firmware",
 ]
 
-# The legacy aggregate runtime is optional: when it is present it supplies
-# librevm/crosvm/VA-API and older session files, but the clean matrix specs are
-# the primary owners of those payloads. Keeping it out of PIANO_PACKAGES means
-# a clean rootfs does not fail just because the aggregate runtime was not
-# shipped, while a rootfs that does install it still gets normal RPM ownership.
-LEGACY_OPTIONAL_PACKAGES = [
+# The device runtime payload (piano-runtime) and the extras it depends on are
+# built together by build-device-runtime and merged into the same local
+# repository. They were listed here as "optional", so a clean rootfs silently
+# shipped without the VM manager, crosvm, the Iris VA-API backend or the
+# runtime integration scripts, and build-image then failed demanding them.
+# A release rootfs needs them, so they are part of the install set.
+RUNTIME_PACKAGES = [
     "piano-runtime",
-    "piano-session-fixes",
     "librevm",
     "piano-crosvm",
     "libva-v4l2-iris",
+]
+
+# Superseded by piano-fedora-configs; kept out so an old package lingering in a
+# repository cannot pull its files back in.
+LEGACY_OPTIONAL_PACKAGES = [
+    "piano-session-fixes",
 ]
 
 # The device kernel is not in the Fedora repositories: it is packaged by
@@ -141,7 +147,8 @@ def plan(releasever, desktop, rpms_dir, output=None):
     filtered_desktop_pkgs = [p for p in desktop_pkgs if p != "iio-sensor-proxy"]
 
     # kernel-piano first: everything the device needs hangs off its modules.
-    all_packages = [KERNEL_PACKAGE] + base_pkgs + filtered_desktop_pkgs + PIANO_PACKAGES
+    all_packages = ([KERNEL_PACKAGE] + base_pkgs + filtered_desktop_pkgs
+                    + PIANO_PACKAGES + RUNTIME_PACKAGES)
     out_dir = Path(output or DISTROS / f"fedora-{releasever}-{desktop}").resolve()
 
     # 镜像容量与 label 取自 product.json，和 ESP/首次分区规划共用同一份记录。
@@ -162,7 +169,7 @@ def plan(releasever, desktop, rpms_dir, output=None):
         "output": str(out_dir),
         "base_packages_count": len(base_pkgs),
         "desktop_packages_count": len(filtered_desktop_pkgs),
-        "piano_packages": PIANO_PACKAGES + [KERNEL_PACKAGE],
+        "piano_packages": PIANO_PACKAGES + RUNTIME_PACKAGES + [KERNEL_PACKAGE],
         "all_packages": all_packages,
         "total_packages_count": len(all_packages),
         "display_manager": desktops[desktop].get("display_manager", "gdm"),

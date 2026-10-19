@@ -455,7 +455,10 @@ def check_clean_rootfs_release_entry():
     assert "kernel-piano owns the module tree" in image
     assert "the clean rootfs must carry exactly the kernel-piano module" in image
     assert '"kernel-piano"' in image
-    assert '["rpm", "--root", str(root), "-qf",' in image
+    # rpm must run inside the Fedora image: the Ubuntu runner's rpm cannot
+    # read Fedora 44's sqlite rpmdb and silently returns no packages.
+    assert 'def fedora_rpm(' in image and 'registry.fedoraproject.org/fedora:44' in image
+    assert 'fedora_rpm("-qf"' in image and 'fedora_rpm("-qa")' in image
     assert 'local.get("kernel_run") == os.environ["KERNEL_RUN"]' in image
     assert 'record["audit"]["kernel_release"] == kernel["kernel_release"]' in image
     assert '"kernel_run": kernel_run' in rootfs
