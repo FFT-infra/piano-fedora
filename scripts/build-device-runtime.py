@@ -24,10 +24,6 @@ SSC_DRIVER_MARKERS = ("ssc-accel", "ssc-proximity", "ssc-light", "ssc-compass")
 # 构建机已装 binutils；用它的 readelf 读 DT_NEEDED，不自己解析 ELF。
 SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]")
 
-# The locked SunUEFI includes the static camera helper's local-video-group fix.
-# Reversing that one upstream patch reproduces the previous 1b5f1eee input.
-CAMERAD_ADAPTER_INPUT_SHA256 = "e5cfcb2a71834a9031e730e258d4035c45670d340994e700b44ff79d89b2f7ba"
-
 
 def run(command, **kw):
     subprocess.run([str(x) for x in command], check=True, **kw)
@@ -42,25 +38,6 @@ def put(source, destination, executable=False):
     else:
         shutil.copyfile(source, destination)
         destination.chmod(0o755 if executable else 0o644)
-
-
-def stage_power_overlay(sunuefi, payload):
-    """Install only the hardware/session-owned files from GNOME's power overlay."""
-    overlay = Path(sunuefi) / "linux/desktops/gnome/power-overlay"
-    payload = Path(payload)
-    relatives = (
-        "usr/lib/piano/power-button",
-        "usr/lib/systemd/user/piano-power-button.service",
-        "etc/udev/rules.d/70-piano-power-button.rules",
-        "etc/systemd/logind.conf.d/piano.conf",
-        "etc/dconf/db/local.d/00-power",
-    )
-    for relative in relatives:
-        source = overlay / relative
-        if not source.is_file():
-            raise FileNotFoundError("locked power overlay file is missing: " + str(source))
-        put(source, payload / relative, relative == "usr/lib/piano/power-button")
-    return list(relatives)
 
 
 def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0", license_expression="MIT AND Apache-2.0 AND BSD-2-Clause-Patent AND BSD-3-Clause AND GPL-2.0-only"):
@@ -117,28 +94,23 @@ def build_fastrpc_daemon(source, payload, build):
             "binary_sha256": sha256(executable), "listener": "libadsp_default_listener.so.1"}
 
 
-def adapt_camerad_for_fedora(camera, proof):
-    """向已核对的上游输出应用 GCC 和真机管线修复，保持输入摘要门槛。"""
-    actual = sha256(camera)
-    if (proof.get("effective_source_sha256") != CAMERAD_ADAPTER_INPUT_SHA256
-            or actual != CAMERAD_ADAPTER_INPUT_SHA256):
-        # 门槛拒绝的是"没核对过的适配输出"，不是"GCC 补丁坏了"。它也会在
-        # --sunuefi 指向非锁定 commit 时触发：那种 checkout 的适配器只有 5 个
-        # 相机补丁（缺 piano-camerad-local-video-group），摘要自然不同，看起来
-        # 却像补丁失配。锁定 commit 的适配器有 6 个补丁，摘要逐位等于这个常量
-        # （2026-10-13 用锁定树实测复现）。摘要一起打出来，好判断是哪一端变了。
-        raise ValueError(
-            "camera adapter input changed; review the GCC patch against the pinned "
-            f"SunUEFI commit: expected {CAMERAD_ADAPTER_INPUT_SHA256[:12]}…, "
-            f"got {actual[:12]}…, adapter proof "
-            f"{str(proof.get('effective_source_sha256'))[:12]}…")
-    gcc_patch = Path(__file__).resolve().parents[1] / "patches/runtime/camerad-gcc-bounds.patch"
-    run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", gcc_patch], cwd=camera.parent.parent)
-    proof["fedora_patch_sha256"] = sha256(gcc_patch)
-    route_patch = gcc_patch.with_name("camerad-owned-pix-route.patch")
-    run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", route_patch], cwd=camera.parent.parent)
-    proof["fedora_route_patch_sha256"] = sha256(route_patch)
-    proof["fedora_effective_source_sha256"] = sha256(camera)
+def prune_matrix_owned(payload):
+    """删除 RPM 矩阵已经拥有的路径，保证一个路径只有一个所有者。
+
+    `runtime/matrix-owned-paths.txt` 与 `packages/*` 的 %files 是同一份契约；
+    tests/check_package_ownership.py 会核对两边。
+    """
+    listing = Path(__file__).resolve().parents[1] / "runtime/matrix-owned-paths.txt"
+    pruned = []
+    for line in listing.read_text().splitlines():
+        name = line.strip()
+        if not name or name.startswith("#"):
+            continue
+        target = payload / name.lstrip("/")
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+            pruned.append(name)
+    return sorted(pruned)
 
 
 def stage_sensor_integration(sun, output):
@@ -176,7 +148,7 @@ def build(args):
     import build_piano_runtime_helpers as runtime
     import stage_piano_ram_hardware as hardware
     import build_boot_request
-    from piano_device_integration import integration_source, build_touch, adapt_camera, stage_payload, build_performance
+    from piano_device_integration import integration_source, build_touch, stage_payload
     device_source, device_pin = integration_source(sun.parent, output, run)
     public = sun / "upstream/debian-piano-current"
     runtime.repository(public, runtime.PUBLIC_COMMIT)
@@ -187,19 +159,26 @@ def build(args):
     compiler = shutil.which("gcc")
     flags = [compiler, "-O2", "-Wall", "-Wextra", "-Werror"]
     touch, touch_proof = runtime.derive_touch_source(public, build)
-    camera, camera_proof = runtime.derive_camerad_source(public, build)
-    adapt_camerad_for_fedora(camera, camera_proof)
-    adapt_camera(camera, device_source, camera_proof, run, sha256)
+    # piano-camerad is built by packages/piano-camera: the two Fedora patches
+    # (gcc bounds and owned-pix route) are part of that spec now. Building a
+    # second copy here produced a same-path, different-bytes RPM and DNF
+    # refused the transaction. The proof below records where it comes from.
+    camera_proof = {"built_by": "packages/piano-camera",
+                    "patches": {name: sha256(ROOT / "packages/piano-camera" / name)
+                                for name in ("camerad-gcc-bounds.patch",
+                                             "camerad-owned-pix-route.patch")}}
     pen_files, pen_proof = runtime.build_pen_core(build, flags)
     helpers = dict(pen_files)
     for name, (relative, pin, destination) in (runtime.PUBLIC_SOURCES | runtime.BSP_SOURCES).items():
+        if name == "piano-camerad":
+            continue
         source = (sun if name in runtime.BSP_SOURCES else public) / relative
         if pin and sha256(source) != pin:
             raise ValueError("locked helper changed: " + name)
         entry = build / (name + "-entry.c")
         entry.write_text(runtime.entry_source(name))
         obj, exe = build / (name + ".o"), build / name
-        effective = touch if name == "piano-touch-view" else camera if name == "piano-camerad" else source
+        effective = touch if name == "piano-touch-view" else source
         if name == "piano-touch-view":
             item = build_touch(runtime, build, flags, args.uapi, effective, pen_proof,
                                device_source, run, sha256)
@@ -208,8 +187,6 @@ def build(args):
             run([*flags, "-isystem", args.uapi / "include", "-Dmain=PianoOriginalMain", "-c", effective, "-o", obj])
             run([*flags, "-static", entry, obj, "-lm", "-o", exe])
             item = runtime.verify_elf(exe)
-            if name == "piano-camerad":
-                camera_proof["binary_sha256"] = sha256(exe)
         run([exe, "--help"], timeout=10)
         helpers[destination] = {**item, "file": name, "mode": 0o755}
     for destination, row in helpers.items():
@@ -229,19 +206,17 @@ def build(args):
     for p in (sun / "linux/bsp/common").rglob("*"):
         if p.is_file() or p.is_symlink():
             put(p, payload / p.relative_to(sun / "linux/bsp/common"), p.stat().st_mode & 0o111)
-    stage_power_overlay(sun, payload)
     integration_proof = stage_payload(device_source, device_pin, payload, touch_proof,
                                       camera_proof, put, sha256, args.finger_config_dir)
-    from piano_runtime_extras import package_session_fixes
-    session_proof = package_session_fixes(output, rpm_package, put, sha256)
     for name in ("cpufreq-start", "pstore-save"):
         put(public / "rootfs/overlay/usr/lib/piano" / name, payload / "usr/lib/piano" / name, True)
     put(Path(shutil.which("busybox")), payload / "usr/lib/piano/busybox", True)
 
-    fw = sun / "upstream/piano-firmware-current"
-    run(["sha256sum", "--check", "--quiet", "SHA256SUMS"], cwd=fw / "firmware")
-    shutil.copytree(fw / "firmware", payload / "usr/lib/firmware", dirs_exist_ok=True)
-    shutil.copytree(fw / "LICENSES", payload / "usr/share/doc/piano-firmware/LICENSES")
+    # Firmware belongs to packages/xiaomi-piano-firmware. Copying the same
+    # tree here produced a second owner for 99 paths (three of them with
+    # different bytes) and DNF aborted the clean-rootfs transaction. Only the
+    # AudioReach topology is built here, because the firmware package does not
+    # generate it.
     run(["bash", public / "scripts/build-topology.sh", sun / "upstream/audioreach-topology", build / "firmware"])
     topology = build / "firmware/qcom/sm8750/Xiaomi Pad 8 Pro-tplg.bin"
     run(["alsatplg", "-d", topology, "-o", build / "topology-decoded.conf"])
@@ -250,16 +225,6 @@ def build(args):
         put(args.loopback, payload / f"usr/lib/modules/{record['kernel_release']}/updates/v4l2loopback.ko")
     request = build_boot_request.build(build / "boot-request", "aarch64", "gcc")
     put(build / "boot-request/piano-boot-request", payload / "usr/local/sbin/piano-boot-request", True)
-    for name, path in (
-        ("piano-next-boot", "usr/bin/piano-next-boot"),
-        ("piano-next-boot-helper", "usr/libexec/piano-next-boot-helper"),
-        ("piano-next-boot-configure", "usr/bin/piano-next-boot-configure"),
-        ("org.sunuefi.boot-request.policy", "usr/share/polkit-1/actions/org.sunuefi.boot-request.policy"),
-        ("49-piano-boot-request.rules", "usr/share/polkit-1/rules.d/49-piano-boot-request.rules"),
-        ("org.sunuefi.ReturnAndroid.desktop", "usr/share/applications/org.sunuefi.ReturnAndroid.desktop"),
-        ("org.sunuefi.BootMenu.desktop", "usr/share/applications/org.sunuefi.BootMenu.desktop"),
-    ):
-        put(sun / "linux/userspace" / name, payload / path, name.startswith("piano-"))
     mipps = sun.parent / "piano-mipps-auth"
     for name, path in (("xiaomi-mipps-auth", "usr/libexec/xiaomi-mipps-auth"),
                        ("xiaomi-mipps-auth.service", "usr/lib/systemd/system/xiaomi-mipps-auth.service"),
@@ -294,15 +259,18 @@ def build(args):
     put(integration / "iio-sensor-proxy-piano.conf", payload / "etc/systemd/system/iio-sensor-proxy.service.d/piano.conf")
     from piano_runtime_extras import build as build_extras
     extras_proof = build_extras(sun.parent, output / "extras", rpm_package, put, sha256, run)
-    performance_proof = build_performance(sun.parent, output, rpm_package, put, run, sha256)
     for p in (output / "extras/rpms").glob("*.rpm"):
         shutil.copyfile(p, output / "rpms" / p.name)
+    # Drop every path the RPM matrix already owns. The matrix is the release
+    # artifact for configs, services, calibration data and the xiaomi boot
+    # helpers; a second owner here made DNF abort the clean-rootfs transaction.
+    pruned = prune_matrix_owned(payload)
     provenance = {"status": "FEDORA_RUNTIME_BUILT_NOT_DEVICE_VERIFIED",
                   "kernel_release": record["kernel_release"], "kernel_manifest_sha256": kernel_hash,
                   "touch": touch_proof, "camera": camera_proof, "boot_request": request,
                   "sensor_sources": sensor_proof, "fastrpc_daemon": fastrpc_proof,
-                  "extras": extras_proof, "session_fixes": session_proof,
-                  "integration": integration_proof, "performance": performance_proof, "device_tested": False}
+                  "extras": extras_proof,
+                  "integration": integration_proof, "pruned_matrix_owned": pruned, "device_tested": False}
     dest = payload / "usr/share/piano-provenance/fedora-runtime.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(provenance, indent=2) + "\n")

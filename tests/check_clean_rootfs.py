@@ -48,10 +48,16 @@ def check_runtime_packages_installed():
     module = _ilu.module_from_spec(spec)
     spec.loader.exec_module(module)
     planned = set(module.PIANO_PACKAGES) | set(module.RUNTIME_PACKAGES) | {module.KERNEL_PACKAGE}
-    for name in ("piano-runtime", "librevm", "piano-crosvm", "libva-v4l2-iris",
+    for name in ("piano-runtime", "librevm", "piano-crosvm",
                  "kernel-piano", "piano-fedora-configs"):
         assert name in planned, f"{name} is not part of the install set"
     assert "piano-runtime" not in module.LEGACY_OPTIONAL_PACKAGES
+    # Superseded producers must not come back: libva-v4l2-iris built the same
+    # driver path as sm8750-video-accel with different bytes, and
+    # piano-session-fixes duplicated piano-fedora-configs.
+    for retired in ("libva-v4l2-iris", "piano-session-fixes"):
+        assert retired not in planned, f"{retired} must not be installed"
+        assert retired in module.LEGACY_OPTIONAL_PACKAGES, f"{retired} must stay documented as retired"
 
 
 def check_audit_field_names():

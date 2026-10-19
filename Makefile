@@ -43,6 +43,7 @@ test:
 	python3 tests/check_runtime_extras.py
 	python3 tests/check_rootfs_finalize.py
 	python3 tests/check_clean_rootfs.py
+	python3 tests/check_package_ownership.py
 	python3 tests/check_flash_script_guard.py
 	python3 tests/check_kernel_package.py
 	python3 tests/check_package_replaces.py

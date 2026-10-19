@@ -478,20 +478,20 @@ def verify_fastrpc_daemon(root, runtime_meta):
 
 
 def verify_runtime_extras(root, runtime_meta):
-    """核对实际安装的 VA-API、虚拟机程序和平台配置，拒绝仅包名匹配。"""
+    """核对实际安装的虚拟机程序和平台配置，拒绝仅包名匹配。
+
+    Iris VA-API 驱动改由 sm8750-video-accel 构建，它的编码入口断言在 spec 的
+    %build 里；运行时不再产出第二份同路径驱动。
+    """
     sources = json.loads((ROOT / "sources.lock.json").read_text())["sources"]
     extras = runtime_meta.get("extras", {})
     if not extras:
         return
-    if set(extras) != {"iris-vaapi", "crosvm", "librevm"}:
+    if set(extras) != {"crosvm", "librevm"}:
         raise ValueError("runtime extras source proof is incomplete")
     for name, proof in extras.items():
         if proof.get("commit") != sources[name]["commit"]:
             raise ValueError("runtime extras source differs: " + name)
-    # 曾经装过只有 VLD entrypoint 的驱动，浏览器与 ffmpeg 的硬件编码静默消失；
-    # 交付载荷必须声明编码能力，缺任何一项都视为退化的 VA-API 后端。
-    if extras["iris-vaapi"].get("encoder_entrypoints") != ["EncSlice"]:
-        raise ValueError("VA-API driver does not prove its encoder entrypoints")
     librevm = extras["librevm"]
     if (librevm.get("adapter_sha256") != sha256(ROOT / "runtime/librevm/fedora.patch")
             or librevm.get("cargo_lock_sha256") != sha256(ROOT / "runtime/librevm/Cargo.lock")
@@ -499,14 +499,8 @@ def verify_runtime_extras(root, runtime_meta):
         raise ValueError("LibreVM adapter or binary proof differs")
     if extras["crosvm"].get("features") != ["gunyah", "net", "balloon"]:
         raise ValueError("crosvm lacks the production Gunyah feature proof")
-    files = {"usr/lib64/dri/v4l2_drv_video.so": extras["iris-vaapi"].get("driver_sha256"),
-             "usr/bin/crosvm": extras["crosvm"].get("binary_sha256")}
+    files = {"usr/bin/crosvm": extras["crosvm"].get("binary_sha256")}
     files.update({"usr/bin/" + name: digest for name, digest in librevm["binaries"].items()})
-    session = {p.relative_to(ROOT / "runtime").as_posix(): sha256(p)
-               for p in (ROOT / "runtime/usr").rglob("*") if p.is_file()}
-    if runtime_meta.get("session_fixes") != session:
-        raise ValueError("session fixes proof differs from the production payload")
-    files.update(session)
     config = "usr/lib/tmpfiles.d/piano-crosvm.conf"
     files[config] = sha256(ROOT / "runtime/crosvm/piano-crosvm.conf")
     for name, digest in files.items():
@@ -519,40 +513,32 @@ def verify_runtime_extras(root, runtime_meta):
 
 
 def verify_device_integration(root, runtime_meta):
-    """固定来源、适配代码和实际安装载荷必须一致。"""
+    """固定来源、适配代码和实际安装载荷必须一致。
+
+    piano-camerad、uperf 与 VA-API 驱动都由 RPM 矩阵构建，这里只核对仍然
+    由运行时产出的触控载荷。手指电极为矩阵载荷，运行时复算工厂 INI 后把
+    它的摘要写进 proof，所以仍按安装后的文件逐字节核对。
+    """
     sources = json.loads((ROOT / "sources.lock.json").read_text())["sources"]
     integration = runtime_meta.get("integration", {})
-    performance = runtime_meta.get("performance", {})
-    if not integration and not performance:
+    if not integration:
         return
-    required = {"usr/bin/piano-touch-view", "usr/lib/piano/piano-camerad",
-                "usr/lib/piano/touch-input",
-                "usr/share/piano/touch/piano-csot.json", "usr/share/piano/touch/piano-boe.json",
-                "usr/share/alsa/ucm2/Qualcomm/sm8750/Xiaomi-Pad-8-Pro/HiFi.conf"}
+    required = {"usr/bin/piano-touch-view", "usr/lib/piano/touch-input",
+                "usr/share/piano/touch/piano-csot.json", "usr/share/piano/touch/piano-boe.json"}
     if not required <= set(integration.get("files", {})):
         raise ValueError("incomplete device integration payload proof")
-    if performance.get("adapter_sha256") != sha256(ROOT / "runtime/uperf/fedora.patch"):
-        raise ValueError("performance compatibility adapter differs")
-    if not {"usr/bin/uperf-linux", "usr/bin/uperfctl", "etc/uperf-linux/config.json"} <= set(performance.get("files", {})):
-        raise ValueError("incomplete performance payload proof")
-    for name, proof in (("piano-integration", integration), ("uperf", performance)):
-        if proof.get("commit") != sources[name]["commit"] or not proof.get("files"):
-            raise ValueError("missing pinned integration proof: " + name)
-        for relative, digest in proof["files"].items():
-            if relative.startswith("/") or ".." in Path(relative).parts:
-                raise ValueError("unsafe integration payload path")
-            target = guest_resolve(root, "/" + relative)
-            if not target.is_file() or sha256(target) != digest:
-                raise ValueError("installed integration differs: " + relative)
+    if integration.get("commit") != sources["piano-integration"]["commit"] or not integration.get("files"):
+        raise ValueError("missing pinned integration proof: piano-integration")
+    for relative, digest in integration["files"].items():
+        if relative.startswith("/") or ".." in Path(relative).parts:
+            raise ValueError("unsafe integration payload path")
+        target = guest_resolve(root, "/" + relative)
+        if not target.is_file() or sha256(target) != digest:
+            raise ValueError("installed integration differs: " + relative)
     touch = integration.get("touch", {})
     adapters = {p.name: sha256(p) for p in (ROOT / "runtime/touch").iterdir() if p.is_file()}
     if touch.get("finger_adapter_sha256") != adapters or touch.get("single_thp_reader") is not True:
         raise ValueError("finger pipeline adapter proof differs")
-    if integration.get("camera", {}).get("bgrx_adapter_sha256") != sha256(ROOT / "patches/runtime/camerad-bgrx-neon.patch"):
-        raise ValueError("camera NEON adapter proof differs")
-    config = json.loads(guest_resolve(root, "/etc/uperf-linux/config.json").read_text())
-    if (config["modules"]["input"]["screen_width"], config["modules"]["input"]["screen_height"]) != (32000, 21360):
-        raise ValueError("performance input geometry differs")
 
 
 def verify_ffmpeg_install(root, ffmpeg):

@@ -232,7 +232,7 @@ jobs:
               "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
               "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
               "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
-              "piano-runtime", "librevm", "piano-crosvm", "libva-v4l2-iris",
+              "piano-runtime", "librevm", "piano-crosvm",
               "mesa-dri-drivers", "ffmpeg-free", "kernel-piano",
           }
           missing = sorted(required - names)

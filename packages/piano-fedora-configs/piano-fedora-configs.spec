@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        5%{?dist}
+Release:        6%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora-test
@@ -66,6 +66,7 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %config(noreplace) %{_sysconfdir}/yum.repos.d/piano-fedora-copr.repo
 %config(noreplace) %{_sysconfdir}/systemd/system/qbootctl.service.d/piano.conf
 %config(noreplace) %{_sysconfdir}/systemd/sleep.conf.d/piano.conf
+%config(noreplace) %{_sysconfdir}/systemd/logind.conf.d/piano.conf
 %config(noreplace) %{_sysconfdir}/modules-load.d/piano-bwmon.conf
 %config(noreplace) %{_sysconfdir}/modules-load.d/piano-stats.conf
 %config(noreplace) %{_sysconfdir}/udev/rules.d/70-piano-power-button.rules
@@ -77,6 +78,7 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_unitdir}/piano-fake-tablet-mode.service
 %{_unitdir}/piano-physical-platform.service
 %{_unitdir}/piano-boot-request-autoconfig.service
+%{_unitdir}/xiaomi-charger-mode.service
 %{_prefix}/lib/systemd/system-shutdown/f2fs-root-shutdown
 %{_unitdir}/piano-linux-debug.service
 %{_userunitdir}/piano-power-button.service
@@ -86,6 +88,7 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_libexecdir}/piano-fake-tablet-mode
 %{_libexecdir}/piano-physical-platform
 %{_libexecdir}/piano-boot-request-autoconfig
+%{_libexecdir}/xiaomi-charger-mode
 %{_prefix}/lib/piano/power-button
 %{_prefix}/lib/piano/piano-ram-hardware-prepare
 %{_prefix}/lib/piano/piano-disk-hardware-prepare
@@ -97,7 +100,6 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_bindir}/piano-next-boot
 %{_bindir}/piano-next-boot-configure
 %{_libexecdir}/piano-next-boot-helper
-/usr/local/sbin/piano-boot-request
 /usr/local/bin/piano-debug-bootstrap
 /usr/local/bin/piano-debug-stage
 
@@ -111,9 +113,9 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_datadir}/polkit-1/rules.d/49-piano-boot-request.rules
 
 %post
-%systemd_post piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service
+%systemd_post piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service
 %systemd_user_post piano-power-button.service
-systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service qbootctl.service || :
+systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service qbootctl.service || :
 systemctl --global enable piano-power-button.service || :
 if [ -x %{_bindir}/dconf ]; then
     %{_bindir}/dconf update || :
@@ -121,13 +123,17 @@ fi
 systemd-tmpfiles --create %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf %{_prefix}/lib/tmpfiles.d/cpufreq-schedutil.conf || :
 
 %preun
-%systemd_preun piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service
+%systemd_preun piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service
 %systemd_user_preun piano-power-button.service
 
 %postun
-%systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service
+%systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service
 
 %changelog
+* Mon Oct 20 2026 FFT-infra <dev@piano.invalid> - 0.1.0-6
+- 收敛路径归属：收纳 xiaomi-charger-mode 与 logind 落点，交还 piano-boot-request
+  给运行时（piano-next-boot-helper 要求的是那份原生实现），不再重复拥有
+  SunUEFI 运行时派生的同一批文件
 * Mon Oct 19 2026 FFT-infra <dev@piano.invalid> - 0.1.0-5
 - Ship the COPR repository definition, with kernel-piano excluded from upgrades
 

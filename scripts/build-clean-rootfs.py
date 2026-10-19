@@ -47,23 +47,25 @@ PIANO_PACKAGES = [
     "xiaomi-piano-firmware",
 ]
 
-# The device runtime payload (piano-runtime) and the extras it depends on are
+# The device runtime payload (piano-runtime) and the VM bits it depends on are
 # built together by build-device-runtime and merged into the same local
 # repository. They were listed here as "optional", so a clean rootfs silently
-# shipped without the VM manager, crosvm, the Iris VA-API backend or the
-# runtime integration scripts, and build-image then failed demanding them.
-# A release rootfs needs them, so they are part of the install set.
+# shipped without the VM manager or crosvm and build-image then failed
+# demanding them. A release rootfs needs them, so they are part of the install
+# set. The VA-API backend is no longer built here: it comes from
+# packages/sm8750-video-accel, and a second build under the old
+# libva-v4l2-iris name owned the same driver path with different bytes.
 RUNTIME_PACKAGES = [
     "piano-runtime",
     "librevm",
     "piano-crosvm",
-    "libva-v4l2-iris",
 ]
 
 # Superseded by piano-fedora-configs; kept out so an old package lingering in a
 # repository cannot pull its files back in.
 LEGACY_OPTIONAL_PACKAGES = [
     "piano-session-fixes",
+    "libva-v4l2-iris",
 ]
 
 # The device kernel is not in the Fedora repositories: it is packaged by
@@ -268,9 +270,16 @@ def audit_rootfs(rootfs_dir):
     audit_targets = [
         root / "usr/bin/piano-next-boot",
         root / "usr/bin/piano-thp-live",
+        root / "usr/bin/piano-touch-view",
         root / "usr/lib/piano/piano-camerad",
+        root / "usr/lib/piano/camera-start",
+        root / "usr/lib/piano/touch-start",
+        root / "usr/lib/piano/touch-input",
+        root / "usr/lib/piano/pen-bluetooth",
+        root / "usr/lib/piano/power-button",
         root / "usr/bin/uperf-linux",
         root / "usr/libexec/piano-boot-request-autoconfig",
+        root / "usr/libexec/xiaomi-charger-mode",
     ]
     for target in audit_targets:
         if target.exists():

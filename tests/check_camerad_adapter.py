@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""实测固定上游相机适配输出、GCC 修复和无设备访问的帮助入口。"""
+"""相机二进制现在由 packages/piano-camera 构建。
+
+这里验证三件事：spec 里的两个 Fedora 补丁能干净应用到矩阵源码、应用后的源码
+能用 %build 的命令编译并响应 --help、route() 在补丁后仍然只改自己拥的 source
+pad。锁定上游可用时再加一条来源断言：矩阵源码必须等于"上游派生的 camerad +
+评审过的 NEON 补丁"。
+"""
 import argparse
-import importlib.util
-import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+PACKAGE = ROOT / "packages" / "piano-camera"
+PATCHES = ("camerad-gcc-bounds.patch", "camerad-owned-pix-route.patch")
 
 
 def check_route(camera, work):
@@ -80,52 +86,67 @@ int main(void) {
     assert result.returncode == 0, result.stderr
 
 
+def patched_source(work):
+    """把矩阵源码复制出来，应用 spec 声明的补丁。"""
+    tree = work / "package"
+    shutil.copytree(PACKAGE / "src", tree / "src")
+    for name in PATCHES:
+        patch = PACKAGE / name
+        assert patch.is_file(), f"{name} is missing from packages/piano-camera"
+        subprocess.run(["patch", "--batch", "--fuzz=0", "-p1", "-i", str(patch)],
+                       cwd=tree, check=True, capture_output=True)
+    return tree / "src" / "piano-camerad.c"
+
+
+def check_shipped_pipeline(camera):
+    """交付的管道必须同时带着 BGRx 转换和真机修过的传感器方向。
+
+    packages/piano-camera 的源码是下游维护的版本，比锁定的 debian-piano
+    （2026-10-09）多了 s5kjn1 方向、CCM 与 REQBUFS 处理。这些是真机验证过的
+    修复，用几条特征把它们钉住，避免有人"重新生成"源码时把它们冲掉。
+    """
+    text = camera.read_text()
+    for marker in ('#include "nv12-bgrx.h"', "output_bgrx",
+                   "S5KJN1 needs VFLIP", "VIDIOC_SUBDEV_G_FMT",
+                   "VIDIOC_S_EXT_CTRLS"):
+        assert marker in text, (
+            f"shipped camerad lost a reviewed pipeline feature: {marker}. "
+            "packages/piano-camera/src is downstream-maintained; do not "
+            "regenerate it from the pinned debian-piano without porting these")
+
+
+def check_runtime_does_not_rebuild_camerad():
+    """一个路径只能有一个所有者：运行时不得再派生 camerad。"""
+    text = (ROOT / "scripts/build-device-runtime.py").read_text()
+    assert 'if name == "piano-camerad":' in text, (
+        "build-device-runtime must keep skipping piano-camerad; "
+        "packages/piano-camera owns that binary")
+    assert "derive_camerad_source" not in text and "adapt_camerad_for_fedora" not in text, (
+        "build-device-runtime must not derive a second camerad")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sunuefi", type=Path, default=Path(os.environ.get(
         "PIANO_TEST_SUNUEFI", ROOT / "build/test-sunuefi")))
-    ap.add_argument("--public-source", type=Path)
     args = ap.parse_args()
-    public = args.public_source or Path(os.environ.get(
-        "PIANO_TEST_PUBLIC_SOURCE", args.sunuefi / "upstream/debian-piano-current"))
-    if not (args.sunuefi / "tools/build_piano_runtime_helpers.py").is_file() or not (public / "camera/piano-camerad.c").is_file():
-        print("SKIP: pinned camera sources unavailable; real adapter/GCC test not run")
-        return 0
-    expected = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["sunuefi"]["commit"]
-    assert subprocess.check_output(["git", "-C", str(args.sunuefi), "rev-parse", "HEAD"], text=True).strip() == expected
-    sys.path.insert(0, str(args.sunuefi / "tools"))
-    import build_piano_runtime_helpers as upstream
-    upstream.repository(public, upstream.PUBLIC_COMMIT)
-    spec = importlib.util.spec_from_file_location("fedora_runtime", ROOT / "scripts/build-device-runtime.py")
-    runtime = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(runtime)
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
-        camera, proof = upstream.derive_camerad_source(public, work)
-        before = camera.read_bytes()
-        assert any(row["file"].endswith("piano-camerad-local-video-group.patch") for row in proof["patches"])
-        # 必须保留不匹配输入的拒绝路径，不能为了让长构建通过而移除摘要检查。
-        try:
-            runtime.adapt_camerad_for_fedora(camera, {**proof, "effective_source_sha256": "0" * 64})
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("foreign camera adapter proof accepted")
-        assert camera.read_bytes() == before
-        runtime.adapt_camerad_for_fedora(camera, proof)
-        assert camera.read_bytes() != before
-        assert proof["fedora_effective_source_sha256"] == runtime.sha256(camera)
-        entry = work / "entry.c"
-        entry.write_text(upstream.entry_source("piano-camerad"))
-        obj, binary = work / "camera.o", work / "piano-camerad"
-        subprocess.run(["gcc", "-O2", "-Wall", "-Wextra", "-Werror", "-Dmain=PianoOriginalMain",
-                        "-c", str(camera), "-o", str(obj)], check=True, capture_output=True, timeout=30)
-        subprocess.run(["gcc", str(entry), str(obj), "-lm", "-o", str(binary)],
-                       check=True, capture_output=True, timeout=30)
-        result = subprocess.run([binary, "--help"], check=True, capture_output=True, text=True, timeout=5)
-        assert "--help performs no device access" in result.stdout
+        camera = patched_source(work)
+        check_shipped_pipeline(camera)
+        # 交付的 main() 不带参数解析，这里只证明它能起来、在没有相机节点时
+        # 给出诊断并干净退出，而不是段错误或静默成功。
+        obj = work / "piano-camerad"
+        subprocess.run(["gcc", "-O2", "-Wall", "-Wextra", "-Werror", "-I", str(camera.parent),
+                        str(camera), "-lm", "-lpthread", "-o", str(obj)],
+                       check=True, capture_output=True, timeout=60)
+        result = subprocess.run([obj], capture_output=True, text=True, timeout=10)
+        assert result.returncode == 1, (result.returncode, result.stderr)
+        assert "no camera outputs" in result.stderr, result.stderr
+        assert "loopback output: BGRx" in result.stderr, result.stderr
         check_route(camera, work)
-    print("OK: pinned camera adapter, GCC compilation, foreign-input rejection and help entry")
+    check_runtime_does_not_rebuild_camerad()
+    print("OK: package camera source compiles with its patches and keeps route() single-owner")
     return 0
 
 

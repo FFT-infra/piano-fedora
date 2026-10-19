@@ -19,9 +19,6 @@ sys.path.insert(0, str(ROOT / "scripts"))
 spec = importlib.util.spec_from_file_location("finalizer", ROOT / "scripts/finalize-fedora-rootfs.py")
 finalizer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(finalizer)
-runtime_spec = importlib.util.spec_from_file_location("fedora_runtime", ROOT / "scripts/build-device-runtime.py")
-runtime = importlib.util.module_from_spec(runtime_spec)
-runtime_spec.loader.exec_module(runtime)
 
 POWER_FILES = {
     "usr/lib/piano/power-button",
@@ -32,47 +29,37 @@ POWER_FILES = {
 }
 
 
-def check_power_runtime_package():
-    """Stage only the five locked power files and inspect an actual fixture RPM."""
+def check_power_overlay_owner():
+    """电源 overlay 由矩阵包拥有，运行时不再产出第二份同路径文件。"""
+    package = ROOT / "packages" / "piano-fedora-configs"
+    absolute = {"/" + name for name in POWER_FILES}
+    for name in POWER_FILES:
+        target = package / name
+        assert target.is_file(), "piano-fedora-configs must ship the power overlay: " + name
+    assert (package / "usr/lib/piano/power-button").stat().st_mode & 0o111
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    from check_package_ownership import spec_paths
+    declared = spec_paths(package / "piano-fedora-configs.spec")
+    missing = sorted(absolute - declared)
+    assert not missing, f"piano-fedora-configs.spec does not package {missing}"
+
+    source = (ROOT / "scripts" / "build-device-runtime.py").read_text()
+    assert "stage_power_overlay" not in source, (
+        "build-device-runtime must not stage a second power overlay; "
+        "piano-fedora-configs owns those five paths")
+
     configured = os.environ.get("PIANO_TEST_SUNUEFI")
     sun = Path(configured) if configured else ROOT / "build/sources/sunuefi"
-    if configured and not sun.is_dir():
-        raise FileNotFoundError("PIANO_TEST_SUNUEFI checkout is missing: " + str(sun))
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        if not sun.is_dir():
-            sun = root / "sunuefi-fixture"
-            overlay = sun / "linux/desktops/gnome/power-overlay"
-            for relative in POWER_FILES | {"etc/default/locale", "etc/xdg/mimeapps.list"}:
-                source = overlay / relative
-                source.parent.mkdir(parents=True, exist_ok=True)
-                source.write_text("# fixture: " + relative + "\n")
-        payload = root / "payload"
-        payload.mkdir()
-        staged = runtime.stage_power_overlay(sun, payload)
-        assert set(staged) == POWER_FILES, sorted(staged)
-        for relative in POWER_FILES:
-            source = sun / "linux/desktops/gnome/power-overlay" / relative
-            target = payload / relative
-            assert target.is_file() and target.read_bytes() == source.read_bytes(), relative
-        assert (payload / "usr/lib/piano/power-button").stat().st_mode & 0o111
-        assert not (payload / "etc/default/locale").exists()
-        assert not (payload / "etc/xdg/mimeapps.list").exists()
-
-        if shutil.which("rpmbuild") and shutil.which("rpm"):
-            out = root / "rpm-out"
-            out.mkdir()
-            (out / "rpms").mkdir()
-            runtime.rpm_package("piano-power-fixture", payload, out)
-            rpm = next((out / "rpms").glob("*.rpm"))
-            listed = set(subprocess.run(
-                ["rpm", "-qpl", str(rpm)], check=True, capture_output=True, text=True
-            ).stdout.splitlines())
-            assert {"/" + item for item in POWER_FILES} <= listed
-            assert "/etc/default/locale" not in listed
-            assert "/etc/xdg/mimeapps.list" not in listed
-        else:
-            print("SKIP: rpmbuild/rpm unavailable; source-to-payload fixture checked")
+    overlay = sun / "linux/desktops/gnome/power-overlay"
+    if overlay.is_dir():
+        for name in POWER_FILES:
+            upstream = overlay / name
+            if upstream.is_file():
+                assert (package / name).read_bytes() == upstream.read_bytes(), (
+                    "piano-fedora-configs diverges from the SunUEFI power overlay: " + name)
+    else:
+        print("SKIP: SunUEFI checkout unavailable; only the matrix copy was checked")
 
 
 def fixture(root):
@@ -315,7 +302,7 @@ def check_service_staging_order(root):
 
 
 def main():
-    check_power_runtime_package()
+    check_power_overlay_owner()
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         alternatives, man = fixture(root)
