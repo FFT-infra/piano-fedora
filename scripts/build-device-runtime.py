@@ -15,6 +15,8 @@ from pathlib import Path
 
 from piano_artifacts import inspect_kernel, sha256
 
+ROOT = Path(__file__).resolve().parents[1]
+
 # iio-sensor-proxy 3.9 的 meson_options.txt 把 ssc-support 声明为 feature/auto，
 # 而 src/meson.build 用 get_option('ssc-support').enabled() 决定是否编入
 # drv-ssc-*。auto 在 libssc 存在时仍是 not enabled（auto≠enabled），SSC 后端
@@ -100,7 +102,7 @@ def prune_matrix_owned(payload):
     `runtime/matrix-owned-paths.txt` 与 `packages/*` 的 %files 是同一份契约；
     tests/check_package_ownership.py 会核对两边。
     """
-    listing = Path(__file__).resolve().parents[1] / "runtime/matrix-owned-paths.txt"
+    listing = ROOT / "runtime/matrix-owned-paths.txt"
     pruned = []
     for line in listing.read_text().splitlines():
         name = line.strip()

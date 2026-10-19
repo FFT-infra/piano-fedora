@@ -30,7 +30,15 @@ POWER_FILES = {
 
 
 def check_power_overlay_owner():
-    """电源 overlay 由矩阵包拥有，运行时不再产出第二份同路径文件。"""
+    """电源 overlay 由矩阵包拥有，运行时不再产出第二份同路径文件。
+
+    矩阵里的 00-power 不是上游原样。SunUEFI 的 overlay 空闲后会自动 suspend
+    （AC 600 秒、电池 300 秒），这台机器的睡眠/唤醒有已知问题，交付策略把两种
+    自动睡眠都改成 nothing、把空闲消隐放宽到 300 秒。finalizer 的
+    verify_power_overlay 就是这份策略的判据，所以这里用它判矩阵副本。看到
+    SunUEFI checkout 时只报告上游是否已经跟上，不要求它保持"不安全"——上游
+    改了策略就该重新评审，这个工作交给定期的上游跟踪。
+    """
     package = ROOT / "packages" / "piano-fedora-configs"
     absolute = {"/" + name for name in POWER_FILES}
     for name in POWER_FILES:
@@ -49,17 +57,36 @@ def check_power_overlay_owner():
         "build-device-runtime must not stage a second power overlay; "
         "piano-fedora-configs owns those five paths")
 
+    def policy_root(base, files):
+        """把一份 overlay 摆成 finalizer 眼里的安装树。"""
+        for name in POWER_FILES:
+            target = base / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((files / name).read_bytes())
+        profile = base / "etc/dconf/profile/user"
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text("user-db:user\nsystem-db:local\n")
+        return base
+
+    with tempfile.TemporaryDirectory() as temporary:
+        finalizer.verify_power_overlay(policy_root(Path(temporary) / "matrix", package))
+
     configured = os.environ.get("PIANO_TEST_SUNUEFI")
     sun = Path(configured) if configured else ROOT / "build/sources/sunuefi"
     overlay = sun / "linux/desktops/gnome/power-overlay"
     if overlay.is_dir():
-        for name in POWER_FILES:
-            upstream = overlay / name
-            if upstream.is_file():
-                assert (package / name).read_bytes() == upstream.read_bytes(), (
-                    "piano-fedora-configs diverges from the SunUEFI power overlay: " + name)
+        with tempfile.TemporaryDirectory() as temporary:
+            upstream = policy_root(Path(temporary) / "upstream", overlay)
+            try:
+                finalizer.verify_power_overlay(upstream)
+            except ValueError:
+                print("note: SunUEFI still auto-suspends; the matrix policy is the "
+                      "reviewed divergence")
+            else:
+                print("note: SunUEFI's power policy now matches the delivery contract; "
+                      "re-review it against the matrix copy before the next pin bump")
     else:
-        print("SKIP: SunUEFI checkout unavailable; only the matrix copy was checked")
+        print("SKIP: SunUEFI checkout unavailable; only the matrix policy was checked")
 
 
 def fixture(root):

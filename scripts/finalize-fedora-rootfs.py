@@ -430,7 +430,7 @@ def stage_piano_hardware_fixes(root):
 
 
 def verify_power_overlay(root):
-    """Require the runtime package's power/session payload and safe suspend defaults."""
+    """Require the installed power/session payload and safe suspend defaults."""
     for name in POWER_OVERLAY_FILES:
         if not guest_resolve(root, "/" + name).is_file():
             raise ValueError("installed power overlay is missing: " + name)
