@@ -131,8 +131,8 @@ jobs:
           PIANO_RELEASE: ${{ inputs.releasever }}
         run: |
           set -euo pipefail
-          rm -rf out/rpms build/rpm-tmp
-          mkdir -p out/rpms
+          rm -rf out/rpms out/srpms build/rpm-tmp
+          mkdir -p out/rpms out/srpms
           # The Ubuntu host only orchestrates. Fedora supplies the distro
           # macros, BuildRequires, and native aarch64 compiler used by every
           # spec in packages/.
@@ -142,7 +142,7 @@ jobs:
             --env PIANO_RELEASE="$PIANO_RELEASE" \
             "registry.fedoraproject.org/fedora:$PIANO_RELEASE" \
             bash -euo pipefail -c '
-              dnf -y install rpm-build redhat-rpm-config dnf5-plugins \
+              dnf -y install rpm-build redhat-rpm-config dnf5-plugins rpmdevtools \
                 git curl tar xz zstd patch createrepo_c \
                 gcc gcc-c++ make cmake meson ninja-build \
                 systemd-rpm-macros json-devel glib2-devel \
@@ -155,7 +155,7 @@ jobs:
               export BOARD_DTB=/workspace/build/sources/sunuefi/vendor/piano-linux/board.dtb
               export TMPDIR=/workspace/build/rpm-tmp
               mkdir -p "$TMPDIR"
-              ./scripts/build-rpms.sh /workspace/out/rpms
+              SRPM_DIR=/workspace/out/srpms ./scripts/build-rpms.sh /workspace/out/rpms
             '
 
       - name: Verify the exact matrix and repository
@@ -183,6 +183,22 @@ jobs:
           missing = sorted(required - names)
           assert not missing, f"missing RPM packages: {missing}"
           assert (repo / "repodata/repomd.xml").is_file(), "missing repository metadata"
+
+          # COPR rebuilds the user-space packages from these SRPMs. A binary
+          # RPM without its SRPM would make the published repository
+          # unreproducible, so the matrix fails instead of shipping it.
+          srpm_dir = Path("out/srpms")
+          srpms = {}
+          for path in sorted(srpm_dir.glob("*.src.rpm")):
+              data = path.read_bytes()
+              srpms[path.name] = {
+                  "bytes": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              }
+          srpm_names = {name.rsplit("-", 2)[0] for name in srpms}
+          missing_srpms = sorted(required - srpm_names)
+          assert not missing_srpms, f"missing SRPM packages: {missing_srpms}"
+
           Path("piano-rpms-manifest.json").write_text(json.dumps({
               "status": "PIANO_RPMS_BUILT",
               "releasever": "${{ inputs.releasever }}",
@@ -190,18 +206,21 @@ jobs:
               "kernel_release": "${{ steps.payload.outputs.kernel_release }}",
               "sunuefi_commit": "${{ steps.source.outputs.sunuefi_commit }}",
               "files": files,
+              "srpms": srpms,
           }, indent=2) + "\n")
-          print("OK: built", len(files), "RPMs")
+          print("OK: built", len(files), "RPMs and", len(srpms), "SRPMs")
           PY
           # upload-artifact strips the common parent when multiple paths are
           # supplied. Stage the repository and its top-level manifest together
           # so build-rootfs receives both at the documented locations.
           rm -rf build/piano-rpms-artifact
-          mkdir -p build/piano-rpms-artifact
+          mkdir -p build/piano-rpms-artifact/srpms
           cp -a out/rpms/. build/piano-rpms-artifact/
+          cp -a out/srpms/. build/piano-rpms-artifact/srpms/
           cp piano-rpms-manifest.json build/piano-rpms-artifact/
           test -f build/piano-rpms-artifact/piano-rpms-manifest.json
           test -f build/piano-rpms-artifact/repodata/repomd.xml
+          test -n "$(ls -A build/piano-rpms-artifact/srpms)"
 
       - uses: actions/upload-artifact@v4
         with:

@@ -12,6 +12,10 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 PACKAGES_DIR="$REPO_ROOT/packages"
 OUT_DIR="${1:-$REPO_ROOT/out/rpms}"
 BUILD_TMP="${TMPDIR:-$HOME/Lab/Bridge/tmp/trash}/rpmbuild-work"
+# COPR rebuilds user-space packages from source. Keep the SRPMs beside the
+# binaries so the publish step can hand them to `copr-cli build` without
+# re-deriving the spec inputs.
+SRPM_DIR="${SRPM_DIR:-$REPO_ROOT/out/srpms}"
 
 # kernel-piano does not compile a kernel; it packages the pinned build-kernel
 # artifact. Point KERNEL_PAYLOAD at that tree (the directory holding Image,
@@ -67,6 +71,7 @@ resolve_board_dtb() {
 }
 
 mkdir -p "$OUT_DIR"
+mkdir -p "$SRPM_DIR"
 mkdir -p "$BUILD_TMP"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 
 echo "=== Piano RPM Build Pipeline ==="
@@ -153,9 +158,12 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
             tar -I 'zstd -6 -T0' -cf "$BUILD_TMP/SOURCES/kernel-payload-${KERNEL_VER}.tar.zst" -C "$STAGE" .
             rm -rf "$STAGE"
             echo "    Staged $(stat -c%s "$BUILD_TMP/SOURCES/kernel-payload-${KERNEL_VER}.tar.zst") bytes"
+            # kernel-piano is published to COPR too, but the generated .repo
+            # excludes it: a user-space DNF update cannot replace the Image the
+            # ESP boots, so a kernel from COPR would desync ESP and rootfs.
             rpmbuild --define "_topdir $BUILD_TMP" \
                      --define "_annobin_gcc_plugin %{nil}" \
-                     -bb "$SPEC_FILE"
+                     -ba "$SPEC_FILE"
             continue
         fi
 
@@ -175,10 +183,10 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
                 -C "$PACKAGES_DIR/$pkg" .
         fi
 
-        echo "--> Building RPM for $pkg..."
+        echo "--> Building RPM and SRPM for $pkg..."
         rpmbuild --define "_topdir $BUILD_TMP" \
                  --define "_annobin_gcc_plugin %{nil}" \
-                 -bb "$SPEC_FILE"
+                 -ba "$SPEC_FILE"
 
         # If we just built libssc, ensure host has it installed for downstream iio-sensor-proxy-ssc
         if [ "$pkg" = "libssc" ] && [ -d "$BUILD_TMP/RPMS/aarch64" ]; then
@@ -195,6 +203,7 @@ done
 echo ""
 echo "=== Collecting RPM artifacts ==="
 find "$BUILD_TMP/RPMS" -type f -name "*.rpm" -exec cp -v {} "$OUT_DIR/" \;
+find "$BUILD_TMP/SRPMS" -type f -name "*.src.rpm" -exec cp -v {} "$SRPM_DIR/" \;
 
 echo ""
 echo "=== Checking repository indexer ==="

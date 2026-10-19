@@ -188,6 +188,10 @@ def test_every_resolved_workflow_is_registered_on_default_branch():
     unpack = rpms.split("Unpack the matching kernel payload", 1)[1].split("- name:", 1)[0]
     if "modules/lib/modules" not in unpack:
         failures.append("build-piano-rpms.yml rejects the build-kernel modules layout")
+    # build-rpms.sh fetches remote Source0 with spectool, which ships in
+    # rpmdevtools. Without it the matrix dies on the first remote-source spec.
+    if "rpmdevtools" not in rpms:
+        failures.append("build-piano-rpms.yml does not install spectool (rpmdevtools)")
     if failures:
         raise AssertionError("; ".join(failures))
 
