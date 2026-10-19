@@ -534,6 +534,12 @@ def execute(plan_data):
         "--use-host-config",
         f"--releasever={releasever}",
         f"--repofrompath=piano-local,{rpms_dir}",
+        # The piano repository must win every name it provides. Fedora 44 updates
+        # carries mesa-26.2.4-1.fc44, which sorts above the locally built
+        # 26.2.3-1.piano1.fc44; without a priority dnf installed the distro Mesa
+        # and finalize then rejected the image because the package was not the
+        # verified A830v1 build. A lower value means a higher priority.
+        "--setopt=piano-local.priority=1",
         "--setopt=install_weak_deps=False",
         "--setopt=tsflags=nodocs",
         "--nogpgcheck",

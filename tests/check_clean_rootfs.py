@@ -190,6 +190,15 @@ def main():
     check("sanitize_rootfs_identity" in source,
           "build-clean-rootfs.py must sanitize rootfs machine identity")
 
+    # 9. 本地 piano 仓库必须压过 Fedora 官方仓库。Fedora 44 updates 的
+    #    mesa-26.2.4-1.fc44 版本号高于自建的 26.2.3-1.piano1.fc44，没有
+    #    priority 时 dnf 选上游包，finalize 再以“不是已验证的 A830v1 构建”
+    #    拒绝整张镜像。
+    check("piano-local.priority=1" in source,
+          "build-clean-rootfs.py must give the piano-local repository a lower "
+          "priority number than the distro repositories, otherwise dnf installs "
+          "the distro Mesa over the verified piano build")
+
     # 8. 根分区策略必须在成像前落地。initramfs 在 chroot 之后立刻运行
     #    piano-disk-hardware-prepare，它的 require_ram() 直接读
     #    /etc/piano/root-policy.json；缺这个文件系统就停在救援 shell。
