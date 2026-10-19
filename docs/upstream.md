@@ -36,4 +36,4 @@
 
 当前 Linux DTB 的 16 个非零 RAM 区间合计 16,470,685,696 字节。Raw Linux 交接修改面板 compatible、启动参数和 initrd 地址，保留输入内存描述；自动选面板不等于自动发现 RAM。上线后的只读更新计划必须验证 Linux 描述的 RAM 是当次 Android FDT 的子集，并且固定保留区与 Linux RAM 相交的部分仍受保护。比较失败就拒绝更新，不要猜扩容后的地址，也不要放宽内存门槛。比较通过也不证明物理 DDR 所有权或完整 24 GB 可用。
 
-来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/6a8763d010adb00b18911d6d12e6dd02869f98b9/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/6a8763d010adb00b18911d6d12e6dd02869f98b9/docs/devel/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/6a8763d010adb00b18911d6d12e6dd02869f98b9/uefi/core/PianoRawLinuxBoot.c)。
+来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73/docs/devel/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73/uefi/core/PianoRawLinuxBoot.c)。

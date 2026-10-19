@@ -168,7 +168,7 @@ chmod +x flash-linux.sh
 如果第 3 步已经用 `install-f2fs.py --ssh-key` 注入过，这里不必再传；重复注入
 只会覆盖同一个 `/piano-ssh-key.pub`。两条路径都要求本机有 `mcopy`（mtools）。
 
-脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量。它只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。首装路径拒绝 `--skip-checksum`：两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备重启到 Slot B。Windows 脚本要求 PowerShell 5 或更高版本，槽位与容量核对用了 `ConvertFrom-Json`。
+脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量。它只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。首装路径拒绝 `--skip-checksum`：两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备重启到 Slot B。Windows 脚本用系统自带的 Windows PowerShell 读 JSON 清单：槽位与容量核对走 `ConvertFrom-Json`，找不到 `powershell` 就直接停下。
 
 ## PR 验收门槛
 

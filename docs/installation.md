@@ -8,7 +8,7 @@
 
 1. **解锁 Bootloader**：通过小米官方渠道完成 BL 解锁。刷入前电量保持 **30% 以上**，建议 50%。
 2. **电脑端工具**：装好 Android Platform Tools，`fastboot` 与 `adb` 在 PATH 里。Linux 主机还要配好设备 udev 规则，或者用有 `sudo` 权限的 shell。
-   - 要注入 SSH 公钥时再装 `mtools`（提供 `mcopy`）：Fedora `sudo dnf install mtools`，Ubuntu/Debian `sudo apt install mtools`，macOS `brew install mtools`。不注入公钥就不需要它。
+   - `mtools` 提供 `mcopy` 与 `mtype`：注入 SSH 公钥、以及核对 ESP 里的内核版本都要用它。Fedora `sudo dnf install mtools`，Ubuntu/Debian `sudo apt install mtools`，macOS `brew install mtools`。不走手动刷机又不注入公钥时可以省掉。
 3. **备份数据**：首次分区会把原厂 `userdata` 一分为二，一半留给 Android，一半给 Linux。**这一步会清空 Android 用户数据，先备份到电脑或外置存储。**
 
 ---
@@ -240,7 +240,7 @@ fastboot getvar partition-size:sunuefi_esp     # 十六进制字节数
 fastboot fetch sunuefi_esp esp-readback.img
 ```
 
-这台平板的 `sunuefi_esp` 分区比 `sunuefi_esp.img` 大（分区 537899008 字节，镜像 536870912 字节）。`fetch` 读的是整个分区，尾部会带上分区里原有的数据，整份哈希必然不同。只比对镜像长度那一段：
+这台平板的 `sunuefi_esp` 分区比 `sunuefi_esp.img` 大（实测分区 537899008 字节，镜像 536870912 字节；以自己的 `fastboot getvar` 结果为准）。`fetch` 读的是整个分区，尾部会带上分区里原有的数据，整份哈希必然不同。只比对镜像长度那一段：
 
 ```sh
 head -c "$(wc -c < sunuefi_esp.img)" esp-readback.img > esp-readback-head.img
@@ -264,7 +264,6 @@ systemctl --failed    # 输出为空
 
 ```sh
 # 1) ESP 镜像里的内核字符串（刷写前就能查，不需要设备）
-fastboot fetch sunuefi_esp esp.img      # 或直接用发布包里的 sunuefi_esp.img
 mtype -i sunuefi_esp.img ::/EFI/Piano/stable/Image > Image.bin
 strings -a Image.bin | grep -m1 -oE '[0-9.]+-piano[^ ]*g[0-9a-f]+'
 
@@ -304,7 +303,7 @@ fastboot reboot
 
 ### 手动分区（不使用安装脚本）
 
-不脚本的路径就是原厂 Fastboot 加 `sgdisk`。每一步都能单独核对，适合容量与 `product.json` 不一致、或者想自己控制边界的设备。**这些命令会清空 userdata，执行前先备份 Android 数据。**
+不用安装脚本的路径是原厂 Fastboot 加 `sgdisk`。每一步都能单独核对，适合容量与 `product.json` 不一致、或者想自己控制边界的设备。**这些命令会清空 userdata，执行前先备份 Android 数据。**
 
 #### 1. 读取真实 GPT
 
@@ -472,7 +471,7 @@ sparse 文件用 RAW 与显式零 FILL，不用 DONT_CARE；展开后的完整�
 ### 默认状态
 * **120 Hz 与触控**：Mesa 硬件加速默认开启；触控服务加载 5 阶自适应卡尔曼滤波与 24 像素死区防抖。
 * **声学保护**：内核与 ALSA UCM2 把 FS19xx 四功放截断在 -15 dB；麦克风有 +40 dB 硬件增益。
-* **电池与电源**：`/hypervisor` 节点已软隔离，GNOME 显示原生双电芯电量，支持休眠与合盖。
+* **电池与电源**：`/hypervisor` 节点已软隔离，GNOME 显示原生双电芯电量，支持合盖与深度挂起。休眠（hibernate）与混合睡眠默认关闭，见 `scripts/finalize-fedora-rootfs.py` 写的 `logind.conf`。
 * **触控提频**：`uperf-linux` 监听触控输入，触点按下后 1 ms 内拉高全大核频率。
 
 ---

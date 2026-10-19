@@ -29,7 +29,7 @@
 
 1. 解锁 Bootloader，准备好 `fastboot`。
 2. 原始 GPT 的设备先按[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)分区、擦除 `userdata`、让 Android 首次开机。**没有这一步，一键脚本不能运行。**
-3. 用同一次成功 `build-bundle` 的 `deploy-bundle`，以及该 bundle run 产出的 `root-install`，不要混用不同 run 的资产。
+3. 用同一次成功 `build-bundle` 的 `deploy-bundle`，以及由该 bundle run 派生的 `prepare-install` 产出的 `root-install`，不要混用不同 run 的资产。
 4. 关机后长按 `电源键 + 音量减键` 进入 Fastboot，确认 `fastboot getvar current-slot` 返回 `a`，然后执行：
 
    ```bash
