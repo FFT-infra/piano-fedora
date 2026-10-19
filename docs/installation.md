@@ -248,7 +248,9 @@ sha256sum esp-readback-head.img sunuefi_esp.img
 # 两行哈希必须相同
 ```
 
-分区容量与镜像字节数完全相等时省掉 `head -c`，直接比对整份。容量比镜像小时说明分区写不下，立刻停下。设备或 ABL 不支持 `fastboot fetch` 时跳过这一步，改看下面的启动后验证。
+分区容量与镜像字节数完全相等时省掉 `head -c`，直接比对整份。容量比镜像小时说明分区写不下，立刻停下。
+
+这台平板的原厂 ABL 不实现 `fetch`：主机 fastboot 37.0.0 能识别这个子命令，设备会回 `Device does not support fetch command`，宿主上还会留下一个 0 字节的读回文件。遇到这条就跳过读回，改看下面的启动后验证；不要因此重刷。
 
 如果第 4 节注入过 SSH 公钥，读回比对要用注入后重新算出的摘要，不能用 deploy-bundle `SHA256SUMS` 里的旧值。`mcopy` 就地改写 `sunuefi_esp.img`，两份摘要本来就不一样；搞错这一条会把正常的镜像判成损坏。
 
