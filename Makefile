@@ -4,6 +4,7 @@ test:
 	python3 tests/check_sources.py
 	python3 tests/check_upstreams.py
 	python3 tests/check_artifact_run.py
+	python3 tests/check_copr_release.py
 	python3 tests/check_product.py
 	python3 tests/check_links.py
 	python3 tests/check_document_scope.py
