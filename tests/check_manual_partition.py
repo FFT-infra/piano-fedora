@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""验证文档里的手动分区步骤：算术、命令序列与校验点。
+
+`tests/check_first_partition.py` 只测规划器。本测试针对 `docs/installation.md`
+的「手动分区」章节，确认：
+
+* 章节里的容量公式在多种磁盘容量上都能算出对半分配；
+* 文档给出的扇区边界与规划器在真实 GPT fixture 上一致；
+* 命令序列顺序正确：先缩短 userdata，再建 root，再建 ESP；
+* 明确包含 `sgdisk --verify`、GPT 回读核对和 `fastboot erase userdata`；
+* 不包含任何会碰 Android 固定分区的命令。
+
+文档公式是独立实现，不 import 规划器；两者都用同一个 GPT fixture 计算，
+结果必须相同。任一漂移都会失败。
+"""
+
+import json
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+DOC = ROOT / "docs" / "installation.md"
+PLANNER = ROOT / "scripts" / "plan-first-partition.py"
+
+START = "### 手动分区（不使用安装脚本）"
+END = "## 已有分区更新"
+
+SECTOR = 4096
+SECTORS_PER_MIB = SECTOR and (1024 * 1024) // SECTOR
+
+# 与 check_first_partition.py 相同的真实 GPT 形状：userdata 占满盘尾。
+GPT = """Disk /dev/block/sda: {total} sectors, 0 GiB
+Sector size (logical/physical): 4096/4096 bytes
+Disk identifier (GUID): D55FA102-1ED9-4154-B3A7-3E84CD916CB5
+Partition table holds up to 64 entries
+First usable sector is 6, last usable sector is {last}
+
+Number  Start (sector)    End (sector)  Size       Code  Name
+   1               6               7   8.0 KiB     FFFF  switch
+  32          191488          224255   128.0 MiB   A039  rescue
+  33          224256         3632127   13.0 GiB    FFFF  super
+  34         3632128       {last}   0 GiB   A03A  userdata
+"""
+
+
+def chapter():
+    text = DOC.read_text(encoding="utf-8")
+    start = text.index(START)
+    end = text.index(END, start)
+    return text[start:end]
+
+
+def align_down(sectors, unit_sectors):
+    return sectors - (sectors % unit_sectors)
+
+
+def doc_math(userdata_first, last_usable, esp_mib=512):
+    """按文档「算容量」一节的公式独立计算。"""
+    esp = esp_mib * 1024 * 1024 // SECTOR
+    usable = last_usable - userdata_first + 1
+    root = (usable - esp) // 2
+    esp_first = align_down(last_usable - esp + 1, SECTORS_PER_MIB)
+    root_last = esp_first - 1
+    root_first = align_down(root_last - root + 1, SECTORS_PER_MIB)
+    userdata_last = root_first - 1
+    return {
+        "esp_first": esp_first,
+        "esp_last": last_usable,
+        "root_first": root_first,
+        "root_last": root_last,
+        "userdata_last": userdata_last,
+        "root_mib": (root_last - root_first + 1) // SECTORS_PER_MIB,
+        "userdata_mib": (userdata_last - userdata_first + 1) // SECTORS_PER_MIB,
+    }
+
+
+def run_planner(dump_path):
+    result = subprocess.run(
+        [sys.executable, str(PLANNER), "--dump", str(dump_path), "--equal-split"],
+        capture_output=True, text=True, cwd=ROOT)
+    if result.returncode:
+        raise AssertionError(f"planner failed: {result.stderr or result.stdout}")
+    return json.loads(result.stdout)
+
+
+def test_math_matches_planner(tmp):
+    failures = []
+    for label, last in (("128GiB", 31457280), ("256GiB", 62914560),
+                        ("512GiB", 126509311), ("1TiB", 249518074)):
+        dump = tmp / f"{label}.txt"
+        dump.write_text(GPT.format(total=last + 6, last=last), encoding="utf-8")
+        planned = run_planner(dump)
+        expected = doc_math(3632128, last)
+        changes = {c["name"]: c for c in planned["changes"]}
+        for key, row in (("sunuefi_root", changes["sunuefi_root"]),
+                         ("sunuefi_esp", changes["sunuefi_esp"]),
+                         ("userdata", changes["userdata"])):
+            if key == "userdata":
+                actual, want = row["new_last"], expected["userdata_last"]
+            elif key == "sunuefi_root":
+                actual, want = (row["first"], row["last"]), (expected["root_first"], expected["root_last"])
+            else:
+                actual, want = (row["first"], row["last"]), (expected["esp_first"], expected["esp_last"])
+            if actual != want:
+                failures.append(f"{label}: {key} docs={want} planner={actual}")
+        if abs(expected["root_mib"] - expected["userdata_mib"]) > 1:
+            failures.append(f"{label}: halves differ by more than 1 MiB")
+        if expected["root_mib"] <= 0 or expected["userdata_mib"] <= 0:
+            failures.append(f"{label}: empty half")
+    assert not failures, "; ".join(failures)
+
+
+def test_command_blocks():
+    """命令必须在可执行的 sh 代码块里，不能只出现在正文描述中。"""
+    text = chapter()
+    blocks = re.findall(r"```sh\n(.*?)```", text, re.S)
+    assert blocks, "manual partition chapter has no sh code blocks"
+    code = "\n".join(blocks)
+    checks = [
+        ("sgdisk --print", "must read the real GPT first"),
+        ("--delete=", "must delete before re-creating userdata"),
+        ("--change-name", "must name the new partitions"),
+        ("sunuefi_esp", "must create the ESP"),
+        ("sunuefi_root", "must create the Linux root"),
+        ("sgdisk --verify", "must verify the written table"),
+        ("fastboot erase userdata", "must erase userdata explicitly"),
+    ]
+    failures = [reason for token, reason in checks if token not in code]
+    # Order matters only inside the block that writes the GPT: the earlier
+    # read-only probe mentions partition names too.
+    write_blocks = [b for b in blocks if "sgdisk --delete=" in b]
+    if not write_blocks:
+        failures.append("no code block actually writes the partition table")
+    else:
+        write = write_blocks[0]
+        delete_at = write.find("--delete=")
+        root_at = write.find("sunuefi_root")
+        esp_at = write.find("sunuefi_esp")
+        verify_at = code.find("sgdisk --verify")
+        erase_block = next((b for b in blocks if "fastboot erase userdata" in b), None)
+        if erase_block is None:
+            failures.append("userdata must be erased explicitly after repartitioning")
+            erase_at = -1
+        else:
+            erase_at = code.find("fastboot erase userdata")
+            if "reboot" not in erase_block:
+                failures.append("erase userdata must be followed by a reboot")
+        if not (0 <= delete_at < root_at < esp_at < verify_at < erase_at):
+            failures.append(
+                "order must be userdata delete -> create root -> create ESP -> verify -> erase userdata")
+        if "sgdisk --verify" not in write and "sgdisk --verify" not in code:
+            failures.append("the written table must be verified")
+    assert not failures, "; ".join(failures)
+
+
+def test_no_android_partition_writes():
+    text = chapter()
+    forbidden = ("boot_a", "dtbo_a", "super", "init_boot", "vendor_boot", "vbmeta")
+    failures = []
+    for token in forbidden:
+        # Allowed only as a name in prose, never as an sgdisk target.
+        if re.search(r"sgdisk[^\n]*" + re.escape(token), text):
+            failures.append(f"manual partitioning must not touch {token}")
+    assert not failures, "; ".join(failures)
+
+
+def test_mentions_capacity_is_per_device():
+    text = chapter()
+    assert "每台设备按自己实时的 GPT 计算" in DOC.read_text(encoding="utf-8"), (
+        "installation.md must state that capacity is computed per device")
+    assert "product.json" in text or "product.json" in DOC.read_text(encoding="utf-8")
+
+
+def main():
+    with tempfile.TemporaryDirectory() as tmp:
+        test_math_matches_planner(Path(tmp))
+    test_command_blocks()
+    test_no_android_partition_writes()
+    test_mentions_capacity_is_per_device()
+    print("OK: manual partitioning docs match the planner and keep Android partitions untouched")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

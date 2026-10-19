@@ -127,6 +127,33 @@ def main():
             "root larger than available space should be rejected",
         )
 
+        # 容量必须由实时 GPT 决定，不能写死成某台设备的尺寸。
+        # 同一套规则在 128 GiB 到 1 TiB 上都应把剩余空间对半分。
+        for label, last_usable in (("128GiB", 31457280), ("256GiB", 62914560),
+                                   ("512GiB", 126509311), ("1TiB", 249518074)):
+            capacity = tmp / ("cap-" + label + ".txt")
+            capacity.write_text(
+                REAL_GPT.replace("249518080", str(last_usable + 6))
+                        .replace("249518074", str(last_usable))
+                        .replace("3632128       249518074", "3632128       " + str(last_usable)),
+                encoding="utf-8")
+            result = run("--dump", str(capacity), "--equal-split")
+            check(result.returncode == 0, f"{label}: equal split should succeed: {result.stderr}")
+            if result.returncode != 0:
+                continue
+            data = json.loads(result.stdout)
+            root_mib = data["capacity"]["linux_root_mib"]
+            android_mib = data["capacity"]["android_userdata_mib"]
+            check(abs(root_mib - android_mib) <= 1,
+                  f"{label}: Android and Linux halves must match, got {android_mib}/{root_mib}")
+            check(root_mib > 1024, f"{label}: root half must not collapse")
+            # 1 MiB 对齐只会把起始扇区往前推，ESP 实际容量等于或略大于请求值。
+            esp_mib = data["capacity"]["esp_bytes"] // 1024**2
+            check(512 <= esp_mib <= 513,
+                  f"{label}: ESP must stay at 512 MiB (+1 MiB alignment), got {esp_mib}")
+            check(data["changes"][-1]["last"] == last_usable,
+                  f"{label}: ESP must end at the disk tail")
+
         # ESP 越界：拒绝。
         check(
             run("--dump", str(dump), "--esp-mib", "4096").returncode == 2,

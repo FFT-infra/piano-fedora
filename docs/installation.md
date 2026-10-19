@@ -315,6 +315,118 @@ Actions 不连接平板。构建成功、传输成功、Linux 启动成功分别
 
 已有 `sunuefi_root` 和 `sunuefi_esp` 时使用下面的更新入口。首次分区的 `install-f2fs.py apply` 会清空 userdata，不能用于更新。
 
+### 手动分区（不使用安装脚本）
+
+脚本之外的路径就是原厂 Fastboot 加 `sgdisk`。下面每一步都可以单独核对，
+适合容量与 `product.json` 不同、或者想自己控制边界的设备。**这些命令会
+清空 userdata，执行前先备份 Android 数据。**
+
+#### 1. 读取真实 GPT
+
+设备必须停在原厂 Fastboot（不是 fastbootd），并且 `current-slot` 是 `a`：
+
+```sh
+fastboot getvar current-slot
+fastboot getvar partition-size:userdata
+fastboot getvar partition-size:sunuefi_esp
+```
+
+进入一个能读到块设备的 shell。Android 侧用 `adb shell` 加 `su`；如果设备
+已经在 Linux，则可以在本机直接读 `/dev/sda`。先确认扇区大小，后面的所有
+换算都依赖它：
+
+```sh
+cat /sys/block/sda/queue/physical_block_size   # 这台设备是 4096
+sgdisk --print /dev/sda
+```
+
+`sgdisk --print` 会给出总扇区数、First/Last usable sector，以及每个分区的
+起止扇区。把完整输出另存一份，作为本次安装的 GPT 基线。
+
+#### 2. 算容量
+
+以 `L` 表示最后可用扇区、`U` 表示当前 `userdata` 的起始扇区，扇区大小是
+`S` 字节：
+
+```text
+可用总扇区 = L - U + 1
+ESP 扇区   = 512 * 1024 * 1024 / S        # 512 MiB，S=4096 时是 131072
+root 扇区  = (可用总扇区 - ESP 扇区) / 2  # 对半；也可以自己指定
+```
+
+三个分区的边界：
+
+```text
+sunuefi_esp  最后扇区 = L
+sunuefi_esp  起始扇区 = 向下对齐 1 MiB(L - ESP 扇区 + 1)
+sunuefi_root 最后扇区 = ESP 起始扇区 - 1
+sunuefi_root 起始扇区 = 向下对齐 1 MiB(ESP 起始扇区 - root 扇区)
+userdata     起始扇区保持不变，最后扇区改为 root 起始扇区 - 1
+```
+
+1 MiB 对齐会把起始扇区往前推，所以实际容量只会大于等于请求值，Android 与
+Linux 两侧相差不超过 2 MiB。用 `scripts/plan-first-partition.py --dump` 可以
+离线核对这套算术：把 `sgdisk --print` 的输出保存成文件，它会给出同样的边界
+和容量，不接触设备。
+
+#### 3. 写 GPT
+
+在设备上依次执行。`<n_root>` 和 `<n_esp>` 用 `sgdisk --print` 里尚未占用的
+两个分区号：
+
+```sh
+# 缩短 userdata，只改末尾
+sgdisk --delete=<n_userdata> /dev/sda
+sgdisk --new=<n_userdata>:<U>:<new_userdata_last> /dev/sda
+sgdisk --change-name=<n_userdata>:userdata /dev/sda
+sgdisk --typecode=<n_userdata>:<原 userdata 的 type GUID> /dev/sda
+
+# Linux root（位于 ESP 之前）
+sgdisk --new=<n_root>:<root_first>:<root_last> /dev/sda
+sgdisk --change-name=<n_root>:sunuefi_root /dev/sda
+sgdisk --typecode=<n_root>:8300 /dev/sda
+
+# ESP（占据盘尾）
+sgdisk --new=<n_esp>:<esp_first>:<L> /dev/sda
+sgdisk --change-name=<n_esp>:sunuefi_esp /dev/sda
+sgdisk --typecode=<n_esp>:EF00 /dev/sda
+
+sync
+```
+
+`--delete` 会同时重写主 GPT 和备份 GPT。写完立刻回读核对，任何一项不一致就
+停下，不要继续往下走：
+
+```sh
+sgdisk --verify /dev/sda
+sgdisk --print /dev/sda
+```
+
+核对要点：`userdata` 的起始扇区与原来相同；`sunuefi_esp` 结束在 `L`；
+`sunuefi_root` 紧贴 ESP 之前；三个分区互不重叠，且都在 usable 范围内。
+
+#### 4. 让 Android 重建 userdata
+
+分区变短后，原加密 userdata 不再可信。回到 Fastboot 显式擦除：
+
+```sh
+fastboot erase userdata
+fastboot reboot
+```
+
+等 Android 首次开机完成，`adb shell getprop sys.boot_completed` 返回 `1`。
+这一步不能跳；跳过会出现 Android 反复重启或加密失败。
+
+#### 5. 刷入 Linux
+
+Android 初始化完成后关机，按【电源键 + 音量减键】进入原厂 Fastboot，确认
+`current-slot` 仍是 `a`，然后按下面「三之二、手动刷机」的逐条命令刷入
+`boot_b`、`sunuefi_esp`、`sunuefi_root`，最后 `fastboot reboot`。
+
+> 手动路径不包含 `install-f2fs.py apply` 的自动回读校验。每一步之后自己执行
+> `fastboot getvar partition-size:<name>` 和镜像的 `sha256sum`，把结果记进
+> 本次会话；分区写错只能靠原厂包恢复，而 userdata 里的数据无法恢复。
+
 ## 已有分区更新
 
 `update-f2fs.py` 复用锁定上游的只读设备/GPT 解析、工厂 Fastboot 身份检查与本仓库的材料校验。它只传输现有 ESP 和 F2FS root，保持 GPT、userdata 与持久 BOOT 的写入操作为零。完整 root 会替换 Linux 文件，已有个人文件须先备份。
@@ -358,8 +470,19 @@ ABL 只读对照把完整取证保存到 RAM 中 `/run/piano-boot-evidence.txt`�
 
 ## 分区与容量
 
-`product.json` 记录本机已核对的目标容量。规划器默认保留 Android 固定分区，
-将原 userdata 扣除 ESP 后的空间对半分；1 MiB 对齐允许两边相差不超过 2 MiB。
+容量不是固定值。**每台设备按自己实时的 GPT 计算**，512 GiB、1 TiB 或其他
+容量都走同一套规则：
+
+1. 保留 Android 的全部固定分区（`boot_a`、`dtbo_a`、`super` 等）不动；
+2. `userdata` 从尾部缩短，让出 Linux 需要的空间；
+3. 让出的空间放 `sunuefi_esp`（512 MiB）和 `sunuefi_root`（其余全部）；
+4. Android `userdata` 与 `sunuefi_root` 按剩余空间对半分配；
+5. 所有新分区起点按 1 MiB 对齐，两边相差不超过 2 MiB。
+
+`product.json` 里的 `root_size_mib` 只是某台设备实测的一次记录，用来给
+`prepare-install` 提供默认值，**不能当成所有设备的约定**。换了容量就要用
+下面的手动流程重新算，或者给 `prepare-install` 传自己的 `root_size_mib`。
+
 执行器从实时、双副本 CRC 合格的完整 GPT 重算，结果必须与镜像容量一致。
 原 userdata 会清空重建，GPT/BOOT 恢复文件不包含 Android 用户数据。
 
