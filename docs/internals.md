@@ -28,8 +28,7 @@ build-bundle
   └─ deploy-bundle/sunuefi_esp.img + boot_sunuefi.img
 ```
 
-发布验收仍必须使用这一整条链的新产物，并从原始 GPT/UFS 布局重新分区；
-不能沿用 2026-10-19 手工补入两个会话 RPM 的 rootfs。
+发布验收必须用这一整条链的新产物，并从原始 GPT/UFS 布局重新分区。手工补进会话 RPM 的 rootfs 不算通过。
 
 ## Actions 材料
 
