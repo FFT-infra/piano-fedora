@@ -123,17 +123,13 @@ cd piano-install
 （目录 0700、文件 0600）并删除 ESP 上的副本。不传 `--ssh-key` 时脚本行为与
 以前完全一致，系统只保留文档里的口令登录。
 
-注入会改变 `sunuefi_esp.img` 的字节，因此它与 deploy-bundle 的 `SHA256SUMS`
-不再一致。重跑前请重新解压一份 deploy-bundle；刷写后要读回核对时，用脚本
-打印的新摘要，而不是清单里的旧值。Windows 脚本不自动注入，需要时按
-`flash-linux.bat` 的提示手工 `mcopy`。
+注入会改变 `sunuefi_esp.img` 的字节，它和 deploy-bundle 的 `SHA256SUMS` 就不再一致。重跑前重新解压一份 deploy-bundle。刷写后读回核对时，用脚本打印的新摘要，不要用清单里的旧值。Windows 脚本不自动注入；需要时按 `flash-linux.bat` 的提示手工执行 `mcopy`。
 
-刷机脚本将全自动执行以下动作：
-1. 自动检查 `fastboot` 环境与设备在线状态；
-2. 校验设备产品代号确为 `piano`，避免误刷；
-3. 分别按 deploy-bundle 的 `SHA256SUMS` 和 `root-install/SHA256SUMS`
-   校验 BOOT/ESP 与 sparse root；
-4. 弹出醒目安全告知，要求用户在终端输入大写 `YES` 确认；
+脚本按顺序做这些事：
+1. 检查 `fastboot` 是否可用、设备是否在线。
+2. 确认产品代号是 `piano`，防止误刷。
+3. 按 deploy-bundle 的 `SHA256SUMS` 与 `root-install/SHA256SUMS` 分别校验 BOOT/ESP 和 sparse root。
+4. 打印安全告知，要求输入大写 `YES` 确认。
 5. 执行标准刷写序列：
    - 切换活动槽位至 B：`fastboot set_active b`
    - 刷入引导头：`fastboot flash boot_b boot_sunuefi.img`
@@ -148,15 +144,11 @@ cd piano-install
 
 ## 三之二、 手动刷机（不使用一键脚本）
 
-一键脚本只是把下面这些命令包了一层。想自己控制每一步、或脚本在你的平台上跑不
-起来时，直接照本节操作。命令与脚本执行的是同一套写入，`dtbo_b` 一律不动。
+一键脚本只是把下面这些命令包了一层。想自己控制每一步，或者脚本在你的平台上跑不起来时，直接照本节执行。写入内容与脚本相同，`dtbo_b` 一律不动。
 
 ### 1. 从 Release 取哪些文件
 
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases)
-下载发行包；Release 尚未发布时，使用同一次成功 `build-bundle` run 下载的
-完整 `deploy-bundle` 与 `prepare-install` run 下载的 `root-install`，不要使用
-历史 `out/` 目录拼装。手动刷机至少需要下面这些资产：
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及该 run 派生的 `prepare-install` 的 `root-install`；不要拿历史 `out/` 目录拼装。手动刷机至少需要这些资产：
 
 | Release 资产 | 用途 | 刷到哪 |
 | --- | --- | --- |
