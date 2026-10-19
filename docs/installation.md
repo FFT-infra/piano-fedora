@@ -197,16 +197,9 @@ fastboot getvar unlocked       # 必须是 yes
 fastboot getvar is-userspace   # 必须是 no
 ```
 
-`product` 不是 `piano`、`unlocked` 不是 `yes`、或 `is-userspace` 是 `yes`
-（说明落在 fastbootd 而不是原厂 ABL）时，停下，不要写任何分区。
-`current-slot` 必须是 `a`；如果是 `b`，一键脚本会拒绝，手动流程也必须停止，
-不能把 Linux 写到正在承载 Android 的 `boot_b`。
+任一项不对就停下，不要写任何分区：`product` 不是 `piano`，`unlocked` 不是 `yes`，或者 `is-userspace` 是 `yes`（说明落在了 fastbootd，不是原厂 ABL）。`current-slot` 必须是 `a`；是 `b` 时一键脚本会拒绝，手动流程也必须停，不能把 Linux 写进正在承载 Android 的 `boot_b`。
 
-手动路径同样只接受同一条新流水线产出的材料：完整 `deploy-bundle`，以及
-由该精确 bundle run 派生、`android_slot` 为 `_a` 的 `root-install`。刷写前
-读取 `fastboot getvar partition-size:sunuefi_root`，把返回的十六进制容量
-换算为字节后，必须与 `root-install-manifest.json` 的 `expanded_bytes`
-完全相等；容量不一致就停止。
+手动路径也只接受同一条新流水线的材料：完整 `deploy-bundle`，以及由该 bundle run 派生、`android_slot` 为 `_a` 的 `root-install`。刷写前读 `fastboot getvar partition-size:sunuefi_root`，把十六进制容量换算成字节，必须与 `root-install-manifest.json` 的 `expanded_bytes` 完全相等；不一致就停。
 
 ### 4. 逐条刷写
 
