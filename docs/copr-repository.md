@@ -94,7 +94,7 @@ sudo dnf config-manager setopt copr:copr.fedorainfracloud.org:fft-infra:piano-fe
 sudo dnf downgrade --repo fedora piano-fedora-configs
 ```
 
-彻底移除仓库：
+移除仓库：
 
 ```bash
 sudo rm /etc/yum.repos.d/piano-fedora-copr.repo
