@@ -22,3 +22,6 @@ __pycache__/
 Thumbs.db
 *~
 *.swp
+
+# 本地调试笔记与事故复盘，不入库
+/local-notes/

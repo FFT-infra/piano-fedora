@@ -128,7 +128,7 @@
 - **[全网上游同步与追溯](docs/upstream-sync.md)**：对标上游仓库（SunUEFI、yzddmr6、code002-2）的同步记录；
 - **[Gunyah 虚拟化架构](docs/virtualization.md)**：SM8750 上的 Gunyah 虚拟机生命周期、大页配置与网络桥接。
 
-本地调试记录、事故复盘和交接笔记放在 `notes/`，不随发布资产分发。
+本地调试记录、事故复盘和交接笔记不入库。
 
 ## 本地检查与构建
 
