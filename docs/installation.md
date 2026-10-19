@@ -233,21 +233,22 @@ fastboot reboot
 
 ### 5. 验证刷写结果
 
-`fastboot flash` 的 `OKAY` 只说明数据发完了，不说明分区内容正确。重启前可以读回校验；`sunuefi_esp` 是 512 MiB，读回要几分钟：
+`fastboot flash` 的 `OKAY` 只说明数据发完了，不说明分区内容正确。重启前可以读回校验；`sunuefi_esp` 约 512 MiB，读回要几分钟：
 
 ```sh
+fastboot getvar partition-size:sunuefi_esp     # 十六进制字节数
 fastboot fetch sunuefi_esp esp-readback.img
-sha256sum esp-readback.img sunuefi_esp.img
+```
+
+这台平板的 `sunuefi_esp` 分区比 `sunuefi_esp.img` 大（分区 537899008 字节，镜像 536870912 字节）。`fetch` 读的是整个分区，尾部会带上分区里原有的数据，整份哈希必然不同。只比对镜像长度那一段：
+
+```sh
+head -c "$(wc -c < sunuefi_esp.img)" esp-readback.img > esp-readback-head.img
+sha256sum esp-readback-head.img sunuefi_esp.img
 # 两行哈希必须相同
 ```
 
-该读回只在分区容量与镜像字节数相等时才有意义；先在设备上确认：
-
-```sh
-fastboot getvar partition-size:sunuefi_esp
-```
-
-结果应等于 `sunuefi_esp.img` 的字节数。容量更大时，读回会带上分区尾部原有数据，哈希不会相同，这时改用下面的启动后验证。设备或 ABL 不支持 `fastboot fetch` 时也跳过这一步。
+分区容量与镜像字节数完全相等时省掉 `head -c`，直接比对整份。容量比镜像小时说明分区写不下，立刻停下。设备或 ABL 不支持 `fastboot fetch` 时跳过这一步，改看下面的启动后验证。
 
 如果第 4 节注入过 SSH 公钥，读回比对要用注入后重新算出的摘要，不能用 deploy-bundle `SHA256SUMS` 里的旧值。`mcopy` 就地改写 `sunuefi_esp.img`，两份摘要本来就不一样；搞错这一条会把正常的镜像判成损坏。
 

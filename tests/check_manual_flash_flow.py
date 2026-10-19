@@ -130,7 +130,7 @@ def executed_commands(block):
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        if line.startswith(("fastboot", "sha256sum", "(cd ")):
+        if line.startswith(("fastboot", "sha256sum", "(cd ", "head ")):
             yield line
 
 
@@ -296,6 +296,14 @@ def main():
         # The readback step must be present and must be shown to be conditional.
         if "fastboot fetch" not in chapter:
             failures.append("manual chapter has no readback step")
+        # The readback file the documented commands produce must hash to the
+        # flashed image; a formula that truncates to the wrong length would
+        # print two different digests while every command still exits 0.
+        readback = staging / "esp-readback-head.img"
+        if not readback.is_file():
+            failures.append("manual chapter does not truncate the readback to the image length")
+        elif hashlib.sha256(readback.read_bytes()).digest() != hashlib.sha256(esp.read_bytes()).digest():
+            failures.append("documented readback truncation does not reproduce the image digest")
         if "partition-size:sunuefi_esp" not in chapter:
             failures.append("manual chapter does not gate the readback on partition size")
         if "partition-size:sunuefi_root" not in chapter:
