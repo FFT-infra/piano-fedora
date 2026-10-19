@@ -2,7 +2,7 @@
 
 Name:           iio-sensor-proxy-ssc
 Version:        3.9
-Release:        2%{?dist}
+Release:        3%{?dist}
 Provides:       iio-sensor-proxy = %{version}-%{release}
 Provides:       iio-sensor-proxy%{?_isa} = %{version}-%{release}
 Obsoletes:      iio-sensor-proxy < %{version}-%{release}
@@ -11,6 +11,10 @@ License:        GPL-3.0-or-later
 URL:            https://gitlab.freedesktop.org/hadess/iio-sensor-proxy
 Source0:        %{url}/-/archive/%{version}/iio-sensor-proxy-%{version}.tar.gz
 Source1:        49-iio-sensor-proxy.rules
+# Sensor claim race: without it the proxy can lose the SSC claim while the
+# service restarts. The device runtime always applied it; the matrix did not,
+# so the two producers shipped different binaries under the same NEVRA.
+Patch0:         ssc-claim-race.patch
 
 ExclusiveArch:  aarch64
 
@@ -40,7 +44,7 @@ Proxies IIO sensor data to D-Bus, enabling accelerometer auto-rotation,
 ambient light sensor, and proximity sensor on Xiaomi Pad 8 Pro (piano).
 
 %prep
-%autosetup -n iio-sensor-proxy-%{version}
+%autosetup -p1 -n iio-sensor-proxy-%{version}
 
 %build
 %meson \
@@ -73,6 +77,9 @@ systemctl enable iio-sensor-proxy.service || :
 %systemd_postun_with_restart iio-sensor-proxy.service
 
 %changelog
+* Mon Oct 19 2026 FFT-infra <dev@piano.invalid> - 3.9-3
+- Apply the SSC claim-race fix so the matrix matches the device runtime build
+
 * Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 3.9-2
 - Add Obsoletes to cleanly replace standard Fedora iio-sensor-proxy
 

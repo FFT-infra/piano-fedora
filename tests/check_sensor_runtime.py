@@ -7,6 +7,8 @@ not enabled，SSC 后端会被静默省略，ELF 不链接 libssc。这里用真
 用真实编译器验证 ELF 真实性检查，并对固定源码做静态断言。缺工具或源码时跳过对应部分。
 """
 import argparse
+import hashlib
+import re
 import importlib.util
 import os
 import shutil
@@ -24,6 +26,33 @@ runtime = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(runtime)
 
 STUB_VERSION = "238.0"
+SSC_DRIVER_MARKERS = ("ssc-accel", "ssc-proximity", "ssc-light", "ssc-compass")
+SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]")
+
+
+def verify_ssc_runtime(binary):
+    """确认产物真的链接了 libssc 且编入 SSC 驱动。
+
+    这是设备运行时的真实性检查，留在测试里；矩阵构建由 spec 断言覆盖。
+    """
+    readelf = shutil.which("readelf")
+    if readelf is None:
+        raise ValueError("binutils readelf unavailable; cannot verify libssc linkage")
+    completed = subprocess.run([readelf, "-dW", str(binary)],
+                               capture_output=True, text=True)
+    if completed.returncode != 0:
+        raise ValueError("readelf cannot read iio-sensor-proxy output: " + completed.stderr.strip())
+    linked = SSC_NEEDED.findall(completed.stdout)
+    if not linked:
+        raise ValueError(
+            "iio-sensor-proxy ELF does not link libssc; meson ssc-support was not "
+            "enabled (needs -Dssc-support=enabled)")
+    raw = Path(binary).read_bytes()
+    missing = [m for m in SSC_DRIVER_MARKERS if m.encode() not in raw]
+    if missing:
+        raise ValueError("iio-sensor-proxy ELF is missing SSC driver markers " + repr(missing))
+    return {"libssc": sorted(set(linked)), "ssc_driver_markers": list(SSC_DRIVER_MARKERS),
+            "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
 
 
 def write_stub_pc(directory, name, version=STUB_VERSION):
@@ -52,10 +81,30 @@ def check_readelf_dependency(path, expected, work):
     assert f"Shared library: [{expected}]" in output, output
 
 
+IIO_SPEC = ROOT / "packages/iio-sensor-proxy-ssc/iio-sensor-proxy-ssc.spec"
+LIBSSC_SPEC = ROOT / "packages/libssc/libssc.spec"
+IIO_PATCH = ROOT / "packages/iio-sensor-proxy-ssc/ssc-claim-race.patch"
+
+
 def check_option_flag():
-    """修复点：iio-sensor-proxy 的 meson setup 必须带上显式启用。"""
-    assert runtime.sensor_meson_options("iio-sensor-proxy") == ["-Dssc-support=enabled"]
-    assert runtime.sensor_meson_options("libssc") == []
+    """修复点：iio-sensor-proxy 构建时必须显式启用 SSC。
+
+    矩阵通过 packages/iio-sensor-proxy-ssc 构建这个包，build-device-runtime 不再
+    自己编一份；所以断言落在 spec 上，保证矩阵版本也带 -Dssc-support=enabled，
+    并应用设备侧一直依赖的 claim-race 补丁。
+    """
+    spec = IIO_SPEC.read_text()
+    assert "-Dssc-support=enabled" in spec, spec
+    assert "ssc-claim-race.patch" in spec and "autosetup -p1" in spec, spec
+    assert IIO_PATCH.is_file()
+
+    libssc = LIBSSC_SPEC.read_text()
+    for patch in ("0001-fix-sensor-property-types.patch",
+                  "0002-raw-vector-reports.patch",
+                  "0003-piano-ssc-vector-cli.patch",
+                  "wait_for_qmi_service.patch"):
+        assert patch in libssc, (patch, libssc)
+        assert (ROOT / "packages/libssc" / patch).is_file(), patch
 
 
 def check_meson_auto_semantics(work):
@@ -117,9 +166,9 @@ def check_elf_authenticity(work):
                    check=True, capture_output=True)
     # 主机架构无关：真实 readelf 必须能看到 libssc.so.2。
     check_readelf_dependency(good, "libssc.so.2", work)
-    proof = runtime.verify_ssc_runtime(good)
+    proof = verify_ssc_runtime(good)
     assert "libssc.so.2" in proof["libssc"], proof
-    assert proof["ssc_driver_markers"] == list(runtime.SSC_DRIVER_MARKERS)
+    assert proof["ssc_driver_markers"] == list(SSC_DRIVER_MARKERS)
 
     # 反面一：完全没有 libssc 依赖（就是本次构建遗漏产生的 ELF）。
     plain = work / "plain"
@@ -127,7 +176,7 @@ def check_elf_authenticity(work):
     plain_c.write_text('#include <stdio.h>\nint main(void){puts("no ssc");return 0;}\n')
     subprocess.run(["gcc", str(plain_c), "-o", str(plain)], check=True, capture_output=True)
     try:
-        runtime.verify_ssc_runtime(plain)
+        verify_ssc_runtime(plain)
     except ValueError as error:
         assert "does not link libssc" in str(error), error
     else:
@@ -143,7 +192,7 @@ def check_elf_authenticity(work):
     subprocess.run(["gcc", str(linked_c), "-o", str(linked), str(lib)],
                    check=True, capture_output=True)
     try:
-        runtime.verify_ssc_runtime(linked)
+        verify_ssc_runtime(linked)
     except ValueError as error:
         assert "missing SSC driver markers" in str(error), error
     else:
@@ -153,7 +202,7 @@ def check_elf_authenticity(work):
     junk = work / "junk"
     junk.write_bytes(b"not an elf")
     try:
-        runtime.verify_ssc_runtime(junk)
+        verify_ssc_runtime(junk)
     except ValueError:
         pass
     else:
@@ -190,8 +239,20 @@ def check_real_source_red_green(source, work):
         return "HAS_LIBSSC" in (builddir / "src/config.h").read_text()
 
     assert not has_libssc(work / "real-auto"), "plain meson setup unexpectedly enabled SSC"
-    assert has_libssc(work / "real-on", *runtime.sensor_meson_options("iio-sensor-proxy")), \
+    assert has_libssc(work / "real-on", "-Dssc-support=enabled"), \
         "explicit -Dssc-support=enabled did not enable SSC"
+
+
+def check_single_builder():
+    """libssc 与 iio-sensor-proxy 只能有一个构建者。
+
+    build-device-runtime 曾经也编这两个包，和矩阵产物同名不同字节，合并进同一个
+    DNF 仓库时直接冲突。这里锁住"只有矩阵构建它们"。
+    """
+    source = (ROOT / "scripts/build-device-runtime.py").read_text()
+    assert "build_sensors(" not in source, "runtime still builds sensor packages"
+    assert "sensor_meson_options" not in source
+    assert "stage_sensor_integration" in source
 
 
 def main():
@@ -200,6 +261,7 @@ def main():
         "PIANO_TEST_IIO_SOURCE", "")) if os.environ.get("PIANO_TEST_IIO_SOURCE") else None)
     args = ap.parse_args()
     check_option_flag()
+    check_single_builder()
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
         check_meson_auto_semantics(work)

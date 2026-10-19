@@ -97,56 +97,6 @@ def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0"
     return rpms
 
 
-def sensors_source(output, name, version, archive_name, digest):
-    pool = "libs/libssc" if name == "libssc" else "i/iio-sensor-proxy"
-    archive = output / archive_name
-    url = "https://deb.debian.org/debian/pool/main/" + pool + "/" + archive_name
-    with urllib.request.urlopen(url, timeout=60) as incoming, archive.open("xb") as target:
-        shutil.copyfileobj(incoming, target)
-    if sha256(archive) != digest:
-        raise ValueError("pinned sensor source archive changed: " + name)
-    destination = output / (name + "-source")
-    destination.mkdir()
-    with tarfile.open(archive) as stream:
-        stream.extractall(destination, filter="data")
-    roots = list(destination.iterdir())
-    if len(roots) != 1 or not (roots[0] / "meson.build").is_file():
-        raise ValueError("unexpected sensor source layout: " + name)
-    return roots[0]
-
-
-def verify_ssc_runtime(binary):
-    """确认产物真的链接了 libssc 且编入 SSC 驱动，而不是配置被静默跳过。
-
-    用构建机 binutils 的 readelf -dW 读 DT_NEEDED，只看产物本身；meson 的 log 或
-    config.h 在后端被跳过或链接失败时都可能仍是"配置成功"。源码标记读整文件即可，
-    .rodata 里的 udev 类型字面量与动态节无关。"""
-    readelf = shutil.which("readelf")
-    if readelf is None:
-        raise ValueError("binutils readelf unavailable; cannot verify libssc linkage")
-    completed = subprocess.run([readelf, "-dW", str(binary)],
-                               capture_output=True, text=True)
-    if completed.returncode != 0:
-        raise ValueError("readelf cannot read iio-sensor-proxy output: " + completed.stderr.strip())
-    output = completed.stdout
-    linked = SSC_NEEDED.findall(output)
-    if not linked:
-        raise ValueError(
-            "iio-sensor-proxy ELF does not link libssc; meson ssc-support was not "
-            "enabled (needs -Dssc-support=enabled)")
-    raw = Path(binary).read_bytes()
-    missing = [m for m in SSC_DRIVER_MARKERS if m.encode() not in raw]
-    if missing:
-        raise ValueError("iio-sensor-proxy ELF is missing SSC driver markers " + repr(missing))
-    return {"libssc": sorted(set(linked)), "ssc_driver_markers": list(SSC_DRIVER_MARKERS),
-            "sha256": sha256(binary), "bytes": Path(binary).stat().st_size}
-
-
-def sensor_meson_options(name):
-    """iio-sensor-proxy 必须显式 -Dssc-support=enabled，否则 feature/auto 静默跳过 SSC。"""
-    return ["-Dssc-support=enabled"] if name == "iio-sensor-proxy" else []
-
-
 def build_fastrpc_daemon(source, payload, build):
     """Fedora 的 fastrpc RPM 只有库；从同版上游构建 dlopen listener 的守护进程。"""
     lock = json.loads((Path(__file__).resolve().parents[1] / "sources.lock.json").read_text())["sources"]["fastrpc"]
@@ -191,49 +141,26 @@ def adapt_camerad_for_fedora(camera, proof):
     proof["fedora_effective_source_sha256"] = sha256(camera)
 
 
-def build_sensors(sun, output):
-    """取固定源码而非 Debian 二进制，在 Fedora 库 ABI 上构建。"""
+def stage_sensor_integration(sun, output):
+    """准备传感器集成载荷，但不重复构建 libssc / iio-sensor-proxy。
+
+    这两个库由 RPM 矩阵（packages/libssc、packages/iio-sensor-proxy-ssc）构建，
+    补丁集与这里原先用的完全一致。再编一份会产生同名不同字节的 RPM，两个
+    producer 合并进同一仓库时 DNF 直接冲突。这里只保留矩阵不负责的部分：
+    piano-sensors 的 udev 规则、import/wait 辅助程序和 unit。
+    """
     sensor = output / "sensor-source"
     shutil.copytree(sun / "upstream/piano-sensors-current", sensor,
                     ignore=shutil.ignore_patterns(".git"))
-    # 顶层补丁修改 piano-sensors 的包装并增加 patches/libssc/ 内部补丁；
-    # 必须先作用于仓库副本，不能直接作用于第三方 libssc 源码。
     for p in sorted((sun / "patches/piano-sensors").glob("*.patch")):
         run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", p], cwd=sensor)
-    rows = [
-        ("libssc", "0.4.4", "libssc_0.4.4.orig.tar.gz",
-         "716d6bd6b34d2d753060c6b54c9a87e34fae75b724c763bf9ef487efa3621587"),
-        ("iio-sensor-proxy", "3.9", "iio-sensor-proxy_3.9.orig.tar.bz2",
-         "19a4ae99b1b8af603fc789841025f9747bf445418d69ec7389e75adb6c8186bf"),
-    ]
-    source_records = {}
-    for name, version, archive, digest in rows:
-        source = sensors_source(output, name, version, archive, digest)
-        patches = sorted((sensor / "patches" / name).glob("*.patch"))
-        if name == "libssc":
-            patches.append(Path(__file__).resolve().parents[1] /
-                           "patches/runtime/libssc-wait-for-qmi.patch")
-        for patch in patches:
-            run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", patch], cwd=source)
-        build = output / (name + "-build")
-        setup = ["meson", "setup", build, source, "--prefix=/usr", "--libdir=lib64",
-                 "--buildtype=release", *sensor_meson_options(name)]
-        run(setup)
-        run(["meson", "compile", "-C", build, "-j", "4"])
-        elf_proof = None
-        if name == "iio-sensor-proxy":
-            elf_proof = verify_ssc_runtime(build / "src" / "iio-sensor-proxy")
-        payload = output / (name + "-payload")
-        run(["meson", "install", "-C", build], env={**os.environ, "DESTDIR": str(payload)})
-        rpm_package(name, payload, output, version=version)
-        # 后一包需要前一包的 native headers、pkg-config 与 GI 元数据。
-        run(["dnf", "-y", "install", *[p for p in (output / "rpms").glob(name + "-*.rpm")],
-             "--setopt=localpkg_gpgcheck=0"])
-        source_records[name] = {"version": version, "archive_sha256": digest,
-                                "patches": {p.name: sha256(p) for p in patches}}
-        if elf_proof is not None:
-            source_records[name]["elf"] = elf_proof
-    return source_records
+    return {
+        "source": "piano-sensors",
+        "packages": {
+            "libssc": "built by packages/libssc at the same NEVRA",
+            "iio-sensor-proxy": "built by packages/iio-sensor-proxy-ssc at the same NEVRA",
+        },
+    }
 
 
 def build(args):
@@ -338,7 +265,13 @@ def build(args):
                        ("xiaomi-mipps-auth.service", "usr/lib/systemd/system/xiaomi-mipps-auth.service"),
                        ("90-xiaomi-mipps-auth.rules", "usr/lib/udev/rules.d/90-xiaomi-mipps-auth.rules")):
         put(mipps / name, payload / path, name == "xiaomi-mipps-auth")
-    sensor_proof = build_sensors(sun, output)
+    # libssc and iio-sensor-proxy are built once, by the RPM matrix. Building
+    # them here too produced a second pair with the same NEVRAs but different
+    # bytes (different build host, different patch set), and merging both into
+    # one DNF repository is a hard conflict. The matrix packages now carry
+    # every patch this producer used, so only the sensor integration payload
+    # (units, udev, import/wait helpers) stays here.
+    sensor_proof = stage_sensor_integration(sun, output)
     fastrpc_proof = build_fastrpc_daemon(sun.parent / "fastrpc", payload, build)
     sensor = output / "sensor-source"
     integration = output / "piano-sensors"
@@ -375,7 +308,9 @@ def build(args):
     dest.write_text(json.dumps(provenance, indent=2) + "\n")
     rpm_package("piano-runtime", payload, output, version="0.2.0",
                 requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
-                          "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils"))
+                          "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils",
+                          # The sensor libraries now come from the RPM matrix only.
+                          "libssc", "iio-sensor-proxy"))
     provenance["rpms"] = {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
                           for p in (output / "rpms").glob("*.rpm")}
     (output / "manifest.json").write_text(json.dumps(provenance, indent=2) + "\n")
