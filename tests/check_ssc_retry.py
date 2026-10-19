@@ -109,7 +109,7 @@ def patched_callback(patch, original_source=None):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--patch', type=Path, default=ROOT / 'patches/runtime/libssc-wait-for-qmi.patch')
+    parser.add_argument('--patch', type=Path, default=ROOT / 'packages/libssc/wait_for_qmi_service.patch')
     parser.add_argument('--source', type=Path, help='optional pinned source for comparing an older patch')
     args = parser.parse_args()
     pkg = '/usr/bin/pkg-config' if Path('/usr/bin/pkg-config').exists() else 'pkg-config'
