@@ -2,7 +2,7 @@
 
 正式目标保持 Fedora 44/GNOME、F2FS 与 SunUEFI。启动载荷、内核模块、运行时 RPM、根镜像及 ESP 必须通过清单摘要相互绑定。源码构建、归档验证和设备验收分别记录。
 
-上游 main 的最新核对、默认登录策略与改装内存的边界见[上游更新](upstream-sync.md)。实际构建仍由 sources.lock.json 固定，不能将新版文档写成旧二进制已包含的新行为。
+上游 main 的最新核对、默认登录策略与改装内存的边界见[上游更新](../docs/upstream-sync.md)。实际构建仍由 sources.lock.json 固定，不能将新版文档写成旧二进制已包含的新行为。
 
 ## 上游合同
 
@@ -68,7 +68,7 @@ prepare-install 完成后可运行 package-install，指定其 prepare_run。该
 
 在 initramfs 或 Fedora root 执行 piano-collect-boot，取得内核、根挂载、DRM 节点、实际绑定驱动、systemd job 和 GDM/显示服务 journal。命令只读，不启动或停止硬件服务。ABL 分支把完整输出留在 RAM 中 /run/piano-boot-evidence.txt，救援时可以重新读取。
 
-正常 Fedora 接管上游 debug stage、认证串口 getty 与按固定 NCM MAC 匹配的静态 NetworkManager 连接；成功交接后不遗留 initramfs 转发进程，也不启用免密 root 串口。登录与改密说明见[安装验收](installation.md)。Fedora 的 gdm.service 具有与上游 Debian 显示管理器相同的 Requires/After 显示依赖；相机失败保留日志并限制重试，不通过永久 mask 改写失败。
+正常 Fedora 接管上游 debug stage、认证串口 getty 与按固定 NCM MAC 匹配的静态 NetworkManager 连接；成功交接后不遗留 initramfs 转发进程，也不启用免密 root 串口。登录与改密说明见[安装验收](../docs/installation.md)。Fedora 的 gdm.service 具有与上游 Debian 显示管理器相同的 Requires/After 显示依赖；相机失败保留日志并限制重试，不通过永久 mask 改写失败。
 
 新镜像在构建时初始化 `/var/lib/piano-clock/last`，使 RTC 落在 1970 年、尚无网络的
 首次启动也能恢复时间下限。已有有效时间戳保持原值；构建机时钟异常则拒绝生成。
@@ -76,6 +76,6 @@ prepare-install 完成后可运行 package-install，指定其 prepare_run。该
 
 ## 已有分区的部署验收
 
-已有 sunuefi_root/sunuefi_esp 的平板使用[已有分区更新入口](installation.md)，不得重新执行会清空 userdata 的首次分区 apply。先只读核对当前 GPT、原厂 BOOT、槽位、容量、内存描述与恢复材料；合体 BOOT 必须绑定本机实际 APP generation。恢复工具不能恢复已擦除的 Android 用户文件。
+已有 sunuefi_root/sunuefi_esp 的平板使用[已有分区更新入口](../docs/installation.md)，不得重新执行会清空 userdata 的首次分区 apply。先只读核对当前 GPT、原厂 BOOT、槽位、容量、内存描述与恢复材料；合体 BOOT 必须绑定本机实际 APP generation。恢复工具不能恢复已擦除的 Android 用户文件。
 
 主机验收通过后，设备侧依次确认 UEFI 读取 ESP 并交接、UFS、正确 F2FS 根、systemd、GDM、真实 GNOME 会话、冷启动与两系统往返切换。显示、触控、GPU、网络、音频和 Recovery 分别保留行为证据。黑屏背光、闪烁光标、Fastboot OKAY 或单个 active 服务不能单独证明这些项目通过。

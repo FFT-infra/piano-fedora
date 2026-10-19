@@ -25,6 +25,6 @@
 
 本轮设备原生构建与测试日志位于 `/home/piano/integration-20261015/`，平台及音量证据位于 `/home/piano/production-project/build/integration-20261015/`。此后设备已运行正式内核 `7.2.9-piano-gnome-g8c0e589d8829`，新增运行时（触控滤波、相机 NEON、功放限制、uperf、VA-API、crosvm/librevm）均已实装；`systemd-detect-virt` 为 `none`，四个用户态服务 active。2026-10-16 的稳定性复核（virtio-net、VM 多轮、suspend、DPU 关屏、双系统、uperf）证据归档在 `/home/piano/integration-20261015/stability-verify/`。
 
-逐项结论以[设备验收](device-acceptance-20261015.md)与[虚拟化](virtualization.md)为准；用户已确认屏幕显示正常，DPU 残余的 underrun 快照按噪声记录，不作为可见故障。
+逐项结论以[设备验收](../docs/device-acceptance-20261015.md)与[虚拟化](../docs/virtualization.md)为准；用户已确认屏幕显示正常，DPU 残余的 underrun 快照按噪声记录，不作为可见故障。
 
-其他交付边界见[完成清单](completion-checklist.md)及[设备验收](device-acceptance-20261015.md)。
+其他交付边界见[完成清单](completion-checklist.md)及[设备验收](../docs/device-acceptance-20261015.md)。

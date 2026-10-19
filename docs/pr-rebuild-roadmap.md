@@ -4,7 +4,7 @@
 > 必须从原始 GPT/UFS 布局开始，使用本流水线重新生成的 RootFS 与 ESP
 > 完成冷启动、GNOME 桌面与重启复现。会话总线缺失的根因和五步验收
 > 门槛见
-> [面板亮但黑屏](display-session-black-screen-20261019.md)。
+> [面板亮但黑屏](../notes/display-session-black-screen-20261019.md)。
 > 现有 ESP（`g07c1f92db62b`）与 `/var/tmp/piano-image/rootfs`
 > （`g184e09d96775`）release 不一致，不能作为配套发布资产。
 
@@ -65,7 +65,7 @@
    > （`compress_algorithm` vs `data_flush`），现在只保留策略脚本一个来源。
    > 审计项已增加 `root-policy.json`、udev 规则和 `fstab`，缺任意一个就
    > 不发布镜像。详见
-   > [initramfs 交接失败](initramfs-handoff-failure-20261018.md)。
+   > [initramfs 交接失败](../notes/initramfs-handoff-failure-20261018.md)。
 
 4. **里程碑 4：面向普通用户的工业级安装链（🟡 代码完成，真机未验收）**
    - 编写带设备身份校验、目标分区存在性/容量校验、SHA256 镜像完整性校验与
