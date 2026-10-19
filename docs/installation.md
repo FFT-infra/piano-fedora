@@ -579,6 +579,36 @@ sparse 文件使用 RAW 与显式零 FILL，不使用 DONT_CARE；其完整展�
 
 ---
 
+## 真机验收
+
+刷完之后逐项核对，每项留一条命令输出或截图作为证据。任一项失败就按失败记录，
+不要写成"未验证"。
+
+```sh
+uname -r                      # 与 ESP 里的 Image 字符串一致
+findmnt /                     # 根文件系统是 f2fs
+systemctl --failed            # 输出为空
+ls /usr/lib/modules/          # 有与 uname -r 同名的目录
+```
+
+硬件按五门检查：
+
+| 门 | 检查内容 |
+| --- | --- |
+| 显示、触控、笔 | 拖动窗口不抖，手写笔压感与倾斜有响应 |
+| 音频 | 扬声器放音、麦克风录音各一次 |
+| 相机 | 相机应用能出画面，无斜条纹 |
+| 无线 | Wi-Fi 连接、蓝牙扫描 |
+| 电源与睡眠 | 合盖与 `rtcwake -m mem -s 20` 能唤醒，唤醒后无 failed unit |
+
+再完整重启一次，确认仍进 GNOME。双系统往返按下一节执行，往返后核对
+`fastboot getvar current-slot`。
+
+发布验收的标准比这里更严：必须从原始 GPT/UFS 重新分区，并使用同一条流水线新
+产出的 bundle 与 root-install。门槛见[维护与验收](internals.md#pr-验收门槛)。
+
+---
+
 ## 七、 常见故障排查（FAQ & Troubleshooting）
 
 ### Q1: 开机直接掉进 Fastboot 怎么解决？
