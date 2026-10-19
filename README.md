@@ -84,7 +84,7 @@ make test                  # 全套离线单测：GPT 计算、镜像与元数�
 make plan RELEASEVER=44    # 打印 Fedora 44 根文件系统生成计划
 ```
 
-流水线入口是 `.github/workflows/`：`build-rpms` → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`，每一步只接受上一次成功 run 的产物。细节见 [docs/internals.md](docs/internals.md)。
+流水线入口是 `.github/workflows/`：`host-check`（带 `build_piano_rpms=true`）→ `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`，每一步只接受上一次成功 run 的产物。细节见 [docs/internals.md](docs/internals.md)。
 
 ## 许可
 

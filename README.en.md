@@ -84,7 +84,7 @@ make test                  # offline suite: GPT math, image and metadata checks
 make plan RELEASEVER=44    # print the Fedora 44 root filesystem plan
 ```
 
-The pipeline lives in `.github/workflows/`: `build-rpms` → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`. Each stage accepts artifacts only from a successful run of the previous one. See [docs/internals.md](docs/internals.md).
+The pipeline lives in `.github/workflows/`: `host-check` (with `build_piano_rpms=true`) → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`. Each stage accepts artifacts only from a successful run of the previous one. See [docs/internals.md](docs/internals.md).
 
 ## License
 
