@@ -61,7 +61,11 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq f2fs-tools attr acl libcap2-bin zstd podman kmod binutils cpp device-tree-compiler lz4 git
-          sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)"
+          # f2fs 在 Azure 内核里是额外模块。runner 的内核偶尔比仓库里的
+          # linux-modules-extra 还新，按 uname -r 装会 404；退到 meta 包，
+          # 它总能提供当前内核的模块。prepare-install 与 verify-f2fs 早已这么写。
+          sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" \
+            || sudo apt-get install -y -qq linux-modules-extra-azure
           sudo modprobe f2fs
           grep -qw f2fs /proc/filesystems
           fsck.f2fs 2>&1 | sed -n '1,24p' || true
