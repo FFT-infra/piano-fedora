@@ -196,6 +196,15 @@ jobs:
             '
 
       - name: Inspect result
+        # The record is extended with the producer run ids, so this step needs
+        # the same variables the assembly step had. They were scoped to that
+        # step only and the run died with KeyError: 'PIANO_RPMS_RUN' after a
+        # complete, audited assembly.
+        env:
+          PIANO_RPMS_RUN: ${{ steps.source.outputs.piano_rpms_run }}
+          RUNTIME_RUN: ${{ steps.source.outputs.runtime_run }}
+          MESA_RUN: ${{ steps.source.outputs.mesa_run }}
+          FFMPEG_RUN: ${{ steps.source.outputs.ffmpeg_run }}
         run: |
           set -euo pipefail
           OUT="build/clean-distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
