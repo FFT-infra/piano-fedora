@@ -35,7 +35,23 @@ def run(*args):
     )
 
 
+def check_audit_field_names():
+    """workflow 读的审计字段必须在脚本的输出里真实存在。
+
+    run 39258030572 在最后一步 KeyError: 'missing_files'：脚本写的是
+    missing_key_files。字段名不对会在整条装配跑完之后才失败，代价很高。
+    """
+    import re as _re
+    script = (ROOT / "scripts/build-clean-rootfs.py").read_text()
+    workflow = (ROOT / ".github/workflows/build-rootfs.yml").read_text()
+    keys = set(_re.findall(r'"(missing_[a-z_]+)"\s*:', script))
+    used = set(_re.findall(r'audit\["(missing_[a-z_]+)"\]', workflow))
+    unknown = sorted(used - keys)
+    assert not unknown, f"workflow reads audit fields the script never writes: {unknown}"
+
+
 def main():
+    check_audit_field_names()
     failures = []
 
     def check(condition, message):

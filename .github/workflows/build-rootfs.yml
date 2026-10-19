@@ -228,7 +228,7 @@ jobs:
               f"kernel-piano module tree {releases} != matrix release {kernel_release}")
           for path in ("usr/bin/dbus-daemon", "usr/bin/dbus-run-session",
                        "usr/lib64/security/pam_systemd.so"):
-              assert path not in audit["missing_files"]
+              assert path not in audit["missing_key_files"]
           # The local repository is the only install transaction. Record the
           # producer manifests so build-image can verify the exact components
           # that DNF actually consumed, rather than a second install.
