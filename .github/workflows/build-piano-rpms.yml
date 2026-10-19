@@ -99,7 +99,19 @@ jobs:
           test -s build/kernel/Image
           test -s build/kernel/System.map
           test -s build/kernel/config
-          test -d build/kernel/lib/modules
+          # build-kernel publishes modules under modules/lib/modules; older
+          # artifacts used lib/modules. build-rpms.sh normalises both layouts,
+          # so accept either here instead of pinning the one that stopped
+          # matching and failing before the RPM matrix even starts.
+          if [ -d build/kernel/lib/modules ]; then
+            modules_dir=build/kernel/lib/modules
+          elif [ -d build/kernel/modules/lib/modules ]; then
+            modules_dir=build/kernel/modules/lib/modules
+          else
+            echo "kernel artifact has no lib/modules tree" >&2
+            exit 1
+          fi
+          test -n "$(ls -A "$modules_dir")"
           test -f build/in/sdk/kernel-gunyah-source.json
           kernel_release=$(python3 -c 'import json; print(json.load(open("build/kernel/manifest.json"))["kernel_release"])')
           test -n "$kernel_release"

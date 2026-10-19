@@ -183,6 +183,11 @@ def test_every_resolved_workflow_is_registered_on_default_branch():
     resolve_step = rootfs.split("Resolve the exact RPM inputs", 1)[1].split("Install podman", 1)[0]
     if "--workflow host-check.yml" not in resolve_step or "--workflow build-piano-rpms.yml" in resolve_step:
         failures.append("build-rootfs.yml must resolve piano-rpms from the registered host-check run")
+    # build-kernel publishes modules under modules/lib/modules. The matrix must
+    # accept both layouts, otherwise the job dies before any RPM is built.
+    unpack = rpms.split("Unpack the matching kernel payload", 1)[1].split("- name:", 1)[0]
+    if "modules/lib/modules" not in unpack:
+        failures.append("build-piano-rpms.yml rejects the build-kernel modules layout")
     if failures:
         raise AssertionError("; ".join(failures))
 
