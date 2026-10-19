@@ -161,16 +161,35 @@ jobs:
                   assert hashlib.sha256(path.read_bytes()).hexdigest() == row["sha256"], name
           print("OK: every merged RPM matches its producer manifest")
           PY
+          # The piano-rpms artifact already ships a repodata/ built by the
+          # matrix. Updating it in place made createrepo_c parse that old XML
+          # (cr_metadata_load_xml) and load 0 packages. Drop it and regenerate.
+          rm -rf build/local-rpms/repodata
           createrepo_c --update build/local-rpms
           test -f build/local-rpms/repodata/repomd.xml
           path="build/clean-distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
           sudo rm -rf "$path"
-          sudo python3 scripts/build-clean-rootfs.py \
-            --execute \
-            --releasever "${{ inputs.releasever }}" \
-            --desktop "${{ inputs.desktop }}" \
-            --rpms-dir build/local-rpms \
-            --output "$path"
+          # dnf only exists inside the Fedora image. The Ubuntu runner has
+          # createrepo-c and rpm, but running build-clean-rootfs.py directly
+          # there failed with "dnf or dnf5 is required". The workspace is bind
+          # mounted so the container writes into the same paths.
+          sudo podman run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            --env PIANO_RELEASE="${{ inputs.releasever }}" \
+            --env PIANO_DESKTOP="${{ inputs.desktop }}" \
+            --env PIANO_OUTPUT="$path" \
+            "registry.fedoraproject.org/fedora:${{ inputs.releasever }}" \
+            bash -euo pipefail -c '
+              dnf -y install dnf5 dnf5-plugins createrepo_c selinux-policy-targeted \
+                systemd shadow-utils util-linux rpm python3
+              python3 scripts/build-clean-rootfs.py \
+                --execute \
+                --releasever "$PIANO_RELEASE" \
+                --desktop "$PIANO_DESKTOP" \
+                --rpms-dir build/local-rpms \
+                --output "$PIANO_OUTPUT"
+            '
 
       - name: Inspect result
         run: |

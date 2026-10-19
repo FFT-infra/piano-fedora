@@ -192,6 +192,16 @@ def test_every_resolved_workflow_is_registered_on_default_branch():
     # rpmdevtools. Without it the matrix dies on the first remote-source spec.
     if "rpmdevtools" not in rpms:
         failures.append("build-piano-rpms.yml does not install spectool (rpmdevtools)")
+    # build-rootfs runs on an Ubuntu runner that has no dnf, and the three
+    # component manifests live inside their tarballs. Both mistakes made the
+    # step die without running anything.
+    build_step = rootfs.split("Build the audited clean rootfs", 1)[1].split("- name:", 1)[0]
+    if "podman run" not in build_step or "build-clean-rootfs.py" not in build_step:
+        failures.append("build-rootfs.yml must run dnf inside the Fedora image")
+    if build_step.index("tar -I zstd") > build_step.index("runtime-extracted/manifest.json"):
+        failures.append("build-rootfs.yml checks the manifest before extracting it")
+    if "rm -rf build/local-rpms/repodata" not in build_step:
+        failures.append("build-rootfs.yml updates stale repodata from the artifact")
     if failures:
         raise AssertionError("; ".join(failures))
 
