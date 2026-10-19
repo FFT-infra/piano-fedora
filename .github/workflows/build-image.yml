@@ -205,8 +205,17 @@ jobs:
               "the clean rootfs module root must not contain aliases")
           assert (modules / releases[0] / "modules.dep").is_file(), (
               "the clean rootfs kernel-piano tree lacks modules.dep")
-          installed = subprocess.check_output(
-              ["rpm", "--root", str(root), "-qa"], text=True).splitlines()
+          # Diagnose an empty rpmdb before the package assertion: rpm prints
+          # nothing and exits 0 when it cannot open a database it understands.
+          db_dir = root / "usr/lib/sysimage/rpm"
+          print("rpmdb:", sorted(p.name for p in db_dir.iterdir())[:8] if db_dir.is_dir() else "missing")
+          try:
+              installed = subprocess.check_output(
+                  ["rpm", "--root", str(root), "-qa"], text=True, stderr=subprocess.PIPE).splitlines()
+          except subprocess.CalledProcessError as error:
+              print("rpm -qa failed:", error.stderr.decode("utf-8", "replace")[:400])
+              raise
+          print("rpm -qa count:", len(installed))
           names = {line.rsplit("-", 2)[0] for line in installed}
           required = {
               "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
