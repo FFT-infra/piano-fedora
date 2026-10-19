@@ -174,7 +174,10 @@ jobs:
           python3 - "$root" <<'PY'
           import json, os, subprocess, sys
           from pathlib import Path
-          root = Path(sys.argv[1])
+          # rpm refuses a relative --root ("arguments to --root (-r) must
+          # begin with a /"). Resolve once and use the absolute path for both
+          # rpm queries and the SELinux/config reads.
+          root = Path(sys.argv[1]).resolve()
           record = json.loads((root.parent / "clean-manifest.json").read_text())
           assert record["status"] == "BUILT_AND_AUDITED"
           assert record["audit"]["audit_passed"] is True
@@ -229,7 +232,10 @@ jobs:
           python3 - "$root" <<'PY'
           import json, subprocess, sys
           from pathlib import Path
-          root = Path(sys.argv[1])
+          # rpm refuses a relative --root ("arguments to --root (-r) must
+          # begin with a /"). Resolve once and use the absolute path for both
+          # rpm queries and the SELinux/config reads.
+          root = Path(sys.argv[1]).resolve()
           record = json.loads((root.parent / "clean-manifest.json").read_text())
           audit = record["audit"]
           assert record["status"] == "BUILT_AND_AUDITED"
