@@ -1,16 +1,16 @@
 # 已知问题
 
-这里只列仍未解决的问题，以及已经定位但还要继续观察的噪声。已修复的缺陷不在此
-列表；修复过程留在本地验收记录。每项都写明当前证据和还缺什么。
+这里只列仍未解决的问题，和已经定位、还要继续观察的噪声。已修复的缺陷不在
+这里，修复过程留在本地验收记录。每项写明当前证据和还缺什么。
 
 ## 显示与关屏
 
-0038 补丁已合入当前内核（模块字符串里能找到
-`slave intf:%d still enabled before cleanup`）。反复关屏时，每 2–3 次仍会产生
+0038 补丁已合入当前内核，模块字符串里能找到
+`slave intf:%d still enabled before cleanup`。反复关屏时，每 2–3 次仍产生
 一次 devcoredump：`intf_1`/`intf_2` 的 `is_en` 与配置寄存器非零，而现状应为
 全零，差值 18 word。`dmesg` 里 0 条 dpu 错误（underrun 回调只累加计数不打印），
 设备未编 tracefs（`/sys/kernel/debug/tracing` 不存在），无法用 tracepoint 继续
-定位。屏幕显示正常，这是残余噪声，不是当前可见故障。
+定位。屏幕显示正常。这是残余噪声，不是可见故障。
 
 `rtcwake -m mem -s 20` 唤醒正常（实际 22 s），唤醒后无 failed unit。dmesg 中
 `IRQ…: set affinity failed(-22)` 与 CMA 分配失败出现在关机 CPU 路径上，属既有
@@ -32,10 +32,10 @@ Linux → Android 的自动切换尚未通过验收。已定位两个独立原�
 
 请求页布局已实测：`boot_b` 的 NEXT 页在偏移 `37621760`（0x23E1000），两页
 相隔 4096 字节，滚动写入。`BOOT_a` 没有 SunUEFI 布局。当前请求保持在
-target=2（Linux），无人现场时不得留下 target=0。
+target=2（Linux）；无人现场时不要留下 target=0。
 
-完整的 Android→Linux→Android→Linux 往返仍需真机重启，由操作者决定时机。
-Linux → Android → Linux 完整自动往返尚未验收。
+完整的 Android→Linux→Android→Linux 往返仍需真机重启，时机由操作者定。
+这条自动往返尚未验收。
 
 ## Android 侧
 
@@ -43,8 +43,8 @@ Android 侧模块已安装，`install-state.json` 为 `ADOPTED_READ_ONLY_VERIFIE
 `boot_written=false`，`app_sha256=6c38318a…`，与当前 BOOT 的 generation 不同。
 这份历史不一致需要随模块一起复核。
 
-Android 实测运行在 SELinux Permissive（启动参数带 `selinux=permissive`），
-手动 `setenforce 1` 可用，但不能当持久策略；固化方式仍待落实。
+Android 实测运行在 SELinux Permissive，启动参数带 `selinux=permissive`。
+手动 `setenforce 1` 可用，但不能当持久策略，固化方式还没落实。
 
 `piano_sunuefi_module.zip` 只有模块脚手架及根目录 request 程序，缺少 manager
 要求的 bin/ 原生工具和策略/状态，不能安装使用。
@@ -77,6 +77,6 @@ charge_current、mipps_auth、charge_policy 均开启。这不等于实际达到
 
 ## 触屏、网络与音频
 
-这些模块已有实机行为记录，但持续负载下的表现仍需单独证据：触屏在负载下的
-持续输入、浏览器实际硬解、音频录放实测。设备整体可用状态在全部项目验收前保持
-未验证。验收项见[安装指南的真机验收](installation.md#真机验收)。
+这些模块已有实机行为记录，持续负载下的表现还要单独取证：负载下的持续触控
+输入、浏览器实际硬解、音频录放。全部项目验收前，设备整体状态记为未验证。
+验收项见[安装指南的真机验收](installation.md#真机验收)。
