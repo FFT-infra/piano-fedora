@@ -354,6 +354,17 @@ Actions 不连接平板。构建成功、传输成功、Linux 启动成功分别
 
 已有 `sunuefi_root` 和 `sunuefi_esp` 时使用下面的更新入口。首次分区的 `install-f2fs.py apply` 会清空 userdata，不能用于更新。
 
+自动化的首装路径由 `install-f2fs.py plan` 与 `apply` 完成同一套分区、擦除与
+传输。命令、run id 记录、产物契约和 PR 验收门槛见[维护与验收](internals.md)。
+
+`device-boot/boot-request.json` 必须记录首装 Android 所在的
+`/dev/disk/by-partlabel/boot_a`，其 `app_generation` 必须与
+`deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。请求页写在
+`boot_a` 的合体 BOOT 内，Linux 启动镜像才写入 `boot_b`；不要把请求配置
+改成 `boot_b`。`root-install` 已在 `etc/piano/boot-request.json` 写入同一份
+配置，首启后也不要猜测设备名或改槽。否则 Linux 的“返回 Android”和后续
+启动请求会失败。
+
 ### 手动分区（不使用安装脚本）
 
 脚本之外的路径就是原厂 Fastboot 加 `sgdisk`。下面每一步都可以单独核对，
@@ -470,7 +481,7 @@ Android 初始化完成后关机，按【电源键 + 音量减键】进入原厂
 
 `update-f2fs.py` 复用锁定上游的只读设备/GPT 解析、工厂 Fastboot 身份检查与本仓库的材料校验。它只传输现有 ESP 和 F2FS root，保持 GPT、userdata 与持久 BOOT 的写入操作为零。完整 root 会替换 Linux 文件，已有个人文件须先备份。
 
-先恢复正确 ROM 配套的 B 槽组件，确认原 Android 能完整启动并提供 root ADB；历史 init_boot/DTBO 试验不能作为已恢复的证据。计划核对主备 GPT/CRC、分区类型、当前槽、原 BOOT、源码清单、管理配置和实际 sparse 容量。还会只读取得 Android `/sys/firmware/fdt`，检查 Linux RAM 子集与固定保留区；检查含义见[上游核对](upstream-sync.md)。缺少 FDT 或比较失败时停止，不跳过检查。
+先恢复正确 ROM 配套的 B 槽组件，确认原 Android 能完整启动并提供 root ADB；历史 init_boot/DTBO 试验不能作为已恢复的证据。计划核对主备 GPT/CRC、分区类型、当前槽、原 BOOT、源码清单、管理配置和实际 sparse 容量。还会只读取得 Android `/sys/firmware/fdt`，检查 Linux RAM 子集与固定保留区；检查含义见[上游核对](upstream.md)。缺少 FDT 或比较失败时停止，不跳过检查。
 
 在连接平板的 Linux 主机上执行，以下路径指本次已下载的材料，`--serial` 是实际 Android ADB 序列号：
 
@@ -534,203 +545,6 @@ ABL 只读对照把完整取证保存到 RAM 中 `/run/piano-boot-evidence.txt`�
 
 sparse 文件使用 RAW 与显式零 FILL，不使用 DONT_CARE；其完整展开字节与
 验证过的 F2FS 镜像一致。它仍是 F2FS 文件系统，sparse 只负责 Fastboot 传输。
-
-## Actions 材料
-
-手动运行 `prepare-install`，选择完整 deploy-bundle 的 run、首装固定为
-`android_slot=_a`。Linux 容量留空时使用 `product.json`。
-这一阶段不再需要公钥：SSH 公钥在刷写时用 `--ssh-key` 注入，私钥和公钥都不进
-Actions。三个 artifact 分别为：
-
-| artifact | 内容 |
-| --- | --- |
-| root-install | 扩容并配置后的 F2FS sparse、容量/元数据校验记录、摘要 |
-| boot-tools | 同核心的 selector、Android 静态原生工具、产品固件、自包含安装入口 |
-| host-boot-tool | 静态宿主 BOOT 重打包工具及来源记录 |
-
-boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。
-安装入口位于 boot-tools 的 `installer/scripts`；其中的锁定上游代码带源码清单，
-不需要在设备主机重新编译。普通发行版主机需要 Python 3、adb、fastboot；
-BOOТ 准备使用 Actions 提供的宿主工具。
-
-## 本机 BOOT
-
-先确认当前原 BOOT 完整摘要、槽位和系统版本。`prepare-device-boot.py` 使用
-这些明确输入和同核心的 Actions 工具生成 `boot_android.img`、`boot_linux.img`
-及 `boot-request.json`。普通 Android 为默认目标。
-
-包装后恢复必须得到完整原 BOOT 的同一 SHA256。Linux 持久请求、只读预览、
-改回 Android 后的再次完整恢复都要成功。文件检查不替代真机旁路和 Recovery 验收。
-
-使用 `python3 scripts/prepare-device-boot.py --help` 查看文件参数。
-原 BOOT、生成的设备 BOOT、安装记录和私钥均留在本地，不进入代码仓库。
-
-## 实际首次安装
-
-以下命令是 PR 真机验收的唯一主流程。所有材料必须来自同一条新流水线，
-当前已经启动的 GNOME、历史镜像和热修复都不算通过。
-
-### 1. 固定本次流水线与设备身份
-
-记录以下 ID，后续每一步都核对它们不变：
-
-```text
-build-kernel run
-host-check / build-piano-rpms run
-build-rootfs run
-build-image run
-build-bundle run（deploy-bundle）
-prepare-install run（root-install，bundle_run 必须等于上面的 build-bundle run）
-```
-
-平板先完整启动到 Android，开启 USB 调试并确认 `sys.boot_completed=1`：
-
-```sh
-adb devices -l
-adb -s <serial> shell getprop sys.boot_completed
-adb -s <serial> shell getprop ro.boot.slot_suffix
-```
-
-序列号、槽位、原 BOOT 摘要和完整 GPT 基线必须写入本次安装会话。设备不是
-`piano`、Bootloader 未解锁、`sys.boot_completed` 不是 `1`，全部停止。
-
-### 2. 生成并复核 BOOT 与首次分区计划
-
-使用 `prepare-install` 产出的 `boot-tools`、`host-boot-tool` 和当前原 BOOT：
-
-```sh
-# 先记录当前原厂 BOOT 的完整摘要；下面两处必须使用同一个值。
-fastboot getvar current-slot
-fastboot fetch boot_a stock-recovery/boot.img
-sha256sum stock-recovery/boot.img
-
-python3 boot-tools/installer/scripts/prepare-device-boot.py \
-  --stock-boot stock-recovery/boot.img \
-  --boot-tools boot-tools \
-  --host-tool host-boot-tool \
-  --bundle deploy-bundle \
-  --slot _a \
-  --source-sha256 <current-boot-sha256> \
-  --output device-boot
-
-python3 boot-tools/installer/scripts/install-f2fs.py plan \
-  --sunuefi boot-tools/installer/sunuefi \
-  --serial <serial> \
-  --bundle deploy-bundle \
-  --root-install root-install \
-  --device-boot device-boot \
-  --stock-boot stock-recovery/boot.img \
-  --plan first-install-plan.json
-```
-
-`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT
-基线、原 BOOT 摘要、输入包摘要和 Linux root 容量；任何一项与现场不一致就停止。
-同时确认设备当前槽位是 `a`，且 `root-install-manifest.json` 的顶层
-`android_slot` 是 `_a`。首装不能用 `_b`：一键脚本会固定写 `boot_b`，那会
-覆盖 Android 的唯一启动路径。
-
-`device-boot/boot-request.json` 必须记录首装 Android 所在的
-`/dev/disk/by-partlabel/boot_a`，其 `app_generation` 必须与
-`deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。请求页写在
-`boot_a` 的合体 BOOT 内，Linux 启动镜像才写入 `boot_b`；不要把请求配置
-改成 `boot_b`。`root-install` 已在 `etc/piano/boot-request.json` 写入同一份
-配置，首启后也不要猜测设备名或改槽。否则 Linux 的“返回 Android”和后续
-启动请求会失败。
-
-### 3. 执行破坏性首次分区并初始化 Android userdata
-
-确认已备份 Android 数据后，使用新的会话目录执行：
-
-```sh
-python3 boot-tools/installer/scripts/install-f2fs.py apply \
-  --sunuefi boot-tools/installer/sunuefi \
-  --serial <serial> \
-  --bundle deploy-bundle \
-  --root-install root-install \
-  --device-boot device-boot \
-  --stock-boot stock-recovery/boot.img \
-  --plan first-install-plan.json \
-  --session first-install-session \
-  --execute --accept-data-loss
-```
-
-需要在首装时一并装一把 SSH 公钥，就给 `apply` 加 `--ssh-key`（公钥必须单行、
-类型为 `ssh-ed25519` 或 `ssh-rsa`）：
-
-```sh
-python3 boot-tools/installer/scripts/install-f2fs.py apply \
-  ... --ssh-key ~/.ssh/id_ed25519.pub
-```
-
-执行器在 GPT 写入和擦除 userdata 之前就校验公钥并确认 `mcopy` 可用，失败时
-不动设备。公钥写进会话目录里的一份 ESP 副本，`deploy-bundle/sunuefi_esp.img`
-保持原样；`result.json` 的 `ssh_key_injected` 与 `sunuefi_esp_sha256` 记录这次
-注入和实际刷入的摘要。不传 `--ssh-key` 时只保留口令登录。
-
-执行器会重新读取设备、保存原 GPT/BOOT、写入并读回完整 GPT、显式执行
-`fastboot erase userdata`，然后传输 ESP、F2FS sparse root 和当前槽的 Android
-默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
-
-此时 Linux 还没有启动，`apply` 结束时设备仍停在原厂 Fastboot。先断开 USB
-并执行一次普通重启，让设备按当前槽启动 Android：
-
-```sh
-fastboot reboot
-```
-
-等首次开机完成、`adb shell getprop sys.boot_completed` 返回 `1`。这是让
-Android 在缩短后的分区上重建加密 userdata 的必要步骤；不能在宿主格式化为
-Android 加密分区，也不能跳过。
-
-### 4. 回到 Fastboot 并刷入 Linux
-
-Android 首次初始化完成后关机，按【电源键 + 音量减键】进入原厂 Fastboot。
-确认 `current-slot` 是 `a`，且 root-install 的 `android_slot` 是 `_a`，然后运行：
-
-```sh
-chmod +x flash-linux.sh
-./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub   # 不装密钥时去掉 --ssh-key
-```
-
-如果第 3 步已经用 `install-f2fs.py --ssh-key` 注入过，这里不必再传；重复注入
-只会覆盖同一个 `/piano-ssh-key.pub`。两条路径都要求本机有 `mcopy`（mtools）。
-
-脚本会校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、
-槽位和 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量，只写 `boot_b`、
-`sunuefi_esp`、`sunuefi_root`，并拒绝 fastbootd、错误产品、多个设备和不完整
-材料。首装路径拒绝 `--skip-checksum`：两份摘要、provenance、槽位和容量都必须在
-第一笔写入前完成。完成后设备重启到 Slot B。Windows 脚本要求 PowerShell 5
-或更高版本，因为槽位和容量核对使用了 `ConvertFrom-Json`。
-
-### 5. 完成 PR 真机验收
-
-以下五项全部通过后，才可以把 PR 标为设备验收通过：
-
-1. 同一次新流水线产出的 `deploy-bundle` 和 `root-install` 已记录 run ID 与摘要。
-2. 从原始 GPT/UFS 开始完成首次分区、显式擦除 userdata、Android 首次开机。
-3. Slot B 冷启动进入 GNOME 桌面，不是热修复或历史镜像启动。
-4. 完整重启一次后仍能进入 GNOME，且 `systemctl --failed` 为空。
-5. Android→Linux、Linux→Android 和原厂 Recovery 均完成，保存屏幕、命令输出、
-   `uname -r`、`/usr/lib/modules/`、F2FS 挂载与分区容量证据。
-
-任一项失败都不能写成“设备验收通过”；构建或离线测试通过只能记为 CI 证据。
-
-`fastboot erase userdata` 是首次安装的必经写入，不能省略。`plan` 仍会检查
-`/data` 的 formattable 合同，但 AOSP `fs_mgr` 只在 `wiped` 或元数据加密关闭
-且 `!is_fs_valid` 时自动格式化；GPT 缩短本身不会清掉旧 F2FS 超级块。因此
-执行器必须显式擦除，随后第一次启动 Android，让它重建加密 userdata 并完成
-首次开机。不能直接在宿主格式化 Android 的加密映射。
-
-会话的 result.json 记录每个已完成阶段和错误。GPT 写入或擦除后发生中断时，
-先看记录与实际设备状态，不自动重试、恢复旧 GPT 或启动 Android。
-恢复 GPT 不能恢复已擦除的 Android 文件。
-
-## 真机验收
-
-首次 Linux 启动后检查 F2FS 容量、匹配内核/模块、GNOME 会话和日志；随后验收
-Android 对新 userdata 的初始化，以及 Android→Linux、Linux→Android 和原厂
-Recovery。触屏、显示、网络、音频、传感器和充电需要单独的实际行为证据。
-这些项目未验收前，设备可用状态保持未验证。
 
 ---
 

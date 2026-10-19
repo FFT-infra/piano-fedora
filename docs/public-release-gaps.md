@@ -13,7 +13,7 @@
 | 已知默认密码与自动登录 | `scripts/finalize-fedora-rootfs.py:21`、`:676`、`:758` | `piano` 用户使用文档化默认密码 `piano123456`，GDM 自动登录，root 锁定 | 拿到同一镜像的任何人都能直接进桌面 | 默认密码作为产品默认值保留，文档继续写明；首次登录提示改密，不强制改密、不生成随机密码；自动登录保持现状 |
 | 真机序列号 | `docs/installation.md:440`、`:450`；`tests/check_manual_flash_flow.py:68` | 文档示例和测试桩都写着这台设备的实际序列号 | 真实设备标识进了公开仓库；已经写进 Git 历史 | 改成 `<serial>` 与假序列号；历史是否重写单独决定 |
 | 个人绝对路径 | `scripts/verify-new-image.sh:6` | 默认镜像路径写死 `/home/<user>/...`，默认内核版本写死 `<release>` | 对别人不可用，暴露本机布局，内核字符串还会过期 | 默认值改成仓库内相对路径，内核版本从产物清单读 |
-| 内网拓扑 | `docs/architecture.md:28`、`docs/virtualization.md:107`、`docs/device-acceptance-20261015.md:264`、`scripts/probe-device.sh:7` | 桥接机、验收时的 DHCP 地址、虚拟机地址 | 暴露内网布局 | 公开文档用占位符；`192.168.77.0/30` 是设备固定网段，保留 |
+| 内网拓扑 | `docs/architecture.md:28`、`docs/virtualization.md:107`、`local-notes/acceptance-20261015.md:264`、`scripts/probe-device.sh:7` | 桥接机、验收时的 DHCP 地址、虚拟机地址 | 暴露内网布局 | 公开文档用占位符；`192.168.77.0/30` 是设备固定网段，保留 |
 | 旧的公钥历史 | 历史 dispatch 事件（例如 run 38724829866 的 `ssh_public_key`） | 之前的公钥已经出现在公开事件里 | 公钥不是秘密，但它把一个人的身份和这台设备的管理权限挂在公开记录上 | 换用专用密钥（已做），旧公钥作废并记录 |
 
 不需要处理的：COPR 的 owner/project 来自仓库密钥 `COPR_LOGIN`/`COPR_TOKEN`，没有写死个人命名空间；

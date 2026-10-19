@@ -52,10 +52,6 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 ## 尚需验证
 
-2026-10-10 的完整 Actions 构建及下载后的本地校验已通过，包括组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷和 boot.img 组件。该段记录 2026-10-10 的主机构建验收；后续 Fedora 已在本机 F2FS 启动，最新内核、媒体和运行时证据见[设备验收](device-acceptance-20261015.md)。首次分区、恢复材料及 Android 往返仍需各自的设备证明。
+2026-10-10 的完整 Actions 构建及下载后的本地校验已通过，包括组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷和 boot.img 组件。该段记录 2026-10-10 的主机构建验收；后续 Fedora 已在本机 F2FS 启动；未完成的验收项见[已知问题](known-issues.md)。首次分区、恢复材料及 Android 往返仍需各自的设备证明。
 
-上游安装器保留 ext4 合同；本仓库新增独立的 F2FS 初装入口和本机 BOOT 文件准备入口。工具路径、Actions 材料、破坏性操作门禁和真机验收边界见[首次安装](installation.md)。新增实现的实际构建、包装和设备验收状态分别以对应 manifest 与会话记录为准。
-
-## COPR 软件源
-
-`piano-rpms` artifact 同时包含二进制 RPM、`srpms/` 和 `piano-rpms-manifest.json`。`publish-copr.yml` 只接受一次精确的 host-check run，校验每个 RPM 与 SRPM 的大小和 SHA256，再交给 COPR 从 SRPM 重建用户态包。内核包会发布进仓库但被 `.repo` 的 `exclude=kernel-piano*` 排除。流程、启用与回滚见[COPR 软件源](copr-repository.md)。
+上游安装器保留 ext4 合同；本仓库新增独立的 F2FS 初装入口和本机 BOOT 文件准备入口。工具路径、Actions 材料、破坏性操作门禁和真机验收边界见[维护与验收](internals.md)与[首次安装](installation.md)。新增实现的实际构建、包装和设备验收状态分别以对应 manifest 与会话记录为准。

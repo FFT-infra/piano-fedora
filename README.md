@@ -122,10 +122,10 @@
 - **[系统架构与分层设计](docs/architecture.md)**：Fedora 44、SunUEFI 与 Android 的系统边界定义；
 - **[首次安装与已有分区更新](docs/installation.md)**：详细的分区结构计算、GPT 安全检查与增量部署契约；
 - **[交付物与构建流水线](docs/artifacts.md)**：Kernel、RPM、Initramfs 与最终 Bundle 的组装标准；
+- **[维护与验收](docs/internals.md)**：流水线入口、产物绑定、run id 传递与 PR 验收门槛；
 - **[COPR 软件源](docs/copr-repository.md)**：用户态包的在线升级源、发布校验与回滚边界（内核不在升级范围内）；
-- **[RPM 架构重构与真机验收路线](docs/pr-rebuild-roadmap.md)**：两层解耦构建流水线与纯净实机盲测规划；
-- **[真机验收与稳定性记录](docs/device-acceptance-20261015.md)**：DPU 关屏修复、触控滤波实测、VA-API 与 A/B 槽位引导保护根因；
-- **[全网上游同步与追溯](docs/upstream-sync.md)**：对标上游仓库（SunUEFI、yzddmr6、code002-2）的同步记录；
+- **[上游跟踪](docs/upstream.md)**：当前 pin、自动漂移看板与跟进规则；
+- **[已知问题](docs/known-issues.md)**：仍未解决与仍在观察的问题清单；
 - **[Gunyah 虚拟化架构](docs/virtualization.md)**：SM8750 上的 Gunyah 虚拟机生命周期、大页配置与网络桥接；
 - **[公开分发前的个人化与许可缺口](docs/public-release-gaps.md)**：哪些构建期输入还绑着这一台设备、这一个人。
 

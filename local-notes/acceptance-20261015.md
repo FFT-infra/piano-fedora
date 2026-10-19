@@ -105,7 +105,7 @@ H.264 与 HEVC 的 GOP60 编码各 300 帧，关键帧位置均为
 ## 正式 Gunyah 内核启动
 
 当前运行 `7.2.9-piano-gnome-gaf0eac10c933`，正式构建身份见
-[虚拟化记录](virtualization.md)。1639 个内核模块与匹配 v4l2loopback 已安装，
+[虚拟化记录](../docs/virtualization.md)。1639 个内核模块与匹配 v4l2loopback 已安装，
 重启后 uname 确认新 release；SELinux Enforcing，GDM、tablet-mode 与
 librevm-daemon active，无 failed unit。`/dev/gunyah` 为 root:librevm。
 此次 ESP 回滚包 SHA256 为
@@ -216,7 +216,7 @@ charge_current、mipps_auth、charge_policy 均开启；不能因此声称实际
 当前标准内核已通过 RM 实时交接和一次单 vCPU VM_START；客体完成 ext4 写入、
 读回并正常退出。virtio-net 已打通（`NET_OK=1 NET_RX=2`），三轮 disk+net
 与一轮有界失败退出全部通过，crosvm/hub/PID/socket 清理干净（见
-[虚拟化验收门槛](virtualization.md)）。GUI 实际操作仍需人手在场确认。
+[虚拟化验收门槛](../docs/virtualization.md)）。GUI 实际操作仍需人手在场确认。
 
 Linux 启动请求配置与桌面入口在位。Claude 留下的 `piano_sunuefi_module.zip`
 只有模块脚手架及根目录 request 程序，缺少 manager 要求的 bin/ 原生工具和
