@@ -479,8 +479,7 @@ ABL 只读对照把完整取证保存到 RAM 中 `/run/piano-boot-evidence.txt`�
 
 ## 分区与容量
 
-容量不是固定值。**每台设备按自己实时的 GPT 计算**，512 GiB、1 TiB 或其他
-容量都走同一套规则：
+容量不是固定值。**每台设备按自己实时的 GPT 计算**，512 GiB、1 TiB 或其他容量都走同一套规则：
 
 1. 保留 Android 的全部固定分区（`boot_a`、`dtbo_a`、`super` 等）不动；
 2. `userdata` 从尾部缩短，让出 Linux 需要的空间；
@@ -488,31 +487,23 @@ ABL 只读对照把完整取证保存到 RAM 中 `/run/piano-boot-evidence.txt`�
 4. Android `userdata` 与 `sunuefi_root` 按剩余空间对半分配；
 5. 所有新分区起点按 1 MiB 对齐，两边相差不超过 2 MiB。
 
-`product.json` 里的 `root_size_mib` 只是某台设备实测的一次记录，用来给
-`prepare-install` 提供默认值，**不能当成所有设备的约定**。换了容量就要用
-下面的手动流程重新算，或者给 `prepare-install` 传自己的 `root_size_mib`。
+`product.json` 的 `root_size_mib` 只是一台设备的实测记录，给 `prepare-install` 当默认值，**不是所有设备的约定**。容量变了就按下面的手动流程重算，或者给 `prepare-install` 传自己的 `root_size_mib`。
 
-执行器从实时、双副本 CRC 合格的完整 GPT 重算，结果必须与镜像容量一致。
-原 userdata 会清空重建，GPT/BOOT 恢复文件不包含 Android 用户数据。
+执行器从实时、双副本 CRC 合格的完整 GPT 重算，结果必须与镜像容量一致。原 userdata 会被清空重建；GPT/BOOT 恢复文件不含 Android 用户数据。
 
-通用包中的 8 GiB F2FS 镜像保持封存。`prepare-root-capacity.py` 在私有工作副本中
-设置本机启动配置和传感器槽位，恢复匹配的 Fedora SELinux 标签后离线扩容。
-镜像不写任何 SSH 公钥，manifest 用 `ssh_public_key_in_image: false` 记录这一点。
-源树与扩容后的文件、所有权、权限、链接、mtime、全部 xattr 逐项比较。只读 fsck
-和 sparse 解码摘要必须通过。
+通用包里的 8 GiB F2FS 镜像保持封存。`prepare-root-capacity.py` 在私有工作副本里设置本机启动配置与传感器槽位，恢复匹配的 Fedora SELinux 标签，然后离线扩容。镜像不写任何 SSH 公钥，manifest 用 `ssh_public_key_in_image: false` 记录。源树与扩容副本的文件、所有权、权限、链接、mtime、全部 xattr 逐项比较；只读 fsck 与 sparse 解码摘要必须通过。
 
-sparse 文件使用 RAW 与显式零 FILL，不使用 DONT_CARE；其完整展开字节与
-验证过的 F2FS 镜像一致。它仍是 F2FS 文件系统，sparse 只负责 Fastboot 传输。
+sparse 文件用 RAW 与显式零 FILL，不用 DONT_CARE；展开后的完整字节与验证过的 F2FS 镜像一致。文件系统仍是 F2FS，sparse 只负责 Fastboot 传输。
 
 ---
 
 ## 五、 首次登录与桌面环境配置
 
-刷机完成后平板自动重启，片刻后即可直接进入流畅的 120Hz Fedora 44 GNOME 桌面：
+刷完后平板自动重启，进入 120 Hz 的 Fedora 44 GNOME 桌面。
 
-* **默认桌面用户**：`piano`
-* **默认登录密码**：`piano123456`
-* **首次改密**：登入桌面后，请按需要打开终端执行 `passwd` 设置个性化密码。
+* **默认用户**：`piano`
+* **默认密码**：`piano123456`
+* **改密**：打开终端执行 `passwd`。
 
 ### 默认状态
 * **120 Hz 与触控**：Mesa 硬件加速默认开启；触控服务加载 5 阶自适应卡尔曼滤波与 24 像素死区防抖。
