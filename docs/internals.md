@@ -105,11 +105,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
   --plan first-install-plan.json
 ```
 
-`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT
-基线、原 BOOT 摘要、输入包摘要和 Linux root 容量；任何一项与现场不一致就停止。
-同时确认设备当前槽位是 `a`，且 `root-install-manifest.json` 的顶层
-`android_slot` 是 `_a`。首装不能用 `_b`：一键脚本会固定写 `boot_b`，那会
-覆盖 Android 的唯一启动路径。
+`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量；任何一项与现场不符就停止。同时确认设备当前槽位是 `a`，`root-install-manifest.json` 顶层的 `android_slot` 是 `_a`。首装不能用 `_b`：一键脚本固定写 `boot_b`，会覆盖 Android 唯一的启动路径。
 
 `device-boot/boot-request.json` 必须记录首装 Android 所在的
 `/dev/disk/by-partlabel/boot_a`，其 `app_generation` 必须与
@@ -149,20 +145,15 @@ python3 boot-tools/installer/scripts/install-f2fs.py apply \
 保持原样；`result.json` 的 `ssh_key_injected` 与 `sunuefi_esp_sha256` 记录这次
 注入和实际刷入的摘要。不传 `--ssh-key` 时只保留口令登录。
 
-执行器会重新读取设备、保存原 GPT/BOOT、写入并读回完整 GPT、显式执行
-`fastboot erase userdata`，然后传输 ESP、F2FS sparse root 和当前槽的 Android
-默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
+执行器重新读取设备，保存原 GPT 与 BOOT，写入并读回完整 GPT，显式执行 `fastboot erase userdata`，然后传输 ESP、F2FS sparse root 和当前槽的 Android 默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
 
-此时 Linux 还没有启动，`apply` 结束时设备仍停在原厂 Fastboot。先断开 USB
-并执行一次普通重启，让设备按当前槽启动 Android：
+这时 Linux 还没启动，`apply` 结束时设备停在原厂 Fastboot。先断开 USB，再执行一次普通重启，让设备按当前槽启动 Android：
 
 ```sh
 fastboot reboot
 ```
 
-等首次开机完成、`adb shell getprop sys.boot_completed` 返回 `1`。这是让
-Android 在缩短后的分区上重建加密 userdata 的必要步骤；不能在宿主格式化为
-Android 加密分区，也不能跳过。
+等首次开机完成，`adb shell getprop sys.boot_completed` 返回 `1`。这是让 Android 在缩短后的分区上重建加密 userdata 的必要步骤，不能跳过，也不能在宿主上格式化成 Android 加密分区。
 
 ### 4. 回到 Fastboot 并刷入 Linux
 
@@ -177,12 +168,7 @@ chmod +x flash-linux.sh
 如果第 3 步已经用 `install-f2fs.py --ssh-key` 注入过，这里不必再传；重复注入
 只会覆盖同一个 `/piano-ssh-key.pub`。两条路径都要求本机有 `mcopy`（mtools）。
 
-脚本会校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、
-槽位和 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量，只写 `boot_b`、
-`sunuefi_esp`、`sunuefi_root`，并拒绝 fastbootd、错误产品、多个设备和不完整
-材料。首装路径拒绝 `--skip-checksum`：两份摘要、provenance、槽位和容量都必须在
-第一笔写入前完成。完成后设备重启到 Slot B。Windows 脚本要求 PowerShell 5
-或更高版本，因为槽位和容量核对使用了 `ConvertFrom-Json`。
+脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量。它只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。首装路径拒绝 `--skip-checksum`：两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备重启到 Slot B。Windows 脚本要求 PowerShell 5 或更高版本，槽位与容量核对用了 `ConvertFrom-Json`。
 
 ## PR 验收门槛
 
