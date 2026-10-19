@@ -171,7 +171,10 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
         find "$PACKAGES_DIR/$pkg" -maxdepth 1 -type f ! -name "*.spec" ! -name "*.tar.*" -exec cp -p {} "$BUILD_TMP/SOURCES/" \;
 
         SOURCE0_LINE=$(grep -E '^[[:space:]]*Source0?:' "$SPEC_FILE" | head -n 1 | awk '{print $2}')
-        if [[ "$SOURCE0_LINE" =~ ^https?:// ]]; then
+        # %{url} expands to an https URL in every spec that uses it. Matching
+        # only on a literal http prefix silently treated those as local
+        # sources, so rpmbuild stopped at %prep with "No such file".
+        if [[ "$SOURCE0_LINE" =~ ^https?:// || "$SOURCE0_LINE" == *'%{url}'* ]]; then
             echo "--> Fetching upstream remote sources with spectool..."
             spectool -g -C "$BUILD_TMP/SOURCES" "$SPEC_FILE"
         else
