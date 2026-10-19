@@ -93,6 +93,22 @@ def check_script(path):
         for token in ("partition-size:${name}", "unlocked", "is-userspace"):
             if token not in code:
                 failures.append(f"{path.name}: missing pre-flight check {token!r}")
+        # --ssh-key writes into the ESP image with mtools. It must not turn into
+        # a device write or an erase, and it must stay after the checksum gate.
+        for token in ("--ssh-key", "mcopy -o -i", "::/piano-ssh-key.pub"):
+            if token not in code:
+                failures.append(f"{path.name}: missing SSH key injection piece {token!r}")
+        if "mtools" not in code:
+            failures.append(f"{path.name}: missing-mcopy error does not name mtools")
+        inject = code.find("inject_ssh_key \"$SSH_KEY\"")
+        flash_esp = code.find('fb flash sunuefi_esp "$ESP_IMG"')
+        checksum = code.find('check_manifest_image "$ESP_IMG"')
+        if min(inject, flash_esp, checksum) < 0:
+            failures.append(f"{path.name}: SSH key injection or ESP flash step is missing")
+        elif not checksum < inject < flash_esp:
+            failures.append(
+                f"{path.name}: SSH key injection must run after the checksum gate "
+                "and before the sunuefi_esp flash")
 
     return failures
 

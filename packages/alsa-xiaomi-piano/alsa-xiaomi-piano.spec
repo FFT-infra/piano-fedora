@@ -5,7 +5,7 @@ Version:        0.1.0
 Release:        1%{?dist}
 Summary:        ALSA UCM2 audio configuration for Xiaomi Pad 8 Pro (piano)
 License:        BSD-3-Clause
-URL:            https://github.com/FFT-infra/piano-fedora-test
+URL:            https://github.com/FFT-infra/piano-fedora
 Source0:        %{name}-%{version}.tar.gz
 BuildArch:      noarch
 

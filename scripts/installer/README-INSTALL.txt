@@ -15,6 +15,9 @@ Requirements:
 2. Battery above 30%.
 3. Fastboot and ADB installed on PC.
 4. USB cable connected directly to tablet.
+5. mtools (mcopy), only when you install an SSH key with --ssh-key:
+   Fedora "sudo dnf install mtools", Ubuntu/Debian "sudo apt install mtools",
+   macOS "brew install mtools".
 
 Required Files in this Folder:
 - flash-linux.sh / flash-linux.bat (installer scripts)
@@ -44,10 +47,22 @@ Flashing Instructions:
    - Linux / macOS:
        chmod +x flash-linux.sh
        ./flash-linux.sh
+     To install an SSH public key for user piano:
+       ./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub
    - Windows:
        Double-click flash-linux.bat
 4. Follow the prompt and type YES to flash.
 5. Tablet will reboot into Fedora 44 GNOME desktop!
+
+The image ships no authorized_keys. With --ssh-key the script writes the key to
+/piano-ssh-key.pub inside sunuefi_esp.img after every checksum and manifest
+check passes, then flashes that image; piano-first-boot-ssh-key.service imports
+it into piano's authorized_keys on first boot and deletes the ESP copy. Without
+--ssh-key the documented password login is the only way in.
+The key changes the ESP image digest, so a later rerun needs a fresh unpack of
+the deploy-bundle, or you compare readbacks against the digest the installer
+printed. Windows users inject manually with mcopy before flashing; see the
+prompt in flash-linux.bat.
 
 Before step 3, confirm current-slot is "a". If it is "b", stop: the Linux
 boot image is written to boot_b and would overwrite Android's active path.

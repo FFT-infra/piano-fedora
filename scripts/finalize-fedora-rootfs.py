@@ -696,6 +696,7 @@ def main():
                 "librevm-daemon.service", "uperf-linux.service",
                 "piano-clock-restore.service", "piano-clock-save.service",
                 "piano-clock-save.timer", "piano-selinux-policy.service",
+                "piano-first-boot-ssh-key.service",
                 "piano-pstore-save.service", "qbootctl.service"]
     chroot(root, "systemctl", "enable", *services)
     chroot(root, "systemctl", "--global", "enable", "piano-power-button.service")

@@ -261,7 +261,7 @@ SELinux **Permissive**（启动参数带 `selinux=permissive`），手动 `seten
 
 `rtcwake -m mem -s 20` 成功唤醒（实际 22 s），唤醒后无 failed unit，显示与
 触控、相机服务都在，Wi-Fi 约 3 s 内自动重连（`4way_handshake → completed`
-后 DHCP 拿回 192.168.5.8）。dmesg 中的 `IRQ…: set affinity failed(-22)` 与
+后 DHCP 拿回局域网地址）。dmesg 中的 `IRQ…: set affinity failed(-22)` 与
 CMA 分配失败出现在关机 CPU 路径上，属既有噪声，本轮未发现新增故障。
 证据：`stability-verify/suspend-cycles.txt`。
 
@@ -370,7 +370,7 @@ Enforcing。持久启动策略仍待核对，不能把会话内设置当成持�
 
 ## 本轮证据位置
 
-主机临时证据位于 `~/Lab/Bridge/tmp/trash/piano-takeover-20261015-01/`，设备证据
+主机临时证据位于 `~/piano-takeover-20261015-01/`，设备证据
 位于 `/home/piano/piano-takeover-20261015-01/`。临时目录会清理，关键结论、
 身份和验证边界已写入本文，原始日志应随交付另行留存。
 

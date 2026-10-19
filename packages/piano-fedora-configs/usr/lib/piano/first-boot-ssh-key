@@ -1,0 +1,73 @@
+#!/bin/sh
+# Import the one-time SSH public key that the installer wrote to the ESP.
+#
+# The flashing tools copy the key to /boot/efi/piano-ssh-key.pub before the
+# ESP is written. On first boot this helper appends it to piano's
+# authorized_keys and removes the ESP copy, so a published image never carries
+# anyone's key and an install without --ssh-key keeps password login only.
+#
+# Offline tests override the paths:
+#   PIANO_SSH_KEY_FILE  key file on the ESP (default /boot/efi/piano-ssh-key.pub)
+#   PIANO_SSH_USER      account that receives the key (default piano)
+#   PIANO_SSH_HOME      home directory override (default: account's passwd home)
+set -eu
+
+KEY_FILE=${PIANO_SSH_KEY_FILE:-/boot/efi/piano-ssh-key.pub}
+ACCOUNT=${PIANO_SSH_USER:-piano}
+
+fail() {
+    echo "piano-first-boot-ssh-key: $*" >&2
+    exit 1
+}
+
+# No key was injected: nothing to do, and this is not an error.
+[ -e "$KEY_FILE" ] || exit 0
+[ -f "$KEY_FILE" ] && [ ! -L "$KEY_FILE" ] || fail "$KEY_FILE is not a regular file"
+
+count=$(awk 'END { print NR }' "$KEY_FILE")
+[ "$count" -eq 1 ] || fail "$KEY_FILE must contain exactly one public key"
+
+key=$(tr -d '\r' < "$KEY_FILE" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+[ -n "$key" ] || fail "$KEY_FILE is empty"
+# Split into type/blob without glob expansion: the optional comment may contain
+# characters the shell would otherwise expand against the current directory.
+set -f
+set -- $key
+set +f
+type=${1:-}
+blob=${2:-}
+case "$type" in
+    ssh-ed25519|ssh-rsa) ;;
+    *) fail "unsupported key type '${type:-}'; expected ssh-ed25519 or ssh-rsa" ;;
+esac
+[ -n "$blob" ] || fail "$KEY_FILE has no key material"
+printf '%s' "$blob" | base64 -d >/dev/null 2>&1 || fail "$KEY_FILE has invalid base64 key material"
+
+home=${PIANO_SSH_HOME:-}
+if [ -z "$home" ]; then
+    home=$(getent passwd "$ACCOUNT" | cut -d: -f6)
+fi
+[ -n "$home" ] || fail "cannot resolve the home directory for '$ACCOUNT'"
+
+dir=$home/.ssh
+file=$dir/authorized_keys
+mkdir -p "$dir"
+chmod 0700 "$dir"
+[ -L "$file" ] && fail "$file is a symlink; refusing to follow it"
+touch "$file"
+chmod 0600 "$file"
+
+# Idempotent: compare type and key blob, not the optional trailing comment.
+if ! awk -v t="$type" -v b="$blob" '$1 == t && $2 == b { found = 1 } END { exit !found }' "$file"; then
+    printf '%s\n' "$key" >> "$file"
+fi
+
+group=$(id -gn "$ACCOUNT" 2>/dev/null || echo "$ACCOUNT")
+chown "$ACCOUNT:$group" "$dir" "$file"
+if command -v restorecon >/dev/null 2>&1; then
+    restorecon -RF "$dir"
+else
+    echo "piano-first-boot-ssh-key: restorecon not found; skipped SELinux relabel" >&2
+fi
+
+rm -f "$KEY_FILE"

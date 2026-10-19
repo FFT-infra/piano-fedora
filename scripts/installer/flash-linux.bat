@@ -188,6 +188,21 @@ if errorlevel 1 (
 echo [INFO] All image checksums match.
 echo.
 
+REM Install-time SSH key: this script does not inject one. The Linux/macOS
+REM installer takes --ssh-key and writes the key into the ESP image with
+REM mtools; do the same here before flashing if you want key-based login.
+echo [INFO] SSH key (optional):
+echo   This Windows script does not inject an SSH public key. Without one the
+echo   system keeps the documented password login for user piano.
+echo   To install a key, edit the ESP image with mtools first, then re-run this
+echo   script. The ESP must already have passed the checksum check above; the
+echo   edit changes its digest, so expect the next run to report a mismatch
+echo   until you refresh SHA256SUMS or use the Linux installer instead:
+echo     mcopy -o -i sunuefi_esp.img C:\path\to\id_ed25519.pub ::/piano-ssh-key.pub
+echo   The device imports /piano-ssh-key.pub into piano's authorized_keys on
+echo   first boot and then deletes the ESP copy.
+echo.
+
 REM 6. Safety confirmation
 echo ====================================================================
 echo                  ⚠️  CRITICAL SAFETY WARNING ⚠️

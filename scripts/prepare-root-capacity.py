@@ -2,7 +2,6 @@
 """离线扩展已验证 F2FS 根镜像，完整比较后输出可刷写的 Android sparse 镜像。"""
 
 import argparse
-import base64
 import hashlib
 import importlib.util
 import json
@@ -96,13 +95,8 @@ def resize_and_verify(source, target, target_mib, work):
 SENSOR_LOGICAL_SLOT = "_a"
 
 
-def configure_source(source, bundle, slot, key_file, work):
+def configure_source(source, bundle, slot, work):
     require(slot in ("_a", "_b"), "current Android slot is required")
-    fields = key_file.read_text().strip().split()
-    require(len(fields) in (2, 3) and fields[0] == "ssh-ed25519", "provide one Ed25519 public key, never a private key")
-    require(len(key_file.read_bytes()) <= 1024 and len(key_file.read_text().splitlines()) == 1, "invalid public-key file")
-    blob = base64.b64decode(fields[1], validate=True)
-    require(len(blob) == 51 and blob[:19] == struct.pack(">I", 11) + b"ssh-ed25519" + struct.pack(">I", 32), "invalid Ed25519 public key")
     image = (bundle / "PianoUEFI-product.img").read_bytes()
     kernel, ramdisk = struct.unpack_from("<II", image, 8)
     offset = 4096 + (kernel + 4095) // 4096 * 4096
@@ -115,41 +109,34 @@ def configure_source(source, bundle, slot, key_file, work):
     mount.mkdir()
     run("mount", "-t", "f2fs", "-o", "loop", source, mount)
     try:
-        paths = []
         config = safe_destination(mount, "etc/piano/boot-request.json")
         config.parent.mkdir(parents=True, exist_ok=True)
         config.write_text(json.dumps(boot_request, indent=2) + "\n")
         config.chmod(0o644)
-        paths.append("/etc/piano")
         sensors_name = "etc/systemd/system/piano-sensors-import.service.d/android-slot.conf"
         sensors = safe_destination(mount, sensors_name)
         sensors.parent.mkdir(parents=True, exist_ok=True)
         sensors.write_text("[Service]\nEnvironment=PIANO_SENSORS_ODM_NAME=odm" + SENSOR_LOGICAL_SLOT +
                            "\nEnvironment=PIANO_SENSORS_VENDOR_NAME=vendor" + SENSOR_LOGICAL_SLOT + "\n")
         sensors.chmod(0o644)
-        paths.append("/etc/systemd/system/piano-sensors-import.service.d")
         users = {}
         for line in (mount / "etc/passwd").read_text().splitlines():
             parts = line.split(":")
             if len(parts) == 7 and parts[0] in ("root", "piano"):
-                users[parts[0]] = (int(parts[2]), int(parts[3]), parts[5])
+                users[parts[0]] = parts[5]
         require(set(users) == {"root", "piano"}, "expected the prepared root and piano accounts")
-        for name, (uid, gid, home) in users.items():
+        for name, home in users.items():
             require(home == ("/root" if name == "root" else "/home/piano"), "unexpected account home")
-            directory = safe_destination(mount, home.lstrip("/") + "/.ssh")
-            target = safe_destination(mount, home.lstrip("/") + "/.ssh/authorized_keys")
-            directory.mkdir(mode=0o700, exist_ok=True)
-            require(not target.exists(), "refuse to replace existing authorized keys")
-            target.write_text(fields[0] + " " + fields[1] + "\n")
-            directory.chmod(0o700)
-            target.chmod(0o600)
-            os.chown(directory, uid, gid)
-            os.chown(target, uid, gid)
-            paths.append(home + "/.ssh")
+            # The image ships no authorized_keys. The install-time key travels
+            # to the ESP and is imported on first boot, so publishing the image
+            # never carries anyone's personal key.
+            require(not (mount / home.lstrip("/") / ".ssh").exists(),
+                    "refuse to ship pre-provisioned SSH keys")
         # 使用镜像内匹配的 Fedora 工具及规则，不猜测 SSH/home 的 SELinux 类型。
         run("chroot", mount, "/usr/sbin/setfiles", "-F",
-            "/etc/selinux/targeted/contexts/files/file_contexts", *paths)
-        for name in ("etc/piano/boot-request.json", sensors_name, "root/.ssh/authorized_keys", "home/piano/.ssh/authorized_keys"):
+            "/etc/selinux/targeted/contexts/files/file_contexts",
+            "/etc/piano", "/etc/systemd/system/piano-sensors-import.service.d")
+        for name in ("etc/piano/boot-request.json", sensors_name):
             require(os.getxattr(mount / name, "security.selinux"), "device configuration lacks SELinux label")
     finally:
         run("umount", mount)
@@ -157,8 +144,8 @@ def configure_source(source, bundle, slot, key_file, work):
     return {"boot_request": boot_request, "android_slot": slot,
             "sensor_logical_partitions": ["odm" + SENSOR_LOGICAL_SLOT, "vendor" + SENSOR_LOGICAL_SLOT],
             "sensor_logical_slot_source": "device-probed (super has _a only)",
-            "ssh_public_key_fingerprint": "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("="),
-            "ssh_accounts": ["root", "piano"], "private_key_in_image": False}
+            "ssh_public_key_in_image": False, "ssh_public_key_source": "installer --ssh-key to ESP",
+            "private_key_in_image": False}
 
 
 def main():
@@ -167,11 +154,9 @@ def main():
     ap.add_argument("--size-mib", type=int, required=True)
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--android-slot", choices=("_a", "_b"))
-    ap.add_argument("--ssh-public-key", type=Path)
     args = ap.parse_args()
     require(os.geteuid() == 0, "run with sudo")
     require(64 <= args.size_mib <= 1024**2, "target must be 64 MiB..1 TiB")
-    require(bool(args.android_slot) == bool(args.ssh_public_key), "device provisioning requires both slot and public key")
     for name in ("zstd", "resize.f2fs", "fsck.f2fs", "cp", "mount", "umount"):
         require(shutil.which(name), "missing tool: " + name)
     spec = importlib.util.spec_from_file_location("bundle_verifier", Path(__file__).with_name("verify-bundle.py"))
@@ -189,7 +174,7 @@ def main():
     work.mkdir()
     source, target = work / "source.raw", work / "expanded.raw"
     expand_zstd(bundle / "pianoroot.f2fs.img.zst", source, root_meta["bytes"], root_meta["sha256"])
-    device_config = configure_source(source, bundle, args.android_slot, args.ssh_public_key, work) if args.android_slot else None
+    device_config = configure_source(source, bundle, args.android_slot, work) if args.android_slot else None
     proof = resize_and_verify(source, target, args.size_mib, work)
     sparse = output / "pianoroot.f2fs.sparse.img"
     transport = encode(target, sparse)

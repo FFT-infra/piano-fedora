@@ -23,6 +23,7 @@ BOOT_IMG=""
 ESP_IMG=""
 ROOT_IMG=""
 ROOT_SHA256SUMS=""
+SSH_KEY=""
 AUTO_CONFIRM=0
 DO_REBOOT=1
 SKIP_CHECKSUM=0
@@ -40,6 +41,11 @@ Options:
   --root <file>        Path to the prepared rootfs transport (pianoroot.f2fs.sparse.img)
   --root-sha256sums <file>
                        root-install/SHA256SUMS produced by prepare-install
+  --ssh-key <file>     One ssh-ed25519 or ssh-rsa public key for user piano.
+                       The key is copied into the ESP image after every
+                       checksum passes; the device imports it on first boot and
+                       then deletes the ESP copy. Without this option the
+                       system keeps the documented password login only.
   --no-reboot          Do not reboot the device after flashing completes
   --skip-checksum      Legacy option; refused because first install requires both manifests
   -h, --help           Show this help message and exit
@@ -69,6 +75,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --root-sha256sums)
             ROOT_SHA256SUMS="$2"
+            shift 2
+            ;;
+        --ssh-key)
+            SSH_KEY="$2"
             shift 2
             ;;
         --no-reboot)
@@ -450,6 +460,9 @@ echo -e "[INFO] Flashing targets resolved:"
 echo -e "  - Boot image   : ${GREEN}${BOOT_IMG}${NC} ($(stat -c%s "$BOOT_IMG" 2>/dev/null || stat -f%z "$BOOT_IMG") bytes)"
 echo -e "  - ESP image    : ${GREEN}${ESP_IMG}${NC} ($(stat -c%s "$ESP_IMG" 2>/dev/null || stat -f%z "$ESP_IMG") bytes)"
 echo -e "  - RootFS image : ${GREEN}${ROOT_IMG}${NC} (${root_image_size} transfer bytes, ${root_expanded_bytes} expanded bytes)"
+if [ -n "$SSH_KEY" ]; then
+    echo -e "  - SSH key      : ${GREEN}${SSH_KEY}${NC} (injected into the ESP before flashing)"
+fi
 
 # 7. Safety Confirmation
 if [ "$AUTO_CONFIRM" -eq 0 ]; then
@@ -464,6 +477,68 @@ if [ "$AUTO_CONFIRM" -eq 0 ]; then
         echo -e "${YELLOW}Aborted by user. No modifications were made to the device.${NC}"
         exit 0
     fi
+fi
+
+# 7. Optional install-time SSH key.
+# The image ships no authorized_keys. A key passed here is written into the ESP
+# image only after both SHA256SUMS, the bundle/root provenance, the slot and the
+# capacity have been verified, and before sunuefi_esp is flashed. The device's
+# piano-first-boot-ssh-key.service imports it on first boot and deletes it.
+ESP_SHA256=""
+sha256_of() {
+    if [ "$CHKSUM_TOOL" = "sha256sum" ]; then
+        sha256sum "$1" | awk '{print $1}'
+    else
+        shasum -a 256 "$1" | awk '{print $1}'
+    fi
+}
+
+inject_ssh_key() {
+    local key_file="$1" line type blob
+    if [ ! -f "$key_file" ] || [ -L "$key_file" ]; then
+        echo -e "${RED}[ERROR] --ssh-key must name a regular public-key file: ${key_file}${NC}"
+        exit 1
+    fi
+    if [ "$(wc -l < "$key_file")" -ne 1 ]; then
+        echo -e "${RED}[ERROR] --ssh-key must contain exactly one public key.${NC}"
+        echo "Pass the .pub file, never a private key."
+        exit 1
+    fi
+    line=$(tr -d '\r' < "$key_file" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    type=$(printf '%s\n' "$line" | awk '{print $1}')
+    blob=$(printf '%s\n' "$line" | awk '{print $2}')
+    case "$type" in
+        ssh-ed25519|ssh-rsa) ;;
+        *)
+            echo -e "${RED}[ERROR] --ssh-key has unsupported type '${type:-}'.${NC}"
+            echo "Only ssh-ed25519 and ssh-rsa public keys are accepted."
+            exit 1
+            ;;
+    esac
+    if [ -z "$blob" ] || ! printf '%s' "$blob" | base64 -d >/dev/null 2>&1; then
+        echo -e "${RED}[ERROR] --ssh-key has invalid base64 key material.${NC}"
+        exit 1
+    fi
+    if ! command -v mcopy &>/dev/null; then
+        echo -e "${RED}[ERROR] 'mcopy' command not found; it is needed to inject the SSH key.${NC}"
+        echo "Install mtools and retry:"
+        echo "  - Fedora: sudo dnf install mtools"
+        echo "  - Ubuntu/Debian: sudo apt install mtools"
+        echo "  - macOS: brew install mtools"
+        exit 1
+    fi
+    mcopy -o -i "$ESP_IMG" "$key_file" ::/piano-ssh-key.pub
+    ESP_SHA256=$(sha256_of "$ESP_IMG")
+    echo -e "  ${GREEN}✓${NC} SSH public key written to ${ESP_IMG} as /piano-ssh-key.pub"
+    echo -e "    ${YELLOW}The ESP image digest changed; compare a readback against:${NC}"
+    echo "    $ESP_SHA256"
+}
+
+if [ -n "$SSH_KEY" ]; then
+    echo -e "\n[INFO] Injecting the install-time SSH public key..."
+    inject_ssh_key "$SSH_KEY"
+else
+    echo -e "\n[INFO] No --ssh-key given; the system keeps password login only."
 fi
 
 # 7. Flashing execution sequence
@@ -496,6 +571,9 @@ echo ""
 echo "System Summary:"
 echo "  - Default desktop user : piano"
 echo "  - Default password     : piano123456"
+if [ -n "$ESP_SHA256" ]; then
+    echo "  - SSH key              : imported on first boot; password login still works"
+fi
 echo "  - SunUEFI boot menu    : Press Volume keys during initial 3-second logo"
 echo "  - Switch back to Android: Open GNOME App Drawer -> Click 'Return to Android'"
 echo ""

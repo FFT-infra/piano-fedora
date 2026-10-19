@@ -3,9 +3,29 @@
 # 只读：挂载镜像、比对哈希、列文件，不修改镜像。
 set -euo pipefail
 
-IMG="${1:-/home/xinyang/Lab/Bridge/WorkSpace/piano-fedora-test/build/clean-distros/fedora-44-gnome/pianoroot-fedora44-gnome-f2fs.img}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+DEFAULT_IMG="$REPO_ROOT/build/clean-distros/fedora-44-gnome/pianoroot-fedora44-gnome-f2fs.img"
+
+IMG="${1:-$DEFAULT_IMG}"
 MNT="${2:-/mnt/piano-verify-new}"
-ESP_KERNEL="${ESP_KERNEL:-7.2.9-piano-gnome-g184e09d96775}"
+
+# 内核 release 以镜像同目录的 root-image-manifest.json 为准。
+# 读不到就停下，不猜一个版本号。
+if [ -z "${ESP_KERNEL:-}" ]; then
+    manifest="$(dirname "$IMG")/root-image-manifest.json"
+    if [ ! -f "$manifest" ]; then
+        echo "kernel manifest not found: $manifest" >&2
+        echo "build the image first, or pass ESP_KERNEL=<release>" >&2
+        exit 2
+    fi
+    ESP_KERNEL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("kernel_release",""))' "$manifest")"
+    if [ -z "$ESP_KERNEL" ]; then
+        echo "kernel_release missing from $manifest" >&2
+        echo "pass ESP_KERNEL=<release> if the manifest predates the field" >&2
+        exit 2
+    fi
+fi
 
 fail=0
 note() { printf '%-46s %s\n' "$1" "$2"; }

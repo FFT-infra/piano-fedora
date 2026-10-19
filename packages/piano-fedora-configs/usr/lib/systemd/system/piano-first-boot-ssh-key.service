@@ -1,0 +1,12 @@
+[Unit]
+Description=Import the install-time SSH public key from the ESP
+ConditionPathExists=/boot/efi/piano-ssh-key.pub
+After=local-fs.target
+Before=sshd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/piano/first-boot-ssh-key
+
+[Install]
+WantedBy=multi-user.target

@@ -25,7 +25,7 @@ SunUEFI 提供启动链，本仓库加四样：Fedora 后端、F2FS 全链路、
 
    制镜像需要挂载 F2FS。GitHub runner 的内核默认不带 f2fs，装上 `linux-modules-extra` 后 `modprobe f2fs` 可用，挂载式往返验证在 CI 上已跑通（`IMAGE_VERIFIED`，xattr 核对通过，fsck 退出码 0）。
 
-   离线导入 `sload.f2fs -P` 不需要挂载，但它只保留 owner 与 setuid，**不保留 user xattr**，已在 192.168.5.11 实测确认。所以制镜像用挂载 + `tar --xattrs --acls`，不用 sload。
+   离线导入 `sload.f2fs -P` 不需要挂载，但它只保留 owner 与 setuid，**不保留 user xattr**，已在桥接机上实测确认。所以制镜像用挂载 + `tar --xattrs --acls`，不用 sload。
 
 ## CI 分工
 

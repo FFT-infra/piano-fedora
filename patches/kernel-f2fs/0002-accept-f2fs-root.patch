@@ -1,5 +1,5 @@
 From 2bc02cce2c8a239517bf07666e16e42d01f2ef97 Mon Sep 17 00:00:00 2001
-From: piano-fedora-test <dev@piano.invalid>
+From: piano-fedora <dev@piano.invalid>
 Date: Sat, 10 Oct 2026 02:02:39 +0800
 Subject: [PATCH] hardware-prepare: accept an F2FS root partition
 

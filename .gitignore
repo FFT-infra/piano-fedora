@@ -11,6 +11,11 @@
 *.tar.gz
 *.tar.xz
 *.rpm
+*.zip
+
+# 本地日志与环境变量
+*.log
+.env
 
 # Python
 __pycache__/

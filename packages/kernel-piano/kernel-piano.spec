@@ -1,5 +1,13 @@
 %undefine _debugsource_packages
 %global debug_package %{nil}
+# Ship the sealed modules byte for byte. rpm's brp-strip runs `strip -g` over
+# every ELF in the buildroot, which rewrites .symtab inside each .ko; the RPM
+# then no longer matches the kernel artifact that build-image verifies against
+# (stage-rootfs-payload.same_module_tree). Pointing __strip at a no-op keeps
+# the payload identical, and the modules already carry a build-id, so no link
+# has to be regenerated.
+%global __strip /bin/true
+%global _build_id_links none
 %global KERNEL_VER 7.2.9
 %global KERNEL_TAG piano-7.2.9
 %global DEVICE_NAME piano

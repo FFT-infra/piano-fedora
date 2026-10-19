@@ -1,4 +1,4 @@
-# piano-fedora-test Agent Guide
+# piano-fedora Agent Guide
 
 本文件是权威约定。改仓库前先读它。
 

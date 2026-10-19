@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 PACKAGES_DIR="$REPO_ROOT/packages"
 OUT_DIR="${1:-$REPO_ROOT/out/rpms}"
-BUILD_TMP="${TMPDIR:-$HOME/Lab/Bridge/tmp/trash}/rpmbuild-work"
+BUILD_TMP="${TMPDIR:-/tmp}/rpmbuild-work"
 # COPR rebuilds user-space packages from source. Keep the SRPMs beside the
 # binaries so the publish step can hand them to `copr-cli build` without
 # re-deriving the spec inputs.

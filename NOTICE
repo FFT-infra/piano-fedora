@@ -1,0 +1,32 @@
+# 许可归属
+
+本仓库的许可分两层。
+
+## 本仓库自有内容
+
+`LICENSE` 里的 MIT 许可证覆盖本仓库自己的脚本、测试与文档，包括 `scripts/`、
+`tests/`、`docs/`、`.github/`、`initramfs/` 下的自有文件，以及 `patches/` 下
+补丁的元数据（`series.json`）。
+
+Copyright (c) 2026 phxinyang
+
+## 补丁
+
+`patches/` 下的补丁修改的是上游代码，补丁本身沿用被改文件的上游许可。
+
+| 目录 | 目标 | 许可 |
+| --- | --- | --- |
+| `patches/kernel/` | Linux 内核源码（`drivers/`、`sound/`、`Documentation/`） | GPL-2.0 |
+| `patches/kernel-f2fs/`、`patches/kernel-gunyah/` | SunUEFI 的构建工具与 initramfs 脚本 | 按被改文件的声明 |
+| `patches/kernel-iris/`、`patches/kernel-stability/` | SunUEFI 的 `tools/prepare_release_kernel.py`，并生成内核补丁 | 工具按文件声明，生成的补丁沿用 GPL-2.0 |
+| `patches/packaging-overlays/` | SunUEFI 的 `tools/package_release.py` | 按被改文件的声明 |
+| `patches/uefi-ufs/`、`patches/uefi-live-memory/`、`patches/uefi-live-rm/` | SunUEFI 的 `uefi/core/*.c`、`uefi/handoff/bootselect/BootSelect.ld` | BSD-2-Clause-Patent |
+
+`patches/kernel/` 保留原作者与 `Signed-off-by`，新增代码带
+`SPDX-License-Identifier`。SunUEFI 是文件级许可，被修改的 C 文件与链接脚本
+声明 `BSD-2-Clause-Patent`；完整说明见其仓库的 `LICENSE.md` 与 `THIRD_PARTY.md`。
+
+## 上游组件
+
+上游仓库、锁定 commit 与各自角色见 `sources.lock.json`。各组件按自身许可
+取用，不复制进本仓库。`piano-firmware` 许可不明，只在构建时取用，不入库。

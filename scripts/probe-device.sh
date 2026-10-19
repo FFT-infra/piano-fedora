@@ -4,7 +4,7 @@
 # 只做查询。没有任何写操作，不 flash、不 dd、不改 GPT。
 #
 # 用法：
-#   scripts/probe-device.sh --host 192.168.5.11 [--out DIR]
+#   scripts/probe-device.sh --host 192.0.2.10 [--out DIR]
 #
 # 输出：DIR 下若干文本文件，可直接喂给 plan-first-partition.py。
 

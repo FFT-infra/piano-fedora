@@ -5,7 +5,7 @@ Version:        0.1.0
 Release:        6%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
-URL:            https://github.com/FFT-infra/piano-fedora-test
+URL:            https://github.com/FFT-infra/piano-fedora
 Source0:        %{name}-%{version}.tar.gz
 BuildArch:      noarch
 
@@ -78,6 +78,7 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_unitdir}/piano-fake-tablet-mode.service
 %{_unitdir}/piano-physical-platform.service
 %{_unitdir}/piano-boot-request-autoconfig.service
+%{_unitdir}/piano-first-boot-ssh-key.service
 %{_unitdir}/xiaomi-charger-mode.service
 %{_prefix}/lib/systemd/system-shutdown/f2fs-root-shutdown
 %{_unitdir}/piano-linux-debug.service
@@ -90,6 +91,7 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_libexecdir}/piano-boot-request-autoconfig
 %{_libexecdir}/xiaomi-charger-mode
 %{_prefix}/lib/piano/power-button
+%{_prefix}/lib/piano/first-boot-ssh-key
 %{_prefix}/lib/piano/piano-ram-hardware-prepare
 %{_prefix}/lib/piano/piano-disk-hardware-prepare
 %{_prefix}/lib/piano/piano_dma_routes.py

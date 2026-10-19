@@ -12,6 +12,9 @@
 2. **电脑端工具链**：
    - 电脑（Windows / macOS / Linux）已配置好 `fastboot` 与 `adb` 命令行工具环境变量（Android Platform Tools）；
    - Linux 用户请确保配置了 Android 设备 udev 规则，或使用具备 `sudo` 权限的 shell。
+   - 需要安装期注入 SSH 公钥时，另装 `mtools`（提供 `mcopy`）：Fedora
+     `sudo dnf install mtools`，Ubuntu/Debian `sudo apt install mtools`，
+     macOS `brew install mtools`。不注入公钥时不需要它。
 3. **重要数据备份**：
    - 首次对平板进行分区调整时，原厂 Android 的 `userdata` 分区将被安全拆分为两部分（一半保留给 Android，一半分配给 Linux），**初次分区会清空 Android 用户数据，请提前完成外部备份**！
 
@@ -54,7 +57,7 @@ userdata，而且 `sunuefi_esp` / `sunuefi_root` 已存在的平板。全新盘�
 跳到一键刷机。真实首次安装的唯一主流程在第四节；本节之前的分区前提不可跳过。
 
 ### 1. 获取 Release 资产
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora-test/releases)
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases)
 下载最新版本的发行包。注意仓库当前还没有任何 Release 与 tag，该链接暂时是空的；
 发布前请使用 `build-bundle` 下载的完整 deploy-bundle。不要在本地重新打包
 历史 `out/` 目录充当发布资产。
@@ -67,9 +70,10 @@ userdata，而且 `sunuefi_esp` / `sunuefi_root` 已存在的平板。全新盘�
 - `SHA256SUMS`：deploy-bundle 内 ESP/BOOT 等资产的摘要；
 - `root-install/SHA256SUMS`：root-install 内 sparse 镜像和清单的摘要。
 
-首次安装必须先用同一个 deploy-bundle run 跑 `prepare-install.yml`，提供一个
-Ed25519 公钥，并把 Android 槽位固定为 `_a`，取得 `root-install`。它的 sparse
-镜像已经扩到真实 `sunuefi_root` 容量、写入设备配置并恢复 SELinux 标签。
+首次安装必须先用同一个 deploy-bundle run 跑 `prepare-install.yml`，并把
+Android 槽位固定为 `_a`，取得 `root-install`。它的 sparse 镜像已经扩到真实
+`sunuefi_root` 容量、写入设备配置并恢复 SELinux 标签。镜像本身不带任何
+`authorized_keys`；管理公钥在刷写时用 `--ssh-key` 注入，见下一节。
 
 准备一个空的安装暂存目录（下面记为 `piano-install/`），完整复制材料，
 不要从不同 run 各取一部分：
@@ -125,8 +129,25 @@ cd piano-install
   chmod +x flash-linux.sh
   ./flash-linux.sh
   ```
+  需要给 `piano` 用户装一把 SSH 公钥时：
+  ```bash
+  ./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub
+  ```
 - **Windows 主机**：
   直接双击运行 `flash-linux.bat`。
+
+`--ssh-key` 只接受单行 `ssh-ed25519` 或 `ssh-rsa` 公钥，绝不传私钥。脚本在
+两份 SHA256SUMS、bundle/root 来源、槽位和容量全部校验通过、且用户确认之后，
+才用 `mcopy -o -i sunuefi_esp.img <公钥> ::/piano-ssh-key.pub` 把公钥写进 ESP
+镜像，然后重新计算 ESP 摘要并打印。设备首次启动时
+`piano-first-boot-ssh-key.service` 把它追加到 `piano` 的 `authorized_keys`
+（目录 0700、文件 0600）并删除 ESP 上的副本。不传 `--ssh-key` 时脚本行为与
+以前完全一致，系统只保留文档里的口令登录。
+
+注入会改变 `sunuefi_esp.img` 的字节，因此它与 deploy-bundle 的 `SHA256SUMS`
+不再一致。重跑前请重新解压一份 deploy-bundle；刷写后要读回核对时，用脚本
+打印的新摘要，而不是清单里的旧值。Windows 脚本不自动注入，需要时按
+`flash-linux.bat` 的提示手工 `mcopy`。
 
 刷机脚本将全自动执行以下动作：
 1. 自动检查 `fastboot` 环境与设备在线状态；
@@ -153,7 +174,7 @@ cd piano-install
 
 ### 1. 从 Release 取哪些文件
 
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora-test/releases)
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases)
 下载发行包；Release 尚未发布时，使用同一次成功 `build-bundle` run 下载的
 完整 `deploy-bundle` 与 `prepare-install` run 下载的 `root-install`，不要使用
 历史 `out/` 目录拼装。手动刷机至少需要下面这些资产：
@@ -218,6 +239,20 @@ fastboot getvar is-userspace   # 必须是 no
 
 ### 4. 逐条刷写
 
+如果你要装一把 SSH 公钥，在刷 ESP 之前先把它写进 ESP 镜像。这一步要在
+`sha256sum -c` 通过之后做，因为它会改变镜像字节：
+
+```sh
+# 可选：把管理公钥写进 ESP（只接受 ssh-ed25519 / ssh-rsa 公钥）
+mcopy -o -i sunuefi_esp.img ~/.ssh/id_ed25519.pub ::/piano-ssh-key.pub
+sha256sum sunuefi_esp.img      # 记下新摘要，读回校验用这个值
+```
+
+设备首次启动时 `piano-first-boot-ssh-key.service` 会把
+`/boot/efi/piano-ssh-key.pub` 追加到 `piano` 的 `authorized_keys`，然后删掉
+ESP 上的副本。跳过这一步时系统只保留口令登录，其它行为不变。写坏的公钥
+（多行、私钥、非 `ssh-ed25519`/`ssh-rsa`）不会被导入，helper 会直接失败。
+
 ```sh
 # 1. 切到 B 槽（Android 保留在 A 槽）
 fastboot set_active b
@@ -261,6 +296,10 @@ fastboot getvar partition-size:sunuefi_esp
 结果应等于 `sunuefi_esp.img` 的字节数。容量更大时读回会带上分区尾部原有数据，
 哈希不会相同，此时改用下面的启动后验证。设备或 ABL 不支持 `fastboot fetch`
 时同样跳过这一步。
+
+如果第 4 节注入过 SSH 公钥，读回比对要用注入后重新算出的摘要，而不是
+deploy-bundle 的 `SHA256SUMS` 里的旧值。`mcopy` 会就地改写 `sunuefi_esp.img`，
+两份摘要天然不同；记错这一条会把正常的镜像判成损坏。
 
 启动后验证（三项都要满足）：
 
@@ -437,7 +476,7 @@ Android 初始化完成后关机，按【电源键 + 音量减键】进入原厂
 
 ```sh
 python3 boot-tools/installer/scripts/update-f2fs.py plan \
-  --sunuefi boot-tools/installer/sunuefi --serial 12440448 \
+  --sunuefi boot-tools/installer/sunuefi --serial <serial> \
   --bundle deploy-bundle --root-install root-install \
   --device-boot device-boot --stock-boot stock-recovery/boot.img \
   --plan update-plan.json
@@ -447,7 +486,7 @@ python3 boot-tools/installer/scripts/update-f2fs.py plan \
 
 ```sh
 python3 boot-tools/installer/scripts/update-f2fs.py apply \
-  --sunuefi boot-tools/installer/sunuefi --serial 12440448 \
+  --sunuefi boot-tools/installer/sunuefi --serial <serial> \
   --bundle deploy-bundle --root-install root-install \
   --device-boot device-boot --stock-boot stock-recovery/boot.img \
   --plan update-plan.json --session update-session \
@@ -460,7 +499,8 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 
 ## 登录和诊断
 
-Fedora 的初始桌面用户为 `piano`，默认密码 `piano123456`，与上游新登录策略一致。桌面自动登录；首次使用后运行 `passwd` 修改密码。root 密码保持锁定，管理公钥仍只在 prepare-install 的私有派生镜像内配置。
+Fedora 的初始桌面用户为 `piano`，默认密码 `piano123456`，与上游新登录策略一致。桌面自动登录；首次使用后运行 `passwd` 修改密码。root 密码保持锁定。镜像不带任何 `authorized_keys`；需要密钥登录时，在刷写阶段用
+`flash-linux.sh --ssh-key` 注入，首启后由 `piano-first-boot-ssh-key.service` 导入。
 
 正常 Fedora 使用需要账户认证的 `serial-getty@ttyGS0.service`；initramfs 救援的串口 shell 与之分开。NCM 使用上游固定设备 MAC，NetworkManager 静态配置为 `192.168.77.1/30`，不添加默认路由；主机可使用 `192.168.77.2/30`。这些是已配置的接管入口，实际 USB 枚举和登录仍需设备验证。
 
@@ -487,9 +527,10 @@ ABL 只读对照把完整取证保存到 RAM 中 `/run/piano-boot-evidence.txt`�
 原 userdata 会清空重建，GPT/BOOT 恢复文件不包含 Android 用户数据。
 
 通用包中的 8 GiB F2FS 镜像保持封存。`prepare-root-capacity.py` 在私有工作副本中
-设置本机启动配置、传感器槽位和 root/piano SSH 公钥，恢复匹配的 Fedora SELinux
-标签后离线扩容。源树与扩容后的文件、所有权、权限、链接、mtime、全部 xattr
-逐项比较。只读 fsck 和 sparse 解码摘要必须通过。
+设置本机启动配置和传感器槽位，恢复匹配的 Fedora SELinux 标签后离线扩容。
+镜像不写任何 SSH 公钥，manifest 用 `ssh_public_key_in_image: false` 记录这一点。
+源树与扩容后的文件、所有权、权限、链接、mtime、全部 xattr 逐项比较。只读 fsck
+和 sparse 解码摘要必须通过。
 
 sparse 文件使用 RAW 与显式零 FILL，不使用 DONT_CARE；其完整展开字节与
 验证过的 F2FS 镜像一致。它仍是 F2FS 文件系统，sparse 只负责 Fastboot 传输。
@@ -497,9 +538,9 @@ sparse 文件使用 RAW 与显式零 FILL，不使用 DONT_CARE；其完整展�
 ## Actions 材料
 
 手动运行 `prepare-install`，选择完整 deploy-bundle 的 run、首装固定为
-`android_slot=_a`，
-并提供本次安装管理用的 Ed25519 公钥。Linux 容量留空时使用 `product.json`。
-私钥不传入 Actions。三个 artifact 分别为：
+`android_slot=_a`。Linux 容量留空时使用 `product.json`。
+这一阶段不再需要公钥：SSH 公钥在刷写时用 `--ssh-key` 注入，私钥和公钥都不进
+Actions。三个 artifact 分别为：
 
 | artifact | 内容 |
 | --- | --- |
@@ -613,6 +654,19 @@ python3 boot-tools/installer/scripts/install-f2fs.py apply \
   --execute --accept-data-loss
 ```
 
+需要在首装时一并装一把 SSH 公钥，就给 `apply` 加 `--ssh-key`（公钥必须单行、
+类型为 `ssh-ed25519` 或 `ssh-rsa`）：
+
+```sh
+python3 boot-tools/installer/scripts/install-f2fs.py apply \
+  ... --ssh-key ~/.ssh/id_ed25519.pub
+```
+
+执行器在 GPT 写入和擦除 userdata 之前就校验公钥并确认 `mcopy` 可用，失败时
+不动设备。公钥写进会话目录里的一份 ESP 副本，`deploy-bundle/sunuefi_esp.img`
+保持原样；`result.json` 的 `ssh_key_injected` 与 `sunuefi_esp_sha256` 记录这次
+注入和实际刷入的摘要。不传 `--ssh-key` 时只保留口令登录。
+
 执行器会重新读取设备、保存原 GPT/BOOT、写入并读回完整 GPT、显式执行
 `fastboot erase userdata`，然后传输 ESP、F2FS sparse root 和当前槽的 Android
 默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
@@ -635,8 +689,11 @@ Android 首次初始化完成后关机，按【电源键 + 音量减键】进入
 
 ```sh
 chmod +x flash-linux.sh
-./flash-linux.sh
+./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub   # 不装密钥时去掉 --ssh-key
 ```
+
+如果第 3 步已经用 `install-f2fs.py --ssh-key` 注入过，这里不必再传；重复注入
+只会覆盖同一个 `/piano-ssh-key.pub`。两条路径都要求本机有 `mcopy`（mtools）。
 
 脚本会校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、
 槽位和 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量，只写 `boot_b`、

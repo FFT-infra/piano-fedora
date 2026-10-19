@@ -41,7 +41,7 @@
 ### 前置准备
 1. 小米平板 8 Pro 已通过官方渠道解锁 Bootloader；
 2. 电脑已配置好 `fastboot` 与 `adb` 命令行工具环境变量；
-3. 从 [GitHub Releases](https://github.com/FFT-infra/piano-fedora-test/releases) 下载最新版本的完整镜像包与刷机工具。
+3. 从 [GitHub Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载最新版本的完整镜像包与刷机工具。
 
 ### 安装入口：先分区，再一键刷写
 

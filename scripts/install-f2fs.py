@@ -2,6 +2,7 @@
 """首次安装 Fedora/F2FS：默认只读计划，显式执行才允许清空 userdata。"""
 
 import argparse
+import base64
 import importlib.util
 import json
 import os
@@ -174,7 +175,8 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
         checked(boot / name, combined["files"][name])
     require(root["device_configuration"]["boot_request"] == combined["boot_request"]
             and root["device_configuration"]["android_slot"] == slot
-            and root["device_configuration"]["ssh_accounts"] == ["root", "piano"], "root device configuration differs from BOOT")
+            and root["device_configuration"].get("ssh_public_key_in_image") is False,
+            "root device configuration differs from BOOT")
     current_boot = device.text("sha256sum /dev/block/by-name/boot" + slot).split()[0]
     require(current_boot == combined["source_boot_sha256"], "current Android BOOT changed since packaging")
     require(stock_boot.is_file() and not stock_boot.is_symlink() and stock_boot.stat().st_size == 96 * 1024**2
@@ -234,6 +236,41 @@ def save(path, value):
     sync_dir(path.parent)
 
 
+SSH_KEY_GUEST_PATH = "/piano-ssh-key.pub"
+
+
+def validate_ssh_key(key_file):
+    """Accept one ssh-ed25519 or ssh-rsa public key; never a private key."""
+    require(key_file.is_file() and not key_file.is_symlink(), "--ssh-key must name a regular public-key file")
+    text = key_file.read_text()
+    require(len(text.splitlines()) == 1 and len(text) <= 1024, "--ssh-key must contain exactly one public key")
+    fields = text.strip().split()
+    require(len(fields) in (2, 3) and fields[0] in ("ssh-ed25519", "ssh-rsa"),
+            "provide one ssh-ed25519 or ssh-rsa public key, never a private key")
+    try:
+        base64.b64decode(fields[1], validate=True)
+    except (ValueError, TypeError) as error:
+        raise ValueError("--ssh-key has invalid base64 key material") from error
+    return fields[0], fields[1]
+
+
+def inject_ssh_key(source, key_file, target):
+    """Copy the validated ESP image and add the key the device imports on boot.
+
+    The bundle is a read-only artifact, so the key goes into a private session
+    copy. Callers flash the copy and compare readbacks against its digest.
+    """
+    validate_ssh_key(key_file)
+    require(shutil.which("mcopy"), "mcopy is required for --ssh-key; install mtools")
+    shutil.copyfile(source, target)
+    result = subprocess.run(["mcopy", "-o", "-i", str(target), str(key_file), "::" + SSH_KEY_GUEST_PATH],
+                            capture_output=True, text=True)
+    require(result.returncode == 0, "mcopy failed to add the SSH key to the ESP: " +
+            (result.stderr.strip() or result.stdout.strip() or "no output"))
+    require(sha256(target) != sha256(source), "SSH key injection did not change the ESP image")
+    return sha256(target)
+
+
 def factory(device, identity, slot):
     serial = identity["factory_serial"]
     for key, expected in (("serialno", serial), ("product", "piano"), ("unlocked", "yes"),
@@ -241,9 +278,14 @@ def factory(device, identity, slot):
         require(device.fastboot_var(serial, key) == expected, "factory bootloader identity differs: " + key)
 
 
-def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, session):
+def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, session, ssh_key=None):
     fresh, snapshot = installation_plan(upstream, device, bundle, root_install, boot, stock_boot)
     require(fresh == plan, "device, GPT, slot or input package changed since the reviewed plan")
+    # A bad key or a missing mcopy must fail before the GPT write and the
+    # userdata erase, not halfway through the transfer.
+    if ssh_key is not None:
+        validate_ssh_key(ssh_key)
+        require(shutil.which("mcopy"), "mcopy is required for --ssh-key; install mtools")
     require(not session.exists() and not session.is_symlink(), "use a new installation session directory")
     session.mkdir(mode=0o700, parents=True)
     identity, slot = plan["device"], plan["android_slot"]
@@ -258,7 +300,8 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
     sync_dir(session)
     save(session / "plan.json", plan)
     journal = {"status": "PREPARED_NOT_WRITTEN", "completed": [], "device_writes": False,
-               "original_boot_sha256": plan["source_boot_sha256"], "android_data_preserved": False}
+               "original_boot_sha256": plan["source_boot_sha256"], "android_data_preserved": False,
+               "ssh_key_injected": False}
 
     def stage(name):
         journal["completed"].append(name)
@@ -307,8 +350,18 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
             "sunuefi_root": root["transport"]["sha256"],
             "boot" + slot: combined["files"]["boot_android.img"]["sha256"],
         }
-        for name, image in (("sunuefi_esp", bundle / "sunuefi_esp.img"), ("sunuefi_root", root_install / "pianoroot.f2fs.sparse.img"),
-                            ("boot" + slot, boot / "boot_android.img")):
+        images = {"sunuefi_esp": bundle / "sunuefi_esp.img",
+                  "sunuefi_root": root_install / "pianoroot.f2fs.sparse.img",
+                  "boot" + slot: boot / "boot_android.img"}
+        # The manifest was verified above, so the install-time key can now be
+        # added to a session copy of the ESP. Never modify the input bundle.
+        if ssh_key is not None:
+            injected = session / "sunuefi_esp.img"
+            expected_hashes["sunuefi_esp"] = inject_ssh_key(bundle / "sunuefi_esp.img", ssh_key, injected)
+            images["sunuefi_esp"] = injected
+            journal.update(ssh_key_injected=True, sunuefi_esp_sha256=expected_hashes["sunuefi_esp"])
+            stage("installer_injected_ssh_public_key")
+        for name, image in images.items():
             before = sha256(image)
             require(before == expected_hashes[name], "input image hash differs from validated manifest: " + name)
             device.call(["fastboot", "-s", identity["factory_serial"], "flash", name, str(image)], timeout=3600)
@@ -341,10 +394,17 @@ def main():
     ap.add_argument("--device-boot", type=Path, required=True)
     ap.add_argument("--stock-boot", type=Path, required=True)
     ap.add_argument("--plan", type=Path, required=True)
+    ap.add_argument("--ssh-key", type=Path,
+                    help="One ssh-ed25519 or ssh-rsa public key for user piano; "
+                         "injected into the ESP after every manifest check passes")
     ap.add_argument("--session", type=Path)
     ap.add_argument("--execute", action="store_true")
     ap.add_argument("--accept-data-loss", action="store_true")
     args = ap.parse_args()
+    # Validate the key before any device access, so a bad file never reaches
+    # the destructive apply path.
+    if args.ssh_key is not None:
+        validate_ssh_key(args.ssh_key)
     upstream = load_source(args.sunuefi)
     device = upstream.Device(args.serial)
     if args.operation == "plan":
@@ -355,7 +415,7 @@ def main():
         require(args.execute and args.accept_data_loss and args.session,
                 "apply requires --execute --accept-data-loss and a new --session directory")
         result = execute(upstream, device, json.loads(args.plan.read_text()), args.bundle,
-                         args.root_install, args.device_boot, args.stock_boot, args.session)
+                         args.root_install, args.device_boot, args.stock_boot, args.session, args.ssh_key)
     print(json.dumps(result, indent=2))
 
 

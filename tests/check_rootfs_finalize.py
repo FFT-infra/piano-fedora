@@ -328,6 +328,61 @@ def check_service_staging_order(root):
     assert "global:piano-power-button.service" in enabled
 
 
+def check_first_boot_ssh_key(root):
+    """镜像不带预置 authorized_keys；首启公钥 unit 随包走并被 enable。
+
+    公钥改成安装期注入以后，镜像里出现任何 `~/.ssh/authorized_keys` 都说明
+    构建期又把它写了回去，发布物会带上某个人的权限入口。
+    """
+    package = ROOT / "packages" / "piano-fedora-configs"
+    helper = package / "usr/lib/piano/first-boot-ssh-key"
+    unit = package / "usr/lib/systemd/system/piano-first-boot-ssh-key.service"
+    assert helper.is_file(), "piano-fedora-configs must ship the first-boot SSH key helper"
+    assert helper.stat().st_mode & 0o111, "the first-boot SSH key helper must be executable"
+    body = helper.read_text()
+    for token in ("/boot/efi/piano-ssh-key.pub", "ssh-ed25519", "ssh-rsa",
+                  "authorized_keys", "restorecon -RF", "chmod 0700", "chmod 0600"):
+        assert token in body, "helper is missing " + token
+    text = unit.read_text()
+    for token in ("Type=oneshot", "ConditionPathExists=/boot/efi/piano-ssh-key.pub",
+                  "After=local-fs.target", "Before=sshd.service",
+                  "WantedBy=multi-user.target"):
+        assert token in text, "unit is missing " + token
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    from check_package_ownership import spec_paths
+    declared = spec_paths(package / "piano-fedora-configs.spec")
+    for path in ("/usr/lib/piano/first-boot-ssh-key",
+                 "/usr/lib/systemd/system/piano-first-boot-ssh-key.service"):
+        assert path in declared, f"piano-fedora-configs.spec does not package {path}"
+
+    # The finalizer must enable the unit in the same list as the other staged
+    # services; a unit that ships but never runs leaves password-only login.
+    tree = ast.parse((ROOT / "scripts/finalize-fedora-rootfs.py").read_text())
+    main_node = next(node for node in tree.body
+                     if isinstance(node, ast.FunctionDef) and node.name == "main")
+    services = next(node for node in main_node.body
+                    if isinstance(node, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == "services" for t in node.targets))
+    names = {value.value for value in services.value.elts}
+    assert "piano-first-boot-ssh-key.service" in names, \
+        "finalizer does not enable piano-first-boot-ssh-key.service"
+
+    # Nothing in the image build writes an authorized_keys.
+    for name in ("scripts/finalize-fedora-rootfs.py", "scripts/prepare-root-capacity.py"):
+        code = "\n".join(line for line in (ROOT / name).read_text().splitlines()
+                         if not line.lstrip().startswith("#"))
+        assert "authorized_keys" not in code, f"{name} still writes authorized_keys"
+
+    # Running the hardware staging on an empty tree must not create one either.
+    root.mkdir()
+    finalizer.stage_piano_hardware_fixes(root)
+    finalizer.stage_boot_diagnostics(root)
+    seeded = [path for path in root.rglob("authorized_keys")]
+    assert not seeded, "the finalized image carries pre-provisioned SSH keys: " + str(seeded)
+    assert not (root / "root/.ssh").exists() and not (root / "home/piano/.ssh").exists()
+
+
 def main():
     check_power_overlay_owner()
     with tempfile.TemporaryDirectory() as d:
@@ -384,6 +439,7 @@ def main():
         assert (root / "usr/bin/piano-collect-boot").stat().st_mode & 0o111
         check_debug_handoff(root, staged)
         check_piano_hardware_fixes(root)
+        check_first_boot_ssh_key(root / "ssh-key-fixture")
         check_modified_legacy_power_override_is_preserved(root / "legacy-power-fixture")
         check_service_staging_order(root / "service-order-fixture")
         check_login_password(root)

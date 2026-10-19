@@ -46,6 +46,7 @@ test:
 	python3 tests/check_clean_rootfs.py
 	python3 tests/check_package_ownership.py
 	python3 tests/check_flash_script_guard.py
+	python3 tests/check_first_boot_ssh_key.py
 	python3 tests/check_kernel_package.py
 	python3 tests/check_package_replaces.py
 	python3 tests/check_release_provenance.py

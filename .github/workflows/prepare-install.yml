@@ -17,9 +17,6 @@ on:
         type: choice
         options: ["_a", "_b"]
         default: "_a"
-      ssh_public_key:
-        description: "本次设备管理用 Ed25519 公钥（只接受公钥）"
-        required: true
 
 permissions:
   contents: read
@@ -68,7 +65,6 @@ jobs:
         env:
           ROOT_SIZE_MIB: ${{ inputs.root_size_mib }}
           ANDROID_SLOT: ${{ inputs.android_slot }}
-          SSH_PUBLIC_KEY: ${{ inputs.ssh_public_key }}
           TMPDIR: ${{ github.workspace }}/build/tmp
         run: |
           set -euo pipefail
@@ -76,10 +72,9 @@ jobs:
           if [ -z "$ROOT_SIZE_MIB" ]; then
             ROOT_SIZE_MIB=$(python3 -c 'import json; print(json.load(open("product.json"))["target"]["root_size_mib"])')
           fi
-          python3 -c 'import os,pathlib; pathlib.Path("build/device-access.pub").write_text(os.environ["SSH_PUBLIC_KEY"].strip()+"\n")'
           sudo env TMPDIR="$TMPDIR" python3 scripts/prepare-root-capacity.py \
             --bundle build/in/bundle --size-mib "$ROOT_SIZE_MIB" --output build/root-install \
-            --android-slot "$ANDROID_SLOT" --ssh-public-key build/device-access.pub
+            --android-slot "$ANDROID_SLOT"
           sudo chown -R "$(id -u):$(id -g)" build/root-install
           (cd build/root-install && sha256sum -c SHA256SUMS)
       - uses: actions/upload-artifact@v4

@@ -65,7 +65,7 @@ while i < len(args):
     break
 
 if cmd == "devices":
-    print("12440448\tfastboot")
+    print("SN-TEST-1\tfastboot")
 elif cmd == "getvar":
     name = args[-1]
     table = {
@@ -308,6 +308,19 @@ def main():
             failures.append("first-install boot request is not documented as boot_a")
         if "/dev/disk/by-partlabel/boot_b`" in document:
             failures.append("first-install boot request is incorrectly documented as boot_b")
+
+        # The install-time SSH key is documented in both paths: the one-click
+        # installer takes --ssh-key, and the manual path writes the key with
+        # mcopy before the ESP is flashed.
+        for token in ("--ssh-key", "mcopy", "/piano-ssh-key.pub", "mtools"):
+            if token not in document:
+                failures.append(f"installation guide does not document {token!r}")
+        if "mcopy" not in chapter:
+            failures.append("manual chapter does not show the ESP key injection")
+        key_step = chapter.find("mcopy")
+        esp_flash = chapter.find("fastboot flash sunuefi_esp")
+        if key_step < 0 or esp_flash < 0 or key_step > esp_flash:
+            failures.append("manual chapter injects the SSH key after the ESP flash")
 
         # The asset list must name the files the commands actually use.
         for asset in ("boot_sunuefi.img", "sunuefi_esp.img",

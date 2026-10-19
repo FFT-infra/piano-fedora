@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 INSTALLER_SRC="$SCRIPT_DIR/installer"
 DEFAULT_OUT="$REPO_ROOT/out/release-bundle"
-BUILD_TMP="${TMPDIR:-$REPO_ROOT/../tmp/trash}/release-pack-work"
+BUILD_TMP="${TMPDIR:-/tmp}/release-pack-work"
 
 OUT_DIR="$DEFAULT_OUT"
 RELEASE_VER="$(date +%Y%m%d)"

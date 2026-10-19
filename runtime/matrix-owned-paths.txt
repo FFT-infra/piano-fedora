@@ -110,6 +110,7 @@
 /usr/lib/firmware/qcom/sm8750/xiaomi/piano/gen80000_zap.mbn
 /usr/lib/firmware/qcom/sm8750/xiaomi/piano/vpu35_4v.mbn
 /usr/lib/piano/camera-start
+/usr/lib/piano/first-boot-ssh-key
 /usr/lib/piano/piano-camerad
 /usr/lib/piano/piano-ram-hardware-prepare
 /usr/lib/piano/piano_dma_contexts.py
@@ -118,6 +119,7 @@
 /usr/lib/systemd/system/piano-camera.service
 /usr/lib/systemd/system/piano-camerad.service
 /usr/lib/systemd/system/piano-fake-tablet-mode.service
+/usr/lib/systemd/system/piano-first-boot-ssh-key.service
 /usr/lib/systemd/system/piano-touch.service
 /usr/lib/systemd/system/uperf-linux.service
 /usr/lib/systemd/user/piano-power-button.service

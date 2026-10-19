@@ -104,7 +104,7 @@ capability；`uefi-live-rm` 补丁已在正常启动路径生效。正确的项�
 librevm 的 tap 直接使用宿主真实网段（伪桥，无 NAT），因此 ping 必然失败。
 `runtime/vm-guest/vmaccept-init` 现在从内核命令行读取 `vmaccept.guest=` 与
 `vmaccept.gw=`，缺省仍是 `10.9.0.x`，独立 harness 行为不变。实测
-`vmaccept.guest=192.168.5.201 vmaccept.gw=192.168.5.1` 时
+`vmaccept.guest=192.0.2.201 vmaccept.gw=192.0.2.1` 时
 `NET_OK=1 NET_RX=2`，磁盘摘要与 nonce 同时通过。
 
 ### VM 生命周期残留（本轮修复）

@@ -259,6 +259,22 @@ def main():
         check(drift_result.returncode == 2,
               "a same-release module tree with different bytes must be rejected")
 
+        # 封存产物带 build/source 构建树软链，安装树里被 prune 掉。
+        # 两者都必须忽略这两个链接，否则每次比较都会报 missing=['build']。
+        linked_tree = make_rootfs(tmp / "module-links")
+        linked_modules = linked_tree / "usr/lib/modules" / RELEASE
+        shutil.copytree(source_modules, linked_modules)
+        kernel_links = kernel / "modules" / "lib" / "modules" / RELEASE
+        for name in ("build", "source"):
+            (kernel_links / name).symlink_to("/home/runner/work/kernel-build")
+        linked_result = run("--rootfs", str(linked_tree), "--kernel", str(kernel),
+                            "--sunuefi", str(SUNUEFI))
+        check(linked_result.returncode == 0,
+              "sealed build/source links must not count as a module difference: "
+              f"{linked_result.stderr.strip()}")
+        for name in ("build", "source"):
+            (kernel_links / name).unlink()
+
         # 校验器摘要漂移：拒绝。
         tampered = tmp / "sunuefi"
         # staging 只读本仓库 tools/linux，不消费 upstream 子模块。不要把第三方

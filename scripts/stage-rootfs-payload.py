@@ -87,18 +87,25 @@ def load_kernel(kernel):
 
 
 def module_index(base):
-    """Describe every regular file and symlink in one kernel release tree."""
+    """Describe every regular file and symlink in one kernel release tree.
+
+    `build` and `source` point at the kernel build tree on the machine that
+    compiled it. They are never part of the shipped payload: the sealed artifact
+    carries them, and build-clean-rootfs.prune_kernel_module_links() removes them
+    from the installed tree. Skip them before the symlink branch, otherwise the
+    sealed side records them and the comparison reports a phantom `missing=['build']`.
+    """
     base = Path(base)
     rows = {}
     for path in sorted(base.rglob("*")):
         relative = path.relative_to(base).as_posix()
-        if path.is_symlink():
-            rows[relative] = {"kind": "symlink", "target": str(path.readlink())}
-            continue
         if relative in ("build", "source"):
             continue
         if relative.startswith(("build/", "source/")):
             raise StageError(f"unexpected development directory: {relative}")
+        if path.is_symlink():
+            rows[relative] = {"kind": "symlink", "target": str(path.readlink())}
+            continue
         if not path.is_file():
             continue
         rows[relative] = {

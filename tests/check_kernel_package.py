@@ -58,6 +58,13 @@ def check_spec(failures):
     if re.search(r"^\s*touch\s+%\{buildroot\}/boot/vmlinuz", body, re.MULTILINE):
         failures.append("kernel-piano.spec still `touch`es an empty vmlinuz")
 
+    # rpm's brp-strip rewrites .symtab inside every .ko. The RPM would then stop
+    # matching the sealed kernel artifact that build-image verifies, and the
+    # difference is invisible until the image build fails much later.
+    if not re.search(r"^%global\s+__strip\s+/bin/true\s*$", body, re.MULTILINE):
+        failures.append("kernel-piano.spec does not disable strip; modules would "
+                        "differ from the sealed kernel artifact")
+
 
 def check_build_script(failures):
     if not BUILD_SH.is_file():
