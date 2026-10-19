@@ -431,15 +431,13 @@ Android 初始化完成后关机，按【电源键 + 音量减键】进入原厂
 `current-slot` 仍是 `a`，然后按下面「三之二、手动刷机」的逐条命令刷入
 `boot_b`、`sunuefi_esp`、`sunuefi_root`，最后 `fastboot reboot`。
 
-> 手动路径不包含 `install-f2fs.py apply` 的自动回读校验。每一步之后自己执行
-> `fastboot getvar partition-size:<name>` 和镜像的 `sha256sum`，把结果记进
-> 本次会话；分区写错只能靠原厂包恢复，而 userdata 里的数据无法恢复。
+> 手动路径没有 `install-f2fs.py apply` 的自动回读校验。每刷一个分区后自己执行 `fastboot getvar partition-size:<name>` 和镜像的 `sha256sum`，把结果记进本次会话。分区写错只能靠原厂包恢复，userdata 里的数据无法恢复。
 
 ## 已有分区更新
 
-`update-f2fs.py` 复用锁定上游的只读设备/GPT 解析、工厂 Fastboot 身份检查与本仓库的材料校验。它只传输现有 ESP 和 F2FS root，保持 GPT、userdata 与持久 BOOT 的写入操作为零。完整 root 会替换 Linux 文件，已有个人文件须先备份。
+`update-f2fs.py` 复用锁定上游的只读设备/GPT 解析、工厂 Fastboot 身份检查和本仓库的材料校验。它只传输 ESP 与 F2FS root，不写 GPT、userdata 与持久 BOOT。完整 root 会替换 Linux 文件，个人文件先备份。
 
-先恢复正确 ROM 配套的 B 槽组件，确认原 Android 能完整启动并提供 root ADB；历史 init_boot/DTBO 试验不能作为已恢复的证据。计划核对主备 GPT/CRC、分区类型、当前槽、原 BOOT、源码清单、管理配置和实际 sparse 容量。还会只读取得 Android `/sys/firmware/fdt`，检查 Linux RAM 子集与固定保留区；检查含义见[上游核对](upstream.md)。缺少 FDT 或比较失败时停止，不跳过检查。
+先恢复配套 ROM 的 B 槽组件，确认原 Android 能完整启动并提供 root ADB；历史的 init_boot/DTBO 试验不算恢复完成的证据。计划会核对主备 GPT/CRC、分区类型、当前槽、原 BOOT、源码清单、管理配置与实际 sparse 容量，还只读取得 Android 的 `/sys/firmware/fdt`，检查 Linux RAM 子集与固定保留区，含义见[上游核对](upstream.md)。缺 FDT 或比较失败就停下，不要跳过检查。
 
 在连接平板的 Linux 主机上执行，以下路径指本次已下载的材料，`--serial` 是实际 Android ADB 序列号：
 
@@ -462,20 +460,19 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
   --execute --accept-root-replacement
 ```
 
-执行前重新比较设备、完整 GPT 基线、内存描述、槽位和材料，保存 GPT 双副本及原 BOOT；进入原厂 bootloader 后，在第一笔传输前核对两个目标的实时容量，拒绝 fastbootd、错误序列号或槽位。只传输 `sunuefi_esp` 与 `sunuefi_root`，完成后停在 Fastboot，状态为 `UPDATE_TRANSFERRED_FIRST_BOOT_AND_READBACK_PENDING`。
+执行前重新比较设备、完整 GPT 基线、内存描述、槽位与材料，保存 GPT 双副本和原 BOOT。进入原厂 bootloader 后，第一笔传输之前核对两个目标的实时容量；fastbootd、序列号不对或槽位不对都拒绝。只传输 `sunuefi_esp` 与 `sunuefi_root`，完成后停在 Fastboot，状态是 `UPDATE_TRANSFERRED_FIRST_BOOT_AND_READBACK_PENDING`。
 
-传输不等于读回或启动通过。下一步是临时 `boot_linux.img` 启动与设备读回、GNOME/硬件验收、临时 Android 旁路；通过后才单独安装持久 BOOT。中断时先读取 session 的 result.json 和实际状态，不自动重试或回滚 GPT。
+传输成功不等于读回或启动通过。下一步依次是临时 `boot_linux.img` 启动与设备读回、GNOME 与硬件验收、临时 Android 旁路。全部通过后才单独安装持久 BOOT。中途中断时先读 session 的 result.json 和实际设备状态，不要自动重试或回滚 GPT。
 
 ## 登录和诊断
 
-Fedora 的初始桌面用户为 `piano`，默认密码 `piano123456`，与上游新登录策略一致。桌面自动登录；首次使用后运行 `passwd` 修改密码。root 密码保持锁定。镜像不带任何 `authorized_keys`；需要密钥登录时，在刷写阶段用
-`flash-linux.sh --ssh-key` 注入，首启后由 `piano-first-boot-ssh-key.service` 导入。
+桌面用户是 `piano`，默认密码 `piano123456`，与上游登录策略一致。桌面自动登录；首次使用后执行 `passwd` 改密。root 密码保持锁定。镜像里没有 `authorized_keys`；要密钥登录就在刷写时用 `flash-linux.sh --ssh-key` 注入，首启后由 `piano-first-boot-ssh-key.service` 导入。
 
-正常 Fedora 使用需要账户认证的 `serial-getty@ttyGS0.service`；initramfs 救援的串口 shell 与之分开。NCM 使用上游固定设备 MAC，NetworkManager 静态配置为 `192.168.77.1/30`，不添加默认路由；主机可使用 `192.168.77.2/30`。这些是已配置的接管入口，实际 USB 枚举和登录仍需设备验证。
+正常 Fedora 用需要账户认证的 `serial-getty@ttyGS0.service`，initramfs 救援的串口 shell 另走一条。NCM 用上游固定设备 MAC，NetworkManager 静态配置 `192.168.77.1/30`，不加默认路由；主机侧可用 `192.168.77.2/30`。这些入口已经配好，实际 USB 枚举和登录还要在设备上验证。
 
-在现有 Fedora 上用 `stage-rootfs-payload.py --rootfs /` 增量安装时，脚本在返回成功前用本机 `setfiles -F` 恢复新模块、硬件准备和 USB 诊断程序、systemd 单元及来源记录的 SELinux 标签。复制来源中的 `user_home_t` 不能用于系统模块；摘要一致不代表标签正确。离线 staging 的标签由 build-image 中的完整目标策略标记步骤处理。
+在现有 Fedora 上用 `stage-rootfs-payload.py --rootfs /` 增量安装时，脚本返回成功前会用本机 `setfiles -F` 恢复新模块、硬件准备程序、USB 诊断程序、systemd 单元和来源记录的 SELinux 标签。来源里的 `user_home_t` 不能用在系统模块上；摘要一致不代表标签正确。离线 staging 的标签由 build-image 里的目标策略标记步骤处理。
 
-ABL 只读对照把完整取证保存到 RAM 中 `/run/piano-boot-evidence.txt`，进入串口救援后可读取；它不写 Linux 根分区。原生 BOOT 文件检查使用 `verify-native-boot.py`，七项文件 guard 的报告与真实设备的槽位、当前来源及块设备写读回分开保存，不将未完成的 Android 模块标为 ready。
+ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，进串口救援后读取；它不写 Linux 根分区。原生 BOOT 文件检查用 `verify-native-boot.py`，七项文件 guard 的报告与真实设备的槽位、当前来源、块设备写读回分开保存。未完成的 Android 模块不标为 ready。
 
 ## 分区与容量
 
