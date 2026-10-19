@@ -19,11 +19,9 @@
   `commit`，`ref` 不动。这些是纯用户态上游，`make test` 与 CI 能兜住。PR 由
   `GITHUB_TOKEN` 创建，GitHub 不会为它自动跑 workflow，合并前要手动触发一次
   `host-check`。
-- 内核、UEFI、相机/触控、固件和 debian-piano 只报告。它们的改动无法用离线 CI
-  替代真机验收，pin 由人按下面的“每次跟进上游”评审。
+- 内核、UEFI、相机/触控、固件和 debian-piano 只报告。这些改动没法用离线 CI 代替真机验收，pin 由人按下面的“每次跟进上游”评审。
 
-判断漂移只看 pin，不看 `docs/upstreams.json` 的 `reference_commit`。后者是人工
-基线，只在 `--record-baseline` 时推进；拿它判断会把没有位移的上游报成更新。
+判断漂移只看 pin，不看 `docs/upstreams.json` 的 `reference_commit`。后者是人工基线，只在 `--record-baseline` 时推进；用它判断会把没有位移的上游报成更新。
 
 ## 每次跟进上游
 
