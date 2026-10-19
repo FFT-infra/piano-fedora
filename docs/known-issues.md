@@ -80,3 +80,10 @@ charge_current、mipps_auth、charge_policy 均开启。这不等于实际达到
 这些模块已有实机行为记录，持续负载下的表现还要单独取证：负载下的持续触控
 输入、浏览器实际硬解、音频录放。全部项目验收前，设备整体状态记为未验证。
 验收项见[安装指南的真机验收](installation.md#真机验收)。
+
+## 仓库整理
+
+- `README.md` 与 `README.en.md` 的骨架由 `tests/check_readme_parity.py` 锁定：
+  标题层级数量、语言切换行、指向的文档列表必须一致。改一版要同步另一版。
+- `docs/public-release-gaps.md` 的电极校准一项仍待许可决定。在此之前不要把
+  带校准表的 bundle 挂成公开 Release。
