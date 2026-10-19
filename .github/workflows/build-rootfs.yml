@@ -210,6 +210,9 @@ jobs:
           OUT="build/clean-distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
           export OUT
           test -d "$OUT/rootfs"
+          # The container wrote these as root; the Python step below updates
+          # clean-manifest.json in place and failed with EACCES.
+          sudo chown -R "$(id -u):$(id -g)" "$OUT"
           sudo du -sh "$OUT/rootfs"
           cat "$OUT/clean-manifest.json"
           python3 - "$OUT/clean-manifest.json" \
