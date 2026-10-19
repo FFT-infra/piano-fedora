@@ -82,8 +82,10 @@ def main():
     # 这条是本轮 CI 失败换来的：补丁里混进过一个 .gitignore，本地 fixture
     # 没有这个文件所以没暴露，真实 checkout 上 git apply 直接拒绝覆盖。
     # 现在对每个补丁的 --check 都要求它在真实目录结构上可应用。
-    sunuefi = Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT.parent / "mipad8p-piano" / "sources" / "Project-SunUEFI"))
-    if (sunuefi / "build.sh").is_file():
+    sunuefi = Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT / "build/test-sources/sunuefi"))
+    if not (sunuefi / "build.sh").is_file():
+        print(f"SKIP: no SunUEFI checkout at {sunuefi}; patch layout was not replayed")
+    else:
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp) / "sunuefi"
             # 只复制补丁会碰到的路径，避免搬整个仓库。

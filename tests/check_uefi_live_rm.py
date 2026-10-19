@@ -181,8 +181,8 @@ def rm_block(text):
 
 
 def main():
-    sunuefi = Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT.parent / "mipad8p-piano"
-                                  / "sources" / "Project-SunUEFI"))
+    sunuefi = Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT / "build/test-sources/sunuefi"
+                                  ))
     if not (sunuefi / "build.sh").is_file():
         print(f"skip: no SunUEFI checkout at {sunuefi}")
         return 0

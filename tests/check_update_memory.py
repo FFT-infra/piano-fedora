@@ -10,8 +10,19 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-source = Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT.parent / "mipad8p-piano/sources/Project-SunUEFI"))
-sys.path.insert(0, str(source / "tools"))
+if "PIANO_TEST_SUNUEFI" in os.environ:
+    SUNUEFI = Path(os.environ["PIANO_TEST_SUNUEFI"])
+    assert (SUNUEFI / "tools/compose_piano_dtb.py").is_file(), \
+        "explicit upstream test source is missing"
+else:
+    SUNUEFI = next((path for path in (ROOT / "build/test-sources/sunuefi",
+                                      ROOT / "build/test-sunuefi")
+                    if (path / "tools/compose_piano_dtb.py").is_file()), None)
+    if SUNUEFI is None:
+        print("SKIP: memory contract needs the SunUEFI FDT codec (PIANO_TEST_SUNUEFI)")
+        sys.exit(0)
+
+sys.path.insert(0, str(SUNUEFI / "tools"))
 from compose_piano_dtb import read_fdt, write_fdt
 
 spec = importlib.util.spec_from_file_location("update_memory", ROOT / "scripts/update-f2fs.py")
