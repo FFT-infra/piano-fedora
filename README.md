@@ -126,7 +126,8 @@
 - **[RPM 架构重构与真机验收路线](docs/pr-rebuild-roadmap.md)**：两层解耦构建流水线与纯净实机盲测规划；
 - **[真机验收与稳定性记录](docs/device-acceptance-20261015.md)**：DPU 关屏修复、触控滤波实测、VA-API 与 A/B 槽位引导保护根因；
 - **[全网上游同步与追溯](docs/upstream-sync.md)**：对标上游仓库（SunUEFI、yzddmr6、code002-2）的同步记录；
-- **[Gunyah 虚拟化架构](docs/virtualization.md)**：SM8750 上的 Gunyah 虚拟机生命周期、大页配置与网络桥接。
+- **[Gunyah 虚拟化架构](docs/virtualization.md)**：SM8750 上的 Gunyah 虚拟机生命周期、大页配置与网络桥接；
+- **[公开分发前的个人化与许可缺口](docs/public-release-gaps.md)**：哪些构建期输入还绑着这一台设备、这一个人。
 
 本地调试记录、事故复盘和交接笔记不入库。
 
