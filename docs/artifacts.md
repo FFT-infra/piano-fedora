@@ -46,9 +46,9 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 ## 参考来源
 
-现有研究工作区的 architecture、planning-verification、source-deep-dive、sheng-f2fs-reference 和各类仓库比较用于限定实现范围。新增阅读 code002-2/piano-linux 的 AGENTS.md，固定快照 f1589d9b499a44998fd97bfbd500789d14622397；它的组件分层与源身份记录可参考，Debian/ABL 路线和仓库专属流程不替代本项目的 Fedora/F2FS/SunUEFI 约定。
+研究工作区的 architecture、planning-verification、source-deep-dive、sheng-f2fs-reference 和各类仓库比较，用来限定实现范围。另外读了 code002-2/piano-linux 的 AGENTS.md，快照固定在 f1589d9b499a44998fd97bfbd500789d14622397；它的组件分层和源身份记录可以参考，但它的 Debian/ABL 路线和仓库专属流程不替代本项目的 Fedora/F2FS/SunUEFI 约定。
 
-源码直接依赖仍以 sources.lock.json 为准；参考文档不会自动进入生产依赖。所有下载与生成文件在被忽略的 build/、out/，固件、校准和密钥不进入代码仓库。
+源码直接依赖仍以 sources.lock.json 为准，参考文档不会自动进入生产依赖。下载和生成的文件放在被忽略的 build/、out/；固件、校准和密钥不进代码仓库。
 
 ## 2026-10-20 发布链
 

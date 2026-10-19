@@ -42,15 +42,10 @@
 
 ## 三、 已有 Linux 分区的刷写（跨平台一键脚本）
 
-适用于已解锁 BL、已经由 `install-f2fs.py apply` 完成首次 GPT 分区并擦除
-userdata，而且 `sunuefi_esp` / `sunuefi_root` 已存在的平板。全新盘不能直接
-跳到一键刷机。真实首次安装的唯一主流程在第四节；本节之前的分区前提不可跳过。
+适用于已解锁 BL、`install-f2fs.py apply` 已建好 GPT 分区并擦除 userdata、`sunuefi_esp` 与 `sunuefi_root` 都在的设备。全新盘不能直接跳到一键刷机。首次安装的主流程在第四节，本节的分区前提不能跳过。
 
 ### 1. 获取 Release 资产
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases)
-下载最新版本的发行包。注意仓库当前还没有任何 Release 与 tag，该链接暂时是空的；
-发布前请使用 `build-bundle` 下载的完整 deploy-bundle。不要在本地重新打包
-历史 `out/` 目录充当发布资产。
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包。仓库目前还没有 Release 与 tag，该链接是空的；发布前用 `build-bundle` 下载的完整 deploy-bundle。不要在本地重新打包历史 `out/` 目录充当发布资产。
 
 - `piano-installer-*.zip`：一键刷机脚本包（包含 `flash-linux.sh`、`flash-linux.bat`）；
 - `boot_sunuefi.img`：SunUEFI 引导头；
