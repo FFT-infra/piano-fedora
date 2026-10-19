@@ -28,14 +28,17 @@ def build_iris_vaapi(sources, output, package, put, sha256, run):
     # 交付的驱动必须自带编码入口。2026-10-15 装过一个只声明 VLD 的后端，
     # ffmpeg 的 h264_vaapi/hevc_vaapi 静默失效；这里按源码能力表硬性拒绝。
     #
-    # 入口是在 backend.cpp 的 vaGetConfigAttributes/vaQueryConfigEntrypoints
-    # 里声明的，encoder.cpp 只实现编码路径，字符串不一定出现在那里。原来的
-    # 检查只读 encoder.cpp，把上游正常的 v1.0.0 源码判成缺入口（run
-    # 39273733045）。这里两处都看：能力表声明与编码实现各自成立即可。
+    # 入口在 backend.cpp 的 vaQueryConfigEntrypoints 里声明，实现落在
+    # encoder.cpp。encoder.cpp 用的是 VAEncSliceParameterBufferType、
+    # VAEncPictureParameterBuffer 这些渲染参数类型，不会出现
+    # VAEntrypointEncSlice 字面量，所以两个文件各查各自的特征：
+    # 声明看入口常量，实现看编码参数类型与 Encoder 类。
     backend = source / "src/backend.cpp"
     encoder = source / "src/encoder.cpp"
     declared = backend.is_file() and "VAEntrypointEncSlice" in backend.read_text()
-    implemented = encoder.is_file() and "VAEntrypointEncSlice" in encoder.read_text()
+    encoder_text = encoder.read_text() if encoder.is_file() else ""
+    implemented = ("VAEncSliceParameterBufferType" in encoder_text
+                   and "VAEncPictureParameterBufferType" in encoder_text)
     if not (declared and implemented):
         raise ValueError(
             "iris-vaapi source cannot provide VAEntrypointEncSlice "
