@@ -50,6 +50,20 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 源码直接依赖仍以 sources.lock.json 为准；参考文档不会自动进入生产依赖。所有下载与生成文件在被忽略的 build/、out/，固件、校准和密钥不进入代码仓库。
 
+## 2026-10-20 发布链
+
+第一次整条链跑通，五个阶段全部 success：
+
+| 阶段 | run | 关键产物 |
+| --- | --- | --- |
+| host-check → piano-rpms | 39308151788 | 九类矩阵 RPM 与 `kernel-piano` |
+| build-rootfs | 39326376636 | `rootfs-44-gnome` |
+| build-image | 39327676776 | `root-image-8192` |
+| build-bundle | 39328903515 | `deploy-bundle` |
+| prepare-install | 39329477706 | `root-install`（`size_mib=479990`，`expanded_bytes=503305994240`） |
+
+这一轮修掉的三处真实故障：`stage-rootfs-payload.py` 先把封存内核里的 `build`/`source` 链接当成差异；`kernel-piano.spec` 的 `brp-strip` 改写 `.ko` 的 `.symtab`，使 RPM 与封存内核不再逐字节相同；`build-clean-rootfs.py` 没有给本地仓库设 priority，dnf 装了版本号更高的发行版 Mesa。
+
 ## 尚需验证
 
 2026-10-10 的完整 Actions 构建及下载后的本地校验已通过，包括组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷和 boot.img 组件。该段记录 2026-10-10 的主机构建验收；后续 Fedora 已在本机 F2FS 启动；未完成的验收项见[已知问题](known-issues.md)。首次分区、恢复材料及 Android 往返仍需各自的设备证明。
