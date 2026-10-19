@@ -210,8 +210,7 @@ fastboot getvar is-userspace   # 必须是 no
 
 ### 4. 逐条刷写
 
-如果你要装一把 SSH 公钥，在刷 ESP 之前先把它写进 ESP 镜像。这一步要在
-`sha256sum -c` 通过之后做，因为它会改变镜像字节：
+要装 SSH 公钥的话，在刷 ESP 之前先写进 ESP 镜像。这一步必须在 `sha256sum -c` 通过之后做，因为它会改变镜像字节：
 
 ```sh
 # 可选：把管理公钥写进 ESP（只接受 ssh-ed25519 / ssh-rsa 公钥）
@@ -219,10 +218,7 @@ mcopy -o -i sunuefi_esp.img ~/.ssh/id_ed25519.pub ::/piano-ssh-key.pub
 sha256sum sunuefi_esp.img      # 记下新摘要，读回校验用这个值
 ```
 
-设备首次启动时 `piano-first-boot-ssh-key.service` 会把
-`/boot/efi/piano-ssh-key.pub` 追加到 `piano` 的 `authorized_keys`，然后删掉
-ESP 上的副本。跳过这一步时系统只保留口令登录，其它行为不变。写坏的公钥
-（多行、私钥、非 `ssh-ed25519`/`ssh-rsa`）不会被导入，helper 会直接失败。
+设备首次启动时，`piano-first-boot-ssh-key.service` 把 `/boot/efi/piano-ssh-key.pub` 追加到 `piano` 的 `authorized_keys`，然后删掉 ESP 上的副本。跳过这一步，系统只保留口令登录，其他行为不变。格式不对的公钥（多行、私钥、不是 `ssh-ed25519`/`ssh-rsa`）不会被导入，helper 直接失败。
 
 ```sh
 # 1. 切到 B 槽（Android 保留在 A 槽）
@@ -249,8 +245,7 @@ fastboot reboot
 
 ### 5. 验证刷写结果
 
-`fastboot flash` 的 `OKAY` 只证明数据发完了，不证明分区内容正确。重启前可以
-读回校验（`sunuefi_esp` 是 512 MiB，读回需要几分钟）：
+`fastboot flash` 的 `OKAY` 只说明数据发完了，不说明分区内容正确。重启前可以读回校验；`sunuefi_esp` 是 512 MiB，读回要几分钟：
 
 ```sh
 fastboot fetch sunuefi_esp esp-readback.img
@@ -264,13 +259,9 @@ sha256sum esp-readback.img sunuefi_esp.img
 fastboot getvar partition-size:sunuefi_esp
 ```
 
-结果应等于 `sunuefi_esp.img` 的字节数。容量更大时读回会带上分区尾部原有数据，
-哈希不会相同，此时改用下面的启动后验证。设备或 ABL 不支持 `fastboot fetch`
-时同样跳过这一步。
+结果应等于 `sunuefi_esp.img` 的字节数。容量更大时，读回会带上分区尾部原有数据，哈希不会相同，这时改用下面的启动后验证。设备或 ABL 不支持 `fastboot fetch` 时也跳过这一步。
 
-如果第 4 节注入过 SSH 公钥，读回比对要用注入后重新算出的摘要，而不是
-deploy-bundle 的 `SHA256SUMS` 里的旧值。`mcopy` 会就地改写 `sunuefi_esp.img`，
-两份摘要天然不同；记错这一条会把正常的镜像判成损坏。
+如果第 4 节注入过 SSH 公钥，读回比对要用注入后重新算出的摘要，不能用 deploy-bundle `SHA256SUMS` 里的旧值。`mcopy` 就地改写 `sunuefi_esp.img`，两份摘要本来就不一样；搞错这一条会把正常的镜像判成损坏。
 
 启动后验证（三项都要满足）：
 
@@ -280,8 +271,7 @@ findmnt /             # 根文件系统为 F2FS
 systemctl --failed    # 输出为空
 ```
 
-`uname -r` 的正确值不是随便一个 7.2.9，而是这一版 ESP 里实际装的内核。
-它在两个地方可以查到，两边必须一致：
+`uname -r` 的正确值是这一版 ESP 里实际装的内核，不是随便一个 7.2.9。两处可以查到，两边必须一致：
 
 ```sh
 # 1) ESP 镜像里的内核字符串（刷写前就能查，不需要设备）
@@ -296,9 +286,7 @@ uname -r
 ls /usr/lib/modules/
 ```
 
-如果 `uname -r` 与 ESP 里的字符串不符，说明刷进去的不是这一版资产；
-如果 `/usr/lib/modules/` 下没有同名目录，说明 rootfs 与 ESP 的内核不是一套，
-系统能起来但没有任何驱动。
+`uname -r` 与 ESP 里的字符串不符，说明刷进去的不是这一版资产。`/usr/lib/modules/` 下没有同名目录，说明 rootfs 与 ESP 的内核不是一套；系统能起来，但一个驱动都加载不了。
 
 能进 GNOME 桌面就是刷写成功最直接的证据。上面的读回与启动后检查要在从原始 GPT/UFS 重新分区的设备上执行；构建成功、热修复启动、历史资产启动都不能当作 PR 验收证据。
 
