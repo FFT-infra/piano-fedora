@@ -229,34 +229,18 @@ chmod +x flash-linux.sh
 
 ## 里程碑
 
-1. **里程碑 1：开辟 PR 与基底架构搭建**
-   - 建立 PR 分支，设立 `packages/` 结构骨架；
-   - 梳理第一批无硬件争议的基础包（`piano-fedora-configs`、`sm8750-video-accel`、`alsa-xiaomi-piano`）。
-2. **里程碑 2：核心守护进程 RPM 规范化与编译闭环**
-   - 迁移并规范 `xiaomi-piano-thp`、`piano-camera`、`uperf-linux`、`libssc` 的打包定义；
-   - 构建 `scripts/build-rpms.sh` 本地/容器编译流水线，确保单测与 rpmbuild 100% 通过。
-3. **里程碑 3：纯净 DNF RootFS 装配链实现（✅ 已完成）**
-   - 实现由本地 RPM 源直接装配 F2FS 镜像的全新脚本 `scripts/build-clean-rootfs.py`，淘汰旧的混杂 finalize 注入逻辑；
-   - 引入 `tests/check_clean_rootfs.py` 与 `make plan-clean` 自动化单测，校验文件全量属于 RPM 数据库。
-4. **里程碑 4：面向普通用户的工业级安装链（🟡 代码完成，真机未验收）**
-   - 编写带设备身份校验、目标分区存在性/容量校验、SHA256 镜像完整性校验与
-     zstd 自动解压的跨平台刷写程序（`flash-linux.sh` 与 `flash-linux.bat`）；
-   - 编写精确到每一步命令行的刷机安装文档（`README.md` 与
-     `docs/installation.md`），配齐 `package-release-bundle.sh`；
-   - 同时提供**不使用一键脚本**的手动刷机章节：Release 资产清单、逐条
-     `fastboot` 命令、SHA256 校验、读回验证与回滚方法。
-
-   尚未做到、不得声称的能力：
-   - **没有动态目标槽位**：脚本固定 `fastboot set_active b`；它只接受
-     Android 当前槽为 `a`，否则在写入前拒绝，不能把 Linux 装到任意槽；
-   - **没有完整 GPT 分区表校验**：只检查 `boot_b`/`sunuefi_esp`/`sunuefi_root`
-     是否存在及容量下限，不核对分区表 CRC、类型 GUID 或整表布局；
-   - **没有首次分区能力**：`sunuefi_esp`/`sunuefi_root` 不存在时脚本直接拒绝，
-     首次分区仍走 `install-f2fs.py`；
-   - 上述脚本路径已用桩设备跑通（无 `erase`、写入序列与预检顺序符合预期），
-     **但尚未在一台纯净真机上按 Release 资产完整执行**。
-
-5. **里程碑 5：纯净真机全流程实操与终验（🟡 进行中 / 实机已全部装配）**
-   - 实机（Xiaomi Pad 8 Pro / `piano`）已成功部署全部 9 个解耦 RPM 包，硬件 Iris VA-API 硬解、ALSA UCM2 音频、卡尔曼触控滤波与传感器代理全部实机就绪；
-   - 待下次真机重启验证 `piano-boot-request-autoconfig.service` 开机首发自愈与盲测全流程。
-
+1. **PR 与骨架**：建立 PR 分支与 `packages/` 结构，先落没有硬件争议的基础包
+   （`piano-fedora-configs`、`sm8750-video-accel`、`alsa-xiaomi-piano`）。
+2. **守护进程规范化**：`xiaomi-piano-thp`、`piano-camera`、`uperf-linux`、`libssc`
+   的打包定义入库，`scripts/build-rpms.sh` 能在本机或容器里跑完整的 rpmbuild。
+3. **纯净 DNF 装配链**：`scripts/build-clean-rootfs.py` 从本地 RPM 源直接装配 F2FS
+   镜像，替掉旧的 finalize 注入路径。`tests/check_clean_rootfs.py` 与 `make plan-clean`
+   校验镜像里的文件全部归属 RPM 数据库。
+4. **安装链**：`flash-linux.sh` 与 `flash-linux.bat` 带设备身份、分区容量、
+   摘要校验；安装文档同时保留不用脚本的手动路径。以下能力尚未具备：
+   - 脚本固定 `fastboot set_active b`，只接受 Android 当前槽为 `a`，不能装到任意槽；
+   - 只检查 `boot_b`、`sunuefi_esp`、`sunuefi_root` 是否存在及容量下限，不核对
+     GPT 的 CRC、类型 GUID 或整表布局；
+   - 分区不存在时直接拒绝，首次分区仍走 `install-f2fs.py`。
+5. **真机终验**：九类 RPM 已上机，硬解、音频、触控滤波与传感器代理可用；
+   冷启动、五门硬件验收与双系统往返仍待完整记录。
