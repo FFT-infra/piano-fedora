@@ -2,6 +2,7 @@
 """在 Actions 上恢复同一内核 SDK，构建匹配的 v4l2loopback 与 UAPI。"""
 
 import argparse
+import difflib
 import importlib.util
 import json
 import shutil
@@ -79,7 +80,13 @@ def main():
                "ARCH=arm64", "LLVM=1", "LLVM_IAS=1"]
     run([*command, "-j4", "modules_prepare"])
     if sha256(build / ".config") != record["config_sha256"]:
-        raise ValueError("module preparation changed the kernel configuration")
+        # syncconfig 会重写 .config；把差异打出来，否则只能看到一条哈希不符。
+        changed = difflib.unified_diff(
+            (restored / ".config").read_text().splitlines(),
+            (build / ".config").read_text().splitlines(),
+            "sealed", "after modules_prepare", lineterm="", n=0)
+        raise ValueError("module preparation changed the kernel configuration:\n"
+                         + "\n".join(list(changed)[:40]))
     uapi = output / "uapi"
     run([*command, "headers_install", "INSTALL_HDR_PATH=" + str(uapi)])
     loop = output / "v4l2loopback"
