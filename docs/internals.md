@@ -68,7 +68,7 @@ BOOT 准备使用 Actions 提供的宿主工具。
 （`install-f2fs.py apply`）与手动分区做同一件事；手动分区、刷写与回滚的逐条
 命令在[安装指南](installation.md)第四节和三之二节。
 
-### 1. 固定本次流水线与设备身份
+### 1. 固定流水线与设备身份
 
 记录以下 ID，后续每一步都核对它们不变：
 
@@ -89,8 +89,7 @@ adb -s <serial> shell getprop sys.boot_completed
 adb -s <serial> shell getprop ro.boot.slot_suffix
 ```
 
-序列号、槽位、原 BOOT 摘要和完整 GPT 基线必须写入本次安装会话。设备不是
-`piano`、Bootloader 未解锁、`sys.boot_completed` 不是 `1`，全部停止。
+序列号、槽位、原 BOOT 摘要和完整 GPT 基线写进安装会话。设备不是 `piano`、Bootloader 未解锁，或 `sys.boot_completed` 不是 `1`，全部停止。
 
 ### 2. 生成并复核 BOOT 与首次分区计划
 
