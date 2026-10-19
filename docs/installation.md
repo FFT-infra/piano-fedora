@@ -60,13 +60,9 @@ userdata，而且 `sunuefi_esp` / `sunuefi_root` 已存在的平板。全新盘�
 - `SHA256SUMS`：deploy-bundle 内 ESP/BOOT 等资产的摘要；
 - `root-install/SHA256SUMS`：root-install 内 sparse 镜像和清单的摘要。
 
-首次安装必须先用同一个 deploy-bundle run 跑 `prepare-install.yml`，并把
-Android 槽位固定为 `_a`，取得 `root-install`。它的 sparse 镜像已经扩到真实
-`sunuefi_root` 容量、写入设备配置并恢复 SELinux 标签。镜像本身不带任何
-`authorized_keys`；管理公钥在刷写时用 `--ssh-key` 注入，见下一节。
+首装必须先用同一个 deploy-bundle run 跑 `prepare-install.yml`，Android 槽位固定为 `_a`，得到 `root-install`。它的 sparse 镜像已扩到真实 `sunuefi_root` 容量，写入设备配置并恢复 SELinux 标签。镜像里没有 `authorized_keys`；管理公钥在刷写时用 `--ssh-key` 注入，见下一节。
 
-准备一个空的安装暂存目录（下面记为 `piano-install/`），完整复制材料，
-不要从不同 run 各取一部分：
+准备一个空的暂存目录（下面记作 `piano-install/`），把材料完整复制进去。不要从不同 run 各取一部分：
 
 1. 解压 `piano-installer-*.zip` 到该目录；
 2. 完整解压同一 run 的 `deploy-bundle/` 到同一层，保留其中全部普通文件；
@@ -91,21 +87,14 @@ piano-install/
     └── SHA256SUMS
 ```
 
-脚本以当前工作目录为暂存目录。deploy-bundle 的 `SHA256SUMS` 覆盖该
-artifact 的全部文件，`root-install/SHA256SUMS` 覆盖 sparse root 和
-root-install manifest；脚本再核对 root-install 里的 bundle/root 清单摘要
-确实属于当前 deploy-bundle。只复制某几个文件会让清单校验失去意义。
+脚本把当前工作目录当作暂存目录。deploy-bundle 的 `SHA256SUMS` 覆盖该 artifact 的全部文件，`root-install/SHA256SUMS` 覆盖 sparse root 与 root-install manifest。脚本还核对 root-install 里的 bundle/root 清单摘要确实来自当前 deploy-bundle。只复制几个文件会让清单校验失去意义。
 
-这里的一键脚本前提是分区已经由 `install-f2fs.py apply` 建立。原始机器只有
-Android 的 `userdata`，没有 `sunuefi_esp` / `sunuefi_root`；脚本会拒绝，必须
-先走第四节的首次分区流程。分区的清空是首次安装的破坏性步骤，不能由这个
-刷写脚本代替。脚本固定把 Linux 写到 Slot B，因此运行前 Android 必须仍在
-Slot A；如果当前槽是 B，脚本会在任何写入前拒绝。
+一键脚本要求分区已由 `install-f2fs.py apply` 建立。原厂设备只有 Android 的 `userdata`，没有 `sunuefi_esp` / `sunuefi_root`；脚本会拒绝，必须先走第四节的首次分区。清空分区是首次安装的破坏性步骤，不能由刷写脚本代劳。脚本固定把 Linux 写到 Slot B，所以运行前 Android 必须还在 Slot A；当前槽是 B 时，脚本在任何写入前就退出。
 
 ### 2. 进入 Fastboot 模式
-1. 将平板完全关机；
-2. 长按 **【电源键 + 音量减键】** 不放，直到屏幕亮起并显示米兔/FASTBOOT 图标；
-3. 使用原装或高质量 USB-C 数据线将平板连接至电脑。
+1. 平板完全关机。
+2. 按住 **【电源键 + 音量减键】**，直到屏幕亮起并显示米兔/FASTBOOT 图标。
+3. 用原装或质量可靠的 USB-C 数据线连接电脑。
 
 ### 3. 执行一键刷机
 先进入前面的暂存目录：
