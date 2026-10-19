@@ -663,6 +663,12 @@ def execute(plan_data):
     print("--> Running post-assembly RPM provenance audit...")
     audit_res = audit_rootfs(root)
 
+    # audit_rootfs 用 `rpm --root` 打开数据库，会重新产生 -wal/-shm。这些文件
+    # 没合并就打包出去，别的机器上 `rpm --root` 读出来是 0 个包（实测
+    # build-image 因此判定所有 release 包缺失）。审计之后再 checkpoint 一次。
+    print("--> Checkpointing the rpm database after the audit...")
+    prune_rpm_transient(root)
+
     # 审计通过后可选地打成 F2FS 镜像。这一步以前是缺失的：
     # `--execute` 只产出 rootfs 目录，而 package-release-bundle.sh 去
     # build/clean-distros/ 找 .img/.img.zst，找不到就静默回退到历史镜像，
