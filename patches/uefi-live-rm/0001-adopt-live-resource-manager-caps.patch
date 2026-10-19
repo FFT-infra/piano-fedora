@@ -1,5 +1,5 @@
 From aad96e94737ba1716a5c4af7a3efa431bd49f16f Mon Sep 17 00:00:00 2001
-From: piano-fedora <dev@piano.invalid>
+From: piano-fedora-test <dev@piano.invalid>
 Date: Thu, 15 Oct 2026 18:17:46 +0800
 Subject: [PATCH] linux: adopt the live Gunyah resource manager capabilities
 
