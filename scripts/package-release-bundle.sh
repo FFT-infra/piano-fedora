@@ -35,7 +35,7 @@ Options:
   --version <tag>       Release version tag (default: current date)
   --boot-img <file>     Path to boot_sunuefi.img
   --esp-img <file>      Path to sunuefi_esp.img
-  --root-img <file>     Path to pianoroot-fedora44-gnome-f2fs.img or .img.zst
+  --root-img <file>     Path to pianoroot.f2fs.img or .img.zst
   --ksu-zip <file>      Path to piano-switch-ksu / SunUEFI Android module zip
   --check-only          Only verify existing bundle in out-dir
         --expect-kernel <rel> Require this kernel release in the ESP and rootfs
@@ -348,12 +348,16 @@ PY
     cp -v "$BOOT_FOUND" "$OUT_DIR/boot_sunuefi.img"
     record_provenance boot_sunuefi.img "$BOOT_FOUND"
 else
-    echo "--> NOTE: No boot image found in default search paths. Supply --boot-img if available."
+    echo "Error: no boot image found; a deploy-bundle without BOOT must not be published." >&2
+    echo "Pass --boot-img with the current build-bundle output." >&2
+    exit 1
 fi
 
 # 3. Resolve and copy ESP image
 ESP_ROW=$(resolve_candidate "$ESP_IN" \
+    "$REPO_ROOT/build/bundle/sunuefi_esp.img" \
     "$REPO_ROOT/build/bundle/esp.img" \
+    "$REPO_ROOT/build/packaged/sunuefi_esp.img" \
     "$REPO_ROOT/build/packaged/esp.img" \
     "$REPO_ROOT/out/device-backup/readonly-20261014/current-sunuefi_esp.img" \
     "$REPO_ROOT/../mipad8p-piano/out/offline-bringup-20261011-r2/deploy-bundle/esp.img" || true)
@@ -366,31 +370,35 @@ if [ -n "$ESP_ROW" ]; then
     cp -v "$ESP_FOUND" "$OUT_DIR/sunuefi_esp.img"
     record_provenance sunuefi_esp.img "$ESP_FOUND"
 else
-    echo "--> NOTE: No ESP image found in default search paths. Supply --esp-img if available."
+    echo "Error: no ESP image found; a deploy-bundle without ESP must not be published." >&2
+    echo "Pass --esp-img with the current build-bundle output." >&2
+    exit 1
 fi
 
 # 4. Resolve and copy/compress RootFS image
 ROOT_ROW=$(resolve_candidate "$ROOT_IN" \
+    "$REPO_ROOT/build/bundle/pianoroot.f2fs.img.zst" \
     "$REPO_ROOT/build/clean-distros/fedora-44-gnome/pianoroot-fedora44-gnome-f2fs.img.zst" \
     "$REPO_ROOT/build/clean-distros/fedora-44-gnome/pianoroot-fedora44-gnome-f2fs.img" \
-    "$REPO_ROOT/build/bundle/pianoroot.f2fs.img.zst" \
     "$REPO_ROOT/../mipad8p-piano/out/offline-bringup-20261011-r2/deploy-bundle/pianoroot.f2fs.img.zst" \
     "$REPO_ROOT/out/deploy-stage-20261014/pianoroot.f2fs.img.zst" || true)
 
 if [ -n "$ROOT_ROW" ]; then
     ROOT_FOUND="${ROOT_ROW%%$'\t'*}"
     ROOT_ORIGIN="${ROOT_ROW##*$'\t'}"
-    [ "$ROOT_ORIGIN" = explicit ] || reject_stale_source pianoroot-fedora44-gnome-f2fs.img.zst "$ROOT_FOUND" || exit 1
+    [ "$ROOT_ORIGIN" = explicit ] || reject_stale_source pianoroot.f2fs.img.zst "$ROOT_FOUND" || exit 1
     if [[ "$ROOT_FOUND" == *.zst ]]; then
         echo "--> Copying compressed RootFS: $ROOT_FOUND"
-        cp -v "$ROOT_FOUND" "$OUT_DIR/pianoroot-fedora44-gnome-f2fs.img.zst"
+        cp -v "$ROOT_FOUND" "$OUT_DIR/pianoroot.f2fs.img.zst"
     else
         echo "--> Compressing RootFS image with zstd: $ROOT_FOUND ..."
-        zstd -T0 -19 -f "$ROOT_FOUND" -o "$OUT_DIR/pianoroot-fedora44-gnome-f2fs.img.zst"
+        zstd -T0 -19 -f "$ROOT_FOUND" -o "$OUT_DIR/pianoroot.f2fs.img.zst"
     fi
-    record_provenance pianoroot-fedora44-gnome-f2fs.img.zst "$ROOT_FOUND"
+    record_provenance pianoroot.f2fs.img.zst "$ROOT_FOUND"
 else
-    echo "--> NOTE: No RootFS image found in default search paths. Supply --root-img if available."
+    echo "Error: no RootFS image found; a deploy-bundle without rootfs must not be published." >&2
+    echo "Pass --root-img with the current build-image output." >&2
+    exit 1
 fi
 
 # 5. Resolve and copy Android dual-boot KSU module

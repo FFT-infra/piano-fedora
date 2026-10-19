@@ -21,6 +21,11 @@ from piano_sparse import require
 
 ROOT = Path(__file__).resolve().parents[1]
 BLOCK = 4096
+BUNDLE_ASSETS = {
+    "sunuefi_esp.img": "sunuefi_esp.img",
+    "boot_sunuefi.img": "boot_sunuefi.img",
+    "PianoUEFI-product.img": "PianoUEFI-product.img",
+}
 
 
 def load_source(source):
@@ -100,6 +105,18 @@ def checked(path, meta):
     require(path.stat().st_size == meta["bytes"] and sha256(path) == meta["sha256"], "input hash/size differs: " + str(path))
 
 
+def require_install_slot(slot, existing):
+    """Keep the first-install path on Android Slot A.
+
+    The one-click installer always writes Linux to Slot B and rewrites boot_b.
+    A first install that started from Android Slot B would therefore destroy
+    the only Android boot path. Existing-partition updates may still use B.
+    """
+    require(slot in ("_a", "_b"), "unknown active Android slot")
+    if not existing:
+        require(slot == "_a", "first install requires Android Slot A; Slot B is reserved for Linux")
+
+
 def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, existing=False):
     require(not any((p / ".incomplete").exists() for p in (bundle, root_install, boot)), "incomplete input package")
     snapshot = device.inspect()
@@ -111,7 +128,7 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     else:
         layout = partition_plan(snapshot["gpt"])
     slot = device.text("getprop ro.boot.slot_suffix")
-    require(slot in ("_a", "_b"), "unknown active Android slot")
+    require_install_slot(slot, existing)
     root = json.loads((root_install / "root-install-manifest.json").read_text())
     combined = json.loads((boot / "device-boot-manifest.json").read_text())
     generic = json.loads((bundle / "bundle-manifest.json").read_text())
@@ -120,8 +137,8 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     source_runs = json.loads((bundle / "source-runs.json").read_text())
     verify_uefi_source(ROOT, bundle / "PianoUEFI-product.img",
                        json.loads((bundle / "uefi-source.json").read_text()), source_runs.get("uefi_run"))
-    for name in ("esp.img", "boot.img", "PianoUEFI-product.img"):
-        checked(bundle / name, generic["files"][name])
+    for asset, packaged in BUNDLE_ASSETS.items():
+        checked(bundle / asset, generic["files"][packaged])
     require(root.get("status") == "ROOT_CAPACITY_VERIFIED_NOT_DEVICE_VERIFIED"
             and root["source_bundle_manifest_sha256"] == sha256(bundle / "bundle-manifest.json")
             and root["source_root_manifest_sha256"] == sha256(bundle / "root-image-manifest.json")
@@ -130,7 +147,7 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     if existing:
         targets = {row["name"]: row for row in layout["partitions"]}
         require(root["expanded_bytes"] == targets["sunuefi_root"]["bytes"], "root image does not match the existing partition capacity")
-        require(generic["files"]["esp.img"]["bytes"] == targets["sunuefi_esp"]["bytes"], "ESP image does not match the existing partition capacity")
+        require(generic["files"]["sunuefi_esp.img"]["bytes"] == targets["sunuefi_esp"]["bytes"], "ESP image does not match the existing partition capacity")
     else:
         require(root["target_size_mib"] == layout["capacity"]["linux_root_mib"], "root image does not match the equal partition plan")
     require(root["fsck_exit"] == 0 and root["fsck_read_only"] is True
@@ -192,6 +209,20 @@ def sync_dir(path):
         os.close(fd)
 
 
+def wait_factory(device, identity, attempts=90, delay=2):
+    """Wait for the stock bootloader to enumerate after the GPT reboot."""
+    serial = identity["factory_serial"]
+    for attempt in range(attempts):
+        try:
+            if device.fastboot_var(serial, "serialno") == serial:
+                return
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+        if attempt + 1 < attempts:
+            time.sleep(delay)
+    raise RuntimeError(f"factory fastboot did not enumerate serial {serial} after partitioning")
+
+
 def save(path, value):
     pending = path.with_suffix(".pending")
     with pending.open("w") as stream:
@@ -245,7 +276,8 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
         require(latest["identity"] == identity and latest["gpt"].baseline() == plan["gpt_baseline"], "GPT changed immediately before writing")
         require(device.text("sha256sum /dev/block/by-name/boot" + slot).split()[0] == plan["source_boot_sha256"],
                 "original BOOT changed immediately before partitioning")
-        # 现有 /data 会被清空；此刻不写 Linux 数据，也不尝试重载正在使用的内核分区视图。
+        # GPT 缩短 userdata 后，现有加密 /data 不再可信。必须在同一会话里
+        # 显式擦除 userdata，让 Android 首次启动走 factory-reset 初始化。
         journal["device_writes"] = True
         journal["status"] = "GPT_WRITE_STARTED"
         save(session / "result.json", journal)
@@ -258,30 +290,36 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
         require(measured.partitions == gpt.partitions and measured.geometry == gpt.geometry, "written GPT readback differs")
         stage("gpt_written_and_both_copies_readback_validated")
         device.reboot_bootloader()
-        time.sleep(5)
+        wait_factory(device, identity)
         factory(device, identity, slot)
         for row in gpt.partitions:
             if row["name"] in ("userdata", "sunuefi_root", "sunuefi_esp"):
                 require(int(device.fastboot_var(identity["factory_serial"], "partition-size:" + row["name"]), 16) == row["bytes"],
                         "bootloader did not load the new partition capacity")
+        device.call(["fastboot", "-s", identity["factory_serial"], "erase", "userdata"], timeout=1800)
+        journal.update(userdata_erased=True, status="USERDATA_ERASED_IMAGES_PENDING")
+        stage("factory_fastboot_erased_userdata")
         generic = json.loads((bundle / "bundle-manifest.json").read_text())
         root = json.loads((root_install / "root-install-manifest.json").read_text())
         combined = json.loads((boot / "device-boot-manifest.json").read_text())
         expected_hashes = {
-            "sunuefi_esp": generic["files"]["esp.img"]["sha256"],
+            "sunuefi_esp": generic["files"]["sunuefi_esp.img"]["sha256"],
             "sunuefi_root": root["transport"]["sha256"],
             "boot" + slot: combined["files"]["boot_android.img"]["sha256"],
         }
-        for name, image in (("sunuefi_esp", bundle / "esp.img"), ("sunuefi_root", root_install / "pianoroot.f2fs.sparse.img"),
+        for name, image in (("sunuefi_esp", bundle / "sunuefi_esp.img"), ("sunuefi_root", root_install / "pianoroot.f2fs.sparse.img"),
                             ("boot" + slot, boot / "boot_android.img")):
             before = sha256(image)
             require(before == expected_hashes[name], "input image hash differs from validated manifest: " + name)
             device.call(["fastboot", "-s", identity["factory_serial"], "flash", name, str(image)], timeout=3600)
             require(sha256(image) == before, "input image changed during transfer")
             stage("factory_fastboot_accepted_" + name)
-        journal.update(status="IMAGES_TRANSFERRED_FIRST_BOOT_PENDING", linux_boot_verified=False,
+        journal.update(status="IMAGES_TRANSFERRED_FIRST_BOOT_PENDING",
+                       android_userdata_initialized=False, linux_boot_verified=False,
                        android_boot_verified=False, device_readback_verified=False,
-                       remaining=["first Linux boot and filesystem readback", "Android encrypted userdata initialization", "both-way switching"])
+                       remaining=["first Android boot to initialize erased userdata",
+                                  "first Linux boot and filesystem readback",
+                                  "both-way switching"])
         save(session / "result.json", journal)
         return journal
     except BaseException as error:

@@ -125,14 +125,14 @@ def build_inputs(work):
     boot = work / "device-boot"
     for folder in (bundle, root_install, boot):
         folder.mkdir(parents=True, exist_ok=True)
-    (bundle / "esp.img").write_bytes(b"\x00" * ESP_BYTES)
+    (bundle / "sunuefi_esp.img").write_bytes(b"\x00" * ESP_BYTES)
     (root_install / "pianoroot.f2fs.sparse.img").write_bytes(b"\x00" * ROOT_BYTES)
     (boot / "boot-request.json").write_text("{}\n")
     stock_boot = work / "stock-boot.img"
     stock_boot.write_bytes(b"stock recovery fixture; plan validation is separately stubbed")
-    esp_meta = {"bytes": ESP_BYTES, "sha256": sha256_file(bundle / "esp.img")}
+    esp_meta = {"bytes": ESP_BYTES, "sha256": sha256_file(bundle / "sunuefi_esp.img")}
     root_meta = {"bytes": ROOT_BYTES, "sha256": sha256_file(root_install / "pianoroot.f2fs.sparse.img")}
-    (bundle / "bundle-manifest.json").write_text(json.dumps({"files": {"esp.img": esp_meta}}) + "\n")
+    (bundle / "bundle-manifest.json").write_text(json.dumps({"files": {"sunuefi_esp.img": esp_meta}}) + "\n")
     (root_install / "root-install-manifest.json").write_text(json.dumps({"transport": root_meta}) + "\n")
     return bundle, root_install, boot, stock_boot
 
@@ -163,7 +163,7 @@ def run_execute(work, device, plan, snapshot, fail_plan=None, tamper=None):
     bundle, root_install, boot, stock_boot = build_inputs(work)
     session = work / "session"  # 不预创建
     if tamper is not None:
-        target = bundle / "esp.img" if tamper == "esp" else root_install / "pianoroot.f2fs.sparse.img"
+        target = bundle / "sunuefi_esp.img" if tamper == "esp" else root_install / "pianoroot.f2fs.sparse.img"
         target.write_bytes(b"changed after manifest creation")
     returned = plan if fail_plan is None else fail_plan
     original = update.update_plan

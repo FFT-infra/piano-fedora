@@ -90,6 +90,8 @@ def main():
         failures.append("resolve_candidate does not mark explicit paths")
     if not re.search(r"printf\s+'%s\\tfallback", code):
         failures.append("resolve_candidate does not mark fallback paths")
+    if "pianoroot.f2fs.img.zst" not in code:
+        failures.append("package release bundle must emit the build-bundle root name")
 
 
     # 产物物理契约（若 out/release-bundle/boot_sunuefi.img 已生成，必须严格校验）

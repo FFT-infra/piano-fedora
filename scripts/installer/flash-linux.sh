@@ -13,12 +13,16 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORK_DIR="$SCRIPT_DIR"
+# The installer ZIP is extracted into the same staging directory as the
+# deploy-bundle assets. Use the caller's directory for assets, while still
+# accepting an invocation by path from elsewhere.
+WORK_DIR="$(pwd)"
 
 # Defaults
 BOOT_IMG=""
 ESP_IMG=""
 ROOT_IMG=""
+ROOT_SHA256SUMS=""
 AUTO_CONFIRM=0
 DO_REBOOT=1
 SKIP_CHECKSUM=0
@@ -33,9 +37,11 @@ Options:
   -y, --yes            Skip safety confirmation prompt (non-interactive)
   --boot <file>        Path to SunUEFI boot image (boot_sunuefi.img)
   --esp <file>         Path to SunUEFI ESP image (sunuefi_esp.img)
-  --root <file>        Path to Fedora rootfs image (pianoroot-fedora44-gnome-f2fs.img)
+  --root <file>        Path to the prepared rootfs transport (pianoroot.f2fs.sparse.img)
+  --root-sha256sums <file>
+                       root-install/SHA256SUMS produced by prepare-install
   --no-reboot          Do not reboot the device after flashing completes
-  --skip-checksum      Skip verifying SHA256SUMS before flashing
+  --skip-checksum      Legacy option; refused because first install requires both manifests
   -h, --help           Show this help message and exit
 
 EOF
@@ -59,6 +65,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --root)
             ROOT_IMG="$2"
+            shift 2
+            ;;
+        --root-sha256sums)
+            ROOT_SHA256SUMS="$2"
             shift 2
             ;;
         --no-reboot)
@@ -164,9 +174,32 @@ if [ "$USERSPACE" != "no" ]; then
     exit 1
 fi
 
+CURRENT_SLOT=$(fb getvar current-slot 2>&1 | grep '^current-slot:' | awk '{print $2}' | tr -d '\r\n' || true)
+if [ "$CURRENT_SLOT" != "a" ] && [ "$CURRENT_SLOT" != "b" ]; then
+    echo -e "${RED}[ERROR] Could not read a valid current-slot ('${CURRENT_SLOT}').${NC}"
+    exit 1
+fi
+if [ "$CURRENT_SLOT" != "a" ]; then
+    echo -e "${RED}[ERROR] Android must be active on Slot A before running this installer.${NC}"
+    echo "This installer always writes Linux to Slot B (boot_b); continuing from"
+    echo "Android Slot B would overwrite the only Android boot path."
+    exit 1
+fi
+
 # 3c. The target partitions must exist and be big enough. Flashing a 512 MiB ESP
 # into a missing or shrunken partition is exactly the kind of silent corruption
 # that leaves the tablet unbootable, so refuse before any write happens.
+# `fastboot getvar partition-size:*` prints hexadecimal, including digit-only
+# values. Parse it as hex before comparing with decimal manifest bytes.
+fastboot_bytes_hex() {
+    local value="$1"
+    case "$value" in
+        0[xX]*) value="${value#0[xX]}" ;;
+    esac
+    [[ "$value" =~ ^[0-9a-fA-F]+$ ]] || return 1
+    printf '%d\n' "$((16#$value))"
+}
+
 require_partition() {
     local name="$1" need="$2" size
     size=$(fb getvar "partition-size:${name}" 2>&1 | grep "partition-size:${name}:" \
@@ -176,28 +209,39 @@ require_partition() {
         echo "This tablet has not been partitioned for Linux yet; run the first-partition flow."
         exit 1
     fi
+    raw_size="$size"
+    if ! size=$(fastboot_bytes_hex "$size"); then
+        echo -e "${RED}[ERROR] Partition '${name}' has an invalid size: ${raw_size}.${NC}"
+        exit 1
+    fi
     if [ "$((size))" -lt "$need" ]; then
         echo -e "${RED}[ERROR] Partition '${name}' is too small (${size} < ${need} bytes).${NC}"
         exit 1
+    fi
+    if [ -n "${3:-}" ]; then
+        printf -v "$3" '%s' "$size"
     fi
     echo -e "  ${GREEN}✓${NC} ${name} present, $(printf '%s' "$size") bytes"
 }
 
 echo -e "[INFO] Verifying target partitions..."
+ROOT_PARTITION_SIZE=""
 require_partition boot_b 67108864
 require_partition sunuefi_esp 536870912
-require_partition sunuefi_root 1073741824
+require_partition sunuefi_root 1073741824 ROOT_PARTITION_SIZE
 
 # 4. Image file resolution
 find_file() {
     local candidate
     for candidate in "$@"; do
         if [ -f "$WORK_DIR/$candidate" ]; then
-            echo "$WORK_DIR/$candidate"
+            work_real=$(cd "$WORK_DIR" && pwd -P)
+            printf '%s/%s\n' "$work_real" "${candidate#./}"
             return 0
         fi
         if [ -f "$candidate" ]; then
-            echo "$candidate"
+            candidate_dir=$(cd "$(dirname "$candidate")" && pwd -P)
+            printf '%s/%s\n' "$candidate_dir" "$(basename "$candidate")"
             return 0
         fi
     done
@@ -206,7 +250,7 @@ find_file() {
 
 # Auto-detect boot image
 if [ -z "$BOOT_IMG" ]; then
-    if FOUND=$(find_file "boot_sunuefi.img" "boot_linux.img" "boot.img"); then
+    if FOUND=$(find_file "boot_sunuefi.img"); then
         BOOT_IMG="$FOUND"
     else
         echo -e "${RED}[ERROR] Missing boot image (boot_sunuefi.img)!${NC}"
@@ -216,7 +260,7 @@ fi
 
 # Auto-detect ESP image
 if [ -z "$ESP_IMG" ]; then
-    if FOUND=$(find_file "sunuefi_esp.img" "esp.img"); then
+    if FOUND=$(find_file "sunuefi_esp.img"); then
         ESP_IMG="$FOUND"
     else
         echo -e "${RED}[ERROR] Missing ESP image (sunuefi_esp.img)!${NC}"
@@ -224,33 +268,52 @@ if [ -z "$ESP_IMG" ]; then
     fi
 fi
 
-# Auto-detect RootFS image
-# ROOT_HASH_FILE is what SHA256SUMS names; ROOT_UNPACKED is true when it is a
-# .zst that still has to be expanded. Verification runs before decompression,
-# so the checksum is always computed on the published artifact.
-ROOT_HASH_FILE=""
-ROOT_UNPACKED=0
+# Auto-detect RootFS image.
+# The deploy-bundle ships the sealed 8 GiB root. First install cannot flash it
+# directly: prepare-install expands it to the actual sunuefi_root capacity and
+# writes the device configuration. Only root-install/ is a supported layout;
+# accepting a top-level sparse file could silently select an older generation.
 if [ -z "$ROOT_IMG" ]; then
-    if FOUND=$(find_file "pianoroot-fedora44-gnome-f2fs.img" "pianoroot.f2fs.sparse.img" "pianoroot.f2fs.img"); then
+    if FOUND=$(find_file "root-install/pianoroot.f2fs.sparse.img"); then
         ROOT_IMG="$FOUND"
-        ROOT_HASH_FILE="$FOUND"
-    elif FOUND_ZST=$(find_file "pianoroot-fedora44-gnome-f2fs.img.zst" "pianoroot.f2fs.sparse.img.zst"); then
-        ROOT_HASH_FILE="$FOUND_ZST"
-        ROOT_UNPACKED=1
     else
-        echo -e "${RED}[ERROR] Missing RootFS image (pianoroot-fedora44-gnome-f2fs.img)!${NC}"
+        echo -e "${RED}[ERROR] Missing prepared rootfs transport: pianoroot.f2fs.sparse.img${NC}"
+        echo "Run prepare-install for this deploy-bundle first. A sealed"
+        echo "pianoroot.f2fs.img.zst is not a first-install image."
         exit 1
     fi
 else
-    ROOT_HASH_FILE="$ROOT_IMG"
     case "$ROOT_IMG" in
-        *.zst) ROOT_UNPACKED=1 ;;
+        *.sparse.img) ;;
+        *)
+            echo -e "${RED}[ERROR] --root must name pianoroot.f2fs.sparse.img from prepare-install.${NC}"
+            echo "Raw or compressed deploy-bundle roots are not resized for this tablet."
+            exit 1
+            ;;
     esac
 fi
+ROOT_DIR=$(cd "$(dirname "$ROOT_IMG")" && pwd -P)
+if [ "$ROOT_DIR" != "$(cd "$WORK_DIR/root-install" && pwd -P)" ]; then
+    echo -e "${RED}[ERROR] --root must be inside the root-install/ artifact.${NC}"
+    echo "Keeping the sparse image, manifest and SHA256SUMS together prevents"
+    echo "an old top-level image from being paired with this bundle."
+    exit 1
+fi
 
-# 5. Integrity verification (SHA256SUMS)
-# Manifest entries are written by package-release-bundle.sh as "./name", so a
-# bare "$name$" match would never hit and the whole check would silently pass.
+# deploy-bundle/SHA256SUMS covers the ESP and BOOT. root-install is a separate
+# prepare-install artifact and has its own manifest/SHA256SUMS. Do not invent a
+# merged checksum file that neither artifact publishes.
+if [ -z "$ROOT_SHA256SUMS" ]; then
+    root_dir="$ROOT_DIR"
+    if [ -f "$root_dir/SHA256SUMS" ] && [ "$root_dir/SHA256SUMS" != "$WORK_DIR/SHA256SUMS" ]; then
+        ROOT_SHA256SUMS="$root_dir/SHA256SUMS"
+    elif [ -f "$WORK_DIR/root-install/SHA256SUMS" ]; then
+        ROOT_SHA256SUMS="$WORK_DIR/root-install/SHA256SUMS"
+    fi
+fi
+
+# Manifest entries are written as "./name" by the release packager and as bare
+# names by prepare-install. Normalize both forms before comparing.
 manifest_hash() {
     awk -v want="$1" '
         {
@@ -259,17 +322,34 @@ manifest_hash() {
             sub(/^\.\//, "", name)
             if (name == want) { print $1; exit }
         }
-    ' "$WORK_DIR/SHA256SUMS"
+    ' "$2"
+}
+
+manifest_json_value() {
+    awk -v key="\"$1\":" '
+        $1 == key {
+            value = $2
+            gsub(/[",]/, "", value)
+            print value
+            exit
+        }
+    ' "$2"
 }
 
 if [ "$SKIP_CHECKSUM" -eq 0 ]; then
     if [ ! -f "$WORK_DIR/SHA256SUMS" ]; then
         echo -e "${RED}[ERROR] Missing SHA256SUMS next to the images.${NC}"
-        echo "Refusing to flash unverified images. Re-download the Release bundle,"
-        echo "or pass --skip-checksum only if you verified the images yourself."
+        echo "Refusing to flash unverified images. Re-download the deploy-bundle"
+        echo "and keep its SHA256SUMS next to the images."
         exit 1
     fi
-    echo -e "[INFO] Verifying image integrity with SHA256SUMS..."
+    if [ ! -f "$ROOT_SHA256SUMS" ]; then
+        echo -e "${RED}[ERROR] Missing root-install/SHA256SUMS for the prepared root.${NC}"
+        echo "Download the root-install artifact next to the deploy-bundle files,"
+        echo "or pass --root-sha256sums with its SHA256SUMS."
+        exit 1
+    fi
+    echo -e "[INFO] Verifying deploy-bundle and root-install integrity..."
     CHKSUM_TOOL=""
     if command -v sha256sum &>/dev/null; then
         CHKSUM_TOOL="sha256sum"
@@ -277,27 +357,17 @@ if [ "$SKIP_CHECKSUM" -eq 0 ]; then
         CHKSUM_TOOL="shasum -a 256"
     else
         echo -e "${RED}[ERROR] Neither sha256sum nor shasum is available.${NC}"
-        echo "Install coreutils (Linux) or use --skip-checksum after verifying manually."
+        echo "Install coreutils (Linux) or provide a SHA-256 tool on PATH."
         exit 1
     fi
 
-    for target_file in "$BOOT_IMG" "$ESP_IMG" "$ROOT_HASH_FILE"; do
+    check_manifest_image() {
+        local target_file="$1" checksum_file="$2" target_name expected_hash actual_hash
         target_name=$(basename "$target_file")
-        expected_hash=$(manifest_hash "$target_name")
+        expected_hash=$(manifest_hash "$target_name" "$checksum_file")
         if [ -z "$expected_hash" ]; then
-            # A manually extracted .img is not listed; the manifest names the
-            # .zst it came from, so fall back to verifying that archive.
-            archive="${target_file}.zst"
-            archive_name="${target_name}.zst"
-            if [ -f "$archive" ] && [ -n "$(manifest_hash "$archive_name")" ]; then
-                target_file="$archive"
-                target_name="$archive_name"
-                expected_hash=$(manifest_hash "$target_name")
-            fi
-        fi
-        if [ -z "$expected_hash" ]; then
-            echo -e "${RED}[ERROR] ${target_name} is not listed in SHA256SUMS.${NC}"
-            echo "The image set does not match the published manifest. Re-download."
+            echo -e "${RED}[ERROR] ${target_name} is not listed in ${checksum_file}.${NC}"
+            echo "The image set does not match the published artifact. Re-download."
             exit 1
         fi
         actual_hash=$($CHKSUM_TOOL "$target_file" | awk '{print $1}')
@@ -309,26 +379,77 @@ if [ "$SKIP_CHECKSUM" -eq 0 ]; then
             exit 1
         fi
         echo -e "  ${GREEN}✓${NC} ${target_name} checksum valid."
-    done
-fi
+    }
 
-# 6. Expand a compressed rootfs only after its published digest is confirmed.
-if [ "$ROOT_UNPACKED" -eq 1 ]; then
-    TARGET_UNPACK="${ROOT_HASH_FILE%.zst}"
-    if ! command -v zstd &>/dev/null; then
-        echo -e "${RED}[ERROR] 'zstd' command not found to decompress rootfs archive!${NC}"
-        echo "Please install zstd (sudo dnf install zstd / brew install zstd) or extract manually."
+    check_manifest_image "$BOOT_IMG" "$WORK_DIR/SHA256SUMS"
+    check_manifest_image "$ESP_IMG" "$WORK_DIR/SHA256SUMS"
+    check_manifest_image "$ROOT_IMG" "$ROOT_SHA256SUMS"
+    root_manifest="$(dirname "$ROOT_IMG")/root-install-manifest.json"
+    check_manifest_image "$root_manifest" "$ROOT_SHA256SUMS"
+
+    for required in bundle-manifest.json root-image-manifest.json; do
+        if [ ! -f "$WORK_DIR/$required" ]; then
+            echo -e "${RED}[ERROR] Missing ${required}; cannot bind root-install to this bundle.${NC}"
+            exit 1
+        fi
+    done
+    bundle_manifest_sha=$($CHKSUM_TOOL "$WORK_DIR/bundle-manifest.json" | awk '{print $1}')
+    root_source_bundle=$(manifest_json_value source_bundle_manifest_sha256 "$root_manifest")
+    root_manifest_sha=$($CHKSUM_TOOL "$root_manifest" | awk '{print $1}')
+    bundle_root_manifest_sha=$($CHKSUM_TOOL "$WORK_DIR/root-image-manifest.json" | awk '{print $1}')
+    root_source_root=$(manifest_json_value source_root_manifest_sha256 "$root_manifest")
+    root_transport_sha=$(manifest_json_value sha256 "$root_manifest")
+    root_expanded_bytes=$(manifest_json_value expanded_bytes "$root_manifest")
+    root_image_size=$(stat -c%s "$ROOT_IMG" 2>/dev/null || stat -f%z "$ROOT_IMG")
+    # prepare-root-capacity now writes android_slot at the top level. Accept the
+    # older nested location only for already-downloaded artifacts; both forms
+    # are still bound by the root-install manifest checksum.
+    root_android_slot=$(python3 -c 'import json,sys; data=json.load(open(sys.argv[1])); print(data.get("android_slot") or (data.get("device_configuration") or {}).get("android_slot") or "")' "$root_manifest")
+    actual_root_sha=$($CHKSUM_TOOL "$ROOT_IMG" | awk '{print $1}')
+    if [ "$root_source_bundle" != "$bundle_manifest_sha" ]; then
+        echo -e "${RED}[ERROR] root-install comes from a different deploy-bundle.${NC}"
+        echo "  deploy-bundle manifest: $bundle_manifest_sha"
+        echo "  root-install source   : $root_source_bundle"
         exit 1
     fi
-    echo -e "[INFO] Decompressing rootfs with zstd: $TARGET_UNPACK ..."
-    zstd -d -f "$ROOT_HASH_FILE" -o "$TARGET_UNPACK"
-    ROOT_IMG="$TARGET_UNPACK"
+    if [ "$root_source_root" != "$bundle_root_manifest_sha" ]; then
+        echo -e "${RED}[ERROR] root-install source root image manifest differs from this bundle.${NC}"
+        echo "  deploy-bundle root manifest: $bundle_root_manifest_sha"
+        echo "  root-install source        : $root_source_root"
+        exit 1
+    fi
+    if [ "$root_transport_sha" != "$actual_root_sha" ]; then
+        echo -e "${RED}[ERROR] root-install manifest does not describe the selected sparse image.${NC}"
+        exit 1
+    fi
+    if [ -z "$root_expanded_bytes" ] || [ "$root_expanded_bytes" != "$ROOT_PARTITION_SIZE" ]; then
+        echo -e "${RED}[ERROR] root-install was expanded to '${root_expanded_bytes}' bytes, but sunuefi_root is ${ROOT_PARTITION_SIZE} bytes.${NC}"
+        echo "The root-install capacity must exactly match sunuefi_root."
+        echo "Regenerate root-install from the current GPT capacity."
+        exit 1
+    fi
+    if [ "$root_android_slot" != "_a" ]; then
+        echo -e "${RED}[ERROR] root-install was prepared for Android slot '${root_android_slot}', but this installer requires '_a'.${NC}"
+        echo "The first-install path keeps Android on Slot A and writes Linux to Slot B."
+        echo "Generate root-install with --android-slot _a before flashing."
+        exit 1
+    fi
+    if [ "$root_image_size" = "$ROOT_PARTITION_SIZE" ]; then
+        echo -e "${RED}[ERROR] root-install is a raw image, not the sparse transport from prepare-install.${NC}"
+        exit 1
+    fi
+    echo -e "  ${GREEN}✓${NC} root-install provenance matches this deploy-bundle."
+else
+    echo -e "${RED}[ERROR] --skip-checksum is not accepted for the first-install path.${NC}"
+    echo "The installer must verify both SHA256SUMS, the bundle/root provenance,"
+    echo "the Android slot, and the exact sunuefi_root capacity before any write."
+    exit 1
 fi
 
 echo -e "[INFO] Flashing targets resolved:"
 echo -e "  - Boot image   : ${GREEN}${BOOT_IMG}${NC} ($(stat -c%s "$BOOT_IMG" 2>/dev/null || stat -f%z "$BOOT_IMG") bytes)"
 echo -e "  - ESP image    : ${GREEN}${ESP_IMG}${NC} ($(stat -c%s "$ESP_IMG" 2>/dev/null || stat -f%z "$ESP_IMG") bytes)"
-echo -e "  - RootFS image : ${GREEN}${ROOT_IMG}${NC} ($(stat -c%s "$ROOT_IMG" 2>/dev/null || stat -f%z "$ROOT_IMG") bytes)"
+echo -e "  - RootFS image : ${GREEN}${ROOT_IMG}${NC} (${root_image_size} transfer bytes, ${root_expanded_bytes} expanded bytes)"
 
 # 7. Safety Confirmation
 if [ "$AUTO_CONFIRM" -eq 0 ]; then

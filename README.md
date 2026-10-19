@@ -43,10 +43,22 @@
 2. 电脑已配置好 `fastboot` 与 `adb` 命令行工具环境变量；
 3. 从 [GitHub Releases](https://github.com/FFT-infra/piano-fedora-test/releases) 下载最新版本的完整镜像包与刷机工具。
 
-### 三步极速刷机
-1. **进入 Fastboot 模式**：
-   将平板彻底关机，长按 `电源键 + 音量减键` 直至屏幕亮起并显示米兔/FASTBOOT 标志，使用 USB 数据线连接电脑。
-2. **执行一键刷写**：
+### 安装入口：先分区，再一键刷写
+
+**原始或全新 GPT/UFS 设备不能直接运行一键脚本。** 首次安装必须先按
+[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)
+完成分区、擦除 userdata、Android 首次开机，然后才能使用一键脚本。
+
+一键脚本只适用于已经由 `install-f2fs.py apply` 建立 `sunuefi_esp` /
+`sunuefi_root` 的平板，并且 Android 当前槽位必须是 A：
+
+1. **准备同一套材料**：从同一次成功 `build-bundle` run 下载完整
+   `deploy-bundle`；再用该精确的 bundle run 运行 `prepare-install`，下载
+   `root-install`。不要混用历史镜像或不同 run 的资产。
+2. **进入原厂 Fastboot**：将平板彻底关机，长按 `电源键 + 音量减键`，
+   直到显示米兔/FASTBOOT 标志；连接 USB 后确认
+   `fastboot getvar current-slot` 返回 `a`。
+3. **执行一键刷写**：
    - **Linux / macOS**：
      ```bash
      chmod +x flash-linux.sh
@@ -54,7 +66,7 @@
      ```
    - **Windows**：
      双击运行 `flash-linux.bat`。
-3. **开机与登录**：
+4. **开机与登录**：
    刷写完成后平板将自动重启并进入 Fedora 44 GNOME 桌面：
    - 默认桌面用户名：`piano`
    - 默认用户密码：`piano123456`（初次登入后建议通过 `passwd` 命令及时修改）
@@ -82,11 +94,11 @@
 
 正式版本发布时，Releases 页面将提供以下经过完整真机复核的开箱即用交付物：
 
-资产文件名以 `scripts/package-release-bundle.sh` 的实际输出为准（不带版本后缀）：
+发布主链以 `build-bundle` 的 `deploy-bundle` artifact 为准：
 
 | 文件名 | 类型 | 说明 |
 |---|---|---|
-| `pianoroot-fedora44-gnome-f2fs.img.zst` | 根分区镜像 | 预装全套优化服务与驱动的 Fedora 44 根文件系统（Zstandard 高压缩） |
+| `pianoroot.f2fs.img.zst` | 基础根分区 | 流水线封存的 Fedora 44 GNOME 根文件系统；首装需先经 `prepare-install` 扩容 |
 | `sunuefi_esp.img` | 引导分区镜像 | 包含 SunUEFI EDK2、DTB、Linux 7.2.9 正式内核与 Initramfs 的完整 ESP 镜像 |
 | `boot_sunuefi.img` | BOOT 引导头 | 适配 ABL 链式引导的合体引导映像 |
 | `piano-switch-ksu-<日期>.zip` | Android 模块 | KernelSU / SukiSU 专用免电脑切换回 Linux 模块 |
@@ -94,8 +106,12 @@
 | `SHA256SUMS` | 校验哈希 | 各资产文件的 SHA-256 哈希校验列表 |
 
 > **发布状态**：仓库当前还没有任何 Release 与 tag，上面的 Releases 链接暂时
-> 指向空列表。发布前请先在本地跑 `./scripts/package-release-bundle.sh` 生成资产
-> 并打 tag；在此之前请使用仓库内 `out/release-bundle/` 的产物。
+> 指向空列表。发布资产只能取自 `build-bundle` 的 `deploy-bundle`，不能把历史
+> `out/` 目录重新打包后当作当前产物。首装流程见
+> [安装指南](docs/installation.md)。
+>
+> `scripts/package-release-bundle.sh` 是本地/历史兼容打包器，不是当前发布
+> 主入口；它保留旧二进制合同，不能替代 `build-bundle` 的来源链。
 
 ---
 

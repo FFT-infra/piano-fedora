@@ -166,16 +166,26 @@ jobs:
           python3 scripts/checkout-sources.py --output build/sources --mode boot
 
       - name: Require a fully assembled release rootfs
+        env:
+          KERNEL_RUN: ${{ steps.source.outputs.kernel_run }}
         run: |
           set -euo pipefail
           root=build/device-root/rootfs
           python3 - "$root" <<'PY'
-          import json, subprocess, sys
+          import json, os, subprocess, sys
           from pathlib import Path
           root = Path(sys.argv[1])
           record = json.loads((root.parent / "clean-manifest.json").read_text())
           assert record["status"] == "BUILT_AND_AUDITED"
           assert record["audit"]["audit_passed"] is True
+          local = record.get("local_inputs", {})
+          kernel = json.loads(Path("build/kernel/manifest.json").read_text())
+          assert local.get("kernel_run") == os.environ["KERNEL_RUN"], (
+              "rootfs kernel run differs from the build-image kernel run: "
+              f"{local.get('kernel_run')!r} != {os.environ['KERNEL_RUN']!r}")
+          assert record["audit"]["kernel_release"] == kernel["kernel_release"], (
+              "rootfs kernel release differs from the sealed kernel: "
+              f"{record['audit']['kernel_release']!r} != {kernel['kernel_release']!r}")
           assert record["audit"]["selinux_labels"] > 0
           assert not record["audit"]["selinux_problems"]
           config = (root / "etc/selinux/config").read_text()
@@ -183,10 +193,15 @@ jobs:
                       if line.startswith("SELINUX="))
           assert mode == "enforcing"
           assert not (root / ".autorelabel").exists()
-          assert not (root / "usr/lib/modules").is_dir() or not any(
-              (root / "usr/lib/modules").iterdir()), (
-              "the clean rootfs must not carry a kernel module tree; "
-              "the sealed kernel payload is staged after this audit")
+          modules = root / "usr/lib/modules"
+          releases = sorted(p.name for p in modules.iterdir() if p.is_dir()) if modules.is_dir() else []
+          assert len(releases) == 1, (
+              "the clean rootfs must carry exactly the kernel-piano module "
+              f"tree; found {releases}")
+          assert not any(p.is_symlink() for p in modules.iterdir()), (
+              "the clean rootfs module root must not contain aliases")
+          assert (modules / releases[0] / "modules.dep").is_file(), (
+              "the clean rootfs kernel-piano tree lacks modules.dep")
           installed = subprocess.check_output(
               ["rpm", "--root", str(root), "-qa"], text=True).splitlines()
           names = {line.rsplit("-", 2)[0] for line in installed}
@@ -195,11 +210,16 @@ jobs:
               "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
               "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
               "piano-runtime", "librevm", "piano-crosvm", "libva-v4l2-iris",
-              "mesa-dri-drivers", "ffmpeg-free",
+              "mesa-dri-drivers", "ffmpeg-free", "kernel-piano",
           }
           missing = sorted(required - names)
           assert not missing, f"rootfs lacks release packages: {missing}"
-          print("OK: rootfs was assembled in one audited installroot")
+          owner = subprocess.check_output(
+              ["rpm", "--root", str(root), "-qf",
+               f"/usr/lib/modules/{releases[0]}/modules.dep"], text=True).strip()
+          assert owner.rsplit("-", 2)[0] == "kernel-piano", owner
+          print("OK: rootfs was assembled in one audited installroot and "
+                "kernel-piano owns the module tree")
           PY
 
       - name: Reject a base rootfs without the GNOME session bus

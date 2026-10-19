@@ -28,9 +28,9 @@ INSTALLER_README = ROOT / "scripts/installer/README-INSTALL.txt"
 # Partitions the one-click installer is allowed to write.
 ALLOWED_FLASH_TARGETS = {"boot_b", "sunuefi_esp", "sunuefi_root"}
 
-# The scripts route every device write through a `fb()` wrapper that pins the
-# device serial, so match both `fastboot <verb>` and the wrapper `fb <verb>`.
-FB = r"\b(?:fastboot|fb)\b"
+# The scripts route every device write through a wrapper that pins the serial:
+# `fb` in shell, `%FASTBOOT%` in batch. Match all three command spellings.
+FB = r"(?:fastboot|\bfb\b|%FASTBOOT%)"
 
 # A fastboot invocation that destroys or rewrites boot-chain content. Matching is
 # on the command text only, so comments mentioning the forbidden command (which
@@ -99,7 +99,36 @@ def check_script(path):
 
 def check_docs():
     failures = []
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
     doc = INSTALL_DOC.read_text(encoding="utf-8")
+    installer_readme = INSTALLER_README.read_text(encoding="utf-8")
+
+    # A stock tablet has no sunuefi_esp/sunuefi_root. The top-level README
+    # previously called the one-click installer a three-step first install,
+    # which sends users straight to a script that must reject their device.
+    for required in ("原始或全新 GPT/UFS 设备不能直接运行一键脚本",
+                     "docs/installation.md#四-从原始-gptufs-开始的首次安装",
+                     "Android 当前槽位必须是 A",
+                     "build-bundle", "deploy-bundle", "prepare-install",
+                     "root-install"):
+        if required not in readme:
+            failures.append(f"README.md: missing first-install boundary {required!r}")
+    if "三步极速刷机" in readme:
+        failures.append("README.md: still presents the one-click installer as a stock-device install")
+    if "资产文件名以 `scripts/package-release-bundle.sh`" in readme:
+        failures.append("README.md: still names the legacy packager as the release authority")
+
+    # The ZIP README travels without docs/installation.md. Its first screen must
+    # therefore state the partition prerequisite instead of only saying "flash".
+    for required in ("THIS INSTALLER DOES NOT PARTITION A STOCK TABLET.",
+                     "sunuefi_esp and sunuefi_root",
+                     "follow docs/installation.md section 4 first",
+                     "Android must remain on\nSlot A",
+                     'must be "a" for this first-install path',
+                     "partition-size:sunuefi_root",
+                     "expanded_bytes"):
+        if required not in installer_readme:
+            failures.append(f"README-INSTALL.txt: missing first-install boundary {required!r}")
 
     # The architecture diagram and install steps must not claim dtbo_b is erased.
     for bad in ("已清空", "擦除冗余 DTBO"):
@@ -122,11 +151,16 @@ def check_docs():
     for token in required:
         if token not in doc:
             failures.append(f"docs/installation.md: manual-flash chapter missing {token!r}")
+    for name in ("flash-linux.sh", "flash-linux.bat", "README-INSTALL.txt"):
+        text = (ROOT / "scripts/installer" / name).read_text(encoding="utf-8")
+        if "pianoroot.f2fs.sparse.img" not in text:
+            failures.append(f"{name}: first install does not require the prepared sparse root")
+        if "pianoroot-fedora44-gnome-f2fs.img" in text:
+            failures.append(f"{name}: still accepts the sealed non-resized root")
 
     # The shipped README may name the erase command in a "never run this"
     # warning, so only flag it when it appears as a bare command line.
-    readme = INSTALLER_README.read_text(encoding="utf-8")
-    for lineno, line in enumerate(readme.splitlines(), 1):
+    for lineno, line in enumerate(installer_readme.splitlines(), 1):
         if line.strip().startswith("fastboot erase dtbo_b"):
             failures.append(
                 f"scripts/installer/README-INSTALL.txt:{lineno}: instructs 'fastboot erase dtbo_b'")

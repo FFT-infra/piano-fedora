@@ -7,6 +7,7 @@
 
 import importlib.util
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -148,6 +149,44 @@ def test_cli_writes_output_key_and_prints_run_id():
             os.environ.update(previous_env)
 
 
+def test_every_resolved_workflow_is_registered_on_default_branch():
+    """workflow_dispatch only appears for workflows that exist on main.
+
+    A release job cannot request build-piano-rpms.yml directly while that file
+    exists only on the PR branch: GitHub returns 404 and the first release step
+    fails. Reusable workflows must be invoked from a workflow registered on the
+    default branch, and downstream artifact lookups must name that registered
+    workflow.
+    """
+    default = {"host-check.yml", "build-kernel.yml", "build-device-runtime.yml",
+               "build-mesa.yml", "build-rootfs.yml", "build-image.yml",
+               "build-uefi.yml", "build-bundle.yml", "prepare-install.yml",
+               "package-install.yml", "build-ffmpeg.yml", "verify-f2fs.yml"}
+    reusable = {"build-ffmpeg.yml", "build-piano-rpms.yml", "package-install.yml"}
+    failures = []
+    for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
+        text = path.read_text()
+        for workflow in set(re.findall(
+                r"resolve-artifact-run\.py[^\n]*(?:\\\n[^\n]*)*?--workflow\s+([A-Za-z0-9_.-]+\.yml)",
+                text)):
+            if workflow not in default:
+                failures.append(f"{path.name} resolves unregistered workflow {workflow}")
+    host = (ROOT / ".github/workflows/host-check.yml").read_text()
+    if "uses: ./.github/workflows/build-piano-rpms.yml" not in host:
+        failures.append("host-check.yml does not invoke the reusable RPM matrix")
+    if "  piano-rpms:\n" not in host:
+        failures.append("host-check.yml has no piano-rpms job for the artifact")
+    rpms = (ROOT / ".github/workflows/build-piano-rpms.yml").read_text()
+    if "workflow_call:" not in rpms:
+        failures.append("build-piano-rpms.yml is not reusable from the registered host-check workflow")
+    rootfs = (ROOT / ".github/workflows/build-rootfs.yml").read_text()
+    resolve_step = rootfs.split("Resolve the exact RPM inputs", 1)[1].split("Install podman", 1)[0]
+    if "--workflow host-check.yml" not in resolve_step or "--workflow build-piano-rpms.yml" in resolve_step:
+        failures.append("build-rootfs.yml must resolve piano-rpms from the registered host-check run")
+    if failures:
+        raise AssertionError("; ".join(failures))
+
+
 def main():
     for check in (test_wrong_workflow_same_artifact_is_rejected,
                   test_explicit_run_id_matching_workflow_returns_str,
@@ -155,7 +194,8 @@ def main():
                   test_explicit_run_id_rejects_failed_run,
                   test_dynamic_selection_skips_wrong_workflow_failed_and_expired,
                   test_dynamic_selection_without_match_raises,
-                  test_cli_writes_output_key_and_prints_run_id):
+                  test_cli_writes_output_key_and_prints_run_id,
+                  test_every_resolved_workflow_is_registered_on_default_branch):
         check()
     print("OK: artifact run resolution binds to the requested workflow and rejects bad inputs")
 

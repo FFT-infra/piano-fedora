@@ -76,8 +76,8 @@
      `fastboot` 命令、SHA256 校验、读回验证与回滚方法。
 
    尚未做到、不得声称的能力：
-   - **没有槽位自动识别**：脚本固定 `fastboot set_active b`，不读取
-     `current-slot` 来决定目标槽位；
+   - **没有动态目标槽位**：脚本固定 `fastboot set_active b`；它只接受
+     Android 当前槽为 `a`，否则在写入前拒绝，不能把 Linux 装到任意槽；
    - **没有完整 GPT 分区表校验**：只检查 `boot_b`/`sunuefi_esp`/`sunuefi_root`
      是否存在及容量下限，不核对分区表 CRC、类型 GUID 或整表布局；
    - **没有首次分区能力**：`sunuefi_esp`/`sunuefi_root` 不存在时脚本直接拒绝，
@@ -154,3 +154,29 @@
 5. **里程碑 5：纯净真机全流程实操与终验（🟡 进行中 / 实机已全部装配）**
    - 实机（Xiaomi Pad 8 Pro / `piano`）已成功部署全部 9 个解耦 RPM 包，硬件 Iris VA-API 硬解、ALSA UCM2 音频、卡尔曼触控滤波与传感器代理全部实机就绪；
    - 待下次真机重启验证 `piano-boot-request-autoconfig.service` 开机首发自愈与盲测全流程。
+
+## 四、发布链的运行入口
+
+PR 分支里的 workflow 不等于 Actions 里可启动的入口。GitHub 只为默认分支
+`main` 上已注册的 workflow 提供 `workflow_dispatch`；只在 PR 分支新增的
+`build-piano-rpms.yml` 在分支状态下查不到 workflow_id。发布链因此统一从
+已经注册的 `host-check` 启动 RPM 矩阵复用作，再由 `build-rootfs` 按
+`host-check.yml` 解析同一次 run 的 `piano-rpms` artifact。
+
+```text
+host-check (build_piano_rpms=true, kernel_run_id=...)
+  └─ build-piano-rpms.yml (workflow_call)
+       └─ piano-rpms
+
+build-rootfs (piano_rpms_run_id=host-check run)
+  └─ /usr/lib/modules/<release> 由 kernel-piano RPM 安装
+
+build-image
+  └─ 核对 rootfs 模块树 == 封存内核 manifest
+
+build-bundle
+  └─ deploy-bundle/sunuefi_esp.img + boot_sunuefi.img
+```
+
+发布验收仍必须使用这一整条链的新产物，并从原始 GPT/UFS 布局重新分区；
+不能沿用 2026-10-19 手工补入两个会话 RPM 的 rootfs。

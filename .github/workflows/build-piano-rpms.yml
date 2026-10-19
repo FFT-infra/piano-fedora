@@ -14,15 +14,43 @@ on:
         description: "Fedora release (must match product.json)"
         required: false
         default: "44"
+  workflow_call:
+    outputs:
+      run_id:
+        description: "Resolved build-kernel run used by this matrix"
+        value: ${{ jobs.rpms.outputs.kernel_run }}
+    inputs:
+      kernel_run_id:
+        description: "Successful build-kernel run with kernel-release-7.2.9 and kernel-sdk-7.2.9"
+        required: true
+        type: string
+      releasever:
+        description: "Fedora release (must match product.json)"
+        required: false
+        type: string
+        default: "44"
 
 permissions:
   contents: read
   actions: read
 
 jobs:
+  inputs:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - name: Require a kernel run when invoked from host-check
+        if: ${{ github.event_name == 'workflow_call' && inputs.kernel_run_id == '' }}
+        run: |
+          echo "kernel_run_id is required when build_piano_rpms=true" >&2
+          exit 2
+
   rpms:
+    needs: inputs
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
+    outputs:
+      kernel_run: ${{ steps.kernel.outputs.run_id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -153,13 +181,20 @@ jobs:
           }, indent=2) + "\n")
           print("OK: built", len(files), "RPMs")
           PY
+          # upload-artifact strips the common parent when multiple paths are
+          # supplied. Stage the repository and its top-level manifest together
+          # so build-rootfs receives both at the documented locations.
+          rm -rf build/piano-rpms-artifact
+          mkdir -p build/piano-rpms-artifact
+          cp -a out/rpms/. build/piano-rpms-artifact/
+          cp piano-rpms-manifest.json build/piano-rpms-artifact/
+          test -f build/piano-rpms-artifact/piano-rpms-manifest.json
+          test -f build/piano-rpms-artifact/repodata/repomd.xml
 
       - uses: actions/upload-artifact@v4
         with:
           name: piano-rpms
-          path: |
-            out/rpms/
-            piano-rpms-manifest.json
+          path: build/piano-rpms-artifact/
           if-no-files-found: error
           retention-days: 14
           compression-level: 0

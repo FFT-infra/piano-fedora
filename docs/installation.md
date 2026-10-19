@@ -47,26 +47,66 @@ Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B �
 
 ---
 
-## 三、 全新纯净安装（跨平台一键刷机，推荐）
+## 三、 已有 Linux 分区的刷写（跨平台一键脚本）
 
-适用于已解锁 BL、已经由 SunUEFI 划分好分区（或需要全自动刷入）的平板。
+适用于已解锁 BL、已经由 `install-f2fs.py apply` 完成首次 GPT 分区并擦除
+userdata，而且 `sunuefi_esp` / `sunuefi_root` 已存在的平板。全新盘不能直接
+跳到一键刷机。真实首次安装的唯一主流程在第四节；本节之前的分区前提不可跳过。
 
 ### 1. 获取 Release 资产
 从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora-test/releases)
 下载最新版本的发行包。注意仓库当前还没有任何 Release 与 tag，该链接暂时是空的；
-发布前请改用仓库内 `out/release-bundle/` 的产物，或先自行运行
-`./scripts/package-release-bundle.sh` 生成。
+发布前请使用 `build-bundle` 下载的完整 deploy-bundle。不要在本地重新打包
+历史 `out/` 目录充当发布资产。
 
 - `piano-installer-*.zip`：一键刷机脚本包（包含 `flash-linux.sh`、`flash-linux.bat`）；
 - `boot_sunuefi.img`：SunUEFI 引导头；
 - `sunuefi_esp.img`：SunUEFI ESP 分区镜像；
-- `pianoroot-fedora44-gnome-f2fs.img.zst`：Fedora 44 根文件系统压缩包；
-- `SHA256SUMS`：校验文件。
+- `pianoroot.f2fs.img.zst`：封存的基础盘，不能直接首装；
+- `root-install/pianoroot.f2fs.sparse.img`：`prepare-install` 按本机容量扩容后的传输镜像；
+- `SHA256SUMS`：deploy-bundle 内 ESP/BOOT 等资产的摘要；
+- `root-install/SHA256SUMS`：root-install 内 sparse 镜像和清单的摘要。
 
-将上述所有文件解压并放置在**同一本地目录**下。
-若 `pianoroot-fedora44-gnome-f2fs.img` 仍为 `.zst` 压缩格式：
-- **Linux / macOS**：运行 `zstd -d pianoroot-fedora44-gnome-f2fs.img.zst`；
-- **Windows**：使用 7-Zip（需支持 Zstd 插件）或 `zstd.exe` 解压出 `.img`。
+首次安装必须先用同一个 deploy-bundle run 跑 `prepare-install.yml`，提供一个
+Ed25519 公钥，并把 Android 槽位固定为 `_a`，取得 `root-install`。它的 sparse
+镜像已经扩到真实 `sunuefi_root` 容量、写入设备配置并恢复 SELinux 标签。
+
+准备一个空的安装暂存目录（下面记为 `piano-install/`），完整复制材料，
+不要从不同 run 各取一部分：
+
+1. 解压 `piano-installer-*.zip` 到该目录；
+2. 完整解压同一 run 的 `deploy-bundle/` 到同一层，保留其中全部普通文件；
+3. 完整解压同一 deploy-bundle run 派生的 `root-install/` 到该目录下；
+4. 不要把两个 artifact 的 `SHA256SUMS` 合并、改名或重新生成。
+
+最终目录必须长这样：
+
+```text
+piano-install/
+├── flash-linux.sh
+├── flash-linux.bat
+├── README-INSTALL.txt
+├── boot_sunuefi.img
+├── sunuefi_esp.img
+├── SHA256SUMS
+├── bundle-manifest.json
+├── root-image-manifest.json
+└── root-install/
+    ├── pianoroot.f2fs.sparse.img
+    ├── root-install-manifest.json
+    └── SHA256SUMS
+```
+
+脚本以当前工作目录为暂存目录。deploy-bundle 的 `SHA256SUMS` 覆盖该
+artifact 的全部文件，`root-install/SHA256SUMS` 覆盖 sparse root 和
+root-install manifest；脚本再核对 root-install 里的 bundle/root 清单摘要
+确实属于当前 deploy-bundle。只复制某几个文件会让清单校验失去意义。
+
+这里的一键脚本前提是分区已经由 `install-f2fs.py apply` 建立。原始机器只有
+Android 的 `userdata`，没有 `sunuefi_esp` / `sunuefi_root`；脚本会拒绝，必须
+先走第四节的首次分区流程。分区的清空是首次安装的破坏性步骤，不能由这个
+刷写脚本代替。脚本固定把 Linux 写到 Slot B，因此运行前 Android 必须仍在
+Slot A；如果当前槽是 B，脚本会在任何写入前拒绝。
 
 ### 2. 进入 Fastboot 模式
 1. 将平板完全关机；
@@ -74,6 +114,12 @@ Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B �
 3. 使用原装或高质量 USB-C 数据线将平板连接至电脑。
 
 ### 3. 执行一键刷机
+先进入前面的暂存目录：
+
+```bash
+cd piano-install
+```
+
 - **Linux / macOS 主机**：
   ```bash
   chmod +x flash-linux.sh
@@ -85,13 +131,14 @@ Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B �
 刷机脚本将全自动执行以下动作：
 1. 自动检查 `fastboot` 环境与设备在线状态；
 2. 校验设备产品代号确为 `piano`，避免误刷；
-3. 根据 `SHA256SUMS` 校验各镜像文件完整性；
+3. 分别按 deploy-bundle 的 `SHA256SUMS` 和 `root-install/SHA256SUMS`
+   校验 BOOT/ESP 与 sparse root；
 4. 弹出醒目安全告知，要求用户在终端输入大写 `YES` 确认；
 5. 执行标准刷写序列：
    - 切换活动槽位至 B：`fastboot set_active b`
    - 刷入引导头：`fastboot flash boot_b boot_sunuefi.img`
    - 刷入 ESP 分区：`fastboot flash sunuefi_esp sunuefi_esp.img`
-   - 刷入系统根分区：`fastboot flash sunuefi_root pianoroot-fedora44-gnome-f2fs.img`
+   - 刷入系统根分区：`fastboot flash sunuefi_root pianoroot.f2fs.sparse.img`
    - 自动重启：`fastboot reboot`
 
    脚本不写 `dtbo_b`、`init_boot_b`、`vendor_boot_b`、`vbmeta_b`，也不擦除
@@ -107,43 +154,44 @@ Xiaomi Pad 8 Pro 拥有极速的 UFS 4.0 物理闪存，采用现代高通 A/B �
 ### 1. 从 Release 取哪些文件
 
 从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora-test/releases)
-下载发行包（Release 尚未发布时改用仓库内 `out/release-bundle/`），只需要下面
-这些资产：
+下载发行包；Release 尚未发布时，使用同一次成功 `build-bundle` run 下载的
+完整 `deploy-bundle` 与 `prepare-install` run 下载的 `root-install`，不要使用
+历史 `out/` 目录拼装。手动刷机至少需要下面这些资产：
 
 | Release 资产 | 用途 | 刷到哪 |
 | --- | --- | --- |
 | `boot_sunuefi.img` | SunUEFI 链式引导头 | `boot_b` |
 | `sunuefi_esp.img` | ESP 分区镜像（固件核心、DTB、内核、initramfs） | `sunuefi_esp` |
-| `pianoroot-fedora44-gnome-f2fs.img.zst` | Fedora 44 GNOME 根文件系统（压缩） | `sunuefi_root` |
-| `SHA256SUMS` | 全部资产的 SHA256 清单 | 不刷入，只用于校验 |
+| `root-install/pianoroot.f2fs.sparse.img` | `prepare-install` 扩容并配置后的根文件系统稀疏镜像 | `sunuefi_root` |
+| `SHA256SUMS` | deploy-bundle 内 BOOT/ESP 等资产的 SHA256 清单 | 不刷入，只用于校验 |
+| `root-install/SHA256SUMS` | root-install 内 sparse 镜像与 manifest 的 SHA256 清单 | 不刷入，只用于校验 |
 
 `piano-installer-*.zip` 和 `piano-switch-ksu-*.zip` 是给一键脚本和 Android 侧
-切换模块用的，手动刷机不需要。`.zst` 要先用 `zstd -d` 展开成 `.img` 再刷。
+切换模块用的，手动刷机不需要。不要把 deploy-bundle 里的
+`pianoroot.f2fs.img.zst` 解压后直接刷；它不是按本机 `sunuefi_root` 容量派生的。
 
 ### 2. 校验下载到的文件
 
-在存放这些文件的目录里执行（macOS 把 `sha256sum` 换成 `shasum -a 256`）：
+在 `piano-install/` 暂存目录执行（macOS 把 `sha256sum` 换成
+`shasum -a 256`）：
 
 ```sh
 sha256sum -c SHA256SUMS
+(cd root-install && sha256sum -c SHA256SUMS)
 ```
 
-清单里的路径写成 `./name`，所以必须在文件所在目录执行。清单覆盖发布包里
-**全部**资产（含一键脚本与 Android 切换模块），而手动刷机只下载其中三个；
-因此没下载的那几行会报 `No such file or directory`，这是正常的，不是损坏。
-需要关心的是：
-
-* `boot_sunuefi.img`、`sunuefi_esp.img`、
-  `pianoroot-fedora44-gnome-f2fs.img.zst` 三行必须是 `OK`；
-* 任何一行出现 `FAILED`，说明该文件损坏，重新下载，不要继续。
+两份清单属于两个独立 artifact。任意一行 `FAILED` 都停止，不要继续刷新
+合并后的假清单。
 
 手动核对单个文件（只查要用到的三个，不受其它行影响）：
 
 ```sh
-sha256sum boot_sunuefi.img sunuefi_esp.img pianoroot-fedora44-gnome-f2fs.img.zst
+sha256sum boot_sunuefi.img sunuefi_esp.img
+(cd root-install && sha256sum pianoroot.f2fs.sparse.img)
 ```
 
-把输出与 `SHA256SUMS` 里对应的三行逐一比对，三组哈希都必须一致。
+把 BOOT/ESP 输出与 deploy-bundle 的 `SHA256SUMS` 比对，把 sparse root
+输出与 root-install 的 `SHA256SUMS` 比对，三组哈希都必须一致。
 
 ### 3. 确认设备和槽位
 
@@ -152,13 +200,21 @@ sha256sum boot_sunuefi.img sunuefi_esp.img pianoroot-fedora44-gnome-f2fs.img.zst
 ```sh
 fastboot devices
 fastboot getvar product        # 必须是 piano
-fastboot getvar current-slot   # 记下当前槽位，回滚时要用
+fastboot getvar current-slot   # 必须是 a；Linux 固定写到 Slot B
 fastboot getvar unlocked       # 必须是 yes
 fastboot getvar is-userspace   # 必须是 no
 ```
 
 `product` 不是 `piano`、`unlocked` 不是 `yes`、或 `is-userspace` 是 `yes`
 （说明落在 fastbootd 而不是原厂 ABL）时，停下，不要写任何分区。
+`current-slot` 必须是 `a`；如果是 `b`，一键脚本会拒绝，手动流程也必须停止，
+不能把 Linux 写到正在承载 Android 的 `boot_b`。
+
+手动路径同样只接受同一条新流水线产出的材料：完整 `deploy-bundle`，以及
+由该精确 bundle run 派生、`android_slot` 为 `_a` 的 `root-install`。刷写前
+读取 `fastboot getvar partition-size:sunuefi_root`，把返回的十六进制容量
+换算为字节后，必须与 `root-install-manifest.json` 的 `expanded_bytes`
+完全相等；容量不一致就停止。
 
 ### 4. 逐条刷写
 
@@ -166,19 +222,16 @@ fastboot getvar is-userspace   # 必须是 no
 # 1. 切到 B 槽（Android 保留在 A 槽）
 fastboot set_active b
 
-# 2. 展开根文件系统（只做一次）
-zstd -d pianoroot-fedora44-gnome-f2fs.img.zst
-
-# 3. 引导头 -> boot_b
+# 2. 引导头 -> boot_b
 fastboot flash boot_b boot_sunuefi.img
 
-# 4. ESP -> sunuefi_esp
+# 3. ESP -> sunuefi_esp
 fastboot flash sunuefi_esp sunuefi_esp.img
 
-# 5. 根文件系统 -> sunuefi_root（约 2 GiB，需要几分钟）
-fastboot flash sunuefi_root pianoroot-fedora44-gnome-f2fs.img
+# 4. 根文件系统 -> sunuefi_root（sparse 只传有效块，需要几分钟）
+fastboot flash sunuefi_root root-install/pianoroot.f2fs.sparse.img
 
-# 6. 重启进系统
+# 5. 重启进系统
 fastboot reboot
 ```
 
@@ -237,9 +290,9 @@ ls /usr/lib/modules/
 如果 `/usr/lib/modules/` 下没有同名目录，说明 rootfs 与 ESP 的内核不是一套，
 系统能起来但没有任何驱动。
 
-能进入 GNOME 桌面是刷写成功的最直接证据。以上读回与启动后检查在本文档定稿时
-**尚未在真机上完整执行**（当时设备停在 Fastboot），只作为流程定义，不能当作
-已验收证据。
+能进入 GNOME 桌面是刷写成功的最直接证据。以上读回与启动后检查必须在从原始
+GPT/UFS 重新分区的这台设备上执行；构建成功、热修复启动或历史资产启动都不能
+当作 PR 验收证据。
 
 ### 6. 回滚到 Android
 
@@ -255,7 +308,7 @@ fastboot reboot
 
 ---
 
-## 四、 首次安装与底层分区规划（进阶）
+## 四、 从原始 GPT/UFS 开始的首次安装
 
 安装材料由 `prepare-install.yml` 生成，实际操作由连接平板的 Linux 主机执行。
 Actions 不连接平板。构建成功、传输成功、Linux 启动成功分别记录。
@@ -320,7 +373,8 @@ sparse 文件使用 RAW 与显式零 FILL，不使用 DONT_CARE；其完整展�
 
 ## Actions 材料
 
-手动运行 `prepare-install`，选择完整 deploy-bundle 的 run、当前 Android 槽位，
+手动运行 `prepare-install`，选择完整 deploy-bundle 的 run、首装固定为
+`android_slot=_a`，
 并提供本次安装管理用的 Ed25519 公钥。Linux 容量留空时使用 `product.json`。
 私钥不传入 Actions。三个 artifact 分别为：
 
@@ -349,23 +403,143 @@ BOOТ 准备使用 Actions 提供的宿主工具。
 
 ## 实际首次安装
 
-使用 `python3 scripts/install-f2fs.py --help` 查看入口。默认 `plan` 只读设备并
-记录身份、完整 GPT 基线、当前原 BOOT 与三个输入包的身份。
-`apply` 必须显式指定 `--execute --accept-data-loss`、已复核计划和新的会话目录。
+以下命令是 PR 真机验收的唯一主流程。所有材料必须来自同一条新流水线，
+当前已经启动的 GNOME、历史镜像和热修复都不算通过。
 
-执行顺序为：
+### 1. 固定本次流水线与设备身份
 
-1. 重新读取设备，确认计划、槽位、原 BOOT 和输入包未变，保存原 GPT/BOOT 恢复材料。
-2. 临时 UEFI 和 Android 旁路必须另做并保留本次设备证据；首次安装器本身没有执行这两项，记录保持未验证，不继承历史试验。
-3. 使用 Android 已有 sgdisk 写入按完整二进制 GPT 生成的布局，读回两份 header/table
-   并验证 CRC、所有分区记录和固定 Android 分区字节。
-4. 进入原厂 Fastboot，确认新 userdata/root/ESP 容量；擦除 userdata，再传输 ESP、
-   F2FS sparse 和当前槽的 Android 默认合体 BOOT。
-5. 保持 Fastboot，记录 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。传输成功不能写成
-   文件系统读回成功、Android 初始化成功或 Linux 启动成功。
+记录以下 ID，后续每一步都核对它们不变：
 
-Android 的 userdata 重建使用该 ROM 自身的 fs_mgr；计划阶段必须确认其 `/data`
-条目具有 formattable 合同。不能直接在宿主格式化 Android 的加密映射。
+```text
+build-kernel run
+host-check / build-piano-rpms run
+build-rootfs run
+build-image run
+build-bundle run（deploy-bundle）
+prepare-install run（root-install，bundle_run 必须等于上面的 build-bundle run）
+```
+
+平板先完整启动到 Android，开启 USB 调试并确认 `sys.boot_completed=1`：
+
+```sh
+adb devices -l
+adb -s <serial> shell getprop sys.boot_completed
+adb -s <serial> shell getprop ro.boot.slot_suffix
+```
+
+序列号、槽位、原 BOOT 摘要和完整 GPT 基线必须写入本次安装会话。设备不是
+`piano`、Bootloader 未解锁、`sys.boot_completed` 不是 `1`，全部停止。
+
+### 2. 生成并复核 BOOT 与首次分区计划
+
+使用 `prepare-install` 产出的 `boot-tools`、`host-boot-tool` 和当前原 BOOT：
+
+```sh
+# 先记录当前原厂 BOOT 的完整摘要；下面两处必须使用同一个值。
+fastboot getvar current-slot
+fastboot fetch boot_a stock-recovery/boot.img
+sha256sum stock-recovery/boot.img
+
+python3 boot-tools/installer/scripts/prepare-device-boot.py \
+  --stock-boot stock-recovery/boot.img \
+  --boot-tools boot-tools \
+  --host-tool host-boot-tool \
+  --bundle deploy-bundle \
+  --slot _a \
+  --source-sha256 <current-boot-sha256> \
+  --output device-boot
+
+python3 boot-tools/installer/scripts/install-f2fs.py plan \
+  --sunuefi boot-tools/installer/sunuefi \
+  --serial <serial> \
+  --bundle deploy-bundle \
+  --root-install root-install \
+  --device-boot device-boot \
+  --stock-boot stock-recovery/boot.img \
+  --plan first-install-plan.json
+```
+
+`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT
+基线、原 BOOT 摘要、输入包摘要和 Linux root 容量；任何一项与现场不一致就停止。
+同时确认设备当前槽位是 `a`，且 `root-install-manifest.json` 的顶层
+`android_slot` 是 `_a`。首装不能用 `_b`：一键脚本会固定写 `boot_b`，那会
+覆盖 Android 的唯一启动路径。
+
+`device-boot/boot-request.json` 必须记录首装 Android 所在的
+`/dev/disk/by-partlabel/boot_a`，其 `app_generation` 必须与
+`deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。请求页写在
+`boot_a` 的合体 BOOT 内，Linux 启动镜像才写入 `boot_b`；不要把请求配置
+改成 `boot_b`。`root-install` 已在 `etc/piano/boot-request.json` 写入同一份
+配置，首启后也不要猜测设备名或改槽。否则 Linux 的“返回 Android”和后续
+启动请求会失败。
+
+### 3. 执行破坏性首次分区并初始化 Android userdata
+
+确认已备份 Android 数据后，使用新的会话目录执行：
+
+```sh
+python3 boot-tools/installer/scripts/install-f2fs.py apply \
+  --sunuefi boot-tools/installer/sunuefi \
+  --serial <serial> \
+  --bundle deploy-bundle \
+  --root-install root-install \
+  --device-boot device-boot \
+  --stock-boot stock-recovery/boot.img \
+  --plan first-install-plan.json \
+  --session first-install-session \
+  --execute --accept-data-loss
+```
+
+执行器会重新读取设备、保存原 GPT/BOOT、写入并读回完整 GPT、显式执行
+`fastboot erase userdata`，然后传输 ESP、F2FS sparse root 和当前槽的 Android
+默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
+
+此时 Linux 还没有启动，`apply` 结束时设备仍停在原厂 Fastboot。先断开 USB
+并执行一次普通重启，让设备按当前槽启动 Android：
+
+```sh
+fastboot reboot
+```
+
+等首次开机完成、`adb shell getprop sys.boot_completed` 返回 `1`。这是让
+Android 在缩短后的分区上重建加密 userdata 的必要步骤；不能在宿主格式化为
+Android 加密分区，也不能跳过。
+
+### 4. 回到 Fastboot 并刷入 Linux
+
+Android 首次初始化完成后关机，按【电源键 + 音量减键】进入原厂 Fastboot。
+确认 `current-slot` 是 `a`，且 root-install 的 `android_slot` 是 `_a`，然后运行：
+
+```sh
+chmod +x flash-linux.sh
+./flash-linux.sh
+```
+
+脚本会校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、
+槽位和 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量，只写 `boot_b`、
+`sunuefi_esp`、`sunuefi_root`，并拒绝 fastbootd、错误产品、多个设备和不完整
+材料。首装路径拒绝 `--skip-checksum`：两份摘要、provenance、槽位和容量都必须在
+第一笔写入前完成。完成后设备重启到 Slot B。Windows 脚本要求 PowerShell 5
+或更高版本，因为槽位和容量核对使用了 `ConvertFrom-Json`。
+
+### 5. 完成 PR 真机验收
+
+以下五项全部通过后，才可以把 PR 标为设备验收通过：
+
+1. 同一次新流水线产出的 `deploy-bundle` 和 `root-install` 已记录 run ID 与摘要。
+2. 从原始 GPT/UFS 开始完成首次分区、显式擦除 userdata、Android 首次开机。
+3. Slot B 冷启动进入 GNOME 桌面，不是热修复或历史镜像启动。
+4. 完整重启一次后仍能进入 GNOME，且 `systemctl --failed` 为空。
+5. Android→Linux、Linux→Android 和原厂 Recovery 均完成，保存屏幕、命令输出、
+   `uname -r`、`/usr/lib/modules/`、F2FS 挂载与分区容量证据。
+
+任一项失败都不能写成“设备验收通过”；构建或离线测试通过只能记为 CI 证据。
+
+`fastboot erase userdata` 是首次安装的必经写入，不能省略。`plan` 仍会检查
+`/data` 的 formattable 合同，但 AOSP `fs_mgr` 只在 `wiped` 或元数据加密关闭
+且 `!is_fs_valid` 时自动格式化；GPT 缩短本身不会清掉旧 F2FS 超级块。因此
+执行器必须显式擦除，随后第一次启动 Android，让它重建加密 userdata 并完成
+首次开机。不能直接在宿主格式化 Android 的加密映射。
 
 会话的 result.json 记录每个已完成阶段和错误。GPT 写入或擦除后发生中断时，
 先看记录与实际设备状态，不自动重试、恢复旧 GPT 或启动 Android。

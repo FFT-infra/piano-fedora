@@ -62,9 +62,9 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     write = lambda name, value: (root / name).write_text(json.dumps(value))
     raw = b"verified fixture raw bytes"
-    for name in ("esp.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst"):
+    for name in ("sunuefi_esp.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst"):
         (root / name).write_bytes(b"fixture")
-    (root / "boot.img").write_bytes(b"ANDROID!fixture")
+    (root / "boot_sunuefi.img").write_bytes(b"ANDROID!fixture")
     write("kernel-manifest.json", {"kernel_release": "fixture"})
     kernel = digest(root / "kernel-manifest.json")
     identity = {"kernel_release": "fixture", "kernel_manifest_sha256": kernel}
@@ -77,10 +77,18 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
                                                 "hevc_v4l2m2m": " V..... hevc_v4l2m2m"}})
     write("rootfs-manifest.json", {**identity, **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
                                                 for name in ("runtime", "mesa", "ffmpeg")}})
+    # esp-manifest.json is produced upstream and keeps its internal esp.img /
+    # boot.img keys; verify-bundle maps them to the release asset names.
     write("esp-manifest.json", {"kernel_manifest_sha256": kernel,
           "esp_files": ["/EFI/Piano/stable/" + name for name in ("Image", "board.dtb", "initramfs", "boot.img")],
-          "files": {name: {"sha256": digest(root / name), "bytes": (root / name).stat().st_size}
-                    for name in ("esp.img", "boot.img", "PianoUEFI-product.img")}})
+          "files": {
+              "esp.img": {"sha256": digest(root / "sunuefi_esp.img"),
+                           "bytes": (root / "sunuefi_esp.img").stat().st_size},
+              "boot.img": {"sha256": digest(root / "boot_sunuefi.img"),
+                            "bytes": (root / "boot_sunuefi.img").stat().st_size},
+              "PianoUEFI-product.img": {"sha256": digest(root / "PianoUEFI-product.img"),
+                                         "bytes": (root / "PianoUEFI-product.img").stat().st_size},
+          }})
     proof = {key: True for key in ("file_content_checked", "numeric_owner_checked", "mode_checked", "symlink_targets_checked",
                                    "hardlink_groups_checked", "mtime_checked", "xattr_checked", "fsck_read_only", "fsck_ran_unmounted")}
     proof.update(fsck_exit=0, fsck_changed_image=False, xattr_read_errors_ignored=False, selinux_labels=1)
@@ -350,6 +358,39 @@ def check_bundle_kernel_resolution(root):
     assert result.returncode != 0, "bundle accepted an out-of-allowlist kernel_artifact"
 
 
+def check_bundle_image_binding(root):
+    """The image manifest must identify the exact build-image run being bundled."""
+    root.mkdir(parents=True)
+    image = root / "build/in/image"
+    image.mkdir(parents=True)
+    record = {
+        "kernel_run": "7001",
+        "rootfs_run": "7002",
+        "runtime_run": "7003",
+        "mesa_run": "7004",
+        "ffmpeg_run": "7005",
+        "image_run": "7100",
+        "image_source_commit": "1" * 40,
+    }
+    (image / "source-runs.json").write_text(json.dumps(record))
+    output = root / "github-output"
+    output.write_text("")
+    env = {**os.environ, "ROOT_RUN": "7100", "GITHUB_OUTPUT": str(output)}
+    result = subprocess.run(
+        ["/bin/bash", "-euo", "pipefail", "-c",
+         step_body(".github/workflows/build-bundle.yml",
+                   "Require one integrated image source record")],
+        cwd=root, env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    env["ROOT_RUN"] = "7199"
+    result = subprocess.run(
+        ["/bin/bash", "-euo", "pipefail", "-c",
+         step_body(".github/workflows/build-bundle.yml",
+                   "Require one integrated image source record")],
+        cwd=root, env=env, capture_output=True, text=True)
+    assert result.returncode != 0, "bundle accepted an image record from another run"
+
+
 def check_kernel_unpack(root):
     """实际跑 unpack step：相邻 SDK 归档不能被 glob 解进 build/kernel。"""
     root.mkdir()
@@ -411,7 +452,33 @@ def check_clean_rootfs_release_entry():
     assert 'record["audit"]["selinux_labels"] > 0' in image
     assert 'assert mode == "enforcing"' in image
     assert 'assert not (root / ".autorelabel").exists()' in image
-    assert "the sealed kernel payload is staged after this audit" in image
+    assert "kernel-piano owns the module tree" in image
+    assert "the clean rootfs must carry exactly the kernel-piano module" in image
+    assert '"kernel-piano"' in image
+    assert '["rpm", "--root", str(root), "-qf",' in image
+    assert 'local.get("kernel_run") == os.environ["KERNEL_RUN"]' in image
+    assert 'record["audit"]["kernel_release"] == kernel["kernel_release"]' in image
+    assert '"kernel_run": kernel_run' in rootfs
+
+
+def check_bundle_asset_names():
+    """deploy-bundle、安装器与文档必须共用一套发布文件名。"""
+    bundle = (ROOT / ".github/workflows/build-bundle.yml").read_text()
+    verifier = (ROOT / "scripts/verify-bundle.py").read_text()
+    installer = (ROOT / "scripts/install-f2fs.py").read_text()
+    updater = (ROOT / "scripts/update-f2fs.py").read_text()
+    for name in ("sunuefi_esp.img", "boot_sunuefi.img"):
+        assert f"bundle/{name}" in bundle, f"build-bundle does not emit {name}"
+        assert name in verifier, f"verify-bundle does not require {name}"
+        assert name in installer, f"first-install installer does not read {name}"
+        assert name in (ROOT / "docs/artifacts.md").read_text(), f"artifact docs omit {name}"
+        assert name in (ROOT / "docs/installation.md").read_text(), f"install docs omit {name}"
+    assert "test ! -e bundle/esp.img" in bundle
+    assert "test ! -e bundle/boot.img" in bundle
+    assert 'bundle / "boot_sunuefi.img"' in updater
+    assert 'bundle / "sunuefi_esp.img"' in updater
+    assert 'bundle / "esp.img"' not in installer
+    assert 'bundle / "boot.img"' not in updater
 
 
 def check_uefi_sealer(root):
@@ -461,8 +528,10 @@ def main():
         check_uefi_sealer(root / "uefi-source")
         check_image_kernel_tiers(root / "tiers")
         check_bundle_kernel_resolution(root / "bundle-kernel")
+        check_bundle_image_binding(root / "bundle-image-binding")
         check_kernel_unpack(root / "unpack")
         check_clean_rootfs_release_entry()
+        check_bundle_asset_names()
     print("OK: audited rootfs entry, A830v1 device tables and sealed bundle identity checks")
 
 

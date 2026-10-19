@@ -60,7 +60,7 @@ def main():
         image[:8] = b"ANDROID!"
         for offset, value in ((8, 64), (16, 0), (24, 0), (36, 4096), (40, 2), (1632, 0), (1648, len(linux))):
             struct.pack_into("<I", image, offset, value)
-        path = folder / "boot.img"
+        path = folder / "boot_sunuefi.img"
         path.write_bytes(image)
         assert update._linux_dtb(folder) == linux
         for offset, value in ((40, 4), (36, 2048), (1632, 4096), (1648, len(image))):

@@ -583,6 +583,57 @@ def verify_ffmpeg_install(root, ffmpeg):
         raise ValueError("installed ffmpeg lacks the v4l2m2m decoders: " + repr(sorted(present)))
 
 
+def verify_kernel_install(root, kernel):
+    """Prove the installed kernel-piano tree is the exact sealed kernel input.
+
+    kernel-piano is installed in the clean DNF transaction. The sealed kernel
+    artifact is downloaded separately, so matching release strings alone are
+    insufficient: two runs can share a release while carrying different
+    modules. Compare every kernel-owned module and index byte. The ABI-matched
+    v4l2loopback module from piano-runtime lives under updates/ and is checked
+    separately below against the runtime manifest.
+    """
+    record, _ = inspect_kernel(kernel)
+    release = record["kernel_release"]
+    installed = root / "usr/lib/modules" / release
+    if not installed.is_dir():
+        raise ValueError("kernel-piano did not install the sealed kernel release: " + release)
+    expected = {row["path"].split(f"lib/modules/{release}/", 1)[1]: row
+                for row in record["modules"]}
+    actual = {}
+    for path in installed.rglob("*"):
+        relative = path.relative_to(installed).as_posix()
+        if path.is_symlink():
+            if relative in ("build", "source") or relative.startswith(("build/", "source/")):
+                continue
+            raise ValueError("installed kernel tree contains an unexpected symlink: " + relative)
+        if relative.startswith("updates/"):
+            continue
+        if not path.is_file():
+            continue
+        actual[relative] = path
+    expected_paths = set(expected) | {
+        relative.split(f"lib/modules/{release}/", 1)[1]
+        for relative in record["module_summary"]["index_sha256"]
+    }
+    if set(actual) != expected_paths:
+        missing = sorted(expected_paths - set(actual))
+        extra = sorted(set(actual) - expected_paths)
+        raise ValueError("installed kernel payload file set differs from the sealed artifact: "
+                         f"missing={missing[:5]} extra={extra[:5]}")
+    for name, row in expected.items():
+        if sha256(actual[name]) != row["sha256"]:
+            raise ValueError("installed kernel module differs from sealed artifact: " + name)
+    indexes = record["module_summary"]["index_sha256"]
+    for relative, digest in indexes.items():
+        name = relative.split(f"lib/modules/{release}/", 1)[1]
+        path = installed / name
+        if not path.is_file() or sha256(path) != digest:
+            raise ValueError("installed kernel index differs from sealed artifact: " + name)
+    return {"kernel_release": release, "module_count": len(expected),
+            "kernel_manifest_sha256": sha256(kernel / "manifest.json")}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     for name in ("rootfs", "kernel", "runtime", "mesa", "ffmpeg", "output"):
@@ -612,6 +663,7 @@ def main():
             raise ValueError("installed A830v1 driver differs: " + relative)
     ffmpeg_dir = args.ffmpeg.resolve()
     verify_ffmpeg_install(root, json.loads((ffmpeg_dir / "manifest.json").read_text()))
+    kernel_install = verify_kernel_install(root, kernel)
     for row in m["modules"]:
         path = root / "usr" / row["path"]
         if sha256(path) != row["sha256"]:
@@ -715,6 +767,7 @@ def main():
               "root_fstype": "f2fs", "runtime_manifest_sha256": sha256(runtime / "manifest.json"),
               "mesa_manifest_sha256": sha256(mesa_dir / "manifest.json"),
               "ffmpeg_manifest_sha256": sha256(ffmpeg_dir / "manifest.json"),
+              "kernel_install_verified": kernel_install,
               "packages_sha256": sha256(output / "packages.tsv"), "enabled_services": services,
               "login": (f"{DEFAULT_PIANO_LOGIN} autologin; documented default password set; "
                         "root locked; no NOPASSWD"),

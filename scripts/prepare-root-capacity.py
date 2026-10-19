@@ -197,6 +197,11 @@ def main():
     require(decoded["expanded_sha256"] == proof["expanded_sha256"] and
             decoded["expanded_bytes"] == proof["expanded_bytes"], "sparse transport differs from verified F2FS bytes")
     record = {"schema_version": 1, "status": "ROOT_CAPACITY_VERIFIED_NOT_DEVICE_VERIFIED",
+              # The flash scripts compare the selected root-install's slot with
+              # the bootloader's current-slot before the first write. Keep this
+              # top-level field stable and available even when older manifests
+              # are inspected by the shell installer.
+              "android_slot": device_config["android_slot"] if device_config else None,
               "source_root_sha256": root_meta["sha256"],
               "source_bundle_manifest_sha256": sha256(bundle / "bundle-manifest.json"),
               "source_root_manifest_sha256": sha256(bundle / "root-image-manifest.json"),

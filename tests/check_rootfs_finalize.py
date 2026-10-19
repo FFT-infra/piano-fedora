@@ -409,8 +409,31 @@ def main():
             pass
         else:
             raise AssertionError("missing FastRPC daemon accepted")
+        check_kernel_install(root / "kernel-install-fixture")
     print("OK: manuals pruned, launcher normalized, runtime guards, debug handoff, "
-          "device hardware fixes and default login password preserved")
+          "kernel payload, device hardware fixes and default login password preserved")
+
+
+def check_kernel_install(root):
+    """kernel-piano 的 DNF 模块树必须逐字节等于本次封存内核。"""
+    sys.path.insert(0, str(ROOT / "tests"))
+    from kernel_fixture import make_kernel
+    root.mkdir()
+    kernel = make_kernel(root / "kernel", "7.2.9-fixture")
+    release = "7.2.9-fixture"
+    installed = root / "rootfs/usr/lib/modules" / release
+    shutil.copytree(kernel / "modules/lib/modules" / release, installed)
+    proof = finalizer.verify_kernel_install(root / "rootfs", kernel)
+    assert proof == {"kernel_release": release, "module_count": 5,
+                     "kernel_manifest_sha256": finalizer.sha256(kernel / "manifest.json")}, proof
+    changed = next(installed.rglob("*.ko"))
+    changed.write_bytes(changed.read_bytes() + b"drift")
+    try:
+        finalizer.verify_kernel_install(root / "rootfs", kernel)
+    except ValueError as error:
+        assert "module differs" in str(error), error
+    else:
+        raise AssertionError("a same-release kernel module tree with different bytes was accepted")
 
 
 def check_piano_hardware_fixes(root):

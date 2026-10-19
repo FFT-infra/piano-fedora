@@ -7,16 +7,16 @@ on:
       bundle_run:
         description: "已成功且完整验证的 deploy-bundle run"
         required: true
-        default: "38020941586"
+        default: ""
       root_size_mib:
         description: "Linux root MiB（留空使用 product.json 中已核对的容量）"
         required: false
         default: ""
       android_slot:
-        description: "当前 Android 槽位"
+        description: "Android 槽位（首装固定 _a；已有分区更新可用 _b）"
         type: choice
-        options: ["_b", "_a"]
-        default: "_b"
+        options: ["_a", "_b"]
+        default: "_a"
       ssh_public_key:
         description: "本次设备管理用 Ed25519 公钥（只接受公钥）"
         required: true
@@ -38,6 +38,19 @@ jobs:
           sudo apt-get install -y -qq f2fs-tools zstd attr
           sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" || sudo apt-get install -y -qq linux-modules-extra-azure
           sudo modprobe f2fs
+      - name: Validate the exact deploy-bundle run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${{ inputs.bundle_run }}" || {
+            echo "bundle_run is required" >&2
+            exit 2
+          }
+          python3 scripts/resolve-artifact-run.py --workflow build-bundle.yml \
+            --artifact deploy-bundle --run-id "${{ inputs.bundle_run }}" \
+            --output-key bundle_run
+
       - uses: actions/download-artifact@v4
         with:
           name: deploy-bundle
@@ -89,13 +102,38 @@ jobs:
           sudo apt-get install -y -qq build-essential clang lld llvm git zstd python3
       - name: Fetch exact boot source dependencies
         run: python3 scripts/checkout-sources.py --output build/installer-sources --mode installer
-      - name: Resolve complete UEFI run
+
+      - name: Validate the exact deploy-bundle run
+        id: bundle_src
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${{ inputs.bundle_run }}" || {
+            echo "bundle_run is required" >&2
+            exit 2
+          }
+          python3 scripts/resolve-artifact-run.py --workflow build-bundle.yml \
+            --artifact deploy-bundle --run-id "${{ inputs.bundle_run }}" \
+            --output-key bundle_run
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: deploy-bundle
+          path: build/in/bundle
+          run-id: ${{ steps.bundle_src.outputs.bundle_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve the bundle's exact UEFI run
         id: uefi_src
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          python3 scripts/resolve-artifact-run.py --workflow build-uefi.yml --artifact uefi-product --output-key uefi_run
+          uefi=$(python3 -c 'import json; print(json.load(open("build/in/bundle/source-runs.json"))["uefi_run"])')
+          test -n "$uefi"
+          python3 scripts/resolve-artifact-run.py --workflow build-uefi.yml \
+            --artifact uefi-product --run-id "$uefi" --output-key uefi_run
 
       - uses: actions/download-artifact@v4
         with:
@@ -103,12 +141,7 @@ jobs:
           path: build/in/uefi
           run-id: ${{ steps.uefi_src.outputs.uefi_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: deploy-bundle
-          path: build/in/bundle
-          run-id: ${{ inputs.bundle_run }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Reuse the sealed UEFI core and compile its native tools
         env:
           SUNUEFI_TOOLCHAIN_ROOT: /usr
@@ -118,6 +151,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/product "$TMPDIR"
+          (cd build/in/bundle && sha256sum -c SHA256SUMS)
           tar -I zstd -xf build/in/uefi/uefi-product.tar.zst -C build/product
           cmp build/product/PianoUEFI-product.img build/in/bundle/PianoUEFI-product.img
           python3 build/installer-sources/sunuefi/tools/prepare_android_module.py \

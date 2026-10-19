@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | UEFI 产品 | build-uefi.yml | 使用固定 SunUEFI 配方；保留原始 manifest |
 | Image、完整模块、SDK | build-kernel.yml | 内建 F2FS/SELinux/Gunyah，强制 rootfstype=f2fs；SDK 绑定同一配置和 Module.symvers |
+| Fedora 矩阵 RPM | host-check 调用的 build-piano-rpms.yml | 构建九类硬件/运行时 RPM 和匹配内核的 kernel-piano；workflow_call 复用件由已注册的 host-check 启动，artifact 仍由 piano-rpms job 产出 |
 | Fedora 基础树 | build-rootfs.yml | 原生 DNF installroot，记录容器 ID 和实际 RPM，排除发行版 kernel |
 | A830v1 Mesa RPM | build-mesa.yml | 固定 Fedora 源 RPM 与 piano 补丁，复用 Fedora 配方；从实际 RPM 核对 Gallium/Turnip 芯片表 |
 | FFmpeg RPM | host-check 调用的 build-ffmpeg.yml | 固定 Fedora 源 RPM，沿用 SunUEFI BSP 补丁启用 H.264/HEVC v4l2m2m 解码器；build-ffmpeg 是 workflow_call 复用件，实际 run 的 workflow_id 是 host-check；原生构建及设备解码仍待验证 |
@@ -25,6 +26,10 @@ F2FS 镜像同时绑定 rootfs、内核、运行时、Mesa、FFmpeg 和 initramf
 SDK 内携带源码派生证明。source-runs.json 记录 kernel_run 与 kernel_artifact，
 bundle 按记录下载并要求其为标准档。
 
+clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel run。DNF 事务先安装 `kernel-piano`，因此 rootfs 本来就有唯一 `/usr/lib/modules/<release>`；build-image 不再要求该目录为空，而是要求恰好一个 release、由 `kernel-piano` 拥有，并逐文件比对封存内核 manifest。release 字符串相同但模块字节不同仍会失败，避免 ESP 与 rootfs 跨 run 混装。
+
+所有 `workflow_dispatch` 入口都必须先在 `main` 注册。`build-piano-rpms.yml` 是 `workflow_call` 复用件，由已注册的 `host-check` 启动；`build-rootfs` 按 `host-check.yml` 解析该 run 的 `piano-rpms` artifact，不能再直接查询一个只在 PR 分支存在的 workflow。
+
 ## F2FS 验证
 
 导入使用 GNU tar 的 pax、全部 xattr namespace、ACL、numeric owner 与 SELinux 恢复选项。逐条核对文件内容、UID/GID、mode、mtime、软链接目标、硬链接关系、全部 xattr、capability 与目标 SELinux 标签。属性读取错误会失败，目录大小不参与跨文件系统比较。
@@ -35,7 +40,7 @@ bundle 按记录下载并要求其为标准档。
 
 ## 交付内容
 
-最终 deploy-bundle 包含 esp.img、Linux boot.img、PianoUEFI-product.img、pianoroot.f2fs.img.zst、对应 manifest、source-runs.json 与 SHA256SUMS。verify-bundle.py 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED。
+最终 deploy-bundle 包含 sunuefi_esp.img、boot_sunuefi.img、PianoUEFI-product.img、pianoroot.f2fs.img.zst、对应 manifest、source-runs.json 与 SHA256SUMS。发布资产名与 `fastboot flash sunuefi_esp` / `boot_b` 的目标一致；上游 `esp-manifest.json` 里仍用它自己的内部键 `esp.img`、`boot.img`，verify-bundle.py 会显式映射，不要求发布包保留第二套文件名。verify-bundle.py 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED。
 
 Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合体 BOOT 必须用本机当前 stock BOOT、槽位和 generation 另行包装；通用构建产物不包含这些个人设备输入。
 
