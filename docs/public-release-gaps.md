@@ -1,10 +1,8 @@
 # 公开分发前的个人化与许可缺口
 
-流水线能把系统装上这台平板，但有几处把"这一台、这一个人"的东西固化进了构建期。
-内部自用不受影响；把 bundle、root-install 或 GitHub Release 当公开物发布之前，逐项处理。
+流水线能把系统装上这台平板，但有几处把"这一台、这一个人"的东西固化进了构建期。自用不受影响。把 bundle、root-install 或 GitHub Release 当公开物发布之前，逐项处理。
 
-当前状态：仓库没有 GitHub Release，`deploy-bundle` / `root-install` 只以 workflow artifact
-形式存在。
+仓库目前没有 GitHub Release，`deploy-bundle` 与 `root-install` 只以 workflow artifact 形式存在。
 
 | 项 | 位置 | 现状 | 公开分发的问题 | 状态 |
 | --- | --- | --- | --- | --- |
@@ -16,8 +14,6 @@
 | 内网拓扑 | `docs/architecture.md`、`docs/virtualization.md`、`scripts/probe-device.sh` | 公开文档用"桥接机"与 `192.0.2.x` 占位符；`192.168.77.0/30` 是设备固定网段，保留 | 已解决 | 完成 |
 | 旧的公钥历史 | 历史 dispatch 事件（例如 run 38724829866 的 `ssh_public_key`） | 之前的公钥已经出现在公开事件里 | 公钥不是秘密，但它把一个人的身份和这台设备的管理权限挂在公开记录上 | 已换用安装期注入；旧公钥在设备侧作废 |
 
-不需要处理的：COPR 的 owner/project 来自仓库密钥 `COPR_LOGIN`/`COPR_TOKEN`，没有写死个人命名空间；
-镜像里没有 Wi-Fi 凭据；上游地址都是公开仓库。
+不需要处理：COPR 的 owner/project 来自仓库密钥 `COPR_LOGIN`/`COPR_TOKEN`，没有写死个人命名空间；镜像里没有 Wi-Fi 凭据；上游地址都是公开仓库。
 
-SSH 公钥已在安装期注入，唯一剩下的"别人装了用不了"问题不再存在。
-电极校准的许可决定之前，不要把带校准表的 bundle 挂成公开 Release。
+SSH 公钥已改成安装期注入，"别人装了进不去"的问题解决了。电极校准的许可确定之前，不要把带校准表的 bundle 挂成公开 Release。
