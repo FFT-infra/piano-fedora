@@ -1,7 +1,7 @@
 # Gunyah 正式集成与 VM 验收
 
-Gunyah 已进入标准 Fedora 内核构建链，不再提供实验档输入或独立实验 job。
-客体执行、磁盘和网络需要真机证据，内核编译成功不能代替 VM 验收。
+Gunyah 已进入标准 Fedora 内核构建链，不再有实验档输入或独立实验 job。
+客体执行、磁盘和网络要有真机证据；内核编译成功不能代替 VM 验收。
 
 ## 正式构建链
 
@@ -15,27 +15,27 @@ Gunyah 已进入标准 Fedora 内核构建链，不再提供实验档输入或�
 | 外部模块 | `prepare-runtime-kernel.py` 默认重放 Gunyah 派生证明，要求源码、配置、Module.symvers 与内核清单匹配 |
 | 镜像与交付 | 只接受标准 kernel/runtime artifact，拒绝旧实验档，防止混装模块 |
 
-八项内置配置为 `GUNYAH`、`GUNYAH_HYPERCALLS`、`GUNYAH_TIMER`、
+八项内置配置是 `GUNYAH`、`GUNYAH_HYPERCALLS`、`GUNYAH_TIMER`、
 `GUNYAH_PLATFORM_HOOKS`、`GUNYAH_QCOM_PLATFORM`、`GUNYAH_QCOM_TRUSTED_VM`、
-`GUNYAH_IRQFD` 与 `GUNYAH_IOEVENTFD`。固定源码、逐字节导入和重放一致性由
-`check_gunyah_source.py`、`check_production_kernel.py`、`check_runtime_kernel_source.py`
-覆盖，均纳入 `make test`。
+`GUNYAH_IRQFD` 与 `GUNYAH_IOEVENTFD`。`check_gunyah_source.py`、
+`check_production_kernel.py` 与 `check_runtime_kernel_source.py` 校验固定源码、
+逐字节导入和重放一致性，三者都纳入 `make test`。
 
-补丁文件名 `0001-isolated-gunyah-profile.patch` 是历史名称，其内容已改成
-Fedora 正式策略，未保留 `--experimental-gunyah` 开关。
+补丁文件名 `0001-isolated-gunyah-profile.patch` 是历史名称，内容已改成
+Fedora 正式策略，不再有 `--experimental-gunyah` 开关。
 
 ## 用户态
 
-`piano-crosvm` 原生构建锁定的 crosvm，使用 `gunyah,net,balloon` feature；
-`librevm` RPM 包含 CLI、daemon 和 GTK GUI，消费仓库内的 Fedora 适配与完整
-Cargo.lock。VM 配置默认 `disable_sandbox=false`；命令构造只在实际选择 Gunyah
-时追加 `--disable-sandbox`。这是当前锁定的 Gunyah crosvm 后端对本目标
-PAGE_FAULT exit（reason 3）的运行要求。KVM 路径保留 sandbox，回归测试覆盖
-默认配置。内置驱动的就绪判断检查 `/dev/gunyah` 和内核注册路径，不依赖
+`piano-crosvm` 原生构建锁定的 crosvm，启用 `gunyah,net,balloon` feature。
+`librevm` RPM 含 CLI、daemon 和 GTK GUI，消费仓库内的 Fedora 适配与完整
+Cargo.lock。VM 配置默认 `disable_sandbox=false`；只有实际选择 Gunyah 时才在
+命令行追加 `--disable-sandbox`，这是锁定的 Gunyah crosvm 后端运行本目标
+PAGE_FAULT exit（reason 3）所需要的。KVM 路径保留 sandbox，回归测试覆盖默认
+配置。内置驱动的就绪判断检查 `/dev/gunyah` 和内核注册路径，不看
 `/proc/modules`。
 
 `build-device-runtime.py` 自动构建并交付上述 RPM。finalizer 校验源码 pin、
-适配和锁文件摘要，以及 rootfs 实际安装的二进制字节；仅存在包名不能通过。
+适配与锁文件摘要，以及 rootfs 里实际安装的二进制字节；只存在包名不算通过。
 同一链路还交付 VA-API 与旋转/充电/schedutil 平台配置。
 
 ## Gunyah RM capability 交接
@@ -52,10 +52,10 @@ RM 请求被 hypervisor 判 ARG_INVAL、`gunyah_rm_msgq_send` 的许可永不返
 目标属性形状就是驱动读的那种」时才改；任何缺失、歧义或读不动都保留 payload
 原值并记日志。节点名里的 unit-address 不动，Linux 侧不读它。
 
-验证分两层：主机侧把要发货的 C 原文抽出来配真实 libfdt（两个独立 1.8.1
-环境）对真实抓取的 payload DTB 与 inherited FDT 重放，只有 RM `reg` 与
-`uefi-live-memory` 的内存项发生变化，九条策略用例与三条反向改坏对照都符合
-预期；实机结论必须由正常启动路径给出，验收状态见本页表格与
+验证分两层。主机侧抽出要发货的 C 原文，配真实 libfdt（两个独立的 1.8.1
+环境），对真实抓取的 payload DTB 与 inherited FDT 重放；只有 RM `reg` 与
+`uefi-live-memory` 的内存项变化，九条策略用例与三条反向改坏对照都符合预期。
+实机结论只能由正常启动路径给出，验收状态见本页表格与
 [已知问题](known-issues.md)。`tests/check_uefi_live_rm.py`
 在主机 `make test` 里用假 FdtLib 编译同一段 C，覆盖同一组接受/拒绝路径。
 
@@ -70,10 +70,10 @@ RM 请求被 hypervisor 判 ARG_INVAL、`gunyah_rm_msgq_send` 的许可永不返
 | 管理器 | RPM、CLI、daemon、D-Bus 与安装二进制核验通过；KVM sandbox 回归通过 | GUI 实际创建/操作客体及完整 SELinux 流程待测；Gunyah 自动关闭 crosvm sandbox |
 | 扩展 | — | SMP、UEFI、图形和 Incus 分别实现与验收，不由单 vCPU 结果推定 |
 
-首次 RM 请求失败后的发送许可等待属于修复前记录，根因是构建期冻结的 RM
+首次 RM 请求失败后卡在发送许可等待，是修复前的记录，根因是构建期冻结的 RM
 capability；`uefi-live-rm` 补丁已在正常启动路径生效。正确的项目 guest kernel
-完成 64 MiB ext4 写入和读回，VM 返回码为 0，进程资源清理通过。旧实验产物、
-错误 guest kernel 的失败尝试与最终通过结果应分开看。未完成的验收项见
+完成 64 MiB ext4 写入和读回，VM 返回码 0，进程资源清理通过。旧实验产物、
+错误 guest kernel 的失败尝试和最终通过结果分开记录。未完成的验收项见
 [已知问题](known-issues.md)。
 
 ## 实读来源
