@@ -202,6 +202,11 @@ def test_every_resolved_workflow_is_registered_on_default_branch():
         failures.append("build-rootfs.yml checks the manifest before extracting it")
     if "rm -rf build/local-rpms/repodata" not in build_step:
         failures.append("build-rootfs.yml updates stale repodata from the artifact")
+    if '--privileged' not in build_step:
+        failures.append("build-rootfs.yml cannot write security.selinux without --privileged")
+    # record["output"] is a container path; the host assertion must use $OUT.
+    if 'pathlib.Path(record["output"])' in build_step:
+        failures.append("build-rootfs.yml asserts against the container path")
     if failures:
         raise AssertionError("; ".join(failures))
 
