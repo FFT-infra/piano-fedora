@@ -20,6 +20,7 @@ REPO_FILE = (ROOT / "packages" / "piano-fedora-configs" / "etc" / "yum.repos.d"
              / "piano-fedora-copr.repo")
 SPEC = ROOT / "packages" / "piano-fedora-configs" / "piano-fedora-configs.spec"
 CONFIGS = ROOT / "packages" / "piano-fedora-configs"
+DEVICE_VERIFIER = ROOT / "scripts" / "verify-copr-device.py"
 
 PACKAGES = ("piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
             "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
@@ -239,6 +240,20 @@ def test_script_has_no_hardcoded_token():
             raise AssertionError(f"credential-looking literal in script: {marker}")
 
 
+def test_device_verifier_contract():
+    text = DEVICE_VERIFIER.read_text()
+    # The device check must not install or upgrade anything unless asked.
+    assert "--install-test" in text
+    assert "--assumeno" in text, "upgrade dry-run must never accept the transaction"
+    assert "kernel-piano" in text
+    # It reads the same repo id the shipped .repo defines.
+    repo = REPO_FILE.read_text()
+    assert "fft-infra/piano-fedora" in text and "fft-infra/piano-fedora" in repo
+    # exclusions and signature policy must be asserted, not assumed.
+    for token in ("exclude=kernel-piano*", "gpgcheck=1", "repo_gpgcheck=0"):
+        assert token in repo
+
+
 def main():
     module = load_module()
     with tempfile.TemporaryDirectory() as tmp:
@@ -258,6 +273,7 @@ def main():
     test_repo_file_contract()
     test_workflow_contract()
     test_script_has_no_hardcoded_token()
+    test_device_verifier_contract()
     print("OK: COPR publish validates the exact matrix and refuses unsafe publishes")
 
 
