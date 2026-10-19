@@ -27,9 +27,19 @@ def build_iris_vaapi(sources, output, package, put, sha256, run):
     origin, source, pin = checked_copy(sources, "iris-vaapi", output)
     # 交付的驱动必须自带编码入口。2026-10-15 装过一个只声明 VLD 的后端，
     # ffmpeg 的 h264_vaapi/hevc_vaapi 静默失效；这里按源码能力表硬性拒绝。
+    #
+    # 入口是在 backend.cpp 的 vaGetConfigAttributes/vaQueryConfigEntrypoints
+    # 里声明的，encoder.cpp 只实现编码路径，字符串不一定出现在那里。原来的
+    # 检查只读 encoder.cpp，把上游正常的 v1.0.0 源码判成缺入口（run
+    # 39273733045）。这里两处都看：能力表声明与编码实现各自成立即可。
+    backend = source / "src/backend.cpp"
     encoder = source / "src/encoder.cpp"
-    if not encoder.is_file() or "VAEntrypointEncSlice" not in encoder.read_text():
-        raise ValueError("iris-vaapi source cannot provide VAEntrypointEncSlice")
+    declared = backend.is_file() and "VAEntrypointEncSlice" in backend.read_text()
+    implemented = encoder.is_file() and "VAEntrypointEncSlice" in encoder.read_text()
+    if not (declared and implemented):
+        raise ValueError(
+            "iris-vaapi source cannot provide VAEntrypointEncSlice "
+            f"(declared={declared}, implemented={implemented})")
     build = output / "iris-vaapi-build"
     run(["meson", "setup", build, source, "--prefix=/usr", "--libdir=lib64",
          "--buildtype=release", "-Dfastcv=disabled"])
@@ -47,6 +57,7 @@ def build_iris_vaapi(sources, output, package, put, sha256, run):
             "driver_sha256": sha256(payload / "usr/lib64/dri/v4l2_drv_video.so"),
             "tracked_source_sha256": tracked,
             "encoder_entrypoints": ["EncSlice"],
+            "encoder_declared_in_backend": True,
             "encoder_source_sha256": sha256(encoder)}
 
 
