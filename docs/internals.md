@@ -172,7 +172,7 @@ chmod +x flash-linux.sh
 
 ## PR 验收门槛
 
-以下五项全部通过后，才可以把 PR 标为设备验收通过：
+五项全部通过后，才能把 PR 标为设备验收通过：
 
 1. 同一次新流水线产出的 `deploy-bundle` 和 `root-install` 已记录 run ID 与摘要。
 2. 从原始 GPT/UFS 开始完成首次分区、显式擦除 userdata、Android 首次开机。
@@ -181,21 +181,13 @@ chmod +x flash-linux.sh
 5. Android→Linux、Linux→Android 和原厂 Recovery 均完成，保存屏幕、命令输出、
    `uname -r`、`/usr/lib/modules/`、F2FS 挂载与分区容量证据。
 
-任一项失败都不能写成“设备验收通过”；构建或离线测试通过只能记为 CI 证据。
-验收证据格式见[安装指南的真机验收](installation.md#真机验收)。
+任一项失败都不能写成“设备验收通过”。构建或离线测试通过只记为 CI 证据。证据格式见[安装指南的真机验收](installation.md#真机验收)。
 
-设备热修复不能替代发布资产测试。PR 最终必须从原始 GPT/UFS 布局开始，使用本
-流水线重新生成的 RootFS 与 ESP 完成冷启动、GNOME 桌面与重启复现。
+设备热修复替代不了发布资产测试。PR 最终必须从原始 GPT/UFS 布局开始，用本流水线重新生成的 rootfs 与 ESP 完成冷启动、GNOME 桌面和重启复现。
 
-`fastboot erase userdata` 是首次安装的必经写入，不能省略。`plan` 仍会检查
-`/data` 的 formattable 合同，但 AOSP `fs_mgr` 只在 `wiped` 或元数据加密关闭
-且 `!is_fs_valid` 时自动格式化；GPT 缩短本身不会清掉旧 F2FS 超级块。因此
-执行器必须显式擦除，随后第一次启动 Android，让它重建加密 userdata 并完成
-首次开机。不能直接在宿主格式化 Android 的加密映射。
+`fastboot erase userdata` 是首次安装的必经写入，不能省略。`plan` 会检查 `/data` 的 formattable 合同，但 AOSP `fs_mgr` 只在 `wiped`、或元数据加密关闭且 `!is_fs_valid` 时自动格式化；缩短 GPT 本身不会清掉旧的 F2FS 超级块。所以执行器必须显式擦除，再让 Android 第一次启动，重建加密 userdata 并完成首次开机。不要直接在宿主上格式化 Android 的加密映射。
 
-会话的 result.json 记录每个已完成阶段和错误。GPT 写入或擦除后发生中断时，
-先看记录与实际设备状态，不自动重试、恢复旧 GPT 或启动 Android。
-恢复 GPT 不能恢复已擦除的 Android 文件。
+会话的 result.json 记录每个完成的阶段和错误。GPT 写入或擦除之后中断时，先看记录和实际设备状态，不要自动重试、恢复旧 GPT 或启动 Android。恢复 GPT 也找不回已擦除的 Android 文件。
 
 ## 里程碑
 
