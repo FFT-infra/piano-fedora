@@ -1,0 +1,114 @@
+name: upstream-watch
+
+# 每周只读核验登记上游的锁定 ref 指向哪个提交，把漂移写进一个跟踪 issue。
+# 白名单里的纯用户态上游另开一个 draft PR，只改 sources.lock.json 的 commit；
+# 内核、UEFI、相机/触控、固件和 debian-piano 只报告，pin 由人评审。
+on:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只跑审计与报告，不开 issue、不开 PR"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+# 两个看板同时写 issue 会互相覆盖，串行执行。
+concurrency:
+  group: upstream-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Audit the locked upstream refs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/audit-upstreams.py --execute || rc=$?
+          # 审计对未核验的仓库返回 1；那仍是可报告的结果，不是这一步的失败。
+          if [ ! -f build/upstream-audit.json ]; then
+            exit "${rc:-1}"
+          fi
+          [ "$rc" -eq 0 ] || echo "::warning::部分上游未能核验，报告里单独列出"
+
+      - name: Render the drift report
+        run: |
+          set -euo pipefail
+          python3 scripts/upstream-watch.py report \
+            --output build/upstream-drift.md \
+            --summary build/upstream-drift.json
+          cat build/upstream-drift.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: upstream-audit
+          path: |
+            build/upstream-audit.json
+            build/upstream-drift.md
+            build/upstream-drift.json
+
+      - name: Update the tracking issue
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh label create upstream-drift --color FBCA04 \
+            --description "锁定的上游 ref 已离开 pin" || true
+          number=$(gh issue list --label upstream-drift --state open \
+            --limit 1 --json number --jq '.[0].number // empty')
+          drift=$(jq -r '.drift | length' build/upstream-drift.json)
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file build/upstream-drift.md
+            if [ "$drift" -eq 0 ]; then
+              gh issue close "$number" \
+                --comment "锁定 ref 与 pin 一致，先关掉；下次漂移会重新开一个。"
+            fi
+          elif [ "$drift" -gt 0 ]; then
+            gh issue create --label upstream-drift \
+              --title "上游漂移：$drift 个锁定 ref 已移动" \
+              --body-file build/upstream-drift.md
+          else
+            echo "没有漂移，不建 issue"
+          fi
+
+      - name: Open the whitelist bump PR
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "$(jq -r '.auto | length' build/upstream-drift.json)" -eq 0 ]; then
+            echo "白名单没有漂移，跳过"
+            exit 0
+          fi
+          branch="upstream-bump/$(date -u +%Y%m%d)"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "已有未合并的 $branch，本轮不再开新 PR"
+            exit 0
+          fi
+          python3 scripts/upstream-watch.py bump --pr-body build/upstream-bump.md
+          git config user.name "upstream-watch"
+          git config user.email "upstream-watch@users.noreply.github.com"
+          git switch -c "$branch"
+          git add sources.lock.json
+          git commit -m "chore(upstreams): 跟进白名单上游的 commit"
+          git push origin "$branch"
+          # 仓库设置若禁止 Actions 创建 PR，这里会失败并给出明确原因，
+          # 而不是让 pin 停在旧值上安静地过一周。
+          gh pr create --draft \
+            --title "chore(upstreams): 跟进白名单上游（$(date -u +%F)）" \
+            --body-file build/upstream-bump.md

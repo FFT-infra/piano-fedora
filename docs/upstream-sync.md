@@ -2,6 +2,24 @@
 
 构建来源由 sources.lock.json 固定。上游 main 的进展用于审阅；更新文档不改变已构建镜像的来源，也不使旧二进制自动获得新实现。
 
+## 自动跟踪
+
+`.github/workflows/upstream-watch.yml` 每周一 03:23 UTC 跑一次
+`scripts/audit-upstreams.py --execute`，结果交给 `scripts/upstream-watch.py` 处理：
+
+- 锁定 ref 指向的提交与 `sources.lock.json` 的 pin 不同即算漂移，汇总到一个
+  `upstream-drift` issue；下次没有漂移就把 issue 关掉。
+- 白名单（`crosvm`、`librevm`、`uperf`、`piano-mesa`、`piano-sensors`、
+  `piano-mipps-auth`）里的漂移会另开一个 draft PR，只改 `sources.lock.json` 的
+  `commit`，`ref` 不动。这些是纯用户态上游，`make test` 与 CI 能兜住。PR 由
+  `GITHUB_TOKEN` 创建，GitHub 不会为它自动跑 workflow，合并前要手动触发一次
+  `host-check`。
+- 内核、UEFI、相机/触控、固件和 debian-piano 只报告。它们的改动无法用离线 CI
+  替代真机验收，pin 由人按下面的“每次跟进上游”评审。
+
+判断漂移只看 pin，不看 `docs/upstreams.json` 的 `reference_commit`：后者是人工
+基线，只在 `--record-baseline` 时推进，拿它判断会把没有位移的上游也报成更新。
+
 ## 2026-10-15 消费 pin 升到 SunUEFI 50f29a92
 
 全量审计 90 个登记仓库后，SunUEFI main 领先 pin 8 个提交：`a485cc01 -> 50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73`。
