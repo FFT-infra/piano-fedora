@@ -47,7 +47,7 @@ Actions。三个 artifact 分别为：
 boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。
 安装入口位于 boot-tools 的 `installer/scripts`；其中的锁定上游代码带源码清单，
 不需要在设备主机重新编译。普通发行版主机需要 Python 3、adb、fastboot；
-BOOТ 准备使用 Actions 提供的宿主工具。
+BOOT 准备使用 Actions 提供的宿主工具。
 
 ## 本机 BOOT
 
