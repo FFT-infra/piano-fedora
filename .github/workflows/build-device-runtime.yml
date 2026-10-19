@@ -115,7 +115,8 @@ jobs:
                 cargo rust libva-devel libdrm-devel libcap-devel libseccomp-devel \
                 mesa-libEGL-devel mesa-libGLES-devel mesa-libgbm-devel \
                 cmake json-c-devel dbus-devel nlohmann-json-devel \
-                clang-devel openssl-devel gtk4-devel libadwaita-devel
+                clang-devel openssl-devel gtk4-devel libadwaita-devel \
+                dbus-daemon dbus-tools
               git config --global --add safe.directory /workspace/build/sources/sunuefi/upstream/debian-piano-current
               git config --global --add safe.directory /workspace/build/sources/fastrpc
               for name in librevm crosvm iris-vaapi piano-integration uperf; do
