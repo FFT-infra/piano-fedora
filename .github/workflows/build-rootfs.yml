@@ -173,7 +173,11 @@ jobs:
           # createrepo-c and rpm, but running build-clean-rootfs.py directly
           # there failed with "dnf or dnf5 is required". The workspace is bind
           # mounted so the container writes into the same paths.
-          sudo podman run --rm \
+          # --privileged is what lets the container write security.selinux
+          # xattrs. Without it relabel-selinux.py fails with EPERM on every
+          # file (78775 errors) and the audit reports AUDIT_FAILED.
+          # build-image.yml already runs its assembly the same way.
+          sudo podman run --rm --privileged \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             --env PIANO_RELEASE="${{ inputs.releasever }}" \
