@@ -19,7 +19,7 @@
       "url": "https://github.com/blu-sharky/linux-piano.git",
       "ref": "piano-7.2.6",
       "commit": "453bb567f2fc12423ab3338953ca8938a2f06e16",
-      "role": "内核基线。SunUEFI 的完整 Stable 公开基线，非分支 HEAD"
+      "role": "内核基线。取 piano-7.2.6 分支上的提交；内核版本 7.2.9 由 SunUEFI 合入 stable 后得到，不是这个分支的名字"
     },
     "piano-firmware": {
       "url": "https://github.com/blu-sharky/piano-firmware.git",
