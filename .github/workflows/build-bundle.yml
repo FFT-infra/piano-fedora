@@ -137,9 +137,24 @@ jobs:
           python3 scripts/seal-uefi-source.py --run-id "$UEFI_RUN" \
             --image build/uefi/PianoUEFI-product.img --output build/uefi-source.json
 
-      - name: Create the upstream-compatible ESP and Linux boot payload
+      - name: Read the ESP capacity from product.json
+        id: product
         run: |
           set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          value = json.load(open("product.json"))["target"]["esp_size_mib"]
+          assert isinstance(value, int) and value > 0, value
+          print(f"esp_size_mib={value}")
+          PY
+
+      - name: Create the upstream-compatible ESP and Linux boot payload
+        env:
+          # ESP 容量只在 product.json 定义，这里不写第二份。
+          ESP_SIZE_MIB: ${{ steps.product.outputs.esp_size_mib }}
+        run: |
+          set -euo pipefail
+          test -n "$ESP_SIZE_MIB"
           # Ubuntu 24.04 的 libfdt 1.6.1 会覆盖已存在的 panel phandle。
           # 使用锁定上游 1.8.1，sudo 下显式传递工具和动态库路径。
           make -C build/sources/dtc -j2 NO_PYTHON=1 NO_YAML=1 dtc fdtoverlay
@@ -162,7 +177,7 @@ jobs:
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-pen-dock.dtso \
             --initramfs build/initramfs/initramfs.cpio.gz \
             --rootfs build/device-root/rootfs --rootfs-manifest build/device-root/manifest.json \
-            --root-selector LABEL=PIANOROOT --esp-size-mib 512 --output build/packaged
+            --root-selector LABEL=PIANOROOT --esp-size-mib "$ESP_SIZE_MIB" --output build/packaged
 
       - name: Assemble and verify the delivery set
         env:
