@@ -87,8 +87,15 @@ adb -s <serial> shell getprop ro.boot.slot_suffix
 ```sh
 # 先记录当前原厂 BOOT 的完整摘要；下面两处必须使用同一个值。
 fastboot getvar current-slot
-fastboot fetch boot_a stock-recovery/boot.img
+
+# 原厂 ABL 不实现 fastboot fetch，改从 Android 侧读块设备（需要 root ADB）。
+adb -s <serial> shell su -c 'sha256sum /dev/block/by-name/boot_a'
+adb -s <serial> exec-out su -c 'dd if=/dev/block/by-name/boot_a bs=1048576' \
+  > stock-recovery/boot.img
 sha256sum stock-recovery/boot.img
+```
+
+两条摘要必须相同，文件必须是 96 MiB（`stat -c%s`），否则执行器会拒绝。原厂 ROM 包里的 `images/boot.img` 也是 96 MiB，但只有设备还跑着那一版固件时才逐字节相同；用前先比摘要，不一致就以设备读出的为准。
 
 python3 boot-tools/installer/scripts/prepare-device-boot.py \
   --stock-boot stock-recovery/boot.img \

@@ -409,6 +409,17 @@ Android 初始化完成后关机，按【电源键 + 音量减键】进入原厂
 
 先恢复配套 ROM 的 B 槽组件，确认原 Android 能完整启动并提供 root ADB；历史的 init_boot/DTBO 试验不算恢复完成的证据。计划会核对主备 GPT/CRC、分区类型、当前槽、原 BOOT、源码清单、管理配置与实际 sparse 容量，还只读取得 Android 的 `/sys/firmware/fdt`，检查 Linux RAM 子集与固定保留区，含义见[上游核对](upstream.md)。缺 FDT 或比较失败就停下，不要跳过检查。
 
+`stock-recovery/boot.img` 是设备当前槽的原厂 BOOT，执行器要求它 96 MiB 且摘要与设备一致。原厂 ABL 不实现 `fastboot fetch`，从 Android 侧读：
+
+```sh
+adb -s <serial> shell su -c 'sha256sum /dev/block/by-name/boot_a'
+adb -s <serial> exec-out su -c 'dd if=/dev/block/by-name/boot_a bs=1048576' \
+  > stock-recovery/boot.img
+sha256sum stock-recovery/boot.img    # 与上一条相同
+```
+
+原厂 ROM 包里的 `images/boot.img` 也是 96 MiB，但只有设备还跑着那一版固件时才逐字节相同。用前比摘要，不一致以设备读出的为准。
+
 在连接平板的 Linux 主机上执行，以下路径指本次已下载的材料，`--serial` 是实际 Android ADB 序列号：
 
 ```sh
