@@ -27,11 +27,11 @@ build-bundle
 
 ## Actions 材料
 
-手动运行 `prepare-install`，选择完整 deploy-bundle 的 run，首装固定 `android_slot=_a`。Linux 容量留空时用 `product.json`。这一步不需要公钥：SSH 公钥在刷写时用 `--ssh-key` 注入，公钥和私钥都不进 Actions。三个 artifact 是：
+手动运行 `prepare-install` 是可选步骤：它把 root 镜像离线扩到指定容量并做读回校验。首装只求能刷上任意容量的设备时，跳过它，直接用 `deploy-bundle` 自带的 sparse，首启会自己长满分区。要跑时选择完整 deploy-bundle 的 run，首装固定 `android_slot=_a`。这一步不需要公钥：SSH 公钥在刷写时用 `--ssh-key` 注入，公钥和私钥都不进 Actions。三个 artifact 是：
 
 | artifact | 内容 |
 | --- | --- |
-| root-install | 扩容并配置后的 F2FS sparse、容量/元数据校验记录、摘要 |
+| root-install | 预扩并配置后的 F2FS sparse、容量/元数据校验记录、摘要 |
 | boot-tools | 同核心的 selector、Android 静态原生工具、产品固件、自包含安装入口 |
 | host-boot-tool | 静态宿主 BOOT 重打包工具及来源记录 |
 
@@ -119,7 +119,11 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
 
 `plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量。任何一项与现场不符就停止。同时确认设备当前槽位是 `a`，`root-install-manifest.json` 顶层的 `android_slot` 是 `_a`。首装不能用 `_b`：一键脚本固定写 `boot_b`，会覆盖 Android 唯一的启动路径。
 
-默认把扣除 ESP 后的 userdata 对半分。要固定 Android 的容量，在 `plan` 与 `apply` 上加同一个 `--android-data-mib`，例如 `--android-data-mib 307200` 给 Android 留 300 GiB，Linux 取剩余空间。`plan` 把取值写进计划，`apply` 只接受相同的取值。此时 `prepare-install` 的 `root_size_mib` 必须等于计划算出的 `linux_root_mib`：执行器会比对 `root-install-manifest.json` 与实时 GPT 的实际容量，不一致就停。
+默认把扣除 ESP 后的 userdata 对半分。要固定 Android 的容量，在 `plan` 与 `apply` 上加同一个 `--android-data-mib`，例如 `--android-data-mib 307200` 给 Android 留 300 GiB，Linux 取剩余空间。`plan` 把取值写进计划，`apply` 只接受相同的取值。
+
+root 镜像与分区容量解耦。执行器要求 `expanded_bytes <= linux_root_mib` 且不小于 F2FS 下限，计划里记下 `grow_at_first_boot` 与差额；封存镜像只有 8192 MiB，所以默认就会触发首启扩容。initramfs 在挂载根之前比 `blkid -p -o export` 的 `FSSIZE` 与分区字节数，`fs_bytes < part_bytes` 时依次跑 `fsck.f2fs -f`、`resize.f2fs`、`fsck.f2fs -f`，再复核两者相等；任一步失败即停，不会带着半截容量进系统。`fs_bytes > part_bytes` 直接报错，`resize.f2fs` 不支持缩小。第二次启动时两者相等，`resize.f2fs` 什么都不做。
+
+想把镜像预先扩到目标容量，`prepare-install` 的 `root_size_mib` 填目标 MiB 数，`prepare-root-capacity.py` 会离线扩容并读回校验。这不是必需步骤：`prepare-install` 留空时直接用封存镜像，传输文件由 `build-bundle` 提供。
 
 ESP 默认 512 MiB。ESP 分区必须和 `deploy-bundle/sunuefi_esp.img` 等大：镜像按 `product.json` 的 `esp_size_mib` 造出，执行器要求镜像字节数等于计划算出的 ESP 分区容量。两者不一致就停。改过 `esp_size_mib` 就重跑 `build-bundle`，再在 `plan` 与 `apply` 上加同一个 `--esp-mib`；只有 `--esp-mib` 没有配套的重建镜像，执行器会在写设备前拒绝。
 
@@ -180,7 +184,7 @@ chmod +x flash-linux.sh
 如果第 3 步已经用 `install-f2fs.py --ssh-key` 注入过，这里不必再传。重复注入
 只会覆盖同一个 `/piano-ssh-key.pub`。两条路径都要求本机有 `mcopy`（mtools）。
 
-脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量。脚本只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。
+脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 能装进实时 `sunuefi_root`。脚本只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。
 
 首装路径拒绝 `--skip-checksum`。两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备重启到 Slot B。
 

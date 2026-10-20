@@ -34,11 +34,13 @@ clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel r
 
 镜像先卸载，再运行 `fsck.f2fs -f --dry-run`，核对检查前后镜像摘要不变。随后以 `ro,norecovery` 挂载读回。卸载后才生成最终镜像摘要。仅有 fsck 退出 0 或小 fixture 通过不证明完整交付通过。
 
-通用交付包的 8192 MiB 是测试镜像容量。本机目标容量已按真实 GPT 对半计算，并记录在 `product.json`。`prepare-install.yml` 在独立副本里完成离线扩容、设备配置与完整读回，然后输出 sparse 传输文件，不依赖首次开机自动扩容。
+通用交付包里的 8192 MiB F2FS 镜像与设备无关，同一份镜像能装到任何容量的设备上，文件系统在首次启动时由 initramfs 长满自己的分区。设备容量一律从实时 GPT 计算，`product.json` 的 `root_size_mib` 只是封存镜像的容量。
+
+`prepare-install.yml` 是可选步骤：填了容量就把镜像离线扩到那个 MiB 数并完整读回，留空则直接用封存镜像。
 
 ## 交付内容
 
-最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。发布资产名与 `fastboot flash sunuefi_esp` / `boot_b` 的目标一致。上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
+最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。有了 bundle 自带的 sparse，从 Release 装机不需要再跑一次 Actions。发布资产名与 `fastboot flash sunuefi_esp` / `boot_b` 的目标一致。上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
 
 Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合体 BOOT 必须用本机当前 stock BOOT、槽位和 generation 另行包装；通用构建产物不包含这些个人设备输入。
 
@@ -72,7 +74,7 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 ## 容量与 sparse 传输
 
-执行器从实时、双副本 CRC 合格的完整 GPT 重算容量，结果必须与镜像容量一致。原 userdata 会被清空重建；GPT/BOOT 恢复文件不含 Android 用户数据。分区容量的分配规则见[安装指南的分区架构](installation.md#二-存储与分区架构原理)。
+执行器从实时、双副本 CRC 合格的完整 GPT 重算容量，镜像不能大于它。原 userdata 会被清空重建；GPT/BOOT 恢复文件不含 Android 用户数据。分区容量的分配规则见[安装指南的分区架构](installation.md#二-存储与分区架构原理)。
 
 通用包里的 8 GiB F2FS 镜像保持封存。`prepare-root-capacity.py` 在私有工作副本里设置本机启动配置与传感器槽位，恢复匹配的 Fedora SELinux 标签，然后离线扩容。镜像不写任何 SSH 公钥，manifest 用 `ssh_public_key_in_image: false` 记录。
 

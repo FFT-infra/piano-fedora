@@ -37,6 +37,22 @@
 `boot_b` 的读回可以直接读分区前 4 KiB 与末尾 64 字节判断，
 `prepare-device-boot.py` 写的 `os_version`、AVB 算法和请求页偏移都能对上。
 
+## 首次启动扩容
+
+封存镜像固定 8192 MiB，文件系统在首次启动时由 initramfs 里的 `resize.f2fs`
+扩到 `sunuefi_root` 的实际大小。这条路径的离线部分有测试覆盖：归档里有
+`fsck.f2fs` 与 `resize.f2fs` 的符号链接，`blkid -p -o export` 能读出
+`FSSIZE`，`resize.f2fs` 对已满的镜像是 no-op。真机上还没跑过一次真实的
+扩容，第一次装到分区大于 8 GiB 的设备上时要专门核对这一步。
+
+扩容失败时引导停在 initramfs，`ROOT_GROW_STARTED` 之后的日志里能看到是
+`fsck`、`resize` 还是复核那一步失败，不会带着旧容量进系统。分区被收缩到
+小于文件系统时报 `The F2FS root is larger than its partition`，`resize.f2fs`
+不支持缩小，只能重刷 root。
+
+扩完之后 `findmnt /` 的可用空间与 `blkid -p /dev/<分区> -o export` 的
+`FSSIZE` 都应该等于 `fastboot getvar partition-size:sunuefi_root` 的字节数。
+
 ## 双系统切换
 
 Linux → Android 的自动切换尚未通过验收。已定位两个独立原因：

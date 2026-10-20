@@ -249,7 +249,7 @@ fastboot getvar is-userspace   # 必须是 no
 
 手动路径也只接受同一条新流水线的材料：完整 `deploy-bundle`，以及由这个 bundle run 派生、`android_slot` 为 `_a` 的 `root-install`。
 
-刷写前读 `fastboot getvar partition-size:sunuefi_root`，把十六进制容量换算成字节。它必须与 `root-install-manifest.json` 的 `expanded_bytes` 完全相等，不一致就停。
+刷写前读 `fastboot getvar partition-size:sunuefi_root`，把十六进制容量换算成字节。镜像不能大于这个分区：`root-install-manifest.json` 的 `expanded_bytes`，或者不带 `root-install` 时 `root-image-manifest.json` 的 `bytes`，都必须小于等于分区容量，否则就停。小于时首次启动会把文件系统扩满分区。
 
 ### 4. 逐条刷写
 
