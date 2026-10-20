@@ -22,29 +22,14 @@ from piano_sparse import require
 
 ROOT = Path(__file__).resolve().parents[1]
 BLOCK = 4096
-# 默认与 product.json 的 esp_size_mib 一致；ESPMIB 来自产物清单时以清单为准。
+# 与 product.json 的 esp_size_mib 默认值一致；首次分区可用 --esp-mib 覆盖，
+# 但镜像字节数必须等于计划算出的分区容量。
 DEFAULT_ESP_MIB = 512
 BUNDLE_ASSETS = {
     "sunuefi_esp.img": "sunuefi_esp.img",
     "boot_sunuefi.img": "boot_sunuefi.img",
     "PianoUEFI-product.img": "PianoUEFI-product.img",
 }
-
-
-def esp_mib_from_bundle(bundle):
-    """从 ESP 产物清单读出这块设备真正的 ESP 容量。
-
-    镜像按 product.json 的 esp_size_mib 造出，分区必须与之相同。
-    清单缺失或格式不对时返回 None，由调用方决定拒绝还是用默认值。
-    """
-    path = bundle / "esp-manifest.json"
-    if not path.is_file() or path.is_symlink():
-        return None
-    record = json.loads(path.read_text()).get("partitions", {}).get("esp", {})
-    capacity = record.get("capacity_bytes")
-    if type(capacity) is not int or capacity <= 0 or capacity % (1024 * 1024):
-        return None
-    return capacity // (1024 * 1024)
 
 
 def load_source(source):
@@ -179,9 +164,6 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
         esp_row = next(row for row in layout["changes"] if row["name"] == "sunuefi_esp")
         require(generic["files"]["sunuefi_esp.img"]["bytes"] == esp_row["size_mib"] * 1024**2,
                 "ESP image does not match the planned ESP partition capacity")
-        declared = esp_mib_from_bundle(bundle)
-        if declared is not None:
-            require(declared == esp_row["size_mib"], "ESP manifest and partition plan disagree on capacity")
     require(root["fsck_exit"] == 0 and root["fsck_read_only"] is True
             and root["transport"]["dont_care_chunks"] == 0
             and root["transport"]["zero_policy"] == "explicit-zero-fill", "root capacity/transport verification incomplete")

@@ -121,7 +121,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
 
 默认把扣除 ESP 后的 userdata 对半分。要固定 Android 的容量，在 `plan` 与 `apply` 上加同一个 `--android-data-mib`，例如 `--android-data-mib 307200` 给 Android 留 300 GiB，Linux 取剩余空间。`plan` 把取值写进计划，`apply` 只接受相同的取值。此时 `prepare-install` 的 `root_size_mib` 必须等于计划算出的 `linux_root_mib`：执行器会比对 `root-install-manifest.json` 与实时 GPT 的实际容量，不一致就停。
 
-ESP 默认 512 MiB。ESP 分区必须和 `deploy-bundle/sunuefi_esp.img` 等大：镜像按 `product.json` 的 `esp_size_mib` 造出，执行器要求镜像字节数等于计划算出的 ESP 分区容量，并核对 `esp-manifest.json` 里声明的容量。两者不一致就停。改过 `esp_size_mib` 就重跑 `build-bundle`，再在 `plan` 与 `apply` 上加同一个 `--esp-mib`；只有 `--esp-mib` 没有配套的重建镜像，执行器会在写设备前拒绝。
+ESP 默认 512 MiB。ESP 分区必须和 `deploy-bundle/sunuefi_esp.img` 等大：镜像按 `product.json` 的 `esp_size_mib` 造出，执行器要求镜像字节数等于计划算出的 ESP 分区容量。两者不一致就停。改过 `esp_size_mib` 就重跑 `build-bundle`，再在 `plan` 与 `apply` 上加同一个 `--esp-mib`；只有 `--esp-mib` 没有配套的重建镜像，执行器会在写设备前拒绝。
 
 `device-boot/boot-request.json` 的 `boot_device` 必须指向首装 Android 所在的槽，即 `/dev/disk/by-partlabel/boot_a`，里面的 `app_generation` 必须与 `deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。
 

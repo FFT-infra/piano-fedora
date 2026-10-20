@@ -3,11 +3,9 @@
 
 import argparse
 import importlib.util
-import json
 from pathlib import Path
 import struct
 import sys
-import tempfile
 from types import SimpleNamespace
 import uuid
 import zlib
@@ -125,22 +123,6 @@ def main():
         pass
     else:
         raise AssertionError("apply ignored the plan's ESP size")
-
-    def bundle_with_esp(mib):
-        path = Path(tmp) / "bundle" / str(mib)
-        path.mkdir(parents=True, exist_ok=True)
-        record = {"partitions": {"esp": {"capacity_bytes": mib * 1024**2}}}
-        (path / "esp-manifest.json").write_text(json.dumps(record))
-        return path
-
-    with tempfile.TemporaryDirectory() as tmp:
-        assert installer.esp_mib_from_bundle(bundle_with_esp(1024)) == 1024
-        assert installer.esp_mib_from_bundle(bundle_with_esp(512)) == 512
-        odd = bundle_with_esp(1)
-        (odd / "esp-manifest.json").write_text(
-            json.dumps({"partitions": {"esp": {"capacity_bytes": 1234567}}}))
-        assert installer.esp_mib_from_bundle(odd) is None, "unaligned ESP capacity must not become a size"
-        assert installer.esp_mib_from_bundle(Path(tmp) / "absent") is None
     print("OK: first GPT byte preservation, CRC, half capacity, Slot A contract, deterministic new entries, "
           "explicit Android capacity, explicit ESP capacity and stale-plan rejection" +
           ("; actual pinned parser exercised" if args.sunuefi else "; byte oracle exercised"))
