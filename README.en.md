@@ -30,7 +30,9 @@ Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snap
 1. Unlock the bootloader and set up `fastboot`.
 2. On a device with the stock GPT, follow [First install from the stock GPT/UFS](docs/installation.md#四-从原始-gptufs-开始的首次安装) to create the partitions, erase `userdata`, and let Android boot once. **The one-step script does not work without this step.**
 3. Use the `deploy-bundle` from one successful `build-bundle` run, and the `root-install` that `prepare-install` produced from that same bundle run. Do not mix assets from different runs.
-4. Build a staging directory as described in [section 3 of the installation guide](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本). Copy `flash-linux.sh` and `flash-linux.bat` from `scripts/installer/` next to every file of the deploy-bundle, with `root-install/` below it. The script treats the current directory as the staging directory and never looks for images inside the repository.
+4. Build a staging directory as described in [section 3 of the installation guide](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本). Copy `flash-linux.sh` and `flash-linux.bat` from `scripts/installer/` next to every file of the deploy-bundle, with `root-install/` below it.
+
+   The script treats the current directory as the staging directory and never looks for images inside the repository.
 
 5. Power off. Hold `Power + Volume Down` until Fastboot appears. Check that `fastboot getvar current-slot` returns `a`. Then run this from the staging directory:
 
@@ -40,7 +42,9 @@ Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snap
 
    On Windows, double-click `flash-linux.bat`. That path does not inject a key.
 
-6. The tablet reboots into GNOME. The user is `piano` and the default password is `piano123456`. Run `passwd` after the first login. If you passed `--ssh-key`, you can log in with that key instead.
+6. The tablet reboots into GNOME. The user is `piano` and the default password is `piano123456`. Run `passwd` after the first login.
+
+   If you passed `--ssh-key`, you can log in with that key instead.
 
 For step-by-step control, follow [Manual flashing](docs/installation.md#三之二-手动刷机不使用一键脚本). That section lists every `fastboot` command, the SHA256 checks, the read-back verification, and the rollback. **Never erase `dtbo_b`**: the ABL rejects the whole boot chain when it is missing.
 
@@ -86,7 +90,9 @@ make test                  # offline suite: GPT math, image and metadata checks
 make plan RELEASEVER=44    # print the Fedora 44 root filesystem plan
 ```
 
-The pipeline lives in `.github/workflows/`. The main chain is `host-check` (with `build_piano_rpms=true`) → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`. The last four also take successful kernel, runtime, Mesa, FFmpeg and UEFI run ids, so it is not a plain linear hand-off. Each stage accepts only artifacts from successful runs, and mixing runs is rejected. See [docs/internals.md](docs/internals.md).
+The pipeline lives in `.github/workflows/`. The main chain is `host-check` (with `build_piano_rpms=true`) → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`. The last four also take successful kernel, runtime, Mesa, FFmpeg and UEFI run ids, so it is not a plain linear hand-off.
+
+Each stage accepts only artifacts from successful runs. Mixing runs is rejected. See [docs/internals.md](docs/internals.md).
 
 ## License
 

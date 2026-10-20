@@ -30,7 +30,9 @@
 1. 解锁 Bootloader，准备好 `fastboot`。
 2. 原始 GPT 的设备先按[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)分区、擦除 `userdata`、让 Android 首次开机。**没有这一步，一键脚本不能运行。**
 3. 用同一次成功 `build-bundle` 的 `deploy-bundle`，以及由该 bundle run 派生的 `prepare-install` 产出的 `root-install`，不要混用不同 run 的资产。
-4. 按[安装指南第三节](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本)准备一个暂存目录：把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat` 与 deploy-bundle 的全部文件放进同一层，`root-install/` 放在其下。脚本把当前目录当作暂存目录，不会从仓库里找镜像。
+4. 按[安装指南第三节](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本)准备一个暂存目录：把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat` 与 deploy-bundle 的全部文件放进同一层，`root-install/` 放在其下。
+
+   脚本把当前目录当作暂存目录，不会从仓库里找镜像。
 
 5. 关机后长按 `电源键 + 音量减键` 进入 Fastboot，确认 `fastboot getvar current-slot` 返回 `a`，在暂存目录里执行：
 
@@ -40,7 +42,9 @@
 
    Windows 双击 `flash-linux.bat`（不自动注入公钥）。
 
-6. 刷完自动重启进入 GNOME。用户名 `piano`，默认密码 `piano123456`，登录后尽快用 `passwd` 修改。传了 `--ssh-key` 就可以直接用密钥登录。
+6. 刷完自动重启进入 GNOME。用户名 `piano`，默认密码 `piano123456`，登录后尽快用 `passwd` 修改。
+
+   传了 `--ssh-key` 就可以直接用密钥登录。
 
 需要逐步控制时按[手动刷机](docs/installation.md#三之二-手动刷机不使用一键脚本)执行，那里列了每条 `fastboot` 命令、SHA256 校验、读回验证和回滚方法。**不要擦除 `dtbo_b`**，ABL 会因此拒绝整条引导链。
 
@@ -86,7 +90,9 @@ make test                  # 全套离线单测：GPT 计算、镜像与元数�
 make plan RELEASEVER=44    # 打印 Fedora 44 根文件系统生成计划
 ```
 
-流水线入口是 `.github/workflows/`。主链是 `host-check`（带 `build_piano_rpms=true`）→ `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`，后四步还要各自带上内核、运行时、Mesa、FFmpeg 与 UEFI 的成功 run id，不是单纯的线性接力。每一步只接受成功 run 的产物，混用不同 run 会被拒绝。细节见 [docs/internals.md](docs/internals.md)。
+流水线入口是 `.github/workflows/`。主链是 `host-check`（带 `build_piano_rpms=true`）→ `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`，后四步还要各自带上内核、运行时、Mesa、FFmpeg 与 UEFI 的成功 run id，不是单纯的线性接力。
+
+每一步只接受成功 run 的产物，混用不同 run 会被拒绝。细节见 [docs/internals.md](docs/internals.md)。
 
 ## 许可
 
