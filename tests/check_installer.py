@@ -94,7 +94,23 @@ def main():
         pass
     else:
         raise AssertionError("modified plan was accepted")
-    print("OK: first GPT byte preservation, CRC, half capacity, Slot A contract, deterministic new entries and stale-plan rejection" +
+
+    explicit = installer.partition_plan(gpt, 307200)
+    assert explicit["allocation"] == "explicit-android-size"
+    assert explicit["capacity"]["android_userdata_mib"] == 307200, explicit["capacity"]
+    assert explicit != plan, "explicit Android size must change the layout"
+    _, changed_explicit, _ = installer.new_gpt(upstream, gpt, explicit, mbr, 307200)
+    explicit_table = changed_explicit[1536:]
+    assert struct.unpack_from("<Q", explicit_table, 33 * 128 + 40)[0] == 82275327
+    assert explicit["changes"][0]["new_last"] == 82275327
+    try:
+        installer.new_gpt(upstream, gpt, explicit, mbr)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("apply accepted a different Android size than the plan")
+    print("OK: first GPT byte preservation, CRC, half capacity, Slot A contract, deterministic new entries, "
+          "explicit Android capacity and stale-plan rejection" +
           ("; actual pinned parser exercised" if args.sunuefi else "; byte oracle exercised"))
 
 

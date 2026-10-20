@@ -17,6 +17,7 @@ GPT，算出新的分区布局，并把结果写成 JSON 供复核。它不写�
 
 用法：
     scripts/plan-first-partition.py --dump GPT.txt --esp-mib 512 --root-mib 16384
+    scripts/plan-first-partition.py --dump GPT.txt --esp-mib 512 --userdata-mib 307200
     scripts/plan-first-partition.py --dump GPT.txt --equal-split
     scripts/plan-first-partition.py --dump GPT.txt --inspect-only
 """
@@ -90,7 +91,7 @@ def find_userdata(parts):
     return rows[0]
 
 
-def build_plan(disk, parts, esp_mib, root_mib=None):
+def build_plan(disk, parts, esp_mib, root_mib=None, userdata_mib=None):
     if disk.get("logical_sector") != SECTOR:
         raise PlanError(
             f"this plan assumes {SECTOR}-byte logical sectors, got {disk.get('logical_sector')}"
@@ -135,7 +136,17 @@ def build_plan(disk, parts, esp_mib, root_mib=None):
     esp_last = userdata["last"]
     esp_first = align_down(esp_last - esp_want + 1, ALIGN_SECTORS)
     root_last = esp_first - 1
-    if root_mib is None:
+    if root_mib is not None and userdata_mib is not None:
+        raise PlanError("specify either root size or Android userdata size, not both")
+    if userdata_mib is not None:
+        # 以 Android 侧容量为准：userdata 起点不动，root 从它后面开始。
+        # 起点已按 1 MiB 对齐，所以 userdata 就是请求的整数值。
+        if type(userdata_mib) is not int or userdata_mib < 1024:
+            raise PlanError("Android userdata size must be at least 1024 MiB")
+        root_first = align_down(userdata["first"] + userdata_mib * SECTORS_PER_MIB, ALIGN_SECTORS)
+        if root_first > root_last:
+            raise PlanError("Android userdata size leaves no room for Linux root")
+    elif root_mib is None:
         root_first = align_down(userdata["first"] + (esp_first - userdata["first"]) // 2, ALIGN_SECTORS)
     else:
         if type(root_mib) is not int or root_mib < 1024:
@@ -163,7 +174,9 @@ def build_plan(disk, parts, esp_mib, root_mib=None):
         "status": "PLAN",
         "schema_version": 1,
         "mode": "tail-split",
-        "allocation": "equal-userdata-after-esp" if root_mib is None else "explicit-root-size",
+        "allocation": ("explicit-android-size" if userdata_mib is not None
+                       else "explicit-root-size" if root_mib is not None
+                       else "equal-userdata-after-esp"),
         "baseline_sha256": hashlib.sha256(json.dumps({"disk": disk, "partitions": parts},
                                                      sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
         "disk": disk,
@@ -234,6 +247,8 @@ def main(argv=None):
     parser.add_argument("--esp-mib", type=int, default=512)
     sizes = parser.add_mutually_exclusive_group()
     sizes.add_argument("--root-mib", type=int, help="Linux root 容量；默认将扣除 ESP 后的 userdata 对半分")
+    sizes.add_argument("--userdata-mib", type=int,
+                       help="Android userdata 容量；Linux root 取扣除 ESP 后的剩余空间")
     sizes.add_argument("--equal-split", action="store_true", help="扣除 ESP 后的 userdata 对半分（默认）")
     parser.add_argument("--inspect-only", action="store_true")
     parser.add_argument("--output", help="把计划写入这个 JSON")
@@ -248,7 +263,7 @@ def main(argv=None):
         else:
             if not 64 <= args.esp_mib <= 2048:
                 raise PlanError(f"esp size must be 64..2048 MiB, got {args.esp_mib}")
-            result = build_plan(disk, parts, args.esp_mib, args.root_mib)
+            result = build_plan(disk, parts, args.esp_mib, args.root_mib, args.userdata_mib)
 
         if args.output:
             Path(args.output).write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

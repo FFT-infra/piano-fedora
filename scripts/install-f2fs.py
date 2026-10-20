@@ -57,17 +57,17 @@ def load_planner():
     return module
 
 
-def partition_plan(gpt):
+def partition_plan(gpt, android_data_mib=None):
     disk = {"sectors": gpt.disk_bytes // BLOCK, "logical_sector": BLOCK, "physical_sector": BLOCK,
             "entry_count": gpt.geometry["count"], "first_usable": gpt.geometry["first"],
             "last_usable": gpt.geometry["last"], "guid": gpt.geometry["disk_guid"]}
     rows = [{"number": row["index"] + 1, "first": row["first"], "last": row["last"],
              "name": row["name"], "code": row["type"], "size_text": str(row["bytes"])} for row in gpt.partitions]
-    return load_planner().build_plan(disk, rows, 512)
+    return load_planner().build_plan(disk, rows, 512, userdata_mib=android_data_mib)
 
 
-def new_gpt(upstream, gpt, plan, mbr):
-    require(partition_plan(gpt) == plan, "partition plan differs from the actual complete GPT")
+def new_gpt(upstream, gpt, plan, mbr, android_data_mib=None):
+    require(partition_plan(gpt, android_data_mib) == plan, "partition plan differs from the actual complete GPT")
     require(len(mbr) == BLOCK and mbr[510:512] == b"\x55\xaa", "protective MBR missing")
     table = bytearray(gpt.primary_entries)
     changes = {row["name"]: row for row in plan["changes"]}
@@ -118,16 +118,18 @@ def require_install_slot(slot, existing):
         require(slot == "_a", "first install requires Android Slot A; Slot B is reserved for Linux")
 
 
-def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, existing=False):
+def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, existing=False,
+                      android_data_mib=None):
     require(not any((p / ".incomplete").exists() for p in (bundle, root_install, boot)), "incomplete input package")
     snapshot = device.inspect()
     disk_name = Path(snapshot["identity"]["disk"]).name
     require(device.text("cat /sys/block/" + disk_name + "/queue/physical_block_size") == str(BLOCK), "unexpected physical sector size")
     if existing:
+        require(android_data_mib is None, "--android-data-mib only applies to a first install")
         layout = upstream.plan_gpt(snapshot["gpt"])
         require(layout["mode"] == "update", "existing root and ESP partitions are required")
     else:
-        layout = partition_plan(snapshot["gpt"])
+        layout = partition_plan(snapshot["gpt"], android_data_mib)
     slot = device.text("getprop ro.boot.slot_suffix")
     require_install_slot(slot, existing)
     root = json.loads((root_install / "root-install-manifest.json").read_text())
@@ -191,7 +193,7 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     return {"schema_version": 1, "status": "EXISTING_PARTITIONS_READ_ONLY_PLAN" if existing else "FIRST_INSTALL_READ_ONLY_PLAN", "device": snapshot["identity"],
             "android_slot": slot, "android_build": device.text("getprop ro.build.version.incremental"),
             "gpt_baseline": snapshot["gpt"].baseline(), "partition_plan": layout,
-            "source_boot_sha256": current_boot,
+            "android_data_mib": android_data_mib, "source_boot_sha256": current_boot,
             "inputs": {"bundle_manifest_sha256": sha256(bundle / "bundle-manifest.json"),
                        "root_manifest_sha256": sha256(root_install / "root-install-manifest.json"),
                        "boot_manifest_sha256": sha256(boot / "device-boot-manifest.json")},
@@ -278,8 +280,12 @@ def factory(device, identity, slot):
         require(device.fastboot_var(serial, key) == expected, "factory bootloader identity differs: " + key)
 
 
-def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, session, ssh_key=None):
-    fresh, snapshot = installation_plan(upstream, device, bundle, root_install, boot, stock_boot)
+def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, session, ssh_key=None,
+            android_data_mib=None):
+    require(plan.get("android_data_mib") == android_data_mib,
+            "apply repeats the plan's Android userdata size (or both are the equal split)")
+    fresh, snapshot = installation_plan(upstream, device, bundle, root_install, boot, stock_boot,
+                                        android_data_mib=android_data_mib)
     require(fresh == plan, "device, GPT, slot or input package changed since the reviewed plan")
     # A bad key or a missing mcopy must fail before the GPT write and the
     # userdata erase, not halfway through the transfer.
@@ -290,7 +296,8 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
     session.mkdir(mode=0o700, parents=True)
     identity, slot = plan["device"], plan["android_slot"]
     original_mbr = device.read(identity["disk"], 0, 1)
-    expected_gpt, new_backup, old_backup = new_gpt(upstream, snapshot["gpt"], plan["partition_plan"], original_mbr)
+    expected_gpt, new_backup, old_backup = new_gpt(upstream, snapshot["gpt"], plan["partition_plan"],
+                                                   original_mbr, android_data_mib)
     (session / "original-gpt.bin").write_bytes(old_backup)
     sync_file(session / "original-gpt.bin")
     (session / "new-gpt.bin").write_bytes(new_backup)
@@ -393,6 +400,8 @@ def main():
     ap.add_argument("--root-install", type=Path, required=True)
     ap.add_argument("--device-boot", type=Path, required=True)
     ap.add_argument("--stock-boot", type=Path, required=True)
+    ap.add_argument("--android-data-mib", type=int,
+                    help="首次分区时留给 Android userdata 的 MiB；留空则扣除 ESP 后对半分")
     ap.add_argument("--plan", type=Path, required=True)
     ap.add_argument("--ssh-key", type=Path,
                     help="One ssh-ed25519 or ssh-rsa public key for user piano; "
@@ -408,14 +417,16 @@ def main():
     upstream = load_source(args.sunuefi)
     device = upstream.Device(args.serial)
     if args.operation == "plan":
-        result, _ = installation_plan(upstream, device, args.bundle, args.root_install, args.device_boot, args.stock_boot)
+        result, _ = installation_plan(upstream, device, args.bundle, args.root_install, args.device_boot,
+                                      args.stock_boot, android_data_mib=args.android_data_mib)
         require(not args.plan.exists(), "plan output already exists")
         save(args.plan, result)
     else:
         require(args.execute and args.accept_data_loss and args.session,
                 "apply requires --execute --accept-data-loss and a new --session directory")
         result = execute(upstream, device, json.loads(args.plan.read_text()), args.bundle,
-                         args.root_install, args.device_boot, args.stock_boot, args.session, args.ssh_key)
+                         args.root_install, args.device_boot, args.stock_boot, args.session, args.ssh_key,
+                         args.android_data_mib)
     print(json.dumps(result, indent=2))
 
 

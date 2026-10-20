@@ -402,6 +402,14 @@ ESP 扇区   = 512 * 1024 * 1024 / S        # 512 MiB，S=4096 时是 131072
 root 扇区  = (可用总扇区 - ESP 扇区) / 2  # 对半；也可以自己指定
 ```
 
+想给 Android 固定容量，把最后一行换成下面两行，其余不变。`307200` 是 300 GiB
+的 MiB 数；`userdata` 起点不动，所以 Android 实际拿到的就是这个值：
+
+```text
+userdata 扇区 = 307200 * (1024 * 1024 / S)
+root 扇区     = 可用总扇区 - ESP 扇区 - userdata 扇区
+```
+
 三个分区的边界：
 
 ```text
@@ -414,7 +422,7 @@ userdata     起始扇区保持不变，最后扇区改为 root 起始扇区 - 1
 
 1 MiB 对齐会把起始扇区往前推，实际容量只会大于等于请求值，Android 与 Linux 两侧相差不超过 2 MiB。
 
-可以离线核对这套算术：把 `sgdisk --print` 的输出存成文件，用 `scripts/plan-first-partition.py --dump` 跑一遍，它给出同样的边界和容量，不接触设备。
+可以离线核对这套算术：把 `sgdisk --print` 的输出存成文件，用 `scripts/plan-first-partition.py --dump` 跑一遍，它给出同样的边界和容量，不接触设备。按 Android 容量规划时把 `--equal-split` 换成 `--userdata-mib 307200`。
 
 #### 3. 写 GPT
 

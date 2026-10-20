@@ -90,6 +90,26 @@ def main():
 
         large = run("--dump", str(dump), "--root-mib", "480000")
         check(large.returncode == 0, "explicit root above 256 GiB must be accepted if it fits")
+
+        # 以 Android 容量为准：300 GiB userdata，Linux root 取剩余空间。
+        result = run("--dump", str(dump), "--esp-mib", "512", "--userdata-mib", "307200")
+        check(result.returncode == 0, f"explicit Android size should succeed: {result.stderr}")
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            check(data["allocation"] == "explicit-android-size", "explicit Android policy must be recorded")
+            check(data["capacity"]["android_userdata_mib"] == 307200, "Android must keep exactly the requested 300 GiB")
+            check(data["capacity"]["linux_root_mib"] == 652779, "Linux must take the remaining capacity")
+            check(data["capacity"]["esp_bytes"] == 537899008, "ESP size must not change with the Android split")
+            check(data["changes"][-1]["last"] == 249518074, "ESP must still end at the disk tail")
+            check(data["changes"][0]["first"] == 3632128, "Android userdata start must not move")
+
+        for args, message in (
+            (("--root-mib", "16384", "--userdata-mib", "307200"), "root and Android sizes together"),
+            (("--userdata-mib", "512"), "Android size below 1 GiB"),
+            (("--userdata-mib", "999999"), "Android size leaving no room"),
+        ):
+            check(run("--dump", str(dump), *args).returncode == 2, message + " must be rejected")
+
         for replacement, message in (
             (REAL_GPT.replace("64 entries", "4096 entries"), "GPT tables overlap usable area"),
             (REAL_GPT.replace("64 entries", "4 entries").replace("  32 ", "   2 ")
