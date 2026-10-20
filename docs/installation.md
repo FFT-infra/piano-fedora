@@ -55,9 +55,9 @@
 - `SHA256SUMS`：deploy-bundle 内 ESP/BOOT 等资产的摘要；
 - `root-install/SHA256SUMS`：root-install 内 sparse 镜像和清单的摘要。
 
-首装必须先用同一个 deploy-bundle run 跑 `prepare-install.yml`，Android 槽位固定为 `_a`，得到 `root-install`。它的 sparse 镜像已扩到真实 `sunuefi_root` 容量，写入设备配置并恢复 SELinux 标签。镜像里没有 `authorized_keys`；管理公钥在刷写时用 `--ssh-key` 注入，见下一节。
+首装必须先用同一个 deploy-bundle run 跑 `prepare-install.yml`，Android 槽位固定为 `_a`，得到 `root-install`。它的 sparse 镜像已扩到真实 `sunuefi_root` 容量，写入设备配置并恢复 SELinux 标签。镜像里没有 `authorized_keys`。管理公钥在刷写时用 `--ssh-key` 注入，见下一节。
 
-刷写脚本取自本仓库 `scripts/installer/`（`flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt`），随仓库检出。`piano-installer-*.zip` 目前只由本地打包器 `scripts/package-release-bundle.sh` 生成，流水线不产出它；没有 Release 时直接从仓库取这三个文件。
+刷写脚本取自本仓库 `scripts/installer/`，随仓库检出：`flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt`。`piano-installer-*.zip` 目前只由本地打包器 `scripts/package-release-bundle.sh` 生成，流水线不产出它。没有 Release 时直接从仓库取这三个文件。
 
 准备一个空的暂存目录（下面记作 `piano-install/`），把材料完整复制进去。不要从不同 run 各取一部分：
 
