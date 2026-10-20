@@ -16,6 +16,7 @@ FAT 镜像往返，缺工具时打印 SKIP（与 check_esp_image.py 相同风格
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -30,6 +31,10 @@ MATRIX_PATHS = ROOT / "runtime/matrix-owned-paths.txt"
 SHELL_INSTALLER = ROOT / "scripts/installer/flash-linux.sh"
 PYTHON_INSTALLER = ROOT / "scripts/install-f2fs.py"
 DOC = ROOT / "docs/installation.md"
+
+# sha256 of the tablet serial this port was developed on. Stored as a digest so
+# the check can catch a reintroduced serial without publishing it again.
+REAL_SERIAL_SHA256 = "ea3f84c934ea8b87b1dad93328adda39b371b82d35a5b3bba21459653cbe1f47"
 
 # Real wire-format blobs: the helper decodes base64, so the fixtures must be
 # valid key material rather than plausible-looking filler.
@@ -478,9 +483,12 @@ def check_docs(failures):
     for token in ("--ssh-key", "mcopy", "mtools", "/piano-ssh-key.pub"):
         if token not in doc:
             failures.append(f"docs/installation.md: missing {token!r}")
+    # The serial this repository was brought up on must not come back into the
+    # docs. Only its digest lives here, so the guard does not republish it.
     for lineno, line in enumerate(doc.splitlines(), 1):
-        if "12440448" in line:
-            failures.append(f"docs/installation.md:{lineno}: still contains a real device serial")
+        for digits in re.findall(r"\d{6,}", line):
+            if hashlib.sha256(digits.encode()).hexdigest() == REAL_SERIAL_SHA256:
+                failures.append(f"docs/installation.md:{lineno}: still contains a real device serial")
     readme = (ROOT / "scripts/installer/README-INSTALL.txt").read_text()
     for token in ("--ssh-key", "mtools", "piano-ssh-key.pub"):
         if token not in readme:
