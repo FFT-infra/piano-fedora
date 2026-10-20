@@ -66,7 +66,7 @@ A release comes from the `deploy-bundle` artifact of `build-bundle`. The `root-i
 
 | File | Contents |
 |---|---|
-| `boot_sunuefi.img` | Boot header for the ABL chain |
+| `boot_sunuefi.img` | Linux payload inside the ESP; never flash it to `boot_b` |
 | `sunuefi_esp.img` | SunUEFI EDK2, DTB, Linux 7.2.9 kernel, initramfs |
 | `PianoUEFI-product.img` | SunUEFI product firmware; the payload inside `sunuefi_esp.img` |
 | `pianoroot.f2fs.img.zst` | Sealed Fedora 44 GNOME root filesystem; `prepare-install` expands it for a first install |

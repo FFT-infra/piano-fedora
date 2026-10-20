@@ -66,7 +66,7 @@
 
 | 文件 | 说明 |
 |---|---|
-| `boot_sunuefi.img` | 适配 ABL 链式引导的引导头 |
+| `boot_sunuefi.img` | ESP 内部的 Linux 载荷，不刷进 `boot_b` |
 | `sunuefi_esp.img` | SunUEFI EDK2、DTB、Linux 7.2.9 内核与 initramfs |
 | `PianoUEFI-product.img` | SunUEFI 产品固件本体，`sunuefi_esp.img` 的载荷来源 |
 | `pianoroot.f2fs.img.zst` | 封存的 Fedora 44 GNOME 根文件系统，首装经 `prepare-install` 扩容 |

@@ -89,11 +89,17 @@ piano-install/
 ├── SHA256SUMS
 ├── bundle-manifest.json
 ├── root-image-manifest.json
+├── device-boot/
+│   ├── boot_linux.img
+│   └── boot-request.json
 └── root-install/
     ├── pianoroot.f2fs.sparse.img
     ├── root-install-manifest.json
     └── SHA256SUMS
 ```
+
+`device-boot/` 不属于 deploy-bundle，要用 `scripts/prepare-device-boot.py` 在
+本机生成一次。它不在两份 `SHA256SUMS` 里，脚本单独核对它的结构。
 
 脚本把当前工作目录当作暂存目录。deploy-bundle 的 `SHA256SUMS` 覆盖该 artifact 的全部文件，`root-install/SHA256SUMS` 覆盖 sparse root 与 root-install manifest。脚本还核对 root-install 里的 bundle/root 清单摘要确实来自当前 deploy-bundle。
 
@@ -146,10 +152,16 @@ Windows 脚本不自动注入；需要时按 `flash-linux.bat` 的提示手工�
 4. 打印安全告知，要求输入大写 `YES` 确认。
 5. 执行标准刷写序列：
    - 切换活动槽位至 B：`fastboot set_active b`
-   - 刷入引导头：`fastboot flash boot_b boot_sunuefi.img`
+   - 刷入引导头：`fastboot flash boot_b device-boot/boot_linux.img`
    - 刷入 ESP 分区：`fastboot flash sunuefi_esp sunuefi_esp.img`
    - 刷入系统根分区：`fastboot flash sunuefi_root pianoroot.f2fs.sparse.img`
    - 自动重启：`fastboot reboot`
+
+   `device-boot/boot_linux.img` 由 `scripts/prepare-device-boot.py` 用本机原厂
+   BOOT 重打包产生，不在 deploy-bundle 里，必须自己生成一次。脚本按
+   `boot_linux.img`、`device-boot/boot_linux.img` 的顺序在暂存目录里找它，也
+   可以用 `--boot` 指定。deploy-bundle 里的 `boot_sunuefi.img` 是 ESP 内部的
+   Linux 载荷，脚本会明确拒绝它。
 
    脚本不写 `dtbo_b`、`init_boot_b`、`vendor_boot_b`、`vbmeta_b`，也不擦除
    `userdata`。需要逐条手动执行同样步骤时，见下一节。
@@ -168,9 +180,10 @@ Windows 脚本不自动注入；需要时按 `flash-linux.bat` 的提示手工�
 
 | Release 资产 | 用途 | 刷到哪 |
 | --- | --- | --- |
-| `boot_sunuefi.img` | SunUEFI 链式引导头 | `boot_b` |
+| `device-boot/boot_linux.img` | `prepare-device-boot.py` 重打包的 ABL 引导头 | `boot_b` |
 | `sunuefi_esp.img` | ESP 分区镜像（固件核心、DTB、内核、initramfs） | `sunuefi_esp` |
 | `root-install/pianoroot.f2fs.sparse.img` | `prepare-install` 扩容并配置后的根文件系统稀疏镜像 | `sunuefi_root` |
+| `boot_sunuefi.img` | ESP 内部的 Linux 载荷，不刷任何分区 | 不刷入 |
 | `SHA256SUMS` | deploy-bundle 内 BOOT/ESP 等资产的 SHA256 清单 | 不刷入，只用于校验 |
 | `root-install/SHA256SUMS` | root-install 内 sparse 镜像与 manifest 的 SHA256 清单 | 不刷入，只用于校验 |
 
@@ -241,7 +254,7 @@ sha256sum sunuefi_esp.img      # 记下新摘要，读回校验用这个值
 fastboot set_active b
 
 # 2. 引导头 -> boot_b
-fastboot flash boot_b boot_sunuefi.img
+fastboot flash boot_b device-boot/boot_linux.img
 
 # 3. ESP -> sunuefi_esp
 fastboot flash sunuefi_esp sunuefi_esp.img
