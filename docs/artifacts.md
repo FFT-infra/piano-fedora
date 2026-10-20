@@ -22,11 +22,11 @@ F2FS 镜像同时绑定 rootfs、内核、运行时、Mesa、FFmpeg 和 initramf
 
 组件分目录解包。基础树、内核、UEFI、运行时、Mesa、FFmpeg 和 initramfs 不共享 manifest 路径。跨 run 查找只接受成功且未过期的 artifact。内核只允许标准 kernel-release-7.2.9。SDK 是独立 artifact，两者必须取自同一次成功 run。
 
-镜像和 bundle 只解包准确命名的内核 archive，拒绝旧 `kernel-experimental-gunyah` 与 `piano-fedora-runtime-gunyah` 产物。Gunyah 已由标准内核和标准 runtime 消费，SDK 内携带源码派生证明。`source-runs.json` 记录 `kernel_run` 与 `kernel_artifact`，bundle 按记录下载并要求其为标准档。
+镜像和 bundle 只解包准确命名的内核 archive，拒绝旧 `kernel-experimental-gunyah` 与 `piano-fedora-runtime-gunyah` 产物。Gunyah 已由标准内核和标准 runtime 消费，SDK 内携带源码派生证明。`source-runs.json` 记录 `kernel_run` 与 `kernel_artifact`，bundle 按记录下载并要求内核为标准档。
 
 clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel run。DNF 事务先安装 `kernel-piano`，所以 rootfs 本来就有唯一的 `/usr/lib/modules/<release>`。build-image 不要求该目录为空，而是要求恰好一个 release、归属 `kernel-piano`，并逐文件比对封存内核 manifest。release 字符串相同但模块字节不同仍会失败，避免 ESP 与 rootfs 跨 run 混装。
 
-所有 `workflow_dispatch` 入口都必须先在 `main` 注册。`build-piano-rpms.yml` 是 `workflow_call` 复用件，由已注册的 `host-check` 启动。`build-rootfs` 按 `host-check.yml` 解析该 run 的 `piano-rpms` artifact，不能再直接查询一个只在 PR 分支存在的 workflow。
+所有 `workflow_dispatch` 入口都必须先在 `main` 注册。`build-piano-rpms.yml` 是 `workflow_call` 复用件，由已注册的 `host-check` 启动。`build-rootfs` 按 `host-check.yml` 解析 host-check run 的 `piano-rpms` artifact，不能再直接查询一个只在 PR 分支存在的 workflow。
 
 ## F2FS 验证
 
@@ -38,7 +38,7 @@ clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel r
 
 ## 交付内容
 
-最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。发布资产名与 `fastboot flash sunuefi_esp` / `boot_b` 的目标一致。上游 `esp-manifest.json` 里仍用它自己的内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
+最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。发布资产名与 `fastboot flash sunuefi_esp` / `boot_b` 的目标一致。上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
 
 Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合体 BOOT 必须用本机当前 stock BOOT、槽位和 generation 另行包装；通用构建产物不包含这些个人设备输入。
 
@@ -66,9 +66,9 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 ## 尚需验证
 
-2026-10-10 的主机构建验收已通过。该轮覆盖组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷和 boot.img 组件。那是更早一轮的构建，设备上的 Fedora 在那之后启动过。未完成的验收项见[已知问题](known-issues.md)。首次分区、恢复材料及 Android 往返仍需各自的设备证明。
+2026-10-10 的主机构建验收已通过，覆盖组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷和 boot.img 组件。那是更早一轮的构建，设备上的 Fedora 在那之后启动过。未完成的验收项见[已知问题](known-issues.md)。首次分区、恢复材料及 Android 往返仍需各自的设备证明。
 
-上游安装器保留 ext4 合同。本仓库新增独立的 F2FS 初装入口和本机 BOOT 文件准备入口。工具路径、Actions 材料、破坏性操作门禁和真机验收边界见[维护与验收](internals.md)与[首次安装](installation.md)。新增实现的构建、包装和设备验收状态分别以对应 manifest 与会话记录为准。
+上游安装器保留 ext4 合同。piano-fedora 新增独立的 F2FS 初装入口和本机 BOOT 文件准备入口。工具路径、Actions 材料、破坏性操作门禁和真机验收边界见[维护与验收](internals.md)与[首次安装](installation.md)。新增实现的构建、包装和设备验收状态分别以对应 manifest 与会话记录为准。
 
 ## 容量与 sparse 传输
 
