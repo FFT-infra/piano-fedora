@@ -56,6 +56,7 @@
 |---|---|
 | `boot_sunuefi.img` | 适配 ABL 链式引导的引导头 |
 | `sunuefi_esp.img` | SunUEFI EDK2、DTB、Linux 7.2.9 内核与 initramfs |
+| `PianoUEFI-product.img` | SunUEFI 产品固件本体，`sunuefi_esp.img` 的载荷来源 |
 | `pianoroot.f2fs.img.zst` | 封存的 Fedora 44 GNOME 根文件系统，首装经 `prepare-install` 扩容 |
 | `root-install/` | 扩容后的 sparse 根镜像与清单 |
 | `piano-switch-ksu-<日期>.zip` | Android 侧切换模块，目前不能安装，见[已知问题](docs/known-issues.md#android-侧) |

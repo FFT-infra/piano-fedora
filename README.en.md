@@ -56,6 +56,7 @@ A release comes from the `deploy-bundle` artifact of `build-bundle`. The `root-i
 |---|---|
 | `boot_sunuefi.img` | Boot header for the ABL chain |
 | `sunuefi_esp.img` | SunUEFI EDK2, DTB, Linux 7.2.9 kernel, initramfs |
+| `PianoUEFI-product.img` | SunUEFI product firmware; the payload inside `sunuefi_esp.img` |
 | `pianoroot.f2fs.img.zst` | Sealed Fedora 44 GNOME root filesystem; `prepare-install` expands it for a first install |
 | `root-install/` | Expanded sparse root image and its manifest |
 | `piano-switch-ksu-<date>.zip` | Android-side switch module; not installable yet, see [known issues](docs/known-issues.md#android-侧) |
