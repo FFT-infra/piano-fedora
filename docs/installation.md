@@ -6,7 +6,7 @@
 
 ## 一、 前提要求与准备工作
 
-1. **解锁 Bootloader**：通过小米官方渠道完成 BL 解锁。刷入前电量保持 **30% 以上**，建议 50%。
+1. **解锁 Bootloader**：通过小米官方渠道完成 BL 解锁。刷入前电量保持 **30% 以上**，50% 更好。
 2. **电脑端工具**：装好 Android Platform Tools，`fastboot` 与 `adb` 在 PATH 里。Linux 主机还要配好设备 udev 规则，或者用有 `sudo` 权限的 shell。
    - Python 3：`flash-linux.sh` 用它读 `root-install-manifest.json`。脚本在校验摘要之前就检查 `python3`，缺了直接停下，不会写设备。
 
@@ -58,10 +58,10 @@
 
 ## 三、 已有 Linux 分区的刷写（跨平台一键脚本）
 
-适用于已解锁 BL、`install-f2fs.py apply` 已建好 GPT 分区并擦除 userdata、`sunuefi_esp` 与 `sunuefi_root` 都在的设备。全新盘不能直接跳到一键刷机。首次安装的主流程在第四节，本节的分区前提不能跳过。
+适用于已解锁 BL、`install-f2fs.py apply` 已建好 GPT 分区并擦除 userdata、`sunuefi_esp` 与 `sunuefi_root` 都在的设备。全新盘不能直接跳到一键刷机。首次安装的主流程在第四节，这一节的分区前提不能跳过。
 
 ### 1. 获取 Release 资产
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包。仓库目前还没有 Release 与 tag，该链接是空的。发布前用 `build-bundle` 下载的完整 deploy-bundle，不要在本地重新打包历史 `out/` 目录充当发布资产。
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包。仓库目前还没有 Release 与 tag，链接目前是空的。发布前用 `build-bundle` 下载的完整 deploy-bundle，不要在本地重新打包历史 `out/` 目录充当发布资产。
 
 - `piano-installer-*.zip`：只剩本地打包器会生成它，流水线不产出。没有 Release 时用仓库里的 `scripts/installer/`；
 - `boot_sunuefi.img`：ESP 内部的 Linux 载荷，不刷任何分区；
@@ -71,19 +71,19 @@
 - `SHA256SUMS`：deploy-bundle 内 ESP/BOOT 等资产的摘要；
 - `root-install/SHA256SUMS`：root-install 内 sparse 镜像和清单的摘要。
 
-首装必须先用同一个 deploy-bundle run 跑 `prepare-install.yml`，Android 槽位固定为 `_a`，得到 `root-install`。它的 sparse 镜像已扩到真实 `sunuefi_root` 容量，写入设备配置并恢复 SELinux 标签。
+首装必须先用同一个 deploy-bundle run 跑 `prepare-install.yml`，Android 槽位固定为 `_a`，得到 `root-install`。`root-install` 里的 sparse 镜像已扩到真实 `sunuefi_root` 容量，写入设备配置并恢复 SELinux 标签。
 
 镜像里没有 `authorized_keys`。管理公钥在刷写时用 `--ssh-key` 注入，见下一节。
 
-刷写脚本取自本仓库 `scripts/installer/`，随仓库检出：`flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt`。`piano-installer-*.zip` 目前只由本地打包器 `scripts/package-release-bundle.sh` 生成，流水线不产出它。
+刷写脚本取自 `scripts/installer/`，随仓库检出：`flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt`。`piano-installer-*.zip` 目前只由本地打包器 `scripts/package-release-bundle.sh` 生成，流水线不产出它。
 
 没有 Release 时直接从仓库取这三个文件。
 
 准备一个空的暂存目录（下面记作 `piano-install/`），把材料完整复制进去。不要从不同 run 各取一部分：
 
-1. 把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` 复制到该目录；
+1. 把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` 复制到这个目录；
 2. 完整解压同一 run 的 `deploy-bundle/` 到同一层，保留其中全部普通文件；
-3. 完整解压同一 deploy-bundle run 派生的 `root-install/` 到该目录下；
+3. 完整解压同一 deploy-bundle run 派生的 `root-install/` 到这个目录下；
 4. 不要把两个 artifact 的 `SHA256SUMS` 合并、改名或重新生成。
 
 最终目录必须长这样：
@@ -110,7 +110,7 @@ piano-install/
 `device-boot/` 不属于 deploy-bundle，要用 `scripts/prepare-device-boot.py` 在
 本机生成一次。它不在两份 `SHA256SUMS` 里，脚本单独核对它的结构。
 
-脚本把当前工作目录当作暂存目录。deploy-bundle 的 `SHA256SUMS` 覆盖该 artifact 的全部文件，`root-install/SHA256SUMS` 覆盖 sparse root 与 root-install manifest。脚本还核对 root-install 里的 bundle/root 清单摘要确实来自当前 deploy-bundle。
+脚本把当前工作目录当作暂存目录。deploy-bundle 的 `SHA256SUMS` 覆盖 deploy-bundle 的全部文件，`root-install/SHA256SUMS` 覆盖 sparse root 与 root-install manifest。脚本还核对 root-install 里的 bundle/root 清单摘要确实来自当前 deploy-bundle。
 
 只复制几个文件会让清单校验失去意义。
 
@@ -179,11 +179,11 @@ Windows 脚本不自动注入；需要时按 `flash-linux.bat` 的提示手工�
 
 ## 三之二、 手动刷机（不使用一键脚本）
 
-一键脚本只是把下面这些命令包了一层。想自己控制每一步，或者脚本在你的平台上跑不起来时，直接照本节执行。写入内容与脚本相同，`dtbo_b` 一律不动。
+一键脚本只是把下面这些命令包了一层。想自己控制每一步，或者脚本在你的平台上跑不起来时，直接照这一节执行。写入内容与脚本相同，`dtbo_b` 一律不动。
 
 ### 1. 从 Release 取哪些文件
 
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及该 run 派生的 `prepare-install` 的 `root-install`。不要拿历史 `out/` 目录拼装。
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及这个 run 派生的 `prepare-install` 的 `root-install`。不要拿历史 `out/` 目录拼装。
 
 手动刷机至少需要这些资产：
 
@@ -245,7 +245,7 @@ fastboot getvar is-userspace   # 必须是 no
 看起来像“刷了没生效”，实际是引导链验证被拒。`prepare-device-boot.py` 两个
 字段都写，脚本在写任何分区之前会复核。
 
-手动路径也只接受同一条新流水线的材料：完整 `deploy-bundle`，以及由该 bundle run 派生、`android_slot` 为 `_a` 的 `root-install`。
+手动路径也只接受同一条新流水线的材料：完整 `deploy-bundle`，以及由这个 bundle run 派生、`android_slot` 为 `_a` 的 `root-install`。
 
 刷写前读 `fastboot getvar partition-size:sunuefi_root`，把十六进制容量换算成字节。它必须与 `root-install-manifest.json` 的 `expanded_bytes` 完全相等，不一致就停。
 
@@ -465,7 +465,7 @@ fastboot reboot
 
 Android 初始化完成后关机，按【电源键 + 音量减键】进入原厂 Fastboot，确认 `current-slot` 仍是 `a`，再按「三之二、手动刷机」的逐条命令刷入 `boot_b`、`sunuefi_esp`、`sunuefi_root`，最后 `fastboot reboot`。
 
-> 手动路径没有 `install-f2fs.py apply` 的自动回读校验。每刷一个分区后自己执行 `fastboot getvar partition-size:<name>` 和镜像的 `sha256sum`，把结果记进这次会话的记录里。分区写错只能靠原厂包恢复，userdata 里的数据无法恢复。
+> 手动路径没有 `install-f2fs.py apply` 的自动回读校验。每刷完一个分区，自己执行 `fastboot getvar partition-size:<name>` 和镜像的 `sha256sum`，把结果记进会话记录里。分区写错只能靠原厂包恢复，userdata 里的数据无法恢复。
 
 ## 更新已有 Linux 分区
 
