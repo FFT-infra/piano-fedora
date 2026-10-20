@@ -26,13 +26,13 @@ F2FS 镜像同时绑定 rootfs、内核、运行时、Mesa、FFmpeg 和 initramf
 
 clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel run。DNF 事务先安装 `kernel-piano`，所以 rootfs 本来就有唯一的 `/usr/lib/modules/<release>`。build-image 不要求该目录为空，而是要求恰好一个 release、归属 `kernel-piano`，并逐文件比对封存内核 manifest。release 字符串相同但模块字节不同仍会失败，避免 ESP 与 rootfs 跨 run 混装。
 
-所有 `workflow_dispatch` 入口都必须先在 `main` 注册。`build-piano-rpms.yml` 是 `workflow_call` 复用件，由已注册的 `host-check` 启动；`build-rootfs` 按 `host-check.yml` 解析该 run 的 `piano-rpms` artifact，不能再直接查询一个只在 PR 分支存在的 workflow。
+所有 `workflow_dispatch` 入口都必须先在 `main` 注册。`build-piano-rpms.yml` 是 `workflow_call` 复用件，由已注册的 `host-check` 启动。`build-rootfs` 按 `host-check.yml` 解析该 run 的 `piano-rpms` artifact，不能再直接查询一个只在 PR 分支存在的 workflow。
 
 ## F2FS 验证
 
 导入使用 GNU tar 的 pax、全部 xattr namespace、ACL、numeric owner 与 SELinux 恢复选项。逐条核对文件内容、UID/GID、mode、mtime、软链接目标、硬链接关系、全部 xattr、capability 与目标 SELinux 标签。属性读取错误会失败，目录大小不参与跨文件系统比较。
 
-镜像先卸载，再运行 `fsck.f2fs -f --dry-run`，核对检查前后镜像摘要不变。随后以 `ro,norecovery` 挂载读回；卸载后才生成最终镜像摘要。仅有 fsck 退出 0 或小 fixture 通过不证明完整交付通过。
+镜像先卸载，再运行 `fsck.f2fs -f --dry-run`，核对检查前后镜像摘要不变。随后以 `ro,norecovery` 挂载读回。卸载后才生成最终镜像摘要。仅有 fsck 退出 0 或小 fixture 通过不证明完整交付通过。
 
 通用交付包的 8192 MiB 是测试镜像容量。本机目标容量已按真实 GPT 对半计算并记录在 `product.json`。`prepare-install.yml` 在独立副本里完成离线扩容、设备配置与完整读回，然后输出 sparse 传输文件，不依赖首次开机自动扩容。
 
@@ -58,7 +58,7 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 | build-bundle | 39328903515 | `deploy-bundle` |
 | prepare-install | 39329477706 | `root-install`（`size_mib=479990`，`expanded_bytes=503305994240`） |
 
-这一轮修掉的三处真实故障：`stage-rootfs-payload.py` 先把封存内核里的 `build`/`source` 链接当成差异；`kernel-piano.spec` 的 `brp-strip` 改写 `.ko` 的 `.symtab`，使 RPM 与封存内核不再逐字节相同；`build-clean-rootfs.py` 没有给本地仓库设 priority，dnf 装了版本号更高的发行版 Mesa。
+这一轮修掉的三处真实故障。`stage-rootfs-payload.py` 先把封存内核里的 `build`/`source` 链接当成差异。`kernel-piano.spec` 的 `brp-strip` 改写 `.ko` 的 `.symtab`，使 RPM 与封存内核不再逐字节相同。`build-clean-rootfs.py` 没有给本地仓库设 priority，dnf 装了版本号更高的发行版 Mesa。
 
 ## 尚需验证
 

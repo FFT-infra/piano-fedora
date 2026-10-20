@@ -45,7 +45,7 @@
 适用于已解锁 BL、`install-f2fs.py apply` 已建好 GPT 分区并擦除 userdata、`sunuefi_esp` 与 `sunuefi_root` 都在的设备。全新盘不能直接跳到一键刷机。首次安装的主流程在第四节，本节的分区前提不能跳过。
 
 ### 1. 获取 Release 资产
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包。仓库目前还没有 Release 与 tag，该链接是空的；发布前用 `build-bundle` 下载的完整 deploy-bundle。不要在本地重新打包历史 `out/` 目录充当发布资产。
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包。仓库目前还没有 Release 与 tag，该链接是空的。发布前用 `build-bundle` 下载的完整 deploy-bundle，不要在本地重新打包历史 `out/` 目录充当发布资产。
 
 - `piano-installer-*.zip`：只剩本地打包器会生成它，流水线不产出。没有 Release 时用仓库里的 `scripts/installer/`；
 - `boot_sunuefi.img`：SunUEFI 引导头；
@@ -86,7 +86,7 @@ piano-install/
 
 脚本把当前工作目录当作暂存目录。deploy-bundle 的 `SHA256SUMS` 覆盖该 artifact 的全部文件，`root-install/SHA256SUMS` 覆盖 sparse root 与 root-install manifest。脚本还核对 root-install 里的 bundle/root 清单摘要确实来自当前 deploy-bundle。只复制几个文件会让清单校验失去意义。
 
-一键脚本要求分区已由 `install-f2fs.py apply` 建立。原厂设备只有 Android 的 `userdata`，没有 `sunuefi_esp` / `sunuefi_root`；脚本会拒绝，必须先走第四节的首次分区。清空分区是首次安装的破坏性步骤，不能由刷写脚本代劳。脚本固定把 Linux 写到 Slot B，所以运行前 Android 必须还在 Slot A；当前槽是 B 时，脚本在任何写入前就退出。
+一键脚本要求分区已由 `install-f2fs.py apply` 建立。原厂设备只有 Android 的 `userdata`，没有 `sunuefi_esp` / `sunuefi_root`，脚本会拒绝。必须先走第四节的首次分区。清空分区是首次安装的破坏性步骤，不能由刷写脚本代劳。脚本固定把 Linux 写到 Slot B，所以运行前 Android 必须还在 Slot A。当前槽是 B 时，脚本在任何写入前就退出。
 
 ### 2. 进入 Fastboot 模式
 1. 平板完全关机。
@@ -145,7 +145,7 @@ cd piano-install
 
 ### 1. 从 Release 取哪些文件
 
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及该 run 派生的 `prepare-install` 的 `root-install`；不要拿历史 `out/` 目录拼装。手动刷机至少需要这些资产：
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及该 run 派生的 `prepare-install` 的 `root-install`。不要拿历史 `out/` 目录拼装。手动刷机至少需要这些资产：
 
 | Release 资产 | 用途 | 刷到哪 |
 | --- | --- | --- |
@@ -194,9 +194,9 @@ fastboot getvar unlocked       # 必须是 yes
 fastboot getvar is-userspace   # 必须是 no
 ```
 
-任一项不对就停下，不要写任何分区：`product` 不是 `piano`，`unlocked` 不是 `yes`，或者 `is-userspace` 是 `yes`（说明落在了 fastbootd，不是原厂 ABL）。`current-slot` 必须是 `a`；是 `b` 时一键脚本会拒绝，手动流程也必须停，不能把 Linux 写进正在承载 Android 的 `boot_b`。
+任一项不对就停下，不要写任何分区：`product` 不是 `piano`，`unlocked` 不是 `yes`，或者 `is-userspace` 是 `yes`（说明落在了 fastbootd，不是原厂 ABL）。`current-slot` 必须是 `a`。是 `b` 时一键脚本会拒绝，手动流程也必须停，不能把 Linux 写进正在承载 Android 的 `boot_b`。
 
-手动路径也只接受同一条新流水线的材料：完整 `deploy-bundle`，以及由该 bundle run 派生、`android_slot` 为 `_a` 的 `root-install`。刷写前读 `fastboot getvar partition-size:sunuefi_root`，把十六进制容量换算成字节，必须与 `root-install-manifest.json` 的 `expanded_bytes` 完全相等；不一致就停。
+手动路径也只接受同一条新流水线的材料：完整 `deploy-bundle`，以及由该 bundle run 派生、`android_slot` 为 `_a` 的 `root-install`。刷写前读 `fastboot getvar partition-size:sunuefi_root`，把十六进制容量换算成字节。它必须与 `root-install-manifest.json` 的 `expanded_bytes` 完全相等，不一致就停。
 
 ### 4. 逐条刷写
 
@@ -383,8 +383,7 @@ sgdisk --verify /dev/sda
 sgdisk --print /dev/sda
 ```
 
-核对要点：`userdata` 的起始扇区与原来相同；`sunuefi_esp` 结束在 `L`；
-`sunuefi_root` 紧贴 ESP 之前；三个分区互不重叠，且都在 usable 范围内。
+核对要点：`userdata` 的起始扇区与原来相同。`sunuefi_esp` 结束在 `L`。`sunuefi_root` 紧贴 ESP 之前。三个分区互不重叠，且都在 usable 范围内。
 
 #### 4. 让 Android 重建 userdata
 
@@ -447,9 +446,9 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 
 ## 登录和诊断
 
-桌面用户是 `piano`，默认密码 `piano123456`，与上游登录策略一致。桌面自动登录；首次使用后执行 `passwd` 改密。root 密码保持锁定。镜像里没有 `authorized_keys`；要密钥登录就在刷写时用 `flash-linux.sh --ssh-key` 注入，首启后由 `piano-first-boot-ssh-key.service` 导入。
+桌面用户是 `piano`，默认密码 `piano123456`，与上游登录策略一致。桌面自动登录，首次使用后执行 `passwd` 改密。root 密码保持锁定。镜像里没有 `authorized_keys`。要密钥登录就在刷写时用 `flash-linux.sh --ssh-key` 注入，首启后由 `piano-first-boot-ssh-key.service` 导入。
 
-正常 Fedora 用需要账户认证的 `serial-getty@ttyGS0.service`，initramfs 救援的串口 shell 另走一条。NCM 用上游固定设备 MAC，NetworkManager 静态配置 `192.168.77.1/30`，不加默认路由；主机侧可用 `192.168.77.2/30`。这些入口已经配好，实际 USB 枚举和登录还要在设备上验证。
+正常 Fedora 用需要账户认证的 `serial-getty@ttyGS0.service`，initramfs 救援的串口 shell 另走一条。NCM 用上游固定设备 MAC，NetworkManager 静态配置 `192.168.77.1/30`，不加默认路由。主机侧可用 `192.168.77.2/30`。这些入口已经配好，实际 USB 枚举和登录还要在设备上验证。
 
 在现有 Fedora 上用 `stage-rootfs-payload.py --rootfs /` 增量安装时，脚本返回成功前会用本机 `setfiles -F` 恢复新模块、硬件准备程序、USB 诊断程序、systemd 单元和来源记录的 SELinux 标签。来源里的 `user_home_t` 不能用在系统模块上；摘要一致不代表标签正确。离线 staging 的标签由 build-image 里的目标策略标记步骤处理。
 
