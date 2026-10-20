@@ -101,3 +101,8 @@ v4l2loopback 写黑帧，所以"节点能取到帧"不等于传感器在出图�
   标题层级数量、语言切换行、指向的文档列表必须一致。改一版要同步另一版。
 - `docs/public-release-gaps.md` 的电极校准一项仍待许可决定。在此之前不要把
   带校准表的 bundle 挂成公开 Release。
+- 三个 UEFI 补丁的 `series.json` 里 `note` 引用的文档分两类。`docs/status.md`、
+  `docs/ufs-dedicated-area-audit.md` 与 `docs/piano-full-ddr-producer-gaps.md`
+  在上游 SunUEFI 仓库，按 `sources.lock.json` 的 pin 取。`docs/device-acceptance-20261015.md`
+  已移到不入库的本地笔记，这条引用是历史记录。改 `series.json` 会改变
+  `project_source_sha256`，现有 bundle 的 UEFI 来源校验会失效，所以先不动。

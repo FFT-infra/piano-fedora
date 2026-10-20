@@ -51,9 +51,9 @@ boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。
 
 ## 实际首次安装
 
-以下命令是 PR 真机验收的唯一主流程。所有材料必须来自同一条新流水线。当前已经启动的 GNOME、历史镜像和热修复都不算通过。自动化的破坏性步骤
-（`install-f2fs.py apply`）与手动分区做同一件事；手动分区、刷写与回滚的逐条
-命令在[安装指南](installation.md)第四节和三之二节。
+以下命令是 PR 真机验收的唯一主流程。所有材料必须来自同一条新流水线。当前已经启动的 GNOME、历史镜像和热修复都不算通过。
+
+自动化的破坏性步骤（`install-f2fs.py apply`）与手动分区做同一件事。手动分区、刷写与回滚的逐条命令在[安装指南](installation.md)第四节和三之二节。
 
 ### 1. 固定流水线与设备身份
 
@@ -157,7 +157,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py apply \
 保持原样。`result.json` 的 `ssh_key_injected` 与 `sunuefi_esp_sha256` 记录这次
 注入和实际刷入的摘要。不传 `--ssh-key` 时只保留口令登录。
 
-执行器重新读取设备，保存原 GPT 与 BOOT，写入并读回完整 GPT，显式执行 `fastboot erase userdata`，然后传输 ESP、F2FS sparse root 和当前槽的 Android 默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
+执行器重新读取设备，保存原 GPT 与 BOOT。它随后写入并读回完整 GPT，显式执行 `fastboot erase userdata`，再传输 ESP、F2FS sparse root 和当前槽的 Android 默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
 
 这时 Linux 还没启动，`apply` 结束时设备停在原厂 Fastboot。先断开 USB，再执行一次普通重启，让设备按当前槽启动 Android：
 
@@ -180,7 +180,9 @@ chmod +x flash-linux.sh
 如果第 3 步已经用 `install-f2fs.py --ssh-key` 注入过，这里不必再传。重复注入
 只会覆盖同一个 `/piano-ssh-key.pub`。两条路径都要求本机有 `mcopy`（mtools）。
 
-脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量。它只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。首装路径拒绝 `--skip-checksum`：两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备重启到 Slot B。
+脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量。它只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。
+
+首装路径拒绝 `--skip-checksum`。两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备重启到 Slot B。
 
 Windows 脚本用系统自带的 Windows PowerShell 读 JSON 清单。槽位与容量核对走 `ConvertFrom-Json`，找不到 `powershell` 就直接停下。
 
@@ -199,7 +201,9 @@ Windows 脚本用系统自带的 Windows PowerShell 读 JSON 清单。槽位与�
 
 设备热修复替代不了发布资产测试。PR 最终必须从原始 GPT/UFS 布局开始，用本流水线重新生成的 rootfs 与 ESP 完成冷启动、GNOME 桌面和重启复现。
 
-`fastboot erase userdata` 是首次安装的必经写入，不能省略。`plan` 会检查 `/data` 的 formattable 合同，但 AOSP `fs_mgr` 只在 `wiped`、或元数据加密关闭且 `!is_fs_valid` 时自动格式化。缩短 GPT 本身不会清掉旧的 F2FS 超级块。所以执行器必须显式擦除，再让 Android 第一次启动，重建加密 userdata 并完成首次开机。不要直接在宿主上格式化 Android 的加密映射。
+`fastboot erase userdata` 是首次安装的必经写入，不能省略。`plan` 会检查 `/data` 的 formattable 合同，但 AOSP `fs_mgr` 只在 `wiped`、或元数据加密关闭且 `!is_fs_valid` 时自动格式化。缩短 GPT 本身不会清掉旧的 F2FS 超级块。
+
+所以执行器必须显式擦除，再让 Android 第一次启动，重建加密 userdata 并完成首次开机。不要直接在宿主上格式化 Android 的加密映射。
 
 会话的 result.json 记录每个完成的阶段和错误。GPT 写入或擦除之后中断时，先看记录和实际设备状态，不要自动重试、恢复旧 GPT 或启动 Android。恢复 GPT 也找不回已擦除的 Android 文件。
 
