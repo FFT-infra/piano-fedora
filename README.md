@@ -2,6 +2,8 @@
 
 [English](README.en.md) | 简体中文
 
+[![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
+
 在小米平板 8 Pro（代号 `piano`，高通骁龙 8 至尊版 SM8750）上原生运行 Fedora 44 + GNOME。引导链是 SunUEFI（EDK2），内核是 Linux 7.2.9 主线适配，根文件系统用 F2FS，可以与原厂 HyperOS 双系统免电脑往返。
 
 > **风险提示**：刷入涉及解锁 Bootloader、改写 GPT、擦写 A/B 槽位与启动链。操作不规范可能让设备变砖或丢失全部数据。动手前自行备份。本项目按 [MIT 许可证](LICENSE) 原样提供，作者不承担设备损坏、数据丢失或保修失效的责任。
