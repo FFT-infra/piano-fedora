@@ -47,7 +47,7 @@
 ### 1. 获取 Release 资产
 从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包。仓库目前还没有 Release 与 tag，该链接是空的；发布前用 `build-bundle` 下载的完整 deploy-bundle。不要在本地重新打包历史 `out/` 目录充当发布资产。
 
-- `piano-installer-*.zip`：一键刷机脚本包（包含 `flash-linux.sh`、`flash-linux.bat`）；
+- `piano-installer-*.zip`：只剩本地打包器会生成它，流水线不产出。没有 Release 时用仓库里的 `scripts/installer/`；
 - `boot_sunuefi.img`：SunUEFI 引导头；
 - `sunuefi_esp.img`：SunUEFI ESP 分区镜像；
 - `pianoroot.f2fs.img.zst`：封存的基础盘，不能直接首装；
@@ -57,9 +57,11 @@
 
 首装必须先用同一个 deploy-bundle run 跑 `prepare-install.yml`，Android 槽位固定为 `_a`，得到 `root-install`。它的 sparse 镜像已扩到真实 `sunuefi_root` 容量，写入设备配置并恢复 SELinux 标签。镜像里没有 `authorized_keys`；管理公钥在刷写时用 `--ssh-key` 注入，见下一节。
 
+刷写脚本取自本仓库 `scripts/installer/`（`flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt`），随仓库检出。`piano-installer-*.zip` 目前只由本地打包器 `scripts/package-release-bundle.sh` 生成，流水线不产出它；没有 Release 时直接从仓库取这三个文件。
+
 准备一个空的暂存目录（下面记作 `piano-install/`），把材料完整复制进去。不要从不同 run 各取一部分：
 
-1. 解压 `piano-installer-*.zip` 到该目录；
+1. 把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` 复制到该目录；
 2. 完整解压同一 run 的 `deploy-bundle/` 到同一层，保留其中全部普通文件；
 3. 完整解压同一 deploy-bundle run 派生的 `root-install/` 到该目录下；
 4. 不要把两个 artifact 的 `SHA256SUMS` 合并、改名或重新生成。
