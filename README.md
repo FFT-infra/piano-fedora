@@ -21,7 +21,7 @@
 | 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
 | 传感器 | ✅ | `iio-sensor-proxy` 采集加速度计、环境光、接近、罗盘 |
 | 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、2 MB 大页、virtio-net |
-| 双系统往返 | ✅ | `piano-next-boot`（Linux 侧）与 `piano-switch-ksu`（Android 侧） |
+| 双系统往返 | 🟡 | `piano-next-boot` 在 Linux 侧可用；自动切换尚未验收，Android 侧模块还不能安装，见[已知问题](docs/known-issues.md#双系统切换) |
 | 手写笔 | 🟡 | 守护服务与 Type 29 协议就绪，等待实物划线终验 |
 | 指纹 / IR / HDR | ❌ | 依赖闭源 TEE 固件，主线不支持 |
 
@@ -45,7 +45,7 @@
 ### 双系统切换
 
 - Linux → Android：应用抽屉点「返回 Android」，或执行 `piano-next-boot android --reboot`。
-- Android → Linux：安装并启用 `piano-switch-ksu` 模块，下拉控制中心点快捷磁贴。
+- Android → Linux：`piano-switch-ksu` 模块还不能安装，见[已知问题](docs/known-issues.md#android-侧)。
 - 引导菜单：开机 3 秒内按音量键，或桌面点「SunUEFI 启动选择菜单」。
 
 ## 发布产物
@@ -58,7 +58,7 @@
 | `sunuefi_esp.img` | SunUEFI EDK2、DTB、Linux 7.2.9 内核与 initramfs |
 | `pianoroot.f2fs.img.zst` | 封存的 Fedora 44 GNOME 根文件系统，首装经 `prepare-install` 扩容 |
 | `root-install/` | 扩容后的 sparse 根镜像与清单 |
-| `piano-switch-ksu-<日期>.zip` | Android 侧切换模块 |
+| `piano-switch-ksu-<日期>.zip` | Android 侧切换模块，目前不能安装，见[已知问题](docs/known-issues.md#android-侧) |
 | `SHA256SUMS` | 各资产哈希 |
 
 仓库目前还没有 Release 与 tag，上面的资产只以 workflow artifact 形式存在。`scripts/package-release-bundle.sh` 是本地兼容打包器，不是发布主入口。

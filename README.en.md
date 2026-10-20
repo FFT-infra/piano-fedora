@@ -21,7 +21,7 @@ Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snap
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
 | Sensors | ✅ | `iio-sensor-proxy` reads accelerometer, ambient light, proximity, compass |
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, 2 MB pages, virtio-net |
-| Dual boot | ✅ | `piano-next-boot` on Linux, `piano-switch-ksu` on Android |
+| Dual boot | 🟡 | `piano-next-boot` works on the Linux side. Automatic switching is not accepted yet, and the Android-side module cannot be installed. See [known issues](docs/known-issues.md#双系统切换) |
 | Stylus | 🟡 | Daemon and Type 29 protocol are ready; a physical drawing test is pending |
 | Fingerprint / IR / HDR | ❌ | Require closed TEE firmware; mainline does not support them |
 
@@ -45,7 +45,7 @@ For step-by-step control, follow [Manual flashing](docs/installation.md#三之�
 ### Switching between systems
 
 - Linux to Android: click "Return to Android" in the app grid, or run `piano-next-boot android --reboot`.
-- Android to Linux: install and enable the `piano-switch-ksu` module, then tap its tile in Quick Settings.
+- Android to Linux: the `piano-switch-ksu` module cannot be installed yet. See [known issues](docs/known-issues.md#android-侧).
 - Boot menu: press a volume key within 3 seconds of power-on, or click "SunUEFI boot menu" on the desktop.
 
 ## Release artifacts
@@ -58,7 +58,7 @@ A release comes from the `deploy-bundle` artifact of `build-bundle`. The `root-i
 | `sunuefi_esp.img` | SunUEFI EDK2, DTB, Linux 7.2.9 kernel, initramfs |
 | `pianoroot.f2fs.img.zst` | Sealed Fedora 44 GNOME root filesystem; `prepare-install` expands it for a first install |
 | `root-install/` | Expanded sparse root image and its manifest |
-| `piano-switch-ksu-<date>.zip` | Android-side switch module |
+| `piano-switch-ksu-<date>.zip` | Android-side switch module; not installable yet, see [known issues](docs/known-issues.md#android-侧) |
 | `SHA256SUMS` | Hashes of every asset |
 
 The repository has no release and no tag yet. The assets exist only as workflow artifacts. `scripts/package-release-bundle.sh` is a local compatibility packer, not the release entry point.
