@@ -32,13 +32,17 @@ def main():
     cn = CN.read_text(encoding="utf-8")
     en = EN.read_text(encoding="utf-8")
 
-    # The switch line has to exist in both files and point at the other one.
-    if "(README.en.md)" not in cn.splitlines()[2]:
+    # The switch line has to exist in both files and point at the other one. It
+    # sits near the title, but a notice block may come first, so search the head
+    # of the file instead of a fixed line number.
+    head_cn = cn.splitlines()[:20]
+    head_en = en.splitlines()[:20]
+    if not any("(README.en.md)" in line and "|" in line for line in head_cn):
         failures.append("README.md: the language switch line must link README.en.md "
-                        "directly under the title")
-    if "(README.md)" not in en.splitlines()[2]:
+                        "near the top of the file")
+    if not any("(README.md)" in line and "|" in line for line in head_en):
         failures.append("README.en.md: the language switch line must link README.md "
-                        "directly under the title")
+                        "near the top of the file")
 
     # Same skeleton: a section added to one side only means the other side is stale.
     if headings(CN) != headings(EN):

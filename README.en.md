@@ -1,3 +1,9 @@
+> **Experimental project.** This repository targets driver work and hardware bring-up. It is not a stable system for daily use.
+>
+> Flashing unlocks the bootloader, rewrites the GPT, and writes the A/B slots and the boot chain. A careless step can brick the tablet or destroy all data. Back up every partition and your personal data before you start.
+>
+> This project ships under the [MIT license](LICENSE) as is. The authors and contributors take no responsibility for damaged hardware, lost data, or a voided warranty.
+
 # Fedora 44 for Xiaomi Pad 8 Pro (piano)
 
 English | [简体中文](README.md)
@@ -5,8 +11,6 @@ English | [简体中文](README.md)
 [![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
 
 Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 Elite SM8750). The boot chain is SunUEFI (EDK2). The kernel is a mainline Linux 7.2.9 port. The root filesystem is F2FS. The tablet switches between Linux and the stock HyperOS without a PC.
-
-> **Risk**: installing this port unlocks the bootloader, rewrites the GPT, and writes the A/B slots and the boot chain. A careless step can brick the tablet or destroy all data. Back up the device before you start. This project ships under the [MIT license](LICENSE) as is. The authors take no responsibility for damaged hardware, lost data, or a voided warranty.
 
 ## Hardware status
 
