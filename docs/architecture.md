@@ -36,7 +36,9 @@ F2FS 排在分区之前。F2FS 是技术风险，可能走不通。分区是工�
 
 | workflow | 触发 | 产出 |
 | --- | --- | --- |
-| `host-check.yml` | push / PR | 离线检查，`make test` |
+| `host-check.yml` | push / PR / 手动 | 离线检查与 `make test`。手动 dispatch 时按输入复用调用 `build-piano-rpms`、`build-ffmpeg` 与 `package-install` |
+| `build-piano-rpms.yml` | `host-check` 调用 | 九类矩阵 RPM 与匹配内核的 `kernel-piano`，同一 job 产出 SRPM |
+| `build-ffmpeg.yml` | `host-check` 调用 | 带 v4l2m2m 的 FFmpeg RPM |
 | `build-rootfs.yml` | 手动 | Fedora rootfs 树 + `.tar.zst`，上传 artifact |
 | `build-kernel.yml` | 手动 | F2FS/SELinux Image、完整模块与匹配 SDK |
 | `build-uefi.yml` | 手动 | UEFI 产品与原始 manifest |
