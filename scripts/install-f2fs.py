@@ -22,11 +22,29 @@ from piano_sparse import require
 
 ROOT = Path(__file__).resolve().parents[1]
 BLOCK = 4096
+# 默认与 product.json 的 esp_size_mib 一致；ESPMIB 来自产物清单时以清单为准。
+DEFAULT_ESP_MIB = 512
 BUNDLE_ASSETS = {
     "sunuefi_esp.img": "sunuefi_esp.img",
     "boot_sunuefi.img": "boot_sunuefi.img",
     "PianoUEFI-product.img": "PianoUEFI-product.img",
 }
+
+
+def esp_mib_from_bundle(bundle):
+    """从 ESP 产物清单读出这块设备真正的 ESP 容量。
+
+    镜像按 product.json 的 esp_size_mib 造出，分区必须与之相同。
+    清单缺失或格式不对时返回 None，由调用方决定拒绝还是用默认值。
+    """
+    path = bundle / "esp-manifest.json"
+    if not path.is_file() or path.is_symlink():
+        return None
+    record = json.loads(path.read_text()).get("partitions", {}).get("esp", {})
+    capacity = record.get("capacity_bytes")
+    if type(capacity) is not int or capacity <= 0 or capacity % (1024 * 1024):
+        return None
+    return capacity // (1024 * 1024)
 
 
 def load_source(source):
@@ -57,17 +75,19 @@ def load_planner():
     return module
 
 
-def partition_plan(gpt, android_data_mib=None):
+def partition_plan(gpt, android_data_mib=None, esp_mib=None):
     disk = {"sectors": gpt.disk_bytes // BLOCK, "logical_sector": BLOCK, "physical_sector": BLOCK,
             "entry_count": gpt.geometry["count"], "first_usable": gpt.geometry["first"],
             "last_usable": gpt.geometry["last"], "guid": gpt.geometry["disk_guid"]}
     rows = [{"number": row["index"] + 1, "first": row["first"], "last": row["last"],
              "name": row["name"], "code": row["type"], "size_text": str(row["bytes"])} for row in gpt.partitions]
-    return load_planner().build_plan(disk, rows, 512, userdata_mib=android_data_mib)
+    return load_planner().build_plan(disk, rows, DEFAULT_ESP_MIB if esp_mib is None else esp_mib,
+                                     userdata_mib=android_data_mib)
 
 
-def new_gpt(upstream, gpt, plan, mbr, android_data_mib=None):
-    require(partition_plan(gpt, android_data_mib) == plan, "partition plan differs from the actual complete GPT")
+def new_gpt(upstream, gpt, plan, mbr, android_data_mib=None, esp_mib=None):
+    require(partition_plan(gpt, android_data_mib, esp_mib) == plan,
+            "partition plan differs from the actual complete GPT")
     require(len(mbr) == BLOCK and mbr[510:512] == b"\x55\xaa", "protective MBR missing")
     table = bytearray(gpt.primary_entries)
     changes = {row["name"]: row for row in plan["changes"]}
@@ -119,17 +139,18 @@ def require_install_slot(slot, existing):
 
 
 def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, existing=False,
-                      android_data_mib=None):
+                      android_data_mib=None, esp_mib=None):
     require(not any((p / ".incomplete").exists() for p in (bundle, root_install, boot)), "incomplete input package")
     snapshot = device.inspect()
     disk_name = Path(snapshot["identity"]["disk"]).name
     require(device.text("cat /sys/block/" + disk_name + "/queue/physical_block_size") == str(BLOCK), "unexpected physical sector size")
     if existing:
         require(android_data_mib is None, "--android-data-mib only applies to a first install")
+        require(esp_mib is None, "--esp-mib only applies to a first install")
         layout = upstream.plan_gpt(snapshot["gpt"])
         require(layout["mode"] == "update", "existing root and ESP partitions are required")
     else:
-        layout = partition_plan(snapshot["gpt"], android_data_mib)
+        layout = partition_plan(snapshot["gpt"], android_data_mib, esp_mib)
     slot = device.text("getprop ro.boot.slot_suffix")
     require_install_slot(slot, existing)
     root = json.loads((root_install / "root-install-manifest.json").read_text())
@@ -152,7 +173,15 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
         require(root["expanded_bytes"] == targets["sunuefi_root"]["bytes"], "root image does not match the existing partition capacity")
         require(generic["files"]["sunuefi_esp.img"]["bytes"] == targets["sunuefi_esp"]["bytes"], "ESP image does not match the existing partition capacity")
     else:
-        require(root["target_size_mib"] == layout["capacity"]["linux_root_mib"], "root image does not match the equal partition plan")
+        require(root["target_size_mib"] == layout["capacity"]["linux_root_mib"], "root image does not match the partition plan")
+        # ESP 镜像按 product.json 的 esp_size_mib 造出，分区必须正好装下它。
+        # 少了装不进，多了刷完会留下未格式化的尾部。
+        esp_row = next(row for row in layout["changes"] if row["name"] == "sunuefi_esp")
+        require(generic["files"]["sunuefi_esp.img"]["bytes"] == esp_row["size_mib"] * 1024**2,
+                "ESP image does not match the planned ESP partition capacity")
+        declared = esp_mib_from_bundle(bundle)
+        if declared is not None:
+            require(declared == esp_row["size_mib"], "ESP manifest and partition plan disagree on capacity")
     require(root["fsck_exit"] == 0 and root["fsck_read_only"] is True
             and root["transport"]["dont_care_chunks"] == 0
             and root["transport"]["zero_policy"] == "explicit-zero-fill", "root capacity/transport verification incomplete")
@@ -193,7 +222,7 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     return {"schema_version": 1, "status": "EXISTING_PARTITIONS_READ_ONLY_PLAN" if existing else "FIRST_INSTALL_READ_ONLY_PLAN", "device": snapshot["identity"],
             "android_slot": slot, "android_build": device.text("getprop ro.build.version.incremental"),
             "gpt_baseline": snapshot["gpt"].baseline(), "partition_plan": layout,
-            "android_data_mib": android_data_mib, "source_boot_sha256": current_boot,
+            "android_data_mib": android_data_mib, "esp_mib": esp_mib, "source_boot_sha256": current_boot,
             "inputs": {"bundle_manifest_sha256": sha256(bundle / "bundle-manifest.json"),
                        "root_manifest_sha256": sha256(root_install / "root-install-manifest.json"),
                        "boot_manifest_sha256": sha256(boot / "device-boot-manifest.json")},
@@ -281,11 +310,13 @@ def factory(device, identity, slot):
 
 
 def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, session, ssh_key=None,
-            android_data_mib=None):
+            android_data_mib=None, esp_mib=None):
     require(plan.get("android_data_mib") == android_data_mib,
             "apply repeats the plan's Android userdata size (or both are the equal split)")
+    require(plan.get("esp_mib") == esp_mib,
+            "apply repeats the plan's ESP size (or both use the built-in default)")
     fresh, snapshot = installation_plan(upstream, device, bundle, root_install, boot, stock_boot,
-                                        android_data_mib=android_data_mib)
+                                        android_data_mib=android_data_mib, esp_mib=esp_mib)
     require(fresh == plan, "device, GPT, slot or input package changed since the reviewed plan")
     # A bad key or a missing mcopy must fail before the GPT write and the
     # userdata erase, not halfway through the transfer.
@@ -297,7 +328,7 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
     identity, slot = plan["device"], plan["android_slot"]
     original_mbr = device.read(identity["disk"], 0, 1)
     expected_gpt, new_backup, old_backup = new_gpt(upstream, snapshot["gpt"], plan["partition_plan"],
-                                                   original_mbr, android_data_mib)
+                                                   original_mbr, android_data_mib, esp_mib)
     (session / "original-gpt.bin").write_bytes(old_backup)
     sync_file(session / "original-gpt.bin")
     (session / "new-gpt.bin").write_bytes(new_backup)
@@ -402,6 +433,8 @@ def main():
     ap.add_argument("--stock-boot", type=Path, required=True)
     ap.add_argument("--android-data-mib", type=int,
                     help="首次分区时留给 Android userdata 的 MiB；留空则扣除 ESP 后对半分")
+    ap.add_argument("--esp-mib", type=int,
+                    help="首次分区时 ESP 的 MiB；留空用 512。必须与 deploy-bundle 的 ESP 镜像等大")
     ap.add_argument("--plan", type=Path, required=True)
     ap.add_argument("--ssh-key", type=Path,
                     help="One ssh-ed25519 or ssh-rsa public key for user piano; "
@@ -418,7 +451,8 @@ def main():
     device = upstream.Device(args.serial)
     if args.operation == "plan":
         result, _ = installation_plan(upstream, device, args.bundle, args.root_install, args.device_boot,
-                                      args.stock_boot, android_data_mib=args.android_data_mib)
+                                      args.stock_boot, android_data_mib=args.android_data_mib,
+                                      esp_mib=args.esp_mib)
         require(not args.plan.exists(), "plan output already exists")
         save(args.plan, result)
     else:
@@ -426,7 +460,7 @@ def main():
                 "apply requires --execute --accept-data-loss and a new --session directory")
         result = execute(upstream, device, json.loads(args.plan.read_text()), args.bundle,
                          args.root_install, args.device_boot, args.stock_boot, args.session, args.ssh_key,
-                         args.android_data_mib)
+                         args.android_data_mib, args.esp_mib)
     print(json.dumps(result, indent=2))
 
 

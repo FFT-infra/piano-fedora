@@ -3,9 +3,11 @@
 
 import argparse
 import importlib.util
+import json
 from pathlib import Path
 import struct
 import sys
+import tempfile
 from types import SimpleNamespace
 import uuid
 import zlib
@@ -109,8 +111,38 @@ def main():
         pass
     else:
         raise AssertionError("apply accepted a different Android size than the plan")
+
+    wide = installer.partition_plan(gpt, 307200, 1024)
+    esp_row = wide["changes"][-1]
+    assert esp_row["name"] == "sunuefi_esp" and esp_row["size_mib"] == 1024, esp_row
+    assert esp_row["last"] == 249518074, "a wider ESP must still end at the disk tail"
+    assert wide["capacity"]["linux_root_mib"] == explicit["capacity"]["linux_root_mib"] - 512
+    _, changed_wide, _ = installer.new_gpt(upstream, gpt, wide, mbr, 307200, 1024)
+    assert struct.unpack_from("<Q", changed_wide, 1536 + 35 * 128 + 32)[0] == 249255680
+    try:
+        installer.new_gpt(upstream, gpt, wide, mbr, 307200)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("apply ignored the plan's ESP size")
+
+    def bundle_with_esp(mib):
+        path = Path(tmp) / "bundle" / str(mib)
+        path.mkdir(parents=True, exist_ok=True)
+        record = {"partitions": {"esp": {"capacity_bytes": mib * 1024**2}}}
+        (path / "esp-manifest.json").write_text(json.dumps(record))
+        return path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        assert installer.esp_mib_from_bundle(bundle_with_esp(1024)) == 1024
+        assert installer.esp_mib_from_bundle(bundle_with_esp(512)) == 512
+        odd = bundle_with_esp(1)
+        (odd / "esp-manifest.json").write_text(
+            json.dumps({"partitions": {"esp": {"capacity_bytes": 1234567}}}))
+        assert installer.esp_mib_from_bundle(odd) is None, "unaligned ESP capacity must not become a size"
+        assert installer.esp_mib_from_bundle(Path(tmp) / "absent") is None
     print("OK: first GPT byte preservation, CRC, half capacity, Slot A contract, deterministic new entries, "
-          "explicit Android capacity and stale-plan rejection" +
+          "explicit Android capacity, explicit ESP capacity and stale-plan rejection" +
           ("; actual pinned parser exercised" if args.sunuefi else "; byte oracle exercised"))
 
 
