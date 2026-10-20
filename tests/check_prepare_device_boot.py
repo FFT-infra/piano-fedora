@@ -10,6 +10,7 @@
 import hashlib
 import importlib.util
 import json
+import struct
 import sys
 import tempfile
 from pathlib import Path
@@ -90,6 +91,35 @@ def main():
         bare = work / "bare-boot.img"
         bare.write_bytes(b"ANDROID!" + b"\0" * (device_boot.BOOT_PARTITION_BYTES - 8))
         expect_refusal(lambda: device_boot.strip_avb_footer(bare), "no AVB footer")
+
+        # 签名只允许改首块的 os_version；probe 会把首块与包装器里保存的原厂头
+        # 逐字节比较，所以签名后的校验不能再用 probe。
+        body_bytes = 4096
+        unsigned = bytearray(device_boot.BOOT_PARTITION_BYTES)
+        unsigned[:8] = b"ANDROID!"
+        struct.pack_into("<I", unsigned, 40, 4)
+        signed = bytearray(unsigned)
+        struct.pack_into("<I", signed, 16, device_boot.BOOT_OS_VERSION)
+        signed[-64:-60] = b"AVBf"
+        struct.pack_into(">Q", signed, len(signed) - 64 + 12, body_bytes)
+        signed_path, unsigned_path = work / "signed.img", work / "unsigned.img"
+        signed_path.write_bytes(signed)
+        unsigned_path.write_bytes(unsigned)
+        device_boot.verify_signed_boot(signed_path, unsigned_path, body_bytes)
+
+        broken = bytearray(signed)
+        broken[100] ^= 0xFF
+        signed_path.write_bytes(broken)
+        expect_refusal(lambda: device_boot.verify_signed_boot(signed_path, unsigned_path, body_bytes),
+                       "signing changed the boot wrapper header")
+        broken = bytearray(signed)
+        struct.pack_into(">Q", broken, len(broken) - 64 + 12, body_bytes + 1)
+        signed_path.write_bytes(broken)
+        expect_refusal(lambda: device_boot.verify_signed_boot(signed_path, unsigned_path, body_bytes),
+                       "footer does not describe")
+        signed_path.write_bytes(signed[:-1])
+        expect_refusal(lambda: device_boot.verify_signed_boot(signed_path, unsigned_path, body_bytes),
+                       "does not fill its partition")
 
     # 请求页只在当前引导的那份镜像里被读到，Linux 首装从 boot_b 启动。三个
     # 生产者写进 boot-request 的 boot_device 必须一致，否则 root-install 与

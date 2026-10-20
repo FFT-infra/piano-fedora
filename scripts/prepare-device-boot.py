@@ -72,6 +72,26 @@ def set_os_version(body, path):
             f"{path.name}: os_version read back as {written:#x}, expected {BOOT_OS_VERSION:#x}")
 
 
+def verify_signed_boot(signed_path, unsigned_path, body_bytes):
+    """签名后校验包装布局没有变化。
+
+    piano-boot-repack 的 probe 会把首块与包装器里保存的原厂头逐字节比较；
+    签名前写入的 os_version 只改偏移 16，仍会被它判成“不是自己的头”。这里
+    直接核对：长度回到分区大小、首块除 os_version 外与签名前相同、footer
+    按新的 body 长度重新生成。
+    """
+    signed = signed_path.read_bytes()
+    unsigned = unsigned_path.read_bytes()
+    require(len(signed) == BOOT_PARTITION_BYTES and signed[:8] == b"ANDROID!",
+            "signed BOOT does not fill its partition")
+    require(signed[:16] == unsigned[:16] and signed[20:4096] == unsigned[20:4096] and
+            struct.unpack_from("<I", signed, 16)[0] == BOOT_OS_VERSION,
+            "signing changed the boot wrapper header")
+    footer = signed[-64:]
+    require(footer[:4] == b"AVBf" and struct.unpack_from(">Q", footer, 12)[0] == body_bytes,
+            "signed BOOT footer does not describe the wrapped body")
+
+
 def sign_boot_image(body_path, key, output, run):
     """用 SHA256_RSA4096 重新封装 AVB footer。
 
@@ -192,6 +212,7 @@ def prepare(stock, tools, host_tool, bundle, slot, source_sha, output):
     linux_boot.rename(unsigned)
     set_os_version(body, linux_boot)
     sign_boot_image(linux_boot, None, output, run)
+    verify_signed_boot(linux_boot, unsigned, len(body))
     unsigned.unlink()
     sign_info = {"algorithm": "SHA256_RSA4096",
                  "os_version": BOOT_OS_VERSION,
@@ -201,9 +222,6 @@ def prepare(stock, tools, host_tool, bundle, slot, source_sha, output):
                  "verification_note": ("2026-10-20: slot B cold booted in 50 s with this "
                                        "combination; signing alone with os_version=0 fell back "
                                        "to Android")}
-    probe_signed = command("probe", "--input", linux_boot)
-    require(probe_signed.get("wrapped") is False, "signing changed the boot wrapper layout")
-
     config = {"version": 1, "boot_device": LINUX_BOOT_DEVICE,
               "app_generation": app_sha[:32]}
     (output / "boot-request.json").write_text(json.dumps(config, indent=2) + "\n")
