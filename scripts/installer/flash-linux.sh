@@ -36,7 +36,8 @@ Flashing utility for Fedora 44 Linux on Xiaomi Pad 8 Pro (piano).
 
 Options:
   -y, --yes            Skip safety confirmation prompt (non-interactive)
-  --boot <file>        Path to SunUEFI boot image (boot_sunuefi.img)
+  --boot <file>        Device-specific boot_b image (boot_linux.img from
+                       prepare-device-boot.py). Never the bundle's boot_sunuefi.img.
   --esp <file>         Path to SunUEFI ESP image (sunuefi_esp.img)
   --root <file>        Path to the prepared rootfs transport (pianoroot.f2fs.sparse.img)
   --root-sha256sums <file>
@@ -258,14 +259,23 @@ find_file() {
     return 1
 }
 
-# Auto-detect boot image
+# Auto-detect the boot_b image.
+# deploy-bundle/boot_sunuefi.img is the Linux payload that lives inside the
+# ESP (EFI/Piano/stable/boot.img): a Header v2 container with no AVB footer and
+# no SUNUEFI-NEXTv1 page. SunUEFI's UEFI firmware loads it; ABL cannot. Writing
+# it to boot_b leaves the tablet in Fastboot with no bootable slot, so it is
+# never used here. boot_b takes the device-specific image that
+# prepare-device-boot.py repacks from the stock 96 MiB BOOT.
 if [ -z "$BOOT_IMG" ]; then
-    if FOUND=$(find_file "boot_sunuefi.img"); then
+    if FOUND=$(find_file "boot_linux.img"); then
         BOOT_IMG="$FOUND"
-    else
-        echo -e "${RED}[ERROR] Missing boot image (boot_sunuefi.img)!${NC}"
-        exit 1
+    elif FOUND=$(find_file "device-boot/boot_linux.img"); then
+        BOOT_IMG="$FOUND"
     fi
+elif [ "$(basename "$BOOT_IMG")" = "boot_sunuefi.img" ]; then
+    echo -e "${RED}[ERROR] --boot is the bundle's boot_sunuefi.img, which is the ESP payload, not a boot_b image.${NC}"
+    echo "Pass device-boot/boot_linux.img from prepare-device-boot.py instead."
+    exit 1
 fi
 
 # Auto-detect ESP image
@@ -401,7 +411,11 @@ if [ "$SKIP_CHECKSUM" -eq 0 ]; then
         echo -e "  ${GREEN}✓${NC} ${target_name} checksum valid."
     }
 
-    check_manifest_image "$BOOT_IMG" "$WORK_DIR/SHA256SUMS"
+    if [ -n "$BOOT_IMG" ] && [ "$(dirname "$BOOT_IMG")" = "$WORK_DIR" ]; then
+        check_manifest_image "$BOOT_IMG" "$WORK_DIR/SHA256SUMS"
+    elif [ -n "$BOOT_IMG" ] && [ -f "$(dirname "$BOOT_IMG")/SHA256SUMS" ]; then
+        check_manifest_image "$BOOT_IMG" "$(dirname "$BOOT_IMG")/SHA256SUMS"
+    fi
     check_manifest_image "$ESP_IMG" "$WORK_DIR/SHA256SUMS"
     check_manifest_image "$ROOT_IMG" "$ROOT_SHA256SUMS"
     root_manifest="$(dirname "$ROOT_IMG")/root-install-manifest.json"
@@ -467,7 +481,11 @@ else
 fi
 
 echo -e "[INFO] Flashing targets resolved:"
-echo -e "  - Boot image   : ${GREEN}${BOOT_IMG}${NC} ($(stat -c%s "$BOOT_IMG" 2>/dev/null || stat -f%z "$BOOT_IMG") bytes)"
+if [ -n "$BOOT_IMG" ]; then
+    echo -e "  - Boot image   : ${GREEN}${BOOT_IMG}${NC} ($(stat -c%s "$BOOT_IMG" 2>/dev/null || stat -f%z "$BOOT_IMG") bytes)"
+else
+    echo -e "  - Boot image   : ${YELLOW}none${NC}; boot_b is left untouched"
+fi
 echo -e "  - ESP image    : ${GREEN}${ESP_IMG}${NC} ($(stat -c%s "$ESP_IMG" 2>/dev/null || stat -f%z "$ESP_IMG") bytes)"
 echo -e "  - RootFS image : ${GREEN}${ROOT_IMG}${NC} (${root_image_size} transfer bytes, ${root_expanded_bytes} expanded bytes)"
 if [ -n "$SSH_KEY" ]; then
@@ -554,8 +572,36 @@ fi
 # 7. Flashing execution sequence
 echo -e "\n${BLUE}${BOLD}=== Starting Flashing Sequence ===${NC}"
 
-echo -e "\n--> Step 1/4: Setting active boot slot to B..."
-fb set_active b
+if [ -n "$BOOT_IMG" ]; then
+    python3 - "$BOOT_IMG" <<'PYEOF'
+import struct, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+data = path.read_bytes()
+if len(data) != 100663296:
+    sys.exit(f"{path.name}: {len(data)} bytes, expected the 96 MiB boot_b image")
+if data[:8] != b"ANDROID!":
+    sys.exit(f"{path.name}: not an Android boot container")
+version = struct.unpack_from("<I", data, 40)[0]
+if version != 4:
+    sys.exit(f"{path.name}: Header v{version}; SM8750 ABL requires v4")
+if struct.unpack_from("<I", data, 16)[0] == 0:
+    sys.exit(f"{path.name}: os_version is 0; SM8750 ABL rejects it")
+if b"AVB0" not in data:
+    sys.exit(f"{path.name}: no AVB footer")
+if b"SUNUEFI-NEXTv1\0" not in data:
+    sys.exit(f"{path.name}: no SUNUEFI-NEXTv1 boot request page")
+PYEOF
+fi
+
+if [ -n "$BOOT_IMG" ]; then
+    echo -e "\n--> Step 1/4: Setting active boot slot to B..."
+    fb set_active b
+else
+    echo -e "\n--> Step 1/3: No boot_b image given; the boot slot is left as it is."
+    echo -e "    ${YELLOW}boot_b keeps its current content. Run prepare-device-boot.py and pass${NC}"
+    echo -e "    ${YELLOW}--boot device-boot/boot_linux.img to write it, then set the slot yourself.${NC}"
+fi
 
 # dtbo_b is deliberately left untouched. Qualcomm ABL authenticates the whole
 # boot chain of the active slot and rejects an empty/foreign DTBO with
@@ -565,13 +611,20 @@ fb set_active b
 # content must stay in place.
 echo -e "\n--> Skipping dtbo_b: keeping the stock DTBO for the active slot."
 
-echo -e "\n--> Step 2/4: Flashing SunUEFI bootloader header to boot_b..."
-fb flash boot_b "$BOOT_IMG"
-
-echo -e "\n--> Step 3/4: Flashing SunUEFI ESP to sunuefi_esp..."
+if [ -n "$BOOT_IMG" ]; then
+    echo -e "\n--> Step 2/4: Flashing device boot image to boot_b..."
+    fb flash boot_b "$BOOT_IMG"
+    echo -e "\n--> Step 3/4: Flashing SunUEFI ESP to sunuefi_esp..."
+else
+    echo -e "\n--> Step 2/3: Flashing SunUEFI ESP to sunuefi_esp..."
+fi
 fb flash sunuefi_esp "$ESP_IMG"
 
-echo -e "\n--> Step 4/4: Flashing Fedora 44 RootFS to sunuefi_root..."
+if [ -n "$BOOT_IMG" ]; then
+    echo -e "\n--> Step 4/4: Flashing Fedora 44 RootFS to sunuefi_root..."
+else
+    echo -e "\n--> Step 3/3: Flashing Fedora 44 RootFS to sunuefi_root..."
+fi
 fb flash sunuefi_root "$ROOT_IMG"
 
 echo -e "\n${GREEN}${BOLD}====================================================================${NC}"
@@ -588,7 +641,9 @@ echo "  - SunUEFI boot menu    : Press Volume keys during initial 3-second logo"
 echo "  - Switch back to Android: Open GNOME App Drawer -> Click 'Return to Android'"
 echo ""
 
-if [ "$DO_REBOOT" -eq 1 ]; then
+if [ "$DO_REBOOT" -eq 1 ] && [ -z "$BOOT_IMG" ]; then
+    echo -e "--> Not rebooting: boot_b was not written, so the active slot stays as it was."
+elif [ "$DO_REBOOT" -eq 1 ]; then
     echo -e "--> Rebooting tablet into Fedora 44 Linux..."
     fb reboot
     echo -e "${GREEN}Device reboot triggered. Enjoy Fedora Linux on Xiaomi Pad 8 Pro!${NC}"

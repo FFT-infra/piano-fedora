@@ -216,6 +216,8 @@ fastboot getvar is-userspace   # 必须是 no
 
 `current-slot` 必须是 `a`。是 `b` 时一键脚本会拒绝，手动流程也必须停，不能把 Linux 写进正在承载 Android 的 `boot_b`。
 
+`boot_b` 要写的是 `prepare-device-boot.py` 用本机原厂 BOOT 重打包出的 `device-boot/boot_linux.img`，不是 `deploy-bundle` 里的 `boot_sunuefi.img`。后者是 ESP 内部的 Linux 载荷（Header v2、无 AVB、无请求页），只有 SunUEFI 固件能加载。把它刷进 `boot_b`，ABL 会拒绝整条链，平板停在 Fastboot。
+
 手动路径也只接受同一条新流水线的材料：完整 `deploy-bundle`，以及由该 bundle run 派生、`android_slot` 为 `_a` 的 `root-install`。
 
 刷写前读 `fastboot getvar partition-size:sunuefi_root`，把十六进制容量换算成字节。它必须与 `root-install-manifest.json` 的 `expanded_bytes` 完全相等，不一致就停。

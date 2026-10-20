@@ -255,6 +255,29 @@ printf '\n# %s\n' "$(cat "$source")" >> "$image"
 """
 
 
+def make_boot_linux_image(root):
+    """A boot_b image with the shape SM8750 ABL accepts.
+
+    The bundle's boot_sunuefi.img is the ESP payload and must never be flashed
+    here, so the fixtures keep both: the payload in the staging directory and a
+    device image in its own directory with its own SHA256SUMS.
+    """
+    import struct
+
+    folder = root / "boot"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "boot_linux.img"
+    data = bytearray(100663296)
+    data[0:8] = b"ANDROID!"
+    struct.pack_into("<I", data, 16, 0x0026C059)
+    struct.pack_into("<I", data, 40, 4)
+    data[4096:4100] = b"AVB0"
+    data[8192:8207] = b"SUNUEFI-NEXTv1\0"
+    path.write_bytes(bytes(data))
+    (folder / "SHA256SUMS").write_text(f"{sha256(path)}  {path.name}\n")
+    return path
+
+
 def make_asset_set(root):
     root.mkdir(parents=True)
     root_install = root / "root-install"
@@ -297,6 +320,7 @@ def check_shell_installer(root, failures):
     mcopy.chmod(0o755)
 
     staging, _ = make_asset_set(root / "shell")
+    boot_linux = make_boot_linux_image(root)
     key = root / "id_ed25519.pub"
     key.write_text(ED25519 + "\n")
     log = root / "fastboot.log"
@@ -308,7 +332,7 @@ def check_shell_installer(root, failures):
     def invoke(*extra, staging=staging):
         return subprocess.run(
             ["bash", str(SHELL_INSTALLER), "-y", "--no-reboot",
-             "--boot", str(staging / "boot_sunuefi.img"),
+             "--boot", str(boot_linux),
              "--esp", str(staging / "sunuefi_esp.img"),
              "--root", str(staging / "root-install/pianoroot.f2fs.sparse.img"),
              "--root-sha256sums", str(staging / "root-install/SHA256SUMS"),
@@ -364,7 +388,7 @@ def check_shell_installer(root, failures):
     log4 = root / "fastboot-badkey.log"
     result = subprocess.run(
         ["bash", str(SHELL_INSTALLER), "-y", "--no-reboot",
-         "--boot", str(staging4 / "boot_sunuefi.img"),
+         "--boot", str(boot_linux),
          "--esp", str(staging4 / "sunuefi_esp.img"),
          "--root", str(staging4 / "root-install/pianoroot.f2fs.sparse.img"),
          "--root-sha256sums", str(staging4 / "root-install/SHA256SUMS"),
@@ -376,6 +400,23 @@ def check_shell_installer(root, failures):
     check(not log4.exists() or not any(" flash " in " " + line + " "
                                        for line in log4.read_text().splitlines()),
           "a rejected key still flashed partitions")
+
+    # 6. The bundle's ESP payload is refused as a boot_b image.
+    staging6, _ = make_asset_set(root / "shell-payload-boot")
+    log6 = root / "fastboot-payload.log"
+    result = subprocess.run(
+        ["bash", str(SHELL_INSTALLER), "-y", "--no-reboot",
+         "--boot", str(staging6 / "boot_sunuefi.img"),
+         "--esp", str(staging6 / "sunuefi_esp.img"),
+         "--root", str(staging6 / "root-install/pianoroot.f2fs.sparse.img"),
+         "--root-sha256sums", str(staging6 / "root-install/SHA256SUMS")],
+        cwd=staging6, env={**env, "STUB_LOG": str(log6)}, capture_output=True, text=True)
+    check(result.returncode != 0, "boot_sunuefi.img was accepted as a boot_b image")
+    check("ESP payload" in result.stdout + result.stderr,
+          "the refusal does not explain that boot_sunuefi.img is the ESP payload")
+    check(not log6.exists() or not any(" flash " in " " + line + " "
+                                       for line in log6.read_text().splitlines()),
+          "the installer flashed before refusing the payload")
 
     # 5. Missing mcopy: clear error naming mtools, and no ESP flash. Build a PATH
     #    that has the tools the installer needs but no mcopy at all, so the
@@ -394,7 +435,7 @@ def check_shell_installer(root, failures):
     log5 = root / "fastboot-nomcopy.log"
     result = subprocess.run(
         [str(bindir_nomcopy / "bash"), str(SHELL_INSTALLER), "-y", "--no-reboot",
-         "--boot", str(staging5 / "boot_sunuefi.img"),
+         "--boot", str(boot_linux),
          "--esp", str(staging5 / "sunuefi_esp.img"),
          "--root", str(staging5 / "root-install/pianoroot.f2fs.sparse.img"),
          "--root-sha256sums", str(staging5 / "root-install/SHA256SUMS"),

@@ -176,6 +176,30 @@ def make_asset_set(root, cross_bundle=False):
     return staging, root_install
 
 
+def make_boot_linux_image(root):
+    """A boot_b image that satisfies the SM8750 ABL contract.
+
+    The bundle's boot_sunuefi.img is the ESP payload and the installer refuses
+    it for boot_b, so these fixtures keep a separate device image with its own
+    SHA256SUMS, exactly like prepare-device-boot.py produces.
+    """
+    import struct
+
+    folder = root / "device-boot"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "boot_linux.img"
+    data = bytearray(100663296)
+    data[0:8] = b"ANDROID!"
+    struct.pack_into("<I", data, 16, 0x0026C059)
+    struct.pack_into("<I", data, 40, 4)
+    data[4096:4100] = b"AVB0"
+    data[8192:8207] = b"SUNUEFI-NEXTv1\0"
+    path.write_bytes(bytes(data))
+    (folder / "SHA256SUMS").write_text(
+        f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n")
+    return path
+
+
 def copy_asset_set(source, destination):
     """Copy a fixture deploy-bundle and root-install into one staging dir."""
     destination.mkdir()
@@ -186,11 +210,11 @@ def copy_asset_set(source, destination):
     return destination
 
 
-def invoke_installer(staging, env, *extra):
+def invoke_installer(staging, env, *extra, boot=None):
     return subprocess.run(
         [
             str(ROOT / "scripts/installer/flash-linux.sh"), "-y", "--no-reboot",
-            "--boot", str(staging / "boot_sunuefi.img"),
+            "--boot", str(boot or staging / "boot_sunuefi.img"),
             "--esp", str(staging / "sunuefi_esp.img"),
             "--root", str(staging / "root-install/pianoroot.f2fs.sparse.img"),
             "--root-sha256sums", str(staging / "root-install/SHA256SUMS"),
@@ -229,6 +253,7 @@ def main():
         stub.chmod(0o755)
 
         staging, root_install = make_asset_set(work)
+        device_boot = make_boot_linux_image(work)
         bundle = staging
         boot = bundle / "boot_sunuefi.img"
         esp = bundle / "sunuefi_esp.img"
@@ -355,7 +380,7 @@ def main():
             "STUB_LOG": str(cross_log),
             "ESP_IMG": str(cross_staging / "sunuefi_esp.img"),
         }
-        result = invoke_installer(cross_staging, cross_env)
+        result = invoke_installer(cross_staging, cross_env, boot=device_boot)
         if result.returncode == 0 or "different deploy-bundle" not in (result.stdout + result.stderr):
             failures.append("cross-bundle root-install was not rejected")
         if not assert_no_device_write(cross_log):
@@ -382,7 +407,7 @@ def main():
             "STUB_LOG": str(capacity_log),
             "ESP_IMG": str(capacity_staging / "sunuefi_esp.img"),
         }
-        result = invoke_installer(capacity_staging, capacity_env)
+        result = invoke_installer(capacity_staging, capacity_env, boot=device_boot)
         if result.returncode == 0 or "must exactly match sunuefi_root" not in (result.stdout + result.stderr):
             failures.append("wrong-capacity root-install was not rejected")
         if not assert_no_device_write(capacity_log):
@@ -408,7 +433,7 @@ def main():
             "STUB_LOG": str(slot_log),
             "ESP_IMG": str(slot_staging / "sunuefi_esp.img"),
         }
-        result = invoke_installer(slot_staging, slot_env)
+        result = invoke_installer(slot_staging, slot_env, boot=device_boot)
         if result.returncode == 0 or "prepared for Android slot" not in (result.stdout + result.stderr):
             failures.append("root-install for the wrong Android slot was not rejected")
         if not assert_no_device_write(slot_log):
@@ -427,7 +452,7 @@ def main():
             "STUB_CURRENT_SLOT": "b",
             "ESP_IMG": str(current_staging / "sunuefi_esp.img"),
         }
-        result = invoke_installer(current_staging, current_env)
+        result = invoke_installer(current_staging, current_env, boot=device_boot)
         if result.returncode == 0 or "Android must be active on Slot A" not in (
                 result.stdout + result.stderr):
             failures.append("installer accepted Android currently on Slot B")
@@ -446,7 +471,7 @@ def main():
             "STUB_LOG": str(bypass_log),
             "ESP_IMG": str(bypass_staging / "sunuefi_esp.img"),
         }
-        result = invoke_installer(bypass_staging, bypass_env, "--skip-checksum")
+        result = invoke_installer(bypass_staging, bypass_env, "--skip-checksum", boot=device_boot)
         if result.returncode == 0 or "--skip-checksum is not accepted" not in (
                 result.stdout + result.stderr):
             failures.append("first-install path accepted --skip-checksum")
