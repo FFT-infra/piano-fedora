@@ -16,18 +16,18 @@ SunUEFI 提供启动链。本仓库增加四项：Fedora 后端、F2FS 全链路
 
 ## 阶段
 
-每个阶段独立可用，都在主机上完成，不碰设备。
+每个阶段独立可用。所有步骤都在主机上完成，不碰设备。
 
 1. Fedora 后端。给上游增加 dnf5 路径，产出 Fedora rootfs 树。参考 [fedora-sheng](https://github.com/mumuxiao722/fedora-sheng) 的 RPM spec 与 Actions 参数化。不迁移其中的 SM8550 硬件内容与 mkbootimg 启动链。
 2. F2FS 全链路。处理六处 ext4 硬编码：内核配置策略、`release-disk-bootstrap`、fstab、udev 放行、`package_release.py` 的镜像制作、安装器 magic 与 SSH 注入。
 
-   制作镜像不用 `sload -P`。上游 f2fs-tools 的 sload 只保留 owner/mode，不枚举源树的 xattr/ACL/capability，导入阶段会静默丢元数据。改用挂载真实 F2FS，用 `tar --xattrs --acls --numeric-owner` 写入，再挂载读回逐项比对。
+   制作镜像不用 `sload -P`。上游 f2fs-tools 的 sload 只保留 owner/mode，不枚举源树的 xattr/ACL/capability，导入阶段会静默丢元数据。改用挂载真实 F2FS，用 `tar --xattrs --acls --numeric-owner` 写入。写入完成后再挂载读回，逐项比对。
 
    制镜像需要挂载 F2FS。GitHub runner 的内核默认不带 f2fs。装上 `linux-modules-extra` 之后，`modprobe f2fs` 才可用。挂载式往返验证已在 CI 上跑通（`IMAGE_VERIFIED`，xattr 核对通过，fsck 退出码 0）。
 
    离线导入 `sload.f2fs -P` 不需要挂载，但它只保留 owner 与 setuid，**不保留 user xattr**（已在桥接机上实测确认）。所以制作镜像用挂载 + `tar --xattrs --acls`，不用 sload。
 
-3. 首次分区。只读探测本机并生成计划，用模拟 GPT 在主机上验证。
+3. 首次分区。只读探测本机并生成计划。使用模拟 GPT 在主机上验证计划。
 4. 安装与验收。实际写入，启动验证，双向切换。
 
 F2FS 排在分区之前。F2FS 是技术风险，可能走不通。分区是工程风险，设计对了就能做。分区方案还依赖 root 镜像容量。
@@ -42,7 +42,7 @@ F2FS 排在分区之前。F2FS 是技术风险，可能走不通。分区是工�
 | `build-uefi.yml` | 手动 | UEFI 产品与原始 manifest |
 | `build-mesa.yml` | 手动 | Fedora 原生 A830v1 Mesa RPM 与实际驱动检查记录 |
 | `build-device-runtime.yml` | 手动 | Fedora 原生设备运行时与匹配内核 ABI 的外部模块 |
-| `build-initramfs.yml` | 手动 | 独立 initramfs 构建与检查；正式 bundle 消费 build-image 的 initramfs |
+| `build-initramfs.yml` | 手动 | 独立 initramfs 构建与检查。正式 bundle 消费 build-image 的 initramfs |
 | `verify-f2fs.yml` | push / PR | 小 fixture 的 F2FS 元数据往返验证 |
 | `build-image.yml` | 手动 | 同一次集成的设备 rootfs、initramfs、F2FS 镜像及相互绑定的 manifest |
 | `build-bundle.yml` | 手动 | 汇总内核、UEFI、rootfs、镜像为部署包 |
@@ -59,14 +59,14 @@ F2FS 排在分区之前。F2FS 是技术风险，可能走不通。分区是工�
 
 ## 前提
 
-整套方案假设 SunUEFI 的启动交接在目标设备上成立。上游验证机是 16 GB / CSOT / OS3.0.309，目标设备是 24 GB / 1 TB，原厂系统已升到 OS3.0.309。假设不成立时，阶段 3 的只读探测会先暴露。到那时转向容器路线，不继续投入分区工作。
+整套方案假设 SunUEFI 的启动交接在目标设备上成立。上游验证机是 16 GB / CSOT / OS3.0.309。目标设备是 24 GB / 1 TB，原厂系统已升到 OS3.0.309。若假设不成立，阶段 3 的只读探测会先行暴露。项目届时转向容器路线，不继续投入分区工作。
 
 ## 设备约束
 
-1. 扩容机，规格高于官方。分区与校准可能被第三方改过。
-2. 全盘无空位，`userdata` 占满盘尾。
-3. `/data` 是加密 dm 映射，上游无损缩容的前提不成立。
-4. 无 `/dev/kvm`，内核参数是 `kvm-arm.mode=protected`。虚拟化只能走 AVF/crosvm + Gunyah。
+1. 设备为扩容机，规格高于官方。分区与校准可能被第三方改过。
+2. 全盘无空位。`userdata` 占满盘尾。
+3. `/data` 是加密 dm 映射。上游无损缩容的前提不成立。
+4. 无 `/dev/kvm`。内核参数是 `kvm-arm.mode=protected`。虚拟化只能走 AVF/crosvm + Gunyah。
 
 ## 许可
 
