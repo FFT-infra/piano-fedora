@@ -45,7 +45,7 @@ payload DTB 的 `/hypervisor/qcom,resource-manager-rpc@…` 节点 `reg` 记录�
 补丁不改节点名里的 unit-address，Linux 侧也不读这个字段。
 
 验证分为两层。
-主机侧提取待发布的 C 源码，搭配真实 libfdt（两个独立的 1.8.1 环境），对真实抓取的 payload DTB 与 inherited FDT 进行重放。重放后仅 RM `reg` 与 `uefi-live-memory` 的内存项发生变动。九条策略用例与三条反向改坏对照均符合预期。
+主机侧提取待发布的 C 源码，搭配真实 libfdt（两个独立的 1.8.1 环境），对真实抓取的 payload DTB 与 inherited FDT 重放。重放后仅 RM `reg` 与 `uefi-live-memory` 的内存项发生变动。九条策略用例与三条反向改坏对照均符合预期。
 实机结论只能由正常启动路径给出。验收状态见本页表格与 [已知问题](known-issues.md)。
 `tests/check_uefi_live_rm.py` 在主机 `make test` 里使用假 FdtLib 编译同一段 C 代码，覆盖同一组接受与拒绝路径。
 
