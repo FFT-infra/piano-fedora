@@ -18,7 +18,7 @@ Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snap
 |---|---|---|
 | Display | ✅ | 3200×2136 at 120 Hz, Mesa 26.2.3 Turnip (Adreno 830) |
 | Touch | ✅ | Kalman filter, 24 px dead zone, orthogonal axis lock |
-| Video | 🟡 | Iris V4L2 M2M works: 300-frame H.264 and HEVC decode with frame-by-frame digests identical to software decode, and keyframe hardware encoding, all at 1080p with matching Iris interrupt counts. VP9, 10-bit and 4K60 are untested, and in-browser hardware decode is still pending. See [known issues](docs/known-issues.md#触屏网络音频与相机) |
+| Video | 🟡 | Iris V4L2 M2M works: 300-frame H.264 and HEVC hardware encode and decode, plus decode of B-frame sources, all at 1080p with frame-by-frame digests identical to software decode and growing Iris interrupt counts. VP9, 10-bit and 4K60 are untested, and in-browser hardware decode is still pending. See [known issues](docs/known-issues.md#触屏网络音频与相机) |
 | Power | ✅ | Dual-cell battery reporting, deep suspend |
 | Boot | ✅ | `qbootctl.service` writes `Successful: 1`, so the ABL counter cannot drop to Fastboot |
 | Camera | 🟡 | `piano-camerad` streams NV12 straight from the ISP; the front camera produces a normal picture, the rear camera produces frames too but needs a check in good light, and continuous preview is still pending. See [known issues](docs/known-issues.md#触屏网络音频与相机) |
