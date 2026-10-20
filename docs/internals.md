@@ -131,9 +131,11 @@ root 镜像与分区容量解耦。执行器要求 `expanded_bytes <= linux_root
 
 ESP 默认 512 MiB。ESP 分区必须和 `deploy-bundle/sunuefi_esp.img` 等大：镜像按 `product.json` 的 `esp_size_mib` 造出，执行器要求镜像字节数等于计划算出的 ESP 分区容量。两者不一致就停。改过 `esp_size_mib` 就重跑 `build-bundle`，再在 `plan` 与 `apply` 上加同一个 `--esp-mib`；只有 `--esp-mib` 没有配套的重建镜像，执行器会在写设备前拒绝。
 
-`device-boot/boot-request.json` 的 `boot_device` 必须指向首装 Android 所在的槽，即 `/dev/disk/by-partlabel/boot_a`，里面的 `app_generation` 必须与 `deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。
+`device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_b`，`app_generation` 必须与 `deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。
 
-请求页写在 Android 槽的合体 BOOT 内。首装把 Android 留在 A 槽，所以请求页在 `boot_a`，Linux 启动镜像才写入 `boot_b`。把 `boot_device` 改成 `boot_b` 会让 helper 去 Linux 的 BOOT 上找请求页。`root-install` 已在 `etc/piano/boot-request.json` 写入同一份配置，首启后也不要猜测设备名或改槽，否则 Linux 的“返回 Android”和后续启动请求会失败。
+选择器读请求页的位置是“正在引导的那份镜像”末尾：ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。首装把 Android 留在 A 槽、Linux 写进 `boot_b`，随后 `set_active b`，所以 Linux 运行时被读到的是 `boot_b` 的页。写成 `boot_a` 也能写成功，但下一次启动读不到，切换会静默失效。
+
+带了 `root-install` 时，镜像里的 `etc/piano/boot-request.json` 就是这条配置，`plan` 会逐字段核对。不带时镜像里没有这个文件，首启的 `piano-boot-request-autoconfig.service` 用 `qbootctl -c` 找到当前槽（首装后是 `_b`）后由 `piano-next-boot-configure` 重建；`plan` 的 `boot_request.source` 记下这次用的是哪一条。首启后不要猜测设备名或改槽，否则 Linux 的“返回 Android”和后续启动请求会失败。
 
 ### 3. 执行破坏性首次分区并初始化 Android userdata
 

@@ -352,12 +352,12 @@ def main():
             failures.append("manual chapter does not verify the prepared root capacity")
         if "expanded_bytes" not in chapter:
             failures.append("manual chapter does not bind root capacity to the manifest")
-        # First install keeps Android on Slot A. The request page is inside the
-        # combined BOOT on boot_a; boot_b only receives the Linux payload.
-        if "/dev/disk/by-partlabel/boot_a" not in document:
-            failures.append("first-install boot request is not documented as boot_a")
-        if "/dev/disk/by-partlabel/boot_b`" in document:
-            failures.append("first-install boot request is incorrectly documented as boot_b")
+        # 请求页在"正在引导的那份镜像"末尾；首装后 Linux 从 boot_b 启动，
+        # 所以 boot-request 必须指向 boot_b，指向 boot_a 的配置写得进去却读不到。
+        if "/dev/disk/by-partlabel/boot_b`" not in document:
+            failures.append("first-install boot request is not documented as boot_b")
+        if "/dev/disk/by-partlabel/boot_a`" in document:
+            failures.append("first-install boot request is incorrectly documented as boot_a")
 
         # The install-time SSH key is documented in both paths: the one-click
         # installer takes --ssh-key, and the manual path writes the key with

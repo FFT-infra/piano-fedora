@@ -91,6 +91,18 @@ def main():
         bare.write_bytes(b"ANDROID!" + b"\0" * (device_boot.BOOT_PARTITION_BYTES - 8))
         expect_refusal(lambda: device_boot.strip_avb_footer(bare), "no AVB footer")
 
+    # 请求页只在当前引导的那份镜像里被读到，Linux 首装从 boot_b 启动。三个
+    # 生产者写进 boot-request 的 boot_device 必须一致，否则 root-install 与
+    # device-boot 的配置互相对不上，或者指向一张读了也没用的分区。
+    assert device_boot.LINUX_BOOT_DEVICE == "/dev/disk/by-partlabel/boot_b", \
+        device_boot.LINUX_BOOT_DEVICE
+    for name in ("install-f2fs", "prepare-root-capacity"):
+        spec = importlib.util.spec_from_file_location(name.replace("-", "_"), ROOT / "scripts" / (name + ".py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.LINUX_BOOT_DEVICE == device_boot.LINUX_BOOT_DEVICE, (
+            f"{name}.LINUX_BOOT_DEVICE differs from prepare-device-boot")
+
     print("OK: BOOT 包装拒绝错误槽位、截断镜像、摘要不符与已存在的输出目录")
     return 0
 

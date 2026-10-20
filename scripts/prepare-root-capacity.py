@@ -94,6 +94,12 @@ def resize_and_verify(source, target, target_mib, work):
 # 都返回 "partition not found"。传感器导入按这个常量取名，不跟 boot 槽。
 SENSOR_LOGICAL_SLOT = "_a"
 
+# 请求页在"正在引导的那份镜像"末尾：选择器按 Base + align(original_image_size)
+# 定位（uefi/handoff/bootselect/BootSelect.c），ABL 只加载当前槽。首装把 Linux
+# 写进 boot_b 并 set_active b，所以 Linux 的 helper 只能写 boot_b 的页；写成
+# Android 槽 boot_a 时写入成功，下一次启动却读不到。
+LINUX_BOOT_DEVICE = "/dev/disk/by-partlabel/boot_b"
+
 
 def configure_source(source, bundle, slot, work):
     require(slot in ("_a", "_b"), "current Android slot is required")
@@ -103,7 +109,7 @@ def configure_source(source, bundle, slot, work):
     app = image[offset:offset + ramdisk]
     require(len(app) == ramdisk and len(app) >= 64 and app[:16] == b"SUNUEFI-APPv1\0".ljust(16, b"\0")
             and hashlib.sha256(app[64:]).digest() == app[32:64], "invalid sealed APPv1")
-    boot_request = {"version": 1, "boot_device": "/dev/disk/by-partlabel/boot" + slot,
+    boot_request = {"version": 1, "boot_device": LINUX_BOOT_DEVICE,
                     "app_generation": hashlib.sha256(app).hexdigest()[:32]}
     mount = work / "configure-mount"
     mount.mkdir()

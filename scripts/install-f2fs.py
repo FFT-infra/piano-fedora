@@ -30,6 +30,9 @@ BLOCK = 4096
 DEFAULT_ESP_MIB = 512
 # 封存 root 镜像的最小容量，与 build-f2fs-image.py 的下限一致。
 MIN_ROOT_MIB = 64
+# 请求页由选择器在"正在引导的那份镜像"末尾读取，ABL 只加载当前槽；首装把
+# Linux 写进 boot_b 并 set_active b，所以 Linux 的 boot-request 只能指向它。
+LINUX_BOOT_DEVICE = "/dev/disk/by-partlabel/boot_b"
 BUNDLE_ASSETS = {
     "sunuefi_esp.img": "sunuefi_esp.img",
     "boot_sunuefi.img": "boot_sunuefi.img",
@@ -176,7 +179,10 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     for asset, packaged in BUNDLE_ASSETS.items():
         checked(bundle / asset, generic["files"][packaged])
     # root-install 只是把同一份封存镜像预先扩到目标容量的可选产物。带了它就要
-    # 与这份 bundle 逐项对上；没带就直接用 bundle 自带的 sparse。
+    # 与这份 bundle 逐项对上；没带就直接用 bundle 自带的 sparse，此时镜像里
+    # 没有 /etc/piano/boot-request.json，由首启的
+    # piano-boot-request-autoconfig.service 按 qbootctl 的当前槽重建（首装后
+    # 是 boot_b），再与 device-boot 记录的同一条配置对上。
     if root:
         require(root.get("status") == "ROOT_CAPACITY_VERIFIED_NOT_DEVICE_VERIFIED"
                 and root["source_bundle_manifest_sha256"] == sha256(bundle / "bundle-manifest.json")
@@ -219,6 +225,11 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     require(combined.get("status") == "DEVICE_BOOT_FILE_VERIFIED_NOT_DEVICE_BOOTED"
             and combined["byte_equal_restoration"] is True and combined["active_slot"] == slot,
             "combined BOOT does not match the current slot or lacks lossless restore proof")
+    # 请求页只在当前引导的那份 BOOT 里被读到。指向 boot_a 的配置写得进去，
+    # 但首装后的 Linux 从 boot_b 启动，下一次启动读不到，切换会静默失效。
+    require(combined["boot_request"].get("boot_device") == LINUX_BOOT_DEVICE,
+            "device-boot records the boot request for "
+            f"{combined['boot_request'].get('boot_device')!r}; it must be {LINUX_BOOT_DEVICE}")
     require(combined["uefi_product_sha256"] == sha256(bundle / "PianoUEFI-product.img"), "BOOT and ESP use different UEFI cores")
     for name in ("boot_android.img", "boot_linux.img", "boot-request.json"):
         checked(boot / name, combined["files"][name])
@@ -241,6 +252,8 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
                        "root_manifest_sha256": sha256(prepared_manifest) if prepared_manifest.is_file() else None,
                        "boot_manifest_sha256": sha256(boot / "device-boot-manifest.json")},
             "android_data_preserved": existing, "root_capacity": capacity,
+            "boot_request": {"device": combined["boot_request"]["boot_device"],
+                             "source": "root-install" if root else "first-boot-autoconfig"},
             "device_writes": False}, snapshot
 
 

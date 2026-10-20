@@ -364,11 +364,11 @@ fastboot reboot
 
 自动化的首装走 `install-f2fs.py plan` 与 `apply`，完成同一套分区、擦除与传输。命令、run id 记录、产物契约与 PR 验收门槛见[维护与验收](internals.md)。
 
-`device-boot/boot-request.json` 的 `boot_device` 必须指向首装 Android 所在的槽，即 `/dev/disk/by-partlabel/boot_a`。`app_generation` 要与 `deploy-bundle/PianoUEFI-product.img` 里的 APPv1 载荷一致。
+`device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_b`。`app_generation` 要与 `deploy-bundle/PianoUEFI-product.img` 里的 APPv1 载荷一致。
 
-请求页写在 Android 槽的合体 BOOT 内。首装把 Android 留在 A 槽，所以请求页在 `boot_a`，Linux 启动镜像才写 `boot_b`。把 `boot_device` 改成 `boot_b` 会让 helper 去 Linux 的 BOOT 上找请求页，写不进去。
+选择器在“正在引导的那份镜像”末尾读请求页：ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。首装把 Android 留在 A 槽、Linux 写进 `boot_b`，随后 `set_active b`，所以 Linux 运行时被读到的是 `boot_b` 的页。写成 `boot_a` 也能写成功，但下一次启动读不到，切换会静默失效。
 
-`root-install` 已在 `etc/piano/boot-request.json` 写入同一份配置，首启后也不要猜设备名或改槽。否则“返回 Android”和后续启动请求都会失败。
+带了 `root-install` 时镜像里的 `etc/piano/boot-request.json` 就是这条配置；不带时镜像里没有这个文件，首启的 `piano-boot-request-autoconfig.service` 按当前槽重建。首启后也不要猜设备名或改槽。否则“返回 Android”和后续启动请求都会失败。
 
 ### 手动分区（不使用安装脚本）
 

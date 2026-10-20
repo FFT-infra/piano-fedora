@@ -26,6 +26,13 @@ BOOT_OS_VERSION = 0x1E0001A9
 BOOT_ROLLBACK_INDEX = 1788220800
 BOOT_PARTITION_BYTES = 96 * 1024**2
 BOOT_PARTITION_NAME = "boot"
+# boot-request.json 记录 Linux 的 helper 去哪张分区读写请求页。ABL 只加载当前槽
+# 的 BOOT，选择器在 BootSelect.c 里按 Base + align(original_image_size) 在"正在
+# 引导的那份镜像"末尾取请求页。首装把 Android 留在 A 槽、Linux 写进 boot_b 再
+# set_active b，所以运行 Linux 时被读到的是 boot_b 的页；指向 boot_a 的配置写
+# 得进，但下一次启动读不到。真实设备上重建配置用的也是 boot_b。
+LINUX_SLOT = "_b"
+LINUX_BOOT_DEVICE = "/dev/disk/by-partlabel/boot" + LINUX_SLOT
 BOOT_AVB_PROPS = (
     "com.android.build.boot.os_version:15",
     "com.android.build.boot.fingerprint:Xiaomi/piano/piano:15/"
@@ -197,7 +204,7 @@ def prepare(stock, tools, host_tool, bundle, slot, source_sha, output):
     probe_signed = command("probe", "--input", linux_boot)
     require(probe_signed.get("wrapped") is False, "signing changed the boot wrapper layout")
 
-    config = {"version": 1, "boot_device": "/dev/disk/by-partlabel/boot" + slot,
+    config = {"version": 1, "boot_device": LINUX_BOOT_DEVICE,
               "app_generation": app_sha[:32]}
     (output / "boot-request.json").write_text(json.dumps(config, indent=2) + "\n")
     record = {"schema_version": 1, "status": "DEVICE_BOOT_FILE_VERIFIED_NOT_DEVICE_BOOTED",
