@@ -6,7 +6,7 @@
 
 ## 流水线入口
 
-PR 分支里的 workflow 不等于 Actions 里能启动的入口。GitHub 只给默认分支 `main` 上已注册的 workflow 提供 `workflow_dispatch`；只在 PR 分支新增的 `build-piano-rpms.yml` 在分支状态下查不到 workflow_id。所以发布链统一从已注册的 `host-check` 启动 RPM 矩阵复用作，再由 `build-rootfs` 按 `host-check.yml` 解析同一次 run 的 `piano-rpms` artifact。
+PR 分支里的 workflow 不等于 Actions 里能启动的入口。GitHub 只给默认分支 `main` 上已注册的 workflow 提供 `workflow_dispatch`。只在 PR 分支新增的 `build-piano-rpms.yml` 在分支状态下查不到 workflow_id。发布链因此统一从已注册的 `host-check` 启动 RPM 矩阵复用作。`build-rootfs` 再按 `host-check.yml` 解析同一次 run 的 `piano-rpms` artifact。
 
 ```text
 host-check (build_piano_rpms=true, kernel_run_id=...)
@@ -35,11 +35,11 @@ build-bundle
 | boot-tools | 同核心的 selector、Android 静态原生工具、产品固件、自包含安装入口 |
 | host-boot-tool | 静态宿主 BOOT 重打包工具及来源记录 |
 
-boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。安装入口在 boot-tools 的 `installer/scripts`，锁定的上游代码附带源码清单，不需要在设备主机上重编译。普通发行版主机需要 Python 3、adb、fastboot；BOOT 准备用 Actions 提供的宿主工具。
+boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。安装入口在 boot-tools 的 `installer/scripts`。锁定的上游代码附带源码清单，不需要在设备主机上重编译。普通发行版主机需要 Python 3、adb、fastboot。BOOT 准备用 Actions 提供的宿主工具。
 
-`host-check` 的 `package_prepare_run` 是另一个可选入口：填一个成功的 `prepare-install` run，它调用 `package-install.yml` 把那份 `root-install` 压成 zstd，只压缩已校验的产物，不重建文件系统。
+`host-check` 的 `package_prepare_run` 是另一个可选入口。填一个成功的 `prepare-install` run，它调用 `package-install.yml` 把那份 `root-install` 压成 zstd。它只压缩已校验的产物，不重建文件系统。
 
-只读排查用的两个脚本不进流水线，直接在本机跑：`scripts/probe-device.sh` 取设备身份、槽位与 GPT，`scripts/verify-new-image.sh` 挂载镜像核对交接前提。两者都只读。
+只读排查用的两个脚本不进流水线，直接在本机跑。`scripts/probe-device.sh` 取设备身份、槽位与 GPT。`scripts/verify-new-image.sh` 挂载镜像核对交接前提。两者都只读。
 
 ## 本机 BOOT
 
@@ -47,13 +47,11 @@ boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。
 
 包装后恢复必须得到完整原 BOOT 的同一 SHA256。Linux 持久请求、只读预览和改回 Android 后的再次完整恢复都要成功。文件检查替代不了真机旁路和 Recovery 验收。
 
-使用 `python3 scripts/prepare-device-boot.py --help` 查看文件参数。
-原 BOOT、生成的设备 BOOT、安装记录和私钥均留在本地，不进入代码仓库。
+使用 `python3 scripts/prepare-device-boot.py --help` 查看文件参数。原 BOOT、生成的设备 BOOT、安装记录和私钥均留在本地，不进入代码仓库。
 
 ## 实际首次安装
 
-以下命令是 PR 真机验收的唯一主流程。所有材料必须来自同一条新流水线，
-当前已经启动的 GNOME、历史镜像和热修复都不算通过。自动化的破坏性步骤
+以下命令是 PR 真机验收的唯一主流程。所有材料必须来自同一条新流水线。当前已经启动的 GNOME、历史镜像和热修复都不算通过。自动化的破坏性步骤
 （`install-f2fs.py apply`）与手动分区做同一件事；手动分区、刷写与回滚的逐条
 命令在[安装指南](installation.md)第四节和三之二节。
 
@@ -119,12 +117,12 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
   --plan first-install-plan.json
 ```
 
-`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量；任何一项与现场不符就停止。同时确认设备当前槽位是 `a`，`root-install-manifest.json` 顶层的 `android_slot` 是 `_a`。首装不能用 `_b`：一键脚本固定写 `boot_b`，会覆盖 Android 唯一的启动路径。
+`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量。任何一项与现场不符就停止。同时确认设备当前槽位是 `a`，`root-install-manifest.json` 顶层的 `android_slot` 是 `_a`。首装不能用 `_b`：一键脚本固定写 `boot_b`，会覆盖 Android 唯一的启动路径。
 
 `device-boot/boot-request.json` 必须记录首装 Android 所在的
 `/dev/disk/by-partlabel/boot_a`，其 `app_generation` 必须与
 `deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。请求页写在
-`boot_a` 的合体 BOOT 内，Linux 启动镜像才写入 `boot_b`；不要把请求配置
+`boot_a` 的合体 BOOT 内，Linux 启动镜像才写入 `boot_b`。不要把请求配置
 改成 `boot_b`。`root-install` 已在 `etc/piano/boot-request.json` 写入同一份
 配置，首启后也不要猜测设备名或改槽。否则 Linux 的“返回 Android”和后续
 启动请求会失败。
@@ -154,9 +152,9 @@ python3 boot-tools/installer/scripts/install-f2fs.py apply \
   ... --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
-执行器在 GPT 写入和擦除 userdata 之前就校验公钥并确认 `mcopy` 可用，失败时
+执行器在 GPT 写入和擦除 userdata 之前就校验公钥，并确认 `mcopy` 可用。失败时
 不动设备。公钥写进会话目录里的一份 ESP 副本，`deploy-bundle/sunuefi_esp.img`
-保持原样；`result.json` 的 `ssh_key_injected` 与 `sunuefi_esp_sha256` 记录这次
+保持原样。`result.json` 的 `ssh_key_injected` 与 `sunuefi_esp_sha256` 记录这次
 注入和实际刷入的摘要。不传 `--ssh-key` 时只保留口令登录。
 
 执行器重新读取设备，保存原 GPT 与 BOOT，写入并读回完整 GPT，显式执行 `fastboot erase userdata`，然后传输 ESP、F2FS sparse root 和当前槽的 Android 默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
@@ -172,17 +170,19 @@ fastboot reboot
 ### 4. 回到 Fastboot 并刷入 Linux
 
 Android 首次初始化完成后关机，按【电源键 + 音量减键】进入原厂 Fastboot。
-确认 `current-slot` 是 `a`，且 root-install 的 `android_slot` 是 `_a`，然后运行：
+确认 `current-slot` 是 `a`，且 root-install 的 `android_slot` 是 `_a`。然后运行：
 
 ```sh
 chmod +x flash-linux.sh
 ./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub   # 不装密钥时去掉 --ssh-key
 ```
 
-如果第 3 步已经用 `install-f2fs.py --ssh-key` 注入过，这里不必再传；重复注入
+如果第 3 步已经用 `install-f2fs.py --ssh-key` 注入过，这里不必再传。重复注入
 只会覆盖同一个 `/piano-ssh-key.pub`。两条路径都要求本机有 `mcopy`（mtools）。
 
-脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量。它只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。首装路径拒绝 `--skip-checksum`：两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备重启到 Slot B。Windows 脚本用系统自带的 Windows PowerShell 读 JSON 清单：槽位与容量核对走 `ConvertFrom-Json`，找不到 `powershell` 就直接停下。
+脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量。它只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。首装路径拒绝 `--skip-checksum`：两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备重启到 Slot B。
+
+Windows 脚本用系统自带的 Windows PowerShell 读 JSON 清单。槽位与容量核对走 `ConvertFrom-Json`，找不到 `powershell` 就直接停下。
 
 ## PR 验收门槛
 
@@ -199,7 +199,7 @@ chmod +x flash-linux.sh
 
 设备热修复替代不了发布资产测试。PR 最终必须从原始 GPT/UFS 布局开始，用本流水线重新生成的 rootfs 与 ESP 完成冷启动、GNOME 桌面和重启复现。
 
-`fastboot erase userdata` 是首次安装的必经写入，不能省略。`plan` 会检查 `/data` 的 formattable 合同，但 AOSP `fs_mgr` 只在 `wiped`、或元数据加密关闭且 `!is_fs_valid` 时自动格式化；缩短 GPT 本身不会清掉旧的 F2FS 超级块。所以执行器必须显式擦除，再让 Android 第一次启动，重建加密 userdata 并完成首次开机。不要直接在宿主上格式化 Android 的加密映射。
+`fastboot erase userdata` 是首次安装的必经写入，不能省略。`plan` 会检查 `/data` 的 formattable 合同，但 AOSP `fs_mgr` 只在 `wiped`、或元数据加密关闭且 `!is_fs_valid` 时自动格式化。缩短 GPT 本身不会清掉旧的 F2FS 超级块。所以执行器必须显式擦除，再让 Android 第一次启动，重建加密 userdata 并完成首次开机。不要直接在宿主上格式化 Android 的加密映射。
 
 会话的 result.json 记录每个完成的阶段和错误。GPT 写入或擦除之后中断时，先看记录和实际设备状态，不要自动重试、恢复旧 GPT 或启动 Android。恢复 GPT 也找不回已擦除的 Android 文件。
 
