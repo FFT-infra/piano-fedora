@@ -1,6 +1,6 @@
 # 维护与验收
 
-本页面向维护者：流水线从哪进入，产物之间怎么绑定，run id 怎么传，PR 什么时候算设备验收通过。只装系统的读者看[安装指南](installation.md)。
+面向维护者：流水线从哪进入，产物之间怎么绑定，run id 怎么传，PR 什么时候算设备验收通过。只装系统的读者看[安装指南](installation.md)。
 
 上游 pin 与跟进规则见[上游跟踪](upstream.md)，产物定义见[部署产物](artifacts.md)。
 
@@ -153,7 +153,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py apply \
 保持原样。`result.json` 的 `ssh_key_injected` 与 `sunuefi_esp_sha256` 记录这次
 注入和实际刷入的摘要。不传 `--ssh-key` 时只保留口令登录。
 
-执行器重新读取设备，保存原 GPT 与 BOOT。它随后写入并读回完整 GPT，显式执行 `fastboot erase userdata`，再传输 ESP、F2FS sparse root 和当前槽的 Android 默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
+执行器重新读取设备，保存原 GPT 与 BOOT。执行器随后写入并读回完整 GPT，显式执行 `fastboot erase userdata`，再传输 ESP、F2FS sparse root 和当前槽的 Android 默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
 
 这时 Linux 还没启动，`apply` 结束时设备停在原厂 Fastboot。先断开 USB，再执行一次普通重启，让设备按当前槽启动 Android：
 
@@ -176,7 +176,7 @@ chmod +x flash-linux.sh
 如果第 3 步已经用 `install-f2fs.py --ssh-key` 注入过，这里不必再传。重复注入
 只会覆盖同一个 `/piano-ssh-key.pub`。两条路径都要求本机有 `mcopy`（mtools）。
 
-脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量。它只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。
+脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 与实时 `sunuefi_root` 的精确容量。脚本只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。
 
 首装路径拒绝 `--skip-checksum`。两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备重启到 Slot B。
 
@@ -184,7 +184,7 @@ Windows 脚本用系统自带的 Windows PowerShell 读 JSON 清单。槽位与�
 
 ## SELinux 策略模块
 
-`rootfs/selinux/piano_hardware.te` 是策略源码，`piano_hardware.pp` 是编译产物。镜像里装的是 `.pp`，改 `.te` 不重新编译不会生效。`piano-selinux-policy.service` 在首次开机时导入它，之后的更新靠 `semodule -i`。
+`rootfs/selinux/piano_hardware.te` 是策略源码，`piano_hardware.pp` 是编译产物。镜像里装的是 `.pp`，改 `.te` 不重新编译不会生效。`piano-selinux-policy.service` 在首次开机时导入 `piano_hardware.pp`，之后的更新靠 `semodule -i`。
 
 编译要在有 `checkpolicy` 的 Fedora 上做，模块名必须和文件名一致：
 
