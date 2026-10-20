@@ -7,11 +7,11 @@ Gunyah 已进入标准 Fedora 内核构建链。构建链不再包含实验档�
 
 | 环节 | 入口与合同 |
 | --- | --- |
-| 固定驱动 | `sources.lock.json` 的 `gunyah-driver`，commit `fd503a492d381687c143b7085ea79ebce58dcdc7`；32 个文件原样导入 |
-| 源码准备 | `scripts/prepare-production-kernel.py` 重放 SunUEFI/Iris 后导入驱动；不依赖一份已编译的基础内核 |
-| 来源证明 | `production-source-manifest.json` 记录最终源码身份；`kernel-gunyah-source.json` 记录父树、导入文件和派生树 |
-| 标准配置 | `--fedora-policy` 自动要求驱动源码并启用全部八项 Gunyah 配置；缺源码或配置不完整即失败 |
-| 内核与 SDK | `build-kernel.yml` 标准 job 先配置与单编驱动，再整核构建；标准 SDK 携带派生证明 |
+| 固定驱动 | `sources.lock.json` 的 `gunyah-driver`，commit `fd503a492d381687c143b7085ea79ebce58dcdc7`。32 个文件原样导入 |
+| 源码准备 | `scripts/prepare-production-kernel.py` 重放 SunUEFI/Iris 后导入驱动。它不依赖一份已编译的基础内核 |
+| 来源证明 | `production-source-manifest.json` 记录最终源码身份。`kernel-gunyah-source.json` 记录父树、导入文件和派生树 |
+| 标准配置 | `--fedora-policy` 自动要求驱动源码并启用全部八项 Gunyah 配置。缺源码或配置不完整即失败 |
+| 内核与 SDK | `build-kernel.yml` 标准 job 先配置与单编驱动，再整核构建。标准 SDK 携带派生证明 |
 | 外部模块 | `prepare-runtime-kernel.py` 默认重放 Gunyah 派生证明，要求源码、配置、Module.symvers 与内核清单匹配 |
 | 镜像与交付 | 只接受标准 kernel/runtime artifact，拒绝旧实验档，防止混装模块 |
 
@@ -40,8 +40,7 @@ payload DTB 的 `/hypervisor/qcom,resource-manager-rpc@…` 节点 `reg` 记录�
 传入过期值时，hypervisor 判定首次 RM 请求为 ARG_INVAL。`gunyah_rm_msgq_send` 的许可永不返回，调用者停在 D 状态，`VM_START` 无法发出。
 
 补丁在把 DTB 移交内核前，用产品已校验的 inherited FDT 覆盖这 16 字节。
-覆盖只在四个条件同时成立时执行：两棵树各自恰好有一个匹配节点，继承值正好
-16 字节，两个 id 均非零，目标属性结构符合驱动读取要求。
+覆盖只在四个条件同时成立时执行：两棵树各自恰好有一个匹配节点，继承值正好 16 字节，两个 id 均非零，目标属性结构符合驱动读取要求。
 出现缺失、歧义或读取失败时，补丁保留 payload 原值并记录日志。
 补丁不改节点名里的 unit-address，Linux 侧也不读这个字段。
 
