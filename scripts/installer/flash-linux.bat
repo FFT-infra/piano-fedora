@@ -120,11 +120,6 @@ if not defined BOOT_IMG (
     pause
     exit /b 1
 )
-if /i "%BOOT_IMG%"=="boot_sunuefi.img" (
-    echo [ERROR] boot_sunuefi.img is the ESP payload, not a boot_b image.
-    pause
-    exit /b 1
-)
 
 set ESP_IMG=sunuefi_esp.img
 if not exist "%ESP_IMG%" (
