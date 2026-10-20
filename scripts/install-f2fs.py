@@ -92,8 +92,10 @@ def new_gpt(upstream, complete, plan, mbr, android_data_mib=None, esp_mib=None):
     table = head[2 * BLOCK:]
     count = complete.geometry["count"]
     block_count = gpt_entry.table_bytes(count)
+    # 备份表头在尾部 blob 的最后一块；原厂布局在表与表头之间留有空隙，
+    # 不能用 `tail[block_count:block_count + BLOCK]` 取表头。
     after = upstream.parse_gpt(head[BLOCK:2 * BLOCK], head[2 * BLOCK:2 * BLOCK + block_count],
-                               tail[block_count:block_count + BLOCK], tail[:block_count],
+                               tail[-BLOCK:], tail[:block_count],
                                complete.disk_bytes)
     return after, head, tail, original_head, original_tail
 

@@ -25,8 +25,11 @@ def gpt_module():
     return module
 
 
-def build_image(path, sectors, rows):
-    """写一份稀疏的整盘镜像：表头、entry 与分区字节，其余留空。"""
+def build_image(path, sectors, rows, gap=0):
+    """写一份稀疏的整盘镜像：表头、entry 与分区字节，其余留空。
+
+    `gap` 是备份分区表与备份表头之间的空块数；原厂 `gpt_backup0.bin` 为 2。
+    """
     gpt = gpt_module()
     table = bytearray(COUNT * 128)
     for index, (name, first, last, kind) in enumerate(rows):
@@ -46,11 +49,12 @@ def build_image(path, sectors, rows):
 
     mbr = bytearray(BLOCK)
     mbr[510:512] = b"\x55\xaa"
+    tail_first = sectors - 1 - gap - blocks
     with path.open("wb") as stream:
         for offset, data in ((0, bytes(mbr)), (BLOCK, header(1, sectors - 1, 2)),
                              (2 * BLOCK, table),
-                             ((sectors - 1 - blocks) * BLOCK, table),
-                             ((sectors - 1) * BLOCK, header(sectors - 1, 1, sectors - 1 - blocks))):
+                             (tail_first * BLOCK, table),
+                             ((sectors - 1) * BLOCK, header(sectors - 1, 1, tail_first))):
             stream.seek(offset)
             stream.write(data)
     return path
@@ -299,6 +303,50 @@ def main():
                       "--emit-gpt", str(again)).returncode == 0, "re-emit should succeed")
             check((again / "gpt-head.bin").read_bytes() == head
                   and (again / "gpt-tail.bin").read_bytes() == tail, "re-emitted blobs must be identical")
+
+        # 原厂尾部在备份表与备份表头之间留 2 个空块（gpt_backup0.bin 是 5 块）。
+        # 长度只能由备份表头自己的 partition_entry_lba 算出来。
+        gapped_sectors = 249518080
+        gapped = build_image(tmp / "gapped.img", gapped_sectors, (
+            ("rescue", 191488, 224255, "0fc63daf-8483-4772-8e79-3d69d8477de4"),
+            ("super", 224256, 3632127, "0fc63daf-8483-4772-8e79-3d69d8477de4"),
+            ("userdata", 3632128, 249518074, "0fc63daf-8483-4772-8e79-3d69d8477de4")), gap=2)
+        gapped_out = tmp / "gapped-gpt"
+        result = run("--device", str(gapped), "--userdata-mib", "307200", "--emit-gpt", str(gapped_out))
+        check(result.returncode == 0, f"factory gapped tail should plan: {result.stderr}")
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            gapped_head = (gapped_out / "gpt-head.bin").read_bytes()
+            gapped_tail = (gapped_out / "gpt-tail.bin").read_bytes()
+            check(data["gpt_blobs"]["tail_lba"] == 249518075, "tail blob must start at the backup table")
+            check(data["gpt_blobs"]["tail_sectors"] == 5, "tail blob must cover table, gap and header")
+            check(len(gapped_tail) == 5 * BLOCK, "factory tail must stay five blocks")
+            rows = {row["name"]: row for row in gpt_module().parse(
+                gapped_head, gapped_tail, gapped_sectors * BLOCK)["partitions"]}
+            check(rows["sunuefi_esp"]["last"] == 249518074, "gapped emit must parse back")
+            check(len((gapped_out / "original-gpt-tail.bin").read_bytes()) == 5 * BLOCK,
+                  "original factory table must keep the gap too")
+            # 两段 dd 读数按表头算出的 5 块读取，必须产出同一对 blob。
+            with gapped.open("rb") as stream:
+                gapped_head_raw = stream.read(8 * BLOCK)
+                stream.seek((gapped_sectors - 5) * BLOCK)
+                gapped_tail_raw = stream.read(5 * BLOCK)
+            (tmp / "gapped-head.raw").write_bytes(gapped_head_raw)
+            (tmp / "gapped-tail.raw").write_bytes(gapped_tail_raw)
+            split_out = tmp / "gapped-split"
+            result = run("--head", str(tmp / "gapped-head.raw"), "--tail", str(tmp / "gapped-tail.raw"),
+                         "--sectors", str(gapped_sectors), "--userdata-mib", "307200",
+                         "--emit-gpt", str(split_out))
+            check(result.returncode == 0, f"gapped dd reads should emit: {result.stderr}")
+            if result.returncode == 0:
+                check((split_out / "gpt-head.bin").read_bytes() == gapped_head
+                      and (split_out / "gpt-tail.bin").read_bytes() == gapped_tail,
+                      "gapped dd reads must produce the same blobs as the image read")
+            # 按旧假设只读“表 + 表头”3 块时必须被拒绝，而不是静默解析错位。
+            (tmp / "gapped-short.raw").write_bytes(gapped_tail[-3 * BLOCK:])
+            check(run("--head", str(tmp / "gapped-head.raw"), "--tail", str(tmp / "gapped-short.raw"),
+                      "--sectors", str(gapped_sectors), "--userdata-mib", "307200").returncode == 2,
+                  "a tail read that skips the backup table must be rejected")
 
         # --emit-gpt 不能用在只有文本 dump 的输入上。
         check(run("--dump", str(dump), "--emit-gpt", str(tmp / "x")).returncode == 2,

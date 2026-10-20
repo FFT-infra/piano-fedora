@@ -169,7 +169,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py apply \
 
 执行器重新读取设备，保存原 GPT 与 BOOT。执行器随后写入并读回完整 GPT，显式执行 `fastboot erase userdata`，再传输 ESP、F2FS sparse root 和当前槽的 Android 默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
 
-GPT 写入用 `dd`，不用 `sgdisk`：设备上的 Fedora 只装了 util-linux，Android 侧也不保证有 `sgdisk`。整表编成两段 blob 写，顺序是**先尾后头**：先写备份分区表与备份表头，`fsync`，再写保护性 MBR、主表头与主分区表。任何一次中断后，旧主表头的 `alternate_lba` 仍指向刚写好的新尾部，重启能解析出一份自洽的表；反过来先写头会留下"头新尾旧"，尾部还指向旧布局。写入前执行器用一次 4 KiB 的 `dd` 探针证明设备上的 `dd` 接受 `conv=fsync,notrunc`，失败则不动设备。写完读回主表头、主分区表、备份表头与备份分区表，用锁定上游的 `parse_gpt` 再解析一次，与计划逐项比对；不一致就按"先头后尾"写回会话里保存的原表，再报错。
+GPT 写入用 `dd`，不用 `sgdisk`：设备上的 Fedora 只装了 util-linux，Android 侧也不保证有 `sgdisk`。整表编成两段 blob 写，顺序是**先尾后头**：先写备份分区表与备份表头，`fsync`，再写保护性 MBR、主表头与主分区表。尾部 blob 从备份表头记录的 `partition_entry_lba` 开始，一直到磁盘最后一个 LBA；原厂布局在表与表头之间有 2 个空块，长度不能按“表 + 表头”推算。任何一次中断后，旧主表头的 `alternate_lba` 仍指向刚写好的新尾部，重启能解析出一份自洽的表；反过来先写头会留下"头新尾旧"，尾部还指向旧布局。写入前执行器用一次 4 KiB 的 `dd` 探针证明设备上的 `dd` 接受 `conv=fsync,notrunc`，失败则不动设备。写完读回主表头、主分区表、备份表头与备份分区表，用锁定上游的 `parse_gpt` 再解析一次，与计划逐项比对；不一致就按"先头后尾"写回会话里保存的原表，再报错。
 
 这时 Linux 还没启动，`apply` 结束时设备停在原厂 Fastboot。先断开 USB，再执行一次普通重启，让设备按当前槽启动 Android：
 

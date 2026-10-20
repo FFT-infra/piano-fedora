@@ -7,8 +7,8 @@
 两段覆盖的范围由表头自己决定，不写死：
 
 - 头部：`MBR + 主表头 + 主分区表`，从 LBA 0 开始。
-- 尾部：`备份分区表 + 备份表头`，从备份表头里记录的 `table_lba` 开始，
-  连续到磁盘最后一个 LBA。
+- 尾部：从备份表头里记录的 `table_lba` 开始，连续到磁盘最后一个 LBA。
+  原厂布局在备份分区表与表头之间留有空隙，长度不能按“表 + 表头”推算。
 
 先尾后头是关键：任何一次中断都能由旧表头的 `alternate_lba` 找回头部旧表，
 或者由新头部找回尾部新表；反过来会留下"头新尾旧"的半写状态。
@@ -65,16 +65,24 @@ def head_bytes(count):
     return 2 * BLOCK + table_bytes(count)
 
 
-def tail_bytes(count):
-    """尾部 blob 的字节数：备份分区表 + 备份表头。"""
-    return table_bytes(count) + BLOCK
+def tail_bytes(backup_header, last):
+    """尾部 blob 的字节数：备份分区表 + 表头前的空隙 + 表头。
+
+    原厂布局不是"表紧贴表头"：`gpt_backup0.bin` 在表与表头之间留了 2 个块，
+    所以长度必须由表头里的 `partition_entry_lba` 和它在盘上的位置算出来。
+    """
+    rear = _header(backup_header, last, last)
+    return (last - rear["table_lba"] + 1) * BLOCK
 
 
 def parse(head, tail, disk_bytes):
     """从两段原始字节解析完整 GPT。
 
-    `head` 从 LBA 0 开始，`tail` 从备份分区表的第一个 LBA 开始。函数只用
-    blob 自身的内容推断长度，因此同一份代码既用于设备读数，也用于文件。
+    `head` 从 LBA 0 开始，`tail` 从备份分区表的第一个 LBA 开始、到磁盘最后
+    一个 LBA 结束。尾部中间可能有一段空隙：原厂 `gpt_backup0.bin` 是 5 个块，
+    2 块分区表、2 块空、1 块表头，表头里的 `partition_entry_lba` 指向第一块。
+    函数按表头给出的位置取表，不用连续布局的假设推断。函数只用 blob 自身的
+    内容推断长度，因此同一份代码既用于设备读数，也用于文件。
     """
     if type(disk_bytes) is not int or disk_bytes % BLOCK or disk_bytes < 8 * BLOCK:
         raise GptError("disk size must be a multiple of 4 KiB and hold both tables")
@@ -85,10 +93,13 @@ def parse(head, tail, disk_bytes):
     size = table_bytes(front["count"])
     if len(head) != BLOCK + BLOCK + size:
         raise GptError("head blob length differs from its own entry count")
-    if len(tail) != size + BLOCK:
-        raise GptError("tail blob length differs from its own entry count")
-    primary, backup = head[BLOCK:2 * BLOCK], tail[size:]
-    rear = _header(backup, last, last)
+    if len(tail) < BLOCK:
+        raise GptError("truncated GPT tail blob")
+    rear = _header(tail[-BLOCK:], last, last)
+    expected = (last - rear["table_lba"] + 1) * BLOCK
+    if len(tail) != expected:
+        raise GptError("tail blob length differs from the backup table location")
+    primary, backup = head[BLOCK:2 * BLOCK], tail[-BLOCK:]
     for key in ("first", "last", "count", "width", "array_crc"):
         if front[key] != rear[key]:
             raise GptError("primary and backup GPT metadata differ: " + key)
@@ -145,7 +156,8 @@ def blobs(count, primary, backup, table, mbr):
     """把一份完整的新 entry array 编成 (head, tail) 两段可 dd 的字节。
 
     `table` 必须已经是 `table_bytes(count)` 字节。两个表头的 CRC 在这里
-    重算，调用方不需要自己碰 CRC 字段。
+    重算，调用方不需要自己碰 CRC 字段。尾部按备份表头自己记录的
+    `partition_entry_lba` 补齐它到表头之间的空隙，原厂布局因此能原样写回。
     """
     size = table_bytes(count)
     if len(table) != size:
@@ -154,7 +166,14 @@ def blobs(count, primary, backup, table, mbr):
         raise GptError("both GPT headers must be exactly one 4 KiB block")
     if len(mbr) != BLOCK or mbr[510:512] != b"\x55\xaa":
         raise GptError("protective MBR missing")
-    return mbr + rebuild_header(primary, table, count) + table, table + rebuild_header(backup, table, count)
+    here = struct.unpack_from("<Q", backup, 24)[0]
+    rear = _header(backup, here, here)
+    gap = here - rear["table_lba"] + 1 - rear["blocks"] - 1
+    if gap < 0:
+        raise GptError("backup table overlaps its header")
+    # 空隙是不带语义的对齐填充（原厂为全零），写出时补零。
+    return (mbr + rebuild_header(primary, table, count) + table,
+            table + bytes(gap * BLOCK) + rebuild_header(backup, table, count))
 
 
 def entry(index, kind, identity, first, last, attributes, name):
@@ -191,12 +210,15 @@ def load(head, tail, disk_bytes):
     """
     if type(disk_bytes) is not int or disk_bytes < 8 * BLOCK or disk_bytes % BLOCK:
         raise GptError("disk size must be a multiple of 4 KiB and hold both tables")
+    if len(tail) < BLOCK:
+        raise GptError("truncated GPT tail dump")
+    last = disk_bytes // BLOCK - 1
     head_size = probe(head, disk_bytes // BLOCK)
     if len(head) < head_size:
         raise GptError("GPT head dump is shorter than the entry table it declares")
-    tail_size = head_size - BLOCK
+    tail_size = tail_bytes(tail[-BLOCK:], last)
     if len(tail) < tail_size:
-        raise GptError("GPT tail dump is shorter than the entry table it declares")
+        raise GptError("GPT tail dump is shorter than the backup table it declares")
     return parse(head[:head_size], tail[len(tail) - tail_size:], disk_bytes)
 
 

@@ -399,9 +399,16 @@ TOTAL=$((LAST + 1))
 BLOCKS=$(( (ENTRIES * 128 + 4095) / 4096 ))
 echo "last LBA $LAST, total $TOTAL, $ENTRIES entries, $BLOCKS table blocks"
 adb shell su -c "dd if=$DISK of=$TMP/gpt-head.raw bs=4096 count=$((2 + BLOCKS))"
-adb shell su -c "dd if=$DISK of=$TMP/gpt-tail.raw bs=4096 skip=$((LAST - BLOCKS)) count=$((BLOCKS + 1))"
+adb shell su -c "dd if=$DISK of=$TMP/gpt-backup-header.raw bs=4096 skip=$LAST count=1"
+adb pull $TMP/gpt-backup-header.raw .
+TAIL_FIRST=$(od -An -tu8 -j 72 -N 8 gpt-backup-header.raw | tr -d ' ')
+TAIL_BLOCKS=$((LAST - TAIL_FIRST + 1))
+echo "backup table at LBA $TAIL_FIRST, $TAIL_BLOCKS blocks"
+adb shell su -c "dd if=$DISK of=$TMP/gpt-tail.raw bs=4096 skip=$TAIL_FIRST count=$TAIL_BLOCKS"
 adb pull $TMP/gpt-head.raw $TMP/gpt-tail.raw .
 ```
+
+尾部不能按 `LAST-BLOCKS` 推：原厂 `gpt_backup0.bin` 是 5 个块，备份表之后留 2 个空块才到备份表头，`partition_entry_lba` 才是表的真实位置（这里是 `LAST-4`）。先读最后一块拿到表头，再按表头算起点和长度。
 
 两份原始读数就是分区前的 GPT 基线。`plan-first-partition.py --head/--tail --sectors` 能直接解析它们。设备已经跑着 Linux 时跳过 `adb`，把 `DISK` 换成 `/dev/sda`、`TMP` 换成 `/tmp`，其余相同。
 
@@ -447,8 +454,9 @@ python3 scripts/plan-first-partition.py --head gpt-head.raw --tail gpt-tail.raw 
 设备上已经有 Linux、能直接读整盘时，也可以跳过两份读数，直接 `--device /dev/sda`，其余参数相同。
 
 `--emit-gpt` 产出四个文件：`gpt-head.bin`（保护性 MBR + 主表头 + 主分区表）、
-`gpt-tail.bin`（备份分区表 + 备份表头）、`original-gpt-head.bin`、
-`original-gpt-tail.bin`（分区前的原表）与 `SHA256SUMS`。这些是**文件，还没写进设备**。
+`gpt-tail.bin`（备份分区表 + 空隙 + 备份表头）、`original-gpt-head.bin`、
+`original-gpt-tail.bin`（分区前的原表）与 `SHA256SUMS`。尾部长度随现场表头，
+原厂表是 `TAIL_BLOCKS` 个块。这些是**文件，还没写进设备**。
 规划器在写出前会核对现场读数与计划是同一条表，不一致就停。
 
 只有文本 dump 时也能规划，但不能 `--emit-gpt`。`sfdisk --dump` 的文本不带总扇区数与表项数，要自己补。`--sectors` 要的是 4096 字节 LBA 总数，不是 `/sys/block/sda/size`：
@@ -469,17 +477,17 @@ adb shell su -c "sha256sum $TMP/gpt-tail.bin $TMP/gpt-head.bin"
 sha256sum gpt/gpt-tail.bin gpt/gpt-head.bin
 ```
 
-再按**先尾后头**的顺序写入。尾部先落盘，中断后旧主表头的 `alternate_lba` 仍能找到新尾部；反过来会留下“头新尾旧”。尾部 blob 从 `LAST-BLOCKS` 开始，占 `BLOCKS+1` 个块；头部占 2 个块加同一张表：
+再按**先尾后头**的顺序写入。尾部先落盘，中断后旧主表头的 `alternate_lba` 仍能找到新尾部；反过来会留下“头新尾旧”。尾部 blob 从 `TAIL_FIRST` 开始，占 `TAIL_BLOCKS` 个块；头部占 2 个块加同一张表：
 
 ```sh
-adb shell su -c "dd if=$TMP/gpt-tail.bin of=$DISK bs=4096 seek=$((LAST-BLOCKS)) conv=fsync,notrunc"
+adb shell su -c "dd if=$TMP/gpt-tail.bin of=$DISK bs=4096 seek=$TAIL_FIRST conv=fsync,notrunc"
 adb shell su -c "dd if=$TMP/gpt-head.bin of=$DISK bs=4096 seek=0 conv=fsync,notrunc && sync"
 ```
 
 写完立刻回读，两份都必须与源 blob 相同：
 
 ```sh
-adb shell su -c "dd if=$DISK bs=4096 skip=$((LAST-BLOCKS)) count=$((BLOCKS+1))" | sha256sum
+adb shell su -c "dd if=$DISK bs=4096 skip=$TAIL_FIRST count=$TAIL_BLOCKS" | sha256sum
 adb shell su -c "dd if=$DISK bs=4096 count=$((BLOCKS+2))" | sha256sum
 ```
 
@@ -490,7 +498,7 @@ adb shell su -c "dd if=$DISK bs=4096 count=$((BLOCKS+2))" | sha256sum
 ```sh
 adb push gpt/original-gpt-head.bin gpt/original-gpt-tail.bin $TMP/
 adb shell su -c "dd if=$TMP/original-gpt-head.bin of=$DISK bs=4096 seek=0 conv=fsync,notrunc"
-adb shell su -c "dd if=$TMP/original-gpt-tail.bin of=$DISK bs=4096 seek=$((LAST-BLOCKS)) conv=fsync,notrunc && sync"
+adb shell su -c "dd if=$TMP/original-gpt-tail.bin of=$DISK bs=4096 seek=$TAIL_FIRST conv=fsync,notrunc && sync"
 ```
 
 #### 4. 让 Android 重建 userdata

@@ -322,8 +322,11 @@ def read_blobs(paths, disk_bytes=None):
             length = gpt.probe(head, size // SECTOR)
             stream.seek(0)
             head = stream.read(length)
-            stream.seek(size - (length - SECTOR))
-            tail = stream.read(length - SECTOR)
+            # 尾部长度由备份表头自己决定：原厂布局在备份表与表头之间留有空隙。
+            stream.seek(size - SECTOR)
+            tail_length = gpt.tail_bytes(stream.read(SECTOR), size // SECTOR - 1)
+            stream.seek(size - tail_length)
+            tail = stream.read()
         return gpt.load(head, tail, size)
     first, second = (Path(path) for path in paths)
     head, tail = first.read_bytes(), second.read_bytes()
@@ -463,7 +466,8 @@ def main(argv=None):
             Path(args.output).write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
-    except PlanError as exc:
+    except (PlanError, ValueError) as exc:
+        # piano_gpt.GptError 是 ValueError：原始读数损坏时同样按可预期失败退出。
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
