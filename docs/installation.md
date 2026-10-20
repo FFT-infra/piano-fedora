@@ -510,6 +510,11 @@ fastboot erase userdata
 fastboot reboot
 ```
 
+实机上擦除不一定能让 Android 自动格式化：2026-10-21 的两次安装都停在
+Recovery，屏幕底部显示 `Couldn't initialize user 0`，需要在 Recovery 里再选
+一次“清除数据”，Android 才会重建加密分区并完成首次开机。看到这一行就按
+Recovery 的提示清除数据，不要反复切槽或重写分区表。
+
 等 Android 首次开机完成，`adb shell getprop sys.boot_completed` 返回 `1`。这一步不能跳过，否则 Android 会反复重启或加密失败。
 
 #### 5. 刷入 Linux
@@ -664,7 +669,7 @@ make test-device-media MEDIA_OUTPUT=/tmp/media-check
 ### Q2: 误将 Android 数据格式化了？
 Slot A 保留着完整的原厂 Android 分区（`boot_a`、`init_boot_a`、`super` 等）。
 
-在 Fastboot 里执行 `fastboot set_active a && fastboot erase userdata && fastboot reboot`，Android 会重建加密分区并走首次开机引导。
+在 Fastboot 里执行 `fastboot set_active a && fastboot erase userdata && fastboot reboot`，Android 会重建加密分区并走首次开机引导。若重启后停在 Recovery 并显示 `Couldn't initialize user 0`，在 Recovery 里选一次“清除数据”再继续。
 
 ### Q3: Type-C 有线网络 SSH 无法连接？
 系统把 USB NCM 接口静态配置为 `192.168.77.1/30`。把电脑端对应网卡配到同一子网（例如 IP `192.168.77.2`，掩码 `255.255.255.252`），然后 `ssh piano@192.168.77.1`。

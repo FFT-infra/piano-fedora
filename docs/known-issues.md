@@ -37,6 +37,14 @@
 `boot_b` 的读回可以直接读分区前 4 KiB 与末尾 64 字节判断，
 `prepare-device-boot.py` 写的 `os_version`、AVB 算法和请求页偏移都能对上。
 
+## 首次安装的 userdata
+
+`fastboot erase userdata` 只清分区，不写 BCB 的 `wiped` 标志。2026-10-21 在
+OS3.0.309.0 上两次安装，重启后 Android 都停在 Recovery，底部显示
+`Couldn't initialize user 0`；在 Recovery 里选一次“清除数据”才重建加密
+userdata。安装脚本目前只做擦除，这一步需要操作者现场处理，步骤见
+[安装指南](installation.md#4-让-android-重建-userdata)。
+
 ## 首次启动扩容
 
 封存镜像固定 8192 MiB，文件系统在首次启动时由 initramfs 里的 `resize.f2fs`
