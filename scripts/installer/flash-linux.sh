@@ -370,6 +370,16 @@ if [ "$SKIP_CHECKSUM" -eq 0 ]; then
         echo "Install coreutils (Linux) or provide a SHA-256 tool on PATH."
         exit 1
     fi
+    # The root-install manifest is read with python3 below. Check it here so a
+    # host without python3 stops before the images are verified, not after.
+    if ! command -v python3 &>/dev/null; then
+        echo -e "${RED}[ERROR] 'python3' command not found; it is needed to read root-install-manifest.json.${NC}"
+        echo "Install Python 3 and retry:"
+        echo "  - Fedora: sudo dnf install python3"
+        echo "  - Ubuntu/Debian: sudo apt install python3"
+        echo "  - macOS: python3 ships with the Command Line Tools"
+        exit 1
+    fi
 
     check_manifest_image() {
         local target_file="$1" checksum_file="$2" target_name expected_hash actual_hash
