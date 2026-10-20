@@ -102,7 +102,7 @@ literal 0
 HcmV?d00001
 
 diff --git a/tools/prepare_release_kernel.py b/tools/prepare_release_kernel.py
-index 82df03f..f6e863d 100644
+index 82df03f..1f76992 100644
 --- a/tools/prepare_release_kernel.py
 +++ b/tools/prepare_release_kernel.py
 @@ -41,7 +41,7 @@ TARGETS[DEFAULT_TARGET] = {
@@ -110,7 +110,7 @@ index 82df03f..f6e863d 100644
      'series_target': 'kernel69',
      'patch_tree': TARGETS['kernel69']['target_tree'],
 -    'target_tree': 'a6fc559e769df1823f42af47fb4f77c3330fec3b',
-+    'target_tree': '799bf869f94f6a0b5fa14673f08ed85f1c8732f2',
++    'target_tree': 'd8a2c705fa0b1bbb8129f800785bb478bea528e4',
      'iris_decode_order_patch': {
          'file': 'patches/linux/7.2.9/0049-media-iris-decode-order.patch',
          'sha256': '51593c9fd8bce2d1a3953abeda91af432b85d6efcb4c7672015c6cac3cfc22c4',
