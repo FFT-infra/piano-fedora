@@ -7,7 +7,7 @@
 | 项 | 位置 | 现状 | 公开分发的问题 | 状态 |
 | --- | --- | --- | --- | --- |
 | SSH 管理公钥 | `scripts/installer/flash-linux.sh`、`scripts/install-f2fs.py` 的 `--ssh-key`；设备侧 `piano-first-boot-ssh-key.service` | 镜像里不带 `authorized_keys`。刷写脚本在 SHA256、来源与分区校验之后把公钥写进 ESP 的 `/piano-ssh-key.pub`，首启服务导入后删除。不传 `--ssh-key` 就只保留密码登录 | 已解决 | 完成 |
-| 电极校准（厂商数据） | `packages/xiaomi-piano-thp/usr/share/piano/touch/piano-{csot,boe}.json`；来源是仓库密钥 `TOUCH_CALIBRATION_TGZ_B64` 里的原厂 INI | 原厂 INI 本身不进 Git，但从它提取的校准表已经提交（`source_sha256` 指回 INI），并随 RPM 分发 | 许可不明的厂商数据已经进入公开仓库与镜像；"INI 不进 Git"不等于数据没公开 | 待定：先确认再分发许可；不能确认就把校准拆成可选设备包，发布物不带，装机时由用户自己的原厂数据生成 |
+| 电极校准（厂商数据） | `packages/xiaomi-piano-thp/usr/share/piano/touch/piano-{csot,boe}.json` 与 `usr/share/piano/pen/calibration/piano-{csot,boe}.ini`；来源是仓库密钥 `TOUCH_CALIBRATION_TGZ_B64` 里的原厂 INI | 原厂 INI 本身不进 Git，但从它提取的触控校准表与笔校准数值已经提交（`source_sha256` 指回 INI），并随 RPM 分发 | 许可不明的厂商数据已经进入公开仓库与镜像；"INI 不进 Git"不等于数据没公开 | 待定：先确认再分发许可；不能确认就把校准拆成可选设备包，发布物不带，装机时由用户自己的原厂数据生成 |
 | 已知默认密码与自动登录 | `scripts/finalize-fedora-rootfs.py:21`（口令常量）、`:676`（GDM 自动登录）、`:761`（manifest 里的登录证明） | `piano` 用户使用文档化默认密码 `piano123456`，GDM 自动登录，root 锁定 | 拿到同一镜像的任何人都能直接进桌面 | 已决定：默认密码作为产品默认值保留，文档继续写明；不强制改密、不生成随机密码；自动登录保持现状 |
 | 真机序列号 | `docs/installation.md`、`tests/check_manual_flash_flow.py` | 已改为 `<serial>` 与 `SN-TEST-1` | 已解决，历史提交里仍有 | 完成（历史未重写） |
 | 个人绝对路径 | `scripts/verify-new-image.sh` | 默认镜像路径从脚本位置推导，内核 release 读 `root-image-manifest.json` | 已解决 | 完成 |
