@@ -97,6 +97,7 @@ sha256sum stock-recovery/boot.img
 
 两条摘要必须相同，文件必须是 96 MiB（`stat -c%s`），否则执行器会拒绝。原厂 ROM 包里的 `images/boot.img` 也是 96 MiB，但只有设备还跑着那一版固件时才逐字节相同；用前先比摘要，不一致就以设备读出的为准。
 
+```sh
 python3 boot-tools/installer/scripts/prepare-device-boot.py \
   --stock-boot stock-recovery/boot.img \
   --boot-tools boot-tools \
@@ -105,7 +106,9 @@ python3 boot-tools/installer/scripts/prepare-device-boot.py \
   --slot _a \
   --source-sha256 <current-boot-sha256> \
   --output device-boot
+```
 
+```sh
 python3 boot-tools/installer/scripts/install-f2fs.py plan \
   --sunuefi boot-tools/installer/sunuefi \
   --serial <serial> \
