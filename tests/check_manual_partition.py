@@ -26,7 +26,7 @@ DOC = ROOT / "docs" / "installation.md"
 PLANNER = ROOT / "scripts" / "plan-first-partition.py"
 
 START = "### 手动分区（不使用安装脚本）"
-END = "## 已有分区更新"
+END = "## 更新已有 Linux 分区"
 
 SECTOR = 4096
 SECTORS_PER_MIB = SECTOR and (1024 * 1024) // SECTOR

@@ -44,6 +44,15 @@
 * **`sunuefi_esp`（512 MiB，FAT32）**：SunUEFI EDK2 固件、合并设备树（DTB）、Linux 7.2 适配内核与 initramfs。
 * **`sunuefi_root`（F2FS）**：Fedora 44 GNOME 根文件系统。F2FS 为闪存设计，能发挥 UFS 4.0 的顺序与随机读写性能。
 * **引导稳定性（`qbootctl`）**：`qbootctl.service` 在每次 Linux 引导成功后向底层 GPT 写入 `Successful = 1`，ABL 的启动计数器不会归零。
+* **容量按实时 GPT 计算。** 容量不是固定值，**每台设备按自己实时的 GPT 计算**，512 GiB、1 TiB 或其他容量都走同一套规则：
+
+  1. 保留 Android 的全部固定分区（`boot_a`、`dtbo_a`、`super` 等）不动；
+  2. `userdata` 从尾部缩短，让出 Linux 需要的空间；
+  3. 让出的空间放 `sunuefi_esp`（512 MiB）和 `sunuefi_root`（其余全部）；
+  4. Android `userdata` 与 `sunuefi_root` 按剩余空间对半分配；
+  5. 所有新分区起点按 1 MiB 对齐，两边相差不超过 2 MiB。
+
+  `product.json` 的 `root_size_mib` 只是一台设备的实测记录，给 `prepare-install` 当默认值，**不是所有设备的约定**。容量变了就按第四节手动流程重算，或者给 `prepare-install` 传自己的 `root_size_mib`。
 
 ---
 
@@ -380,7 +389,7 @@ cat /sys/block/sda/queue/physical_block_size   # 这台设备是 4096
 sgdisk --print /dev/sda
 ```
 
-`sgdisk --print` 给出总扇区数、First/Last usable sector 和每个分区的起止扇区。把完整输出存一份，作为本次安装的 GPT 基线。
+`sgdisk --print` 给出总扇区数、First/Last usable sector 和每个分区的起止扇区。把完整输出存一份，作为这块盘分区前的 GPT 基线。
 
 #### 2. 算容量
 
@@ -456,9 +465,9 @@ fastboot reboot
 
 Android 初始化完成后关机，按【电源键 + 音量减键】进入原厂 Fastboot，确认 `current-slot` 仍是 `a`，再按「三之二、手动刷机」的逐条命令刷入 `boot_b`、`sunuefi_esp`、`sunuefi_root`，最后 `fastboot reboot`。
 
-> 手动路径没有 `install-f2fs.py apply` 的自动回读校验。每刷一个分区后自己执行 `fastboot getvar partition-size:<name>` 和镜像的 `sha256sum`，把结果记进本次会话。分区写错只能靠原厂包恢复，userdata 里的数据无法恢复。
+> 手动路径没有 `install-f2fs.py apply` 的自动回读校验。每刷一个分区后自己执行 `fastboot getvar partition-size:<name>` 和镜像的 `sha256sum`，把结果记进这次会话的记录里。分区写错只能靠原厂包恢复，userdata 里的数据无法恢复。
 
-## 已有分区更新
+## 更新已有 Linux 分区
 
 `update-f2fs.py` 复用锁定上游的只读设备/GPT 解析、工厂 Fastboot 身份检查和本仓库的材料校验。它只传输 ESP 与 F2FS root，不写 GPT、userdata 与持久 BOOT。完整 root 会替换 Linux 文件，个人文件先备份。
 
@@ -477,7 +486,7 @@ sha256sum stock-recovery/boot.img    # 与上一条相同
 
 原厂 ROM 包里的 `images/boot.img` 也是 96 MiB，但只有设备还跑着那一版固件时才逐字节相同。用前比摘要，不一致以设备读出的为准。
 
-在连接平板的 Linux 主机上执行，以下路径指本次已下载的材料，`--serial` 是实际 Android ADB 序列号：
+在连接平板的 Linux 主机上执行，以下路径指你下载的那份材料，`--serial` 是实际 Android ADB 序列号：
 
 ```sh
 python3 boot-tools/installer/scripts/update-f2fs.py plan \
@@ -504,7 +513,7 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 
 中途中断时先读 session 的 result.json 和实际设备状态，不要自动重试或回滚 GPT。
 
-## 登录和诊断
+## 登录与诊断
 
 桌面用户是 `piano`，默认密码 `piano123456`，与上游登录策略一致。桌面自动登录，首次使用后执行 `passwd` 改密。root 密码保持锁定。镜像里没有 `authorized_keys`。要密钥登录就在刷写时用 `flash-linux.sh --ssh-key` 注入，首启后由 `piano-first-boot-ssh-key.service` 导入。
 
@@ -517,26 +526,6 @@ NCM 用上游固定设备 MAC，NetworkManager 静态配置 `192.168.77.1/30`，
 摘要一致不代表标签正确。离线 staging 的标签由 build-image 里的目标策略标记步骤处理。
 
 ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，进串口救援后读取；它不写 Linux 根分区。原生 BOOT 文件检查用 `verify-native-boot.py`，七项文件 guard 的报告与真实设备的槽位、当前来源、块设备写读回分开保存。未完成的 Android 模块不标为 ready。
-
-## 分区与容量
-
-容量不是固定值。**每台设备按自己实时的 GPT 计算**，512 GiB、1 TiB 或其他容量都走同一套规则：
-
-1. 保留 Android 的全部固定分区（`boot_a`、`dtbo_a`、`super` 等）不动；
-2. `userdata` 从尾部缩短，让出 Linux 需要的空间；
-3. 让出的空间放 `sunuefi_esp`（512 MiB）和 `sunuefi_root`（其余全部）；
-4. Android `userdata` 与 `sunuefi_root` 按剩余空间对半分配；
-5. 所有新分区起点按 1 MiB 对齐，两边相差不超过 2 MiB。
-
-`product.json` 的 `root_size_mib` 只是一台设备的实测记录，给 `prepare-install` 当默认值，**不是所有设备的约定**。容量变了就按下面的手动流程重算，或者给 `prepare-install` 传自己的 `root_size_mib`。
-
-执行器从实时、双副本 CRC 合格的完整 GPT 重算，结果必须与镜像容量一致。原 userdata 会被清空重建；GPT/BOOT 恢复文件不含 Android 用户数据。
-
-通用包里的 8 GiB F2FS 镜像保持封存。`prepare-root-capacity.py` 在私有工作副本里设置本机启动配置与传感器槽位，恢复匹配的 Fedora SELinux 标签，然后离线扩容。镜像不写任何 SSH 公钥，manifest 用 `ssh_public_key_in_image: false` 记录。
-
-源树与扩容副本的文件、所有权、权限、链接、mtime、全部 xattr 逐项比较；只读 fsck 与 sparse 解码摘要必须通过。
-
-sparse 文件用 RAW 与显式零 FILL，不用 DONT_CARE；展开后的完整字节与验证过的 F2FS 镜像一致。文件系统仍是 F2FS，sparse 只负责 Fastboot 传输。
 
 ---
 
@@ -572,7 +561,7 @@ sparse 文件用 RAW 与显式零 FILL，不用 DONT_CARE；展开后的完整�
 
 ---
 
-## 真机验收
+## 真机验收清单
 
 刷完之后逐项核对，每项留一条命令输出或截图作为证据。任一项失败就按失败记录，
 不要写成"未验证"。

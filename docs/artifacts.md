@@ -69,3 +69,13 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 2026-10-10 的主机构建验收已通过。该轮覆盖组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷和 boot.img 组件。那是更早一轮的构建，设备上的 Fedora 在那之后启动过。未完成的验收项见[已知问题](known-issues.md)。首次分区、恢复材料及 Android 往返仍需各自的设备证明。
 
 上游安装器保留 ext4 合同。本仓库新增独立的 F2FS 初装入口和本机 BOOT 文件准备入口。工具路径、Actions 材料、破坏性操作门禁和真机验收边界见[维护与验收](internals.md)与[首次安装](installation.md)。新增实现的构建、包装和设备验收状态分别以对应 manifest 与会话记录为准。
+
+## 容量与 sparse 传输
+
+执行器从实时、双副本 CRC 合格的完整 GPT 重算容量，结果必须与镜像容量一致。原 userdata 会被清空重建；GPT/BOOT 恢复文件不含 Android 用户数据。分区容量的分配规则见[安装指南的分区架构](installation.md#二-存储与分区架构原理)。
+
+通用包里的 8 GiB F2FS 镜像保持封存。`prepare-root-capacity.py` 在私有工作副本里设置本机启动配置与传感器槽位，恢复匹配的 Fedora SELinux 标签，然后离线扩容。镜像不写任何 SSH 公钥，manifest 用 `ssh_public_key_in_image: false` 记录。
+
+源树与扩容副本的文件、所有权、权限、链接、mtime、全部 xattr 逐项比较；只读 fsck 与 sparse 解码摘要必须通过。
+
+sparse 文件用 RAW 与显式零 FILL，不用 DONT_CARE；展开后的完整字节与验证过的 F2FS 镜像一致。文件系统仍是 F2FS，sparse 只负责 Fastboot 传输。
