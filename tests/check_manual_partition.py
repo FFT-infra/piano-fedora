@@ -122,9 +122,12 @@ def test_command_blocks():
     code = "\n".join(blocks)
     checks = [
         ("od -An -tu8 -j 4128 -N 8", "must read the last LBA from the primary header"),
+        ("od -An -tu4 -j 4176 -N 4", "must read the entry count from the primary header"),
         ("TOTAL=$((LAST + 1))", "must derive the total LBA count from alternate_lba"),
-        ("dd if=/dev/sda of=/tmp/gpt-head.raw", "must dump the live GPT head"),
-        ("dd if=/dev/sda of=/tmp/gpt-tail.raw", "must dump the live GPT tail"),
+        ("BLOCKS=$(( (ENTRIES * 128 + 4095) / 4096 ))", "must derive the table blocks from the entry count"),
+        ('dd if=$DISK of=$TMP/gpt-head.raw', "must dump the live GPT head"),
+        ('dd if=$DISK of=$TMP/gpt-tail.raw', "must dump the live GPT tail"),
+        ("DISK=/dev/block/sda", "must name the Android block device"),
         ("plan-first-partition.py", "must plan the new table before writing it"),
         ("--emit-gpt", "must emit both GPT blobs"),
         ("gpt-tail.bin", "must write the backup table"),
@@ -144,7 +147,7 @@ def test_command_blocks():
         index = code.find(token)
         return index if index >= 0 else -1
 
-    write_block = next((b for b in blocks if "gpt-tail.bin" in b and "of=/dev/sda" in b), None)
+    write_block = next((b for b in blocks if "gpt-tail.bin" in b and "of=$DISK" in b), None)
     if write_block is None:
         failures.append("no code block actually writes the partition table")
     else:
@@ -156,7 +159,7 @@ def test_command_blocks():
             failures.append("the write block must dd both blobs")
 
     readback_at = next((code.find(line) for line in code.splitlines()
-                        if "dd if=/dev/sda" in line and "sha256sum" in line), -1)
+                        if "dd if=$DISK" in line and "sha256sum" in line), -1)
     erase_block = next((b for b in blocks if "fastboot erase userdata" in b), None)
     if erase_block is None:
         failures.append("userdata must be erased explicitly after repartitioning")
@@ -179,7 +182,7 @@ def test_no_android_partition_writes():
     failures = []
     for token in forbidden:
         # Allowed only as a name in prose, never as a dd target.
-        if re.search(r"of=/dev/sda[^\n]*" + re.escape(token), text):
+        if re.search(r"of=/dev/(block/)?sda[^\n]*" + re.escape(token), text):
             failures.append(f"manual partitioning must not write {token}")
     for token in ("boot_a", "dtbo_a", "super", "init_boot", "vendor_boot", "vbmeta"):
         if re.search(r"dd[^\n]*of=" + re.escape(token), text):
