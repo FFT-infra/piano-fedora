@@ -32,7 +32,10 @@ Fedora 官方 COPR 实例没有启用二进制 RPM 上传。运行中实例的 A
      -f execute=false
    ```
 
-   校验内容：run 必须是成功的 host-check；每个 RPM 与 SRPM 的大小和 SHA256 必须与 manifest 一致；十个包一个都不能少；manifest 里的内核 run 与 SunUEFI commit 必须存在，且与调用者声明的一致。任一项不符就失败。
+   校验内容：run 必须是成功的 host-check，每个 RPM 与 SRPM 的大小和 SHA256
+   必须与 manifest 一致，`scripts/publish-copr.py` 清单里的包一个都不能少，
+   manifest 里的内核 run 与 SunUEFI commit 必须存在，且与调用者声明的一致。
+   任一项不符就失败。
 
 3. 真实发布：
 
