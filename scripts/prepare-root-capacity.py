@@ -229,10 +229,10 @@ def main():
     source.unlink()
     if target.exists():
         target.unlink()
-    left, right = work / "source-mount", work / "target-mount"
-    left.rmdir()
-    if right.exists():
-        right.rmdir()
+    # 两个挂载点只有预扩路径会创建；不预扩时只清理配置用的目录。
+    for name in ("source-mount", "target-mount"):
+        if (work / name).exists():
+            (work / name).rmdir()
     work.rmdir()
     marker.unlink()
     print(json.dumps({"status": record["status"], "size_mib": record["target_size_mib"],
