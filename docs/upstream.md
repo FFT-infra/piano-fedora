@@ -6,7 +6,7 @@
 
 ## 当前 pin
 
-构建消费的上游以 `sources.lock.json` 为准。当前 `sunuefi` pin 是 `50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73`。其他消费源的 commit 也记在 `sources.lock.json`。研究与对照仓库登记在 `upstreams.json`，不参与构建。
+构建消费的上游以 `sources.lock.json` 为准，当前 pin 的 commit 写在该文件里，本文不复述。其他消费源的 commit 也记在 `sources.lock.json`。研究与对照仓库登记在 `upstreams.json`，不参与构建。
 
 ## 自动跟踪
 
