@@ -56,7 +56,7 @@ def make_matrix(directory, *, status="PIANO_RPMS_BUILT", kernel_run="38777633742
         "releasever": "44",
         "kernel_run": kernel_run,
         "kernel_release": "7.2.9-piano-gnome-g8c0e589d8829",
-        "sunuefi_commit": "50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73",
+        "sunuefi_commit": "065b192b863b6f99e12ba65d3cab27c0ddd6dca4",
         "files": files,
         "srpms": srpms,
     }

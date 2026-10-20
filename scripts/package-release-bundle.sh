@@ -205,9 +205,9 @@ with path.open("rb") as f:
     if b"SUNUEFI-SPLITv1\0" not in data:
         sys.exit("Error: Boot image lacks SUNUEFI-SPLITv1 layout (24GB live-memory dynamic mapping missing)")
 
-    expected_gen = bytes.fromhex("2b191f0dd3bca52d20950ec58199f95b")
+    expected_gen = bytes.fromhex("a771e3e95ce298160aff7a189b7dc7ec")
     if expected_gen not in data:
-        sys.exit("Error: Boot image lacks verified 24GB live-memory app_generation (2b191f0dd3bca52d20950ec58199f95b)")
+        sys.exit("Error: Boot image lacks verified 24GB live-memory app_generation (a771e3e95ce298160aff7a189b7dc7ec)")
 
     next_pos = data.find(b"SUNUEFI-NEXTv1\0")
     if next_pos == -1:
@@ -228,7 +228,7 @@ with path.open("rb") as f:
     if target != 2:
         sys.exit(f"Error: SUNUEFI-NEXTv1 default target is {target}, expected 2 (Linux)")
 
-print(f"    Verified Boot Image: Header v4 (96MB), AVB0 RSA4096 OK, live-memory OK (2b191f0d), NEXTv1 target=2 (Linux)")
+print(f"    Verified Boot Image: Header v4 (96MB), AVB0 RSA4096 OK, live-memory OK (a771e3e9), NEXTv1 target=2 (Linux)")
 PY
 }
 

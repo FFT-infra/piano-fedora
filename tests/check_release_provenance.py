@@ -60,8 +60,8 @@ def main():
         failures.append("package-release-bundle.sh does not verify AVB signature / footer (AVB0)")
     if "SUNUEFI-SPLITv1" not in code:
         failures.append("package-release-bundle.sh does not verify 24GB live-memory dynamic mapping (SUNUEFI-SPLITv1)")
-    if "2b191f0dd3bca52d20950ec58199f95b" not in code:
-        failures.append("package-release-bundle.sh does not verify live-memory app_generation (2b191f0dd3bca52d20950ec58199f95b)")
+    if "a771e3e95ce298160aff7a189b7dc7ec" not in code:
+        failures.append("package-release-bundle.sh does not verify live-memory app_generation (a771e3e95ce298160aff7a189b7dc7ec)")
     if "SUNUEFI-NEXTv1" not in code or "target != 2" not in code:
         failures.append("package-release-bundle.sh does not enforce NEXTv1 default boot target: 2 (Linux)")
 
@@ -124,7 +124,7 @@ def main():
                             failures.append(f"out/release-bundle/boot_sunuefi.img lacks valid SHA256_RSA4096 AVB signature (algo={algo}, auth_sz={auth_sz})")
             if b"SUNUEFI-SPLITv1\0" not in data:
                 failures.append("out/release-bundle/boot_sunuefi.img lacks SUNUEFI-SPLITv1 (live-memory)")
-            exp_gen = bytes.fromhex("2b191f0dd3bca52d20950ec58199f95b")
+            exp_gen = bytes.fromhex("a771e3e95ce298160aff7a189b7dc7ec")
             if exp_gen not in data:
                 failures.append("out/release-bundle/boot_sunuefi.img lacks verified live-memory app_generation")
             npos = data.find(b"SUNUEFI-NEXTv1\0")
