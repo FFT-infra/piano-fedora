@@ -15,7 +15,7 @@
 | 视频编解码 | ✅ | Iris V4L2 M2M VA-API：H.264、HEVC 8/10-bit、VP9 4K 60fps；关键帧硬件编码 |
 | 电源与电池 | ✅ | 双电芯电量监控，支持深度挂起 |
 | 引导稳定性 | ✅ | `qbootctl.service` 写入 `Successful: 1`，避免 ABL 计数归零掉进 Fastboot |
-| 相机 | ✅ | `piano-camerad` 常驻，ISP 直出 NV12 |
+| 相机 | 🟡 | `piano-camerad` 常驻，ISP 直出 NV12；前摄已出画面，后摄与连续预览待验收，见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
 | 音频 | ✅ | 功放上限 215（-15 dB）防炸音圈，麦克风增益 +40 dB |
 | 性能调度 | ✅ | `uperf-linux` 触控提频 |
 | 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
