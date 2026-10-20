@@ -253,6 +253,25 @@ def main():
     check("missing_session_packages" in source,
           "build-clean-rootfs.py audit must report missing session packages")
 
+    # 12. 属主来自 RPM 事务，不来自 runner 账号。GitHub 的 ARM runner 是
+    #     uid 1001；对装配树做递归 chown 会把整棵 rootfs 打包成 1001:1001，
+    #     并顺手清掉 sudo/su 的 setuid 位。这样的镜像能开机进 GNOME，但
+    #     sudo 报 "must be owned by uid 0 and have the setuid bit set"，
+    #     sshd-keygen、ldconfig、auditd、logrotate 全失败，登录也进不了
+    #     /home/piano。
+    workflow = ROOT / ".github" / "workflows" / "build-rootfs.yml"
+    wf_source = workflow.read_text(encoding="utf-8")
+    check('chown -R "$(id -u):$(id -g)" "$OUT"' not in wf_source,
+          "build-rootfs.yml must never chown -R the assembled rootfs tree; "
+          "hand over only the file the Inspect step rewrites")
+    check('chown "$(id -u):$(id -g)" "$OUT/clean-manifest.json"' in wf_source,
+          "build-rootfs.yml must hand over clean-manifest.json before the "
+          "Inspect step rewrites it")
+    for needle in ("usr/bin/sudo", "stat.S_ISUID", "etc/shadow"):
+        check(needle in wf_source,
+              f"build-rootfs.yml must assert rootfs ownership and the setuid "
+              f"bit before packaging (missing {needle})")
+
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)

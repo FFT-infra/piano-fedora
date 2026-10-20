@@ -210,10 +210,49 @@ jobs:
           OUT="build/clean-distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
           export OUT
           test -d "$OUT/rootfs"
-          # The container wrote these as root; the Python step below updates
-          # clean-manifest.json in place and failed with EACCES.
-          sudo chown -R "$(id -u):$(id -g)" "$OUT"
+          # The container wrote clean-manifest.json as root and the Python step
+          # below rewrites it in place. Hand over that single file, never the
+          # tree: a recursive chown runs as the runner account (uid 1001 on the
+          # GitHub ARM image) and repacks every file of the rootfs as 1001:1001.
+          # That image installs and boots, but sudo loses its setuid root,
+          # sshd-keygen, ldconfig, auditd and logrotate fail, and the login
+          # shell cannot enter /home/piano.
+          sudo chown "$(id -u):$(id -g)" "$OUT/clean-manifest.json"
           sudo du -sh "$OUT/rootfs"
+          sudo python3 - "$OUT/rootfs" <<'PY'
+          import os, stat, sys
+          root = sys.argv[1]
+          users = {}
+          for line in open(os.path.join(root, "etc/passwd")):
+              f = line.strip().split(":")
+              if len(f) >= 7:
+                  users[f[0]] = (int(f[2]), int(f[3]), f[5])
+          assert "piano" in users, "the rootfs has no piano account"
+          uid, gid, home = users["piano"]
+          checks = [
+              ("", 0, 0, 0),
+              ("usr/bin/sudo", 0, 0, stat.S_ISUID),
+              ("usr/bin/su", 0, 0, stat.S_ISUID),
+              ("etc/shadow", 0, 0, 0),
+              ("var", 0, 0, 0),
+              (home.lstrip("/"), uid, gid, 0),
+          ]
+          failures = []
+          for rel, uid, gid, bits in checks:
+              path = os.path.join(root, rel) if rel else root
+              st = os.lstat(path)
+              name = rel or "."
+              if (st.st_uid, st.st_gid) != (uid, gid):
+                  failures.append(
+                      f"{name}: owned by {st.st_uid}:{st.st_gid}, expected {uid}:{gid}")
+              if bits and not st.st_mode & bits:
+                  failures.append(
+                      f"{name}: mode {stat.S_IMODE(st.st_mode):04o} is missing the setuid bit")
+          assert not failures, (
+              "the rootfs ownership did not come from the RPM transaction:\n  "
+              + "\n  ".join(failures))
+          print("OK: rootfs ownership comes from the RPM transaction")
+          PY
           cat "$OUT/clean-manifest.json"
           python3 - "$OUT/clean-manifest.json" \
             build/in/runtime-extracted/manifest.json \
