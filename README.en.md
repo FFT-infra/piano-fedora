@@ -80,6 +80,8 @@ The repository has no release and no tag yet. The assets exist only as workflow 
 - [Known issues](docs/known-issues.md): open problems and items under observation
 - [Gunyah virtualization](docs/virtualization.md): VM lifecycle and networking on SM8750
 - [Gaps before public distribution](docs/public-release-gaps.md): build inputs still tied to this one device and this one person
+- [Contributing](CONTRIBUTING.md): local checks, commit format, and the PR gate
+- [Security policy](SECURITY.md): how to report a vulnerability and what is in scope
 
 Debug logs, incident write-ups, and handoff notes stay out of the repository.
 

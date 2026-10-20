@@ -80,6 +80,8 @@
 - [已知问题](docs/known-issues.md)：未解决与观察中的问题
 - [Gunyah 虚拟化](docs/virtualization.md)：SM8750 上的虚拟机生命周期与网络
 - [公开分发前的缺口](docs/public-release-gaps.md)：构建期仍绑着这一台设备、这一个人的输入
+- [参与贡献](CONTRIBUTING.md)：本地检查、提交格式与 PR 门槛
+- [安全策略](SECURITY.md)：漏洞报告渠道与处理范围
 
 本地调试记录、事故复盘和交接笔记不入库。
 
