@@ -9,7 +9,7 @@ on:
       kernel_run_id:
         description: "Successful build-kernel run with kernel-release-7.2.9 and kernel-sdk-7.2.9"
         required: true
-        default: "38777633742"
+        default: ""
       releasever:
         description: "Fedora release (must match product.json)"
         required: false

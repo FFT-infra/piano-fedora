@@ -14,7 +14,7 @@ on:
       kernel_run_id:
         description: "Expected build-kernel run bound in the matrix manifest"
         required: true
-        default: "38777633742"
+        default: ""
       project:
         description: "COPR project (owner/name)"
         required: true
@@ -44,7 +44,8 @@ jobs:
           RPMS_RUN: ${{ inputs.rpms_run_id }}
         run: |
           set -euo pipefail
-          test -n "$RPMS_RUN"
+          test -n "$RPMS_RUN" || { echo "rpms_run_id is required" >&2; exit 2; }
+          test -n "${{ inputs.kernel_run_id }}" || { echo "kernel_run_id is required" >&2; exit 2; }
           python3 scripts/resolve-artifact-run.py \
             --workflow host-check.yml \
             --artifact piano-rpms \
@@ -91,7 +92,8 @@ jobs:
           RPMS_RUN: ${{ inputs.rpms_run_id }}
         run: |
           set -euo pipefail
-          test -n "$RPMS_RUN"
+          test -n "$RPMS_RUN" || { echo "rpms_run_id is required" >&2; exit 2; }
+          test -n "${{ inputs.kernel_run_id }}" || { echo "kernel_run_id is required" >&2; exit 2; }
           python3 scripts/resolve-artifact-run.py \
             --workflow host-check.yml \
             --artifact piano-rpms \
