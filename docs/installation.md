@@ -384,18 +384,22 @@ fastboot getvar partition-size:userdata
 fastboot getvar partition-size:sunuefi_esp
 ```
 
-进入一个能读块设备的 shell。Android 侧用 `adb shell` 加 `su`；设备已经跑着 Linux 时，可以直接在本机读 `/dev/sda`。先确认扇区大小，后面的换算都依赖它：
+进入一个能读块设备的 shell。Android 侧用 `adb shell` 加 `su`；设备已经跑着 Linux 时，可以直接在本机读 `/dev/sda`。
+
+`/sys/block/sda/size` 的单位是 512 字节扇区，GPT 用的是 4096 字节逻辑块，两者差 8 倍，不能直接当 LBA 总数用。总 LBA 数以主表头里的 `alternate_lba` 为准，它就是磁盘最后一个 LBA：
 
 ```sh
-cat /sys/block/sda/queue/physical_block_size   # 这台设备是 4096
-cat /sys/block/sda/size                        # 总扇区数
+dd if=/dev/sda of=/tmp/gpt-head.raw bs=4096 count=2
+LAST=$(od -An -tu8 -j 4128 -N 8 /tmp/gpt-head.raw | tr -d ' ')
+TOTAL=$((LAST + 1))
+echo "last LBA $LAST, total $TOTAL"
 ```
 
-再读整张表。表项数由主表头自己决定，先读一小段探一次，再按结果读准；备份表在盘尾，同样读一段：
+再读完整的主表与盘尾的备份表。表项数由主表头自己决定，8 个块足够 64 项；备份表占最后 3 个块：
 
 ```sh
 dd if=/dev/sda of=/tmp/gpt-head.raw bs=4096 count=8
-dd if=/dev/sda of=/tmp/gpt-tail.raw bs=4096 skip=$(( $(cat /sys/block/sda/size) - 6 )) count=6
+dd if=/dev/sda of=/tmp/gpt-tail.raw bs=4096 skip=$((LAST - 2)) count=3
 ```
 
 两份原始读数就是分区前的 GPT 基线。`plan-first-partition.py --head/--tail --sectors` 能直接解析它们。
@@ -443,11 +447,11 @@ python3 scripts/plan-first-partition.py --device /dev/sda --userdata-mib 307200 
 `original-gpt-tail.bin`（分区前的原表）与 `SHA256SUMS`。这些是**文件，还没写进设备**。
 规划器在写出前会核对现场读数与计划是同一条表，不一致就停。
 
-只有文本 dump 时也能规划，但不能 `--emit-gpt`。`sfdisk --dump` 的文本不带总扇区数与表项数，要自己补：
+只有文本 dump 时也能规划，但不能 `--emit-gpt`。`sfdisk --dump` 的文本不带总扇区数与表项数，要自己补。`--sectors` 要的是 4096 字节 LBA 总数，不是 `/sys/block/sda/size`：
 
 ```sh
 sfdisk --dump /dev/sda > gpt.txt
-python3 scripts/plan-first-partition.py --dump gpt.txt --sectors "$(cat /sys/block/sda/size)" \
+python3 scripts/plan-first-partition.py --dump gpt.txt --sectors "$TOTAL" \
   --entries 64 --userdata-mib 307200
 ```
 
@@ -461,18 +465,17 @@ adb shell su -c 'sha256sum /data/local/tmp/gpt-tail.bin /data/local/tmp/gpt-head
 sha256sum gpt/gpt-tail.bin gpt/gpt-head.bin
 ```
 
-再按**先尾后头**的顺序写入。尾部先落盘，中断后旧主表头的 `alternate_lba` 仍能找到新尾部；反过来会留下“头新尾旧”。`S-5` 是尾部 blob 的起始扇区，按 `S`（总扇区数）算出来：
+再按**先尾后头**的顺序写入。尾部先落盘，中断后旧主表头的 `alternate_lba` 仍能找到新尾部；反过来会留下“头新尾旧”。尾部 blob 占最后 3 个块，起点是 `LAST-2`：
 
 ```sh
-S=$(cat /sys/block/sda/size)
-adb shell su -c "dd if=/data/local/tmp/gpt-tail.bin of=/dev/sda bs=4096 seek=$((S-5)) conv=fsync,notrunc"
+adb shell su -c "dd if=/data/local/tmp/gpt-tail.bin of=/dev/sda bs=4096 seek=$((LAST-2)) conv=fsync,notrunc"
 adb shell su -c 'dd if=/data/local/tmp/gpt-head.bin of=/dev/sda bs=4096 seek=0 conv=fsync,notrunc && sync'
 ```
 
 写完立刻回读，两份都必须与源 blob 相同：
 
 ```sh
-adb shell su -c "dd if=/dev/sda bs=4096 skip=$((S-5)) count=3 | sha256sum"
+adb shell su -c "dd if=/dev/sda bs=4096 skip=$((LAST-2)) count=3 | sha256sum"
 adb shell su -c 'dd if=/dev/sda bs=4096 count=4 | sha256sum'
 ```
 
@@ -483,7 +486,7 @@ adb shell su -c 'dd if=/dev/sda bs=4096 count=4 | sha256sum'
 ```sh
 adb push gpt/original-gpt-head.bin gpt/original-gpt-tail.bin /data/local/tmp/
 adb shell su -c 'dd if=/data/local/tmp/original-gpt-head.bin of=/dev/sda bs=4096 seek=0 conv=fsync,notrunc'
-adb shell su -c "dd if=/data/local/tmp/original-gpt-tail.bin of=/dev/sda bs=4096 seek=$((S-5)) conv=fsync,notrunc && sync"
+adb shell su -c "dd if=/data/local/tmp/original-gpt-tail.bin of=/dev/sda bs=4096 seek=$((LAST-2)) conv=fsync,notrunc && sync"
 ```
 
 #### 4. 让 Android 重建 userdata

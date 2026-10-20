@@ -121,7 +121,8 @@ def test_command_blocks():
     assert blocks, "manual partition chapter has no sh code blocks"
     code = "\n".join(blocks)
     checks = [
-        ("cat /sys/block/sda/size", "must read the real sector count first"),
+        ("od -An -tu8 -j 4128 -N 8", "must read the last LBA from the primary header"),
+        ("TOTAL=$((LAST + 1))", "must derive the total LBA count from alternate_lba"),
         ("dd if=/dev/sda of=/tmp/gpt-head.raw", "must dump the live GPT head"),
         ("dd if=/dev/sda of=/tmp/gpt-tail.raw", "must dump the live GPT tail"),
         ("plan-first-partition.py", "must plan the new table before writing it"),
@@ -135,6 +136,9 @@ def test_command_blocks():
         ("fastboot erase userdata", "must erase userdata explicitly"),
     ]
     failures = [reason for token, reason in checks if token not in code]
+    # sysfs counts 512-byte sectors; using it as a 4096-byte LBA index is off by 8.
+    if "cat /sys/block/sda/size" in code:
+        failures.append("must not use the 512-byte sysfs sector count as a 4096-byte LBA index")
 
     def at(token):
         index = code.find(token)

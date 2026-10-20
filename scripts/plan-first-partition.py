@@ -43,8 +43,11 @@ SECTORS_PER_MIB = MIB // SECTOR
 # 新分区起点按 1 MiB 对齐，这是分区工具的常规做法。
 ALIGN_SECTORS = MIB // SECTOR
 # sfdisk 的文本 dump 不带总扇区数与 GPT 项数，这两个值由调用方补。
+# `--sectors` 要的是 4096 字节 LBA 总数；`/sys/block/sda/size` 的单位是
+# 512 字节扇区，两者差 8 倍。主表头的 alternate_lba 才是磁盘最后一个 LBA。
 SFDISK_HINT = ("sfdisk --dump does not carry the disk size or GPT entry count; pass "
-               "--sectors N (cat /sys/block/sda/size) and --entries N "
+               "--sectors N (last LBA + 1, from the primary header's alternate_lba at "
+               "offset 4128) and --entries N "
                "(dd if=/dev/sda bs=4096 skip=1 count=1 | od -An -tu4 -j 80 -N 4)")
 
 
