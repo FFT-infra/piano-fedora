@@ -182,14 +182,25 @@ def main():
     source, target = work / "source.raw", work / "expanded.raw"
     expand_zstd(bundle / "pianoroot.f2fs.img.zst", source, root_meta["bytes"], root_meta["sha256"])
     device_config = configure_source(source, bundle, args.android_slot, work) if args.android_slot else None
+    # configure_source 会改写镜像内容（写 boot-request 与 SELinux 标签），所以
+    # transport 只能与配置后的字节比较；没有设备配置时才等于封存摘要。
+    source_sha256, source_bytes = sha256(source), source.stat().st_size
+    require(source_bytes == root_meta["bytes"], "device configuration changed the image length")
+    fsck = run("fsck.f2fs", "-f", "--dry-run", source, capture_output=True, text=True)
+    checks = [line for line in fsck.stdout.splitlines() if line.startswith("[FSCK]") and ("[Ok" in line or "[Fail" in line)]
+    require(checks and not any("[Fail" in line for line in checks), "configured filesystem consistency checks failed")
+    require(sha256(source) == source_sha256, "read-only fsck modified the configured image")
     if args.size_mib is None:
         # 不预扩：镜像保持封存容量，首启扩容会把它长满分区。
         sparse = output / "pianoroot.f2fs.sparse.img"
         transport = encode(source, sparse)
         decoded = inspect(sparse)
-        require(decoded["expanded_sha256"] == root_meta["sha256"], "sparse transport differs from the sealed image")
-        proof = {"expanded_sha256": root_meta["sha256"], "expanded_bytes": root_meta["bytes"],
-                 "target_size_mib": root_meta["size_mib"], "pre_expanded": False}
+        require((decoded["expanded_bytes"], decoded["expanded_sha256"]) == (source_bytes, source_sha256),
+                "sparse transport differs from the configured image")
+        proof = {"expanded_sha256": source_sha256, "expanded_bytes": source_bytes,
+                 "target_size_mib": root_meta["size_mib"], "pre_expanded": False,
+                 "fsck_exit": fsck.returncode, "fsck_read_only": True,
+                 "fsck_consistency_checks": len(checks)}
     else:
         proof = resize_and_verify(source, target, args.size_mib, work)
         sparse = output / "pianoroot.f2fs.sparse.img"

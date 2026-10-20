@@ -193,9 +193,13 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
         require(root["expanded_bytes"] == root["target_size_mib"] * 1024**2, "root image capacity fields differ")
         require(root["fsck_exit"] == 0 and root["fsck_read_only"] is True,
                 "root capacity/transport verification incomplete")
-        for field in ("file_content_checked", "numeric_owner_checked", "mode_checked", "symlink_targets_checked",
-                      "hardlink_groups_checked", "mtime_checked", "xattr_checked"):
-            require(root["metadata_verification"].get(field) is True, "root metadata proof missing: " + field)
+        # 只有预扩产物才有“扩容未改动元数据”的读回证明；封存容量的配置镜像
+        # 没有扩容步骤，不能要求同一组字段。
+        if root.get("pre_expanded"):
+            for field in ("file_content_checked", "numeric_owner_checked", "mode_checked", "symlink_targets_checked",
+                          "hardlink_groups_checked", "mtime_checked", "xattr_checked"):
+                require(root.get("metadata_verification", {}).get(field) is True,
+                        "root metadata proof missing: " + field)
         require(root["device_configuration"]["boot_request"] == combined["boot_request"]
                 and root["device_configuration"]["android_slot"] == slot
                 and root["device_configuration"].get("ssh_public_key_in_image") is False,
