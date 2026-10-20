@@ -26,7 +26,8 @@ def main():
         shutil.copyfile(SUN / 'vendor/piano-linux/board.dtb', board)
         before = read_fdt(board.read_bytes())
         overlays = ('cpu-model', 'board-identity', 'regdma-resource', 'audio-dmic-clock',
-                    'camera-flash', 'camera-privacy-led', 'touch-panel', 'pen-dock')
+                    'camera-flash', 'camera-privacy-led', 'touch-panel', 'pen-dock',
+                    'pen-charger')
         for name in overlays:
             print('APPLY:', name, flush=True)
             package.apply_cpu_model_overlay(board, SUN / f'linux/dts/piano-{name}.dtso',
@@ -48,7 +49,7 @@ def main():
         assert handles[gpio[0]] == handles[gpio[3]] == tlmm
         assert (gpio[1:3], gpio[4:6]) == ((200, 1), (196, 1))
         assert handles[cells(dock['pinctrl-0'])[0]] == tlmm + '/pen-dock-default-state'
-        print('OK: eight overlays, touch link, pen GPIOs/pinctrl and all inherited phandles')
+        print('OK: nine overlays, touch link, pen GPIOs/pinctrl and all inherited phandles')
 
 
 if __name__ == '__main__':

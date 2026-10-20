@@ -40,7 +40,7 @@ DECODERS = {"h264_v4l2m2m": "h263p", "hevc_v4l2m2m": "hdr"}
 # 缺 From: 时 git am 会以空作者失败。
 BSP_SERIES = "linux/bsp/patches/ffmpeg"
 BSP_VERSION = "7.1.5"
-BSP_REVISION = "sunuefi3"
+BSP_REVISION = "sunuefi4"
 PORT_MAIL_HEADER = "From: slwyts <slwyts@foxmail.com>\n"
 # FFmpeg 8 把 refstruct API 从 libavcodec 移到 libavutil 并改名为 av_refstruct_*，
 # v4l2_m2m_dec.c 里那行注释的拼写也在 8.x 修正。三处都是纯文本替换，无语义冲突：
@@ -58,6 +58,8 @@ PORT_SHA256 = {
         "256d3639ed669c6e1b2124ea27019b51a0534dcad4809914876df666bf097419",
     "0003-v4l2m2m-preserve-encoder-drain-poll.patch":
         "9a90d78017753b1a9041ba011d3697f05ab1a81c1c40be91082fefa2388889e6",
+    "0005-v4l2m2m-orphan-capture-ffmpeg7.patch":
+        "43ee39ee05f18802851f109f17f8244f2f31cda372e166bf3f32855c6b825155",
 }
 # Fedora 的 %autosetup -S git_am 用 git am 提交补丁，需要 committer 身份；
 # Koji 构建机有完整域名可以自动推断，容器里没有，所以显式给出。
@@ -85,7 +87,8 @@ def port_series(sun):
         if hashlib.sha256(raw).hexdigest() != row["sha256"]:
             raise ValueError("BSP patch differs from its recorded digest: " + row["path"])
         # 补丁没有 From: 时 git am 无法确定作者，必须补上邮件头再套 8.x 的改名。
-        text = PORT_MAIL_HEADER + raw.decode()
+        # 上游新补丁已自带 From:，重复的邮件头会让 git am 读到两个作者。
+        text = ("" if raw.startswith(b"From: ") else PORT_MAIL_HEADER) + raw.decode()
         for old, new in PORT_SUBSTITUTIONS:
             text = text.replace(old, new)
         digest = hashlib.sha256(text.encode()).hexdigest()

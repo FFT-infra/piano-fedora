@@ -20,7 +20,7 @@ index 0000000..c67b580
 +# CONFIG_F2FS_CHECK_FS is not set
 +# CONFIG_F2FS_FS_COMPRESSION is not set
 diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
-index 295b607..171285d 100644
+index d102801..3258bf1 100644
 --- a/tools/build_piano_full_kernel.py
 +++ b/tools/build_piano_full_kernel.py
 @@ -35,7 +35,7 @@ REQUIRED={
@@ -32,22 +32,22 @@ index 295b607..171285d 100644
   'USB_CONFIGFS_NCM':'y','DEVTMPFS':'y','DEVTMPFS_MOUNT':'y','UNIX':'y','TMPFS':'y',
   'CGROUPS':'y','INOTIFY_USER':'y','FHANDLE':'y','SECCOMP':'y','SECCOMP_FILTER':'y','ZRAM':'y','BINFMT_MISC':'y',
   'TMPFS_POSIX_ACL':'y','TMPFS_XATTR':'y','SECURITY':'y',
-@@ -51,8 +51,13 @@ PEN_DOCK_OVERRIDES={'CONFIG_INPUT_XIAOMI_PIANO_PEN_DOCK':'m'}
- USERSPACE_SECURITY_OVERRIDES={'CONFIG_SECURITY_LANDLOCK':'y'}
- SLEEP_OVERRIDES={'CONFIG_QCOM_SMP2P_SLEEPSTATE':'y'}
- PM_DEBUG_OVERRIDES={'CONFIG_PM_DEBUG':'y','CONFIG_PM_SLEEP_DEBUG':'y'}
+@@ -55,8 +55,13 @@ PLATFORM_OVERRIDES={key:'n' for key in (
+     'CONFIG_IMX_SCMI_LMM_DRV','CONFIG_IMX_SCMI_CPU_DRV','CONFIG_IMX_SCMI_MISC_DRV',
+     'CONFIG_IMX_SCMI_LMM_EXT','CONFIG_IMX_SCMI_CPU_EXT','CONFIG_IMX_SCMI_MISC_EXT',
+     'CONFIG_IMX_SCMI_BBM_EXT')}
 +# Fedora root support; keep the upstream pen, Bluetooth, sleep and PM options intact.
 +F2FS_OVERRIDES={'CONFIG_F2FS_FS':'y','CONFIG_F2FS_FS_XATTR':'y',
 +                'CONFIG_F2FS_FS_POSIX_ACL':'y','CONFIG_F2FS_FS_SECURITY':'y'}
 +FEDORA_OVERRIDES={'CONFIG_SECURITY_NETWORK':'y','CONFIG_SECURITY_SELINUX':'y',
 +                  'CONFIG_LSM':'"selinux"'}
  ALLOWED_OVERRIDES={**BLUETOOTH_OVERRIDES,**PEN_DOCK_OVERRIDES,**FLASH_OVERRIDES,**EARLY_CPUCP_OVERRIDES,
--                   **USERSPACE_SECURITY_OVERRIDES,**SLEEP_OVERRIDES,**PM_DEBUG_OVERRIDES}
-+                   **USERSPACE_SECURITY_OVERRIDES,**SLEEP_OVERRIDES,**PM_DEBUG_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES}
+-                   **USERSPACE_SECURITY_OVERRIDES,**SLEEP_OVERRIDES,**PM_DEBUG_OVERRIDES,**PLATFORM_OVERRIDES}
++                   **USERSPACE_SECURITY_OVERRIDES,**SLEEP_OVERRIDES,**PM_DEBUG_OVERRIDES,**PLATFORM_OVERRIDES,**F2FS_OVERRIDES,**FEDORA_OVERRIDES}
  
  
  def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
-@@ -70,7 +75,7 @@ def config_values(raw):
+@@ -74,7 +79,7 @@ def config_values(raw):
      return values
  
  
@@ -56,7 +56,7 @@ index 295b607..171285d 100644
      override=config_values(fragment)
      if set(override)!={'CONFIG_CMDLINE'}:raise ValueError('Local full fragment may override only CONFIG_CMDLINE')
      original=json.loads(config_values(public)['CONFIG_CMDLINE']);provided=json.loads(override['CONFIG_CMDLINE'])
-@@ -82,12 +87,13 @@ def command_line(fragment,public,root_policy):
+@@ -86,12 +91,13 @@ def command_line(fragment,public,root_policy):
      if provided!=expected:raise ValueError('Preserve public handoff arguments except the OS root and console loglevel')
      if root_policy!='ram'and not re.fullmatch(r'(UUID=[0-9a-fA-F-]{8,64}|PARTUUID=[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|LABEL=PIANO[A-Za-z0-9_-]{0,48})',root_policy):
          raise ValueError('External root must be an explicit UUID or PIANO-owned label; Android partition selectors are refused')
@@ -67,12 +67,12 @@ index 295b607..171285d 100644
  
  def module_overrides(fragment,kind='bluetooth'):
      lines=[line.strip()for line in fragment.splitlines()if line.strip()and not line.lstrip().startswith('#')]
--    expected=BLUETOOTH_OVERRIDES if kind=='bluetooth'else PEN_DOCK_OVERRIDES if kind=='pen-dock'else FLASH_OVERRIDES if kind=='flash'else EARLY_CPUCP_OVERRIDES if kind=='early-cpucp'else USERSPACE_SECURITY_OVERRIDES if kind=='userspace-security'else SLEEP_OVERRIDES if kind=='sleep'else None
-+    expected=BLUETOOTH_OVERRIDES if kind=='bluetooth'else PEN_DOCK_OVERRIDES if kind=='pen-dock'else FLASH_OVERRIDES if kind=='flash'else EARLY_CPUCP_OVERRIDES if kind=='early-cpucp'else USERSPACE_SECURITY_OVERRIDES if kind=='userspace-security'else SLEEP_OVERRIDES if kind=='sleep'else F2FS_OVERRIDES if kind=='f2fs'else None
+-    expected=BLUETOOTH_OVERRIDES if kind=='bluetooth'else PEN_DOCK_OVERRIDES if kind=='pen-dock'else FLASH_OVERRIDES if kind=='flash'else EARLY_CPUCP_OVERRIDES if kind=='early-cpucp'else USERSPACE_SECURITY_OVERRIDES if kind=='userspace-security'else SLEEP_OVERRIDES if kind=='sleep'else PLATFORM_OVERRIDES if kind=='platform'else None
++    expected=BLUETOOTH_OVERRIDES if kind=='bluetooth'else PEN_DOCK_OVERRIDES if kind=='pen-dock'else FLASH_OVERRIDES if kind=='flash'else EARLY_CPUCP_OVERRIDES if kind=='early-cpucp'else USERSPACE_SECURITY_OVERRIDES if kind=='userspace-security'else SLEEP_OVERRIDES if kind=='sleep'else PLATFORM_OVERRIDES if kind=='platform'else F2FS_OVERRIDES if kind=='f2fs'else None
      if expected is None or lines!=[key+'='+value for key,value in expected.items()]:raise ValueError('Unexpected '+kind+' configuration fragment')
      return dict(expected)
  
-@@ -96,6 +102,8 @@ def validate_module_overrides(values):
+@@ -100,6 +106,8 @@ def validate_module_overrides(values):
      if any(key not in ALLOWED_OVERRIDES or value!=ALLOWED_OVERRIDES[key]for key,value in values.items()):raise ValueError('Unknown product kernel configuration override')
      flash=set(values)&set(FLASH_OVERRIDES)
      if flash and flash!=set(FLASH_OVERRIDES):raise ValueError('Flash requires all four reviewed options')
@@ -81,7 +81,7 @@ index 295b607..171285d 100644
      return values
  
  
-@@ -200,6 +208,8 @@ def main():
+@@ -204,6 +212,8 @@ def main():
      parser.add_argument('--build-dir',type=Path,default=OUT)
      parser.add_argument('--artifacts',type=Path,default=ARTIFACTS)
      parser.add_argument('--rebuild',action='store_true',help='Replace generated candidate artifacts with an incremental build')
@@ -90,7 +90,7 @@ index 295b607..171285d 100644
      parser.add_argument('--pm-debug',action='store_true',
                          help='Enable kernel PM stage tests for suspend diagnostics; disabled in normal builds')
      args=parser.parse_args()
-@@ -211,17 +221,21 @@ def main():
+@@ -215,18 +225,22 @@ def main():
      if compiler==work or compiler.resolve()!=compiler:
          raise ValueError('Compiler checkout must be a separate physical build-owned directory')
      verify_source(work,commit);public=work/'arch/arm64/configs/piano_rootfs.config';fragment=ROOT/'linux/configs/piano-full.config'
@@ -106,20 +106,21 @@ index 295b607..171285d 100644
               **module_overrides(flash.read_text(),'flash'),
               **module_overrides(early_cpucp.read_text(),'early-cpucp'),
               **module_overrides(userspace_security.read_text(),'userspace-security'),
--             **module_overrides(sleep.read_text(),'sleep')}
-+             **module_overrides(sleep.read_text(),'sleep'),
+              **module_overrides(sleep.read_text(),'sleep'),
+-             **module_overrides((ROOT/'linux/configs/piano-platform.config').read_text(),'platform')}
++             **module_overrides((ROOT/'linux/configs/piano-platform.config').read_text(),'platform'),
 +             **module_overrides(f2fs.read_text(),'f2fs')}
 +    if args.fedora_policy:
 +        modules={**modules,**FEDORA_OVERRIDES}
      if args.pm_debug:
          modules.update(PM_DEBUG_OVERRIDES)
      env,tools=toolchain();out.mkdir(parents=True,exist_ok=True);artifacts.mkdir(parents=True,exist_ok=True)
-@@ -241,7 +255,7 @@ def main():
+@@ -246,7 +260,7 @@ def main():
      verify_source(work,commit)
      tree=text(['git','rev-parse','HEAD^{tree}'],work)
      compiler_checkout(work,compiler,commit,tree)
--    hashes={str(path.relative_to(ROOT)):sha(path)for path in (fragment,bluetooth,pen_dock,flash,early_cpucp,userspace_security,sleep,Path(__file__),ROOT/'tools/build_kernel.py',ROOT/'tools/prepare_linux_modules.py')}
-+    hashes={str(path.relative_to(ROOT)):sha(path)for path in (fragment,bluetooth,pen_dock,flash,early_cpucp,userspace_security,sleep,f2fs,Path(__file__),ROOT/'tools/build_kernel.py',ROOT/'tools/prepare_linux_modules.py')}
+-    hashes={str(path.relative_to(ROOT)):sha(path)for path in (fragment,bluetooth,pen_dock,flash,early_cpucp,userspace_security,sleep,ROOT/'linux/configs/piano-platform.config',Path(__file__),ROOT/'tools/build_kernel.py',ROOT/'tools/prepare_linux_modules.py')}
++    hashes={str(path.relative_to(ROOT)):sha(path)for path in (fragment,bluetooth,pen_dock,flash,early_cpucp,userspace_security,sleep,ROOT/'linux/configs/piano-platform.config',f2fs,Path(__file__),ROOT/'tools/build_kernel.py',ROOT/'tools/prepare_linux_modules.py')}
      effective_text=effective_config(root_command,modules)
      effective=out/'piano-full.effective.config';effective.write_text(effective_text)
      command=['make','-C',compiler,'O='+str(out),'ARCH=arm64','LLVM=1','LLVM_IAS=1']

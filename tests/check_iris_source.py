@@ -40,7 +40,9 @@ def main():
              and isinstance(n.iter, ast.Tuple)]
     assert len(loops) == 1, 'unexpected stable patch application loop'
     applied = [ast.literal_eval(n)[0] for n in loops[0].iter.elts]
-    assert applied[-len(keys):] == list(keys), 'Iris/display/audio patches missing from actual application sequence'
+    # 上游会继续往这个元组尾部追加补丁，所以按 key 定位而不是按末尾下标。
+    check = [key for key in applied if key in keys]
+    assert check == list(keys), 'Iris/display/audio patches missing from actual application sequence'
     assert policy['target_tree'] != policy['stable_merged_tree'], 'derived tree is not sealed'
     with tempfile.TemporaryDirectory(prefix='iris-source-') as directory:
         root = Path(directory).resolve()

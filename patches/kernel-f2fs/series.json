@@ -3,14 +3,14 @@
   "target": "sunuefi",
   "note": "按顺序应用。每个补丁的 targets 是应用前该文件必须匹配的摘要；上游更新后不匹配会报错退出，不静默跳过。creates 必须与实际新建的文件完全一致。",
   "base": {
-    "sunuefi_commit": "50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73"
+    "sunuefi_commit": "065b192b863b6f99e12ba65d3cab27c0ddd6dca4"
   },
   "patches": [
     {
       "file": "0001-f2fs-root-fedora-selinux.patch",
       "summary": "在上游 50f29a9 上重放 F2FS 与 Fedora SELinux 覆盖，保留新版笔座、蓝牙、睡眠及 PM 诊断配置，支持 --root-fstype",
       "targets": {
-        "tools/build_piano_full_kernel.py": "2d06e5281974341ca29f58fd622e58a4dac53177d73889f0a9c80f6d2379b005"
+        "tools/build_piano_full_kernel.py": "3823c810f27758627f3b8d58ea8d4ed19392c39cad0b57f5f913edd313831c3a"
       },
       "creates": [
         "linux/configs/piano-f2fs.config"
@@ -20,8 +20,8 @@
       "file": "0002-accept-f2fs-root.patch",
       "summary": "硬件准备与调试引导接受 F2FS 根分区，不再只认 ext4",
       "targets": {
-        "linux/userspace/piano-ram-hardware-prepare": "dd81bd71a2636a3dc5cd273a037a9797c875832da89b709a22bc22d0ff3010e8",
-        "linux/userspace/piano-debug-bootstrap": "e374307a81e4b4efc31c056cb47a129923cd55265a96214268a3ea14f6d75063"
+        "linux/userspace/piano-debug-bootstrap": "e374307a81e4b4efc31c056cb47a129923cd55265a96214268a3ea14f6d75063",
+        "linux/userspace/piano-ram-hardware-prepare": "dd81bd71a2636a3dc5cd273a037a9797c875832da89b709a22bc22d0ff3010e8"
       },
       "creates": []
     },
@@ -37,7 +37,7 @@
       "file": "0005-fedora-nftables.patch",
       "summary": "补齐 Fedora firewalld 与 libvirt 所需 nftables 内核接口，配置后逐项验证",
       "targets": {
-        "tools/build_piano_full_kernel.py": "f6f5f271382131cad14a5d242332654b933ffff9f994f00fed553202984eba39"
+        "tools/build_piano_full_kernel.py": "2f3833520e55e269d932e1972ff0ae32121a26ec019f1f3ea59b52200c79fcc4"
       },
       "creates": []
     }

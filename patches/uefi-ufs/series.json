@@ -3,14 +3,14 @@
   "target": "sunuefi",
   "note": "强制将 UFS 设备恢复至 Active 电源模式并为 REPORT_LUNS 和 READ_CAPACITY_16 增加带延时的有界重试，避免在 1TB UFS 机器上陷入 NOT READY 死循环。\n\n这是一处有意保留的下游分叉：上游没有它，是因为上游没在这台容量上遇到，不要按「对齐上游」把它删掉。\n\n为什么上游没有：\n1. 上游测试设备的存储容量不在 docs/status.md（那里只登记 16 GB 内存与 OS3.0.309.0.WPYCNXM），而在 docs/ufs-dedicated-area-audit.md 的六 LUN 容量表：LUN0 510,165,778,432 bytes，六 LUN 合计 511,818,334,208 bytes，属 512 GB 级。\n2. 本机 LUN0 是 1,022,026,055,680 bytes（out/offline-bringup-20261011-r2/update-plan.json 的 device.disk_bytes），属 1 TB 级。\n3. 上游的触发门是 Status==EFI_DEVICE_ERROR：只有描述符读取失败才调用 PianoUfsBuildResumeActive（uefi/core/PianoUfsReadOnlyDma.c 的 PianoUfsReadOnlyDmaExperiment）。容量与 HyperOS 版本（上游 OS3.0.309.0.WPYCNXM，本机 OS3.0.305.0.WPYCNXM）都不同，这个门在上游设备上不触发。\n\n修的具体硬件问题：从 Android HyperOS 重启进入 UEFI 时，UFS 链路已退出 Hibern8、进入 active UniPro，但设备电源模式仍停在 Sleep(0x22)/DeepSleep(0x33)。睡眠态下描述符读取也能成功，resume 因此从不执行；随后的 SCSI REPORT_LUNS 返回 CHECK CONDITION: NOT READY (key=02 asc=04 ascq=00)，UEFI 拿不到 GPT。\n\n证据强度（2026-10-12 夜更新为**已实测**）：原先只有引入本补丁的提交 dcf5f7b 自身的说明，没有实机日志。本轮做了对照：把本系列整个去掉、其余不动编一版（`uefi/` 因此与上游 158f526 完全一致，只剩 kernel-f2fs 四个补丁），实机结果是**屏幕 `ufs failed`、UEFI Fastboot 服务从未出现、看门狗把设备复位回原厂 fastboot**，对应 `PianoProductCore.c:287` 的 `if(!mUfsAttempted || !mUfsStarted)FailStop(mUfsStatus);`。所以「本机 1 TB 必须打这处补丁」现在是实测事实，不再是推断。那一版的合体 BOOT 留在 `out/align1/boot_align1.img`（sha256 `5cf9c454…`），可随时复现。\n\n升级上游时必须重放并复核：\n1. uefi/core/PianoUfsReadOnlyDma.c 是唯一被改的 blob。targets 里的摘要是应用前必须匹配的上游原文；不匹配就人工 rebase 并更新摘要，不要静默跳过。\n2. 复核三处语义仍在：电源模式探测与 PianoUfsBuildResumeActive 不再以描述符失败为前提；REPORT_LUNS 与 READ_CAPACITY_16 的有界重试仍在；resume 之后的 QueryDescriptor 重试仍在。\n3. 2026-10-12 复核：targets 里的 e390ea63… 在 e600ada 与 158f526 上都与上游原文一致，说明上游至今没有这处修复。\n4. 本文件参与 uefi_patch_identities 的哈希（scripts/piano_artifacts.py:30-41）：改动这里会改变交付包的 project_source_sha256，已构建的 deploy-bundle 必须重新构建才能通过 verify_uefi_source。\n\n0002（2026-10-12 夜加）是只读诊断：把 PublishBlocks 里 6 个 ConnectController 的返回码存下来，在 PianoProductCore.c 既有的 ProductDebugReplay 里重发一遍。原因：这些行永远落在 RAM 控制台快照窗口之外（快照只回最新 256 KiB，而每次抓取前 replay 会先写约 200 KB），所以「有没有 SimpleFileSystem 句柄」这一层一直读不到。不新增任何 Boot Services 调用、不改变任何判断。",
   "base": {
-    "sunuefi_commit": "50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73"
+    "sunuefi_commit": "065b192b863b6f99e12ba65d3cab27c0ddd6dca4"
   },
   "patches": [
     {
       "file": "0001-ufs-power-resume-retry.patch",
       "summary": "强制 UFS 设备电源恢复为 Active 并为 SCSI 查询与容量读取增加重试",
       "targets": {
-        "uefi/core/PianoUfsReadOnlyDma.c": "e390ea634a885d992beceeba82ee61229ca532d8144d8a67e419601036827091"
+        "uefi/core/PianoUfsReadOnlyDma.c": "0c6fe00c5011ec2727a3fa0d060f4bdc5476e747837613064615ed3590c83760"
       },
       "creates": []
     }
