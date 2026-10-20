@@ -2,7 +2,9 @@
 
 设备装好 Fedora 后，用户态包（配置、固件、相机、触控、传感器、VA-API、调度器）可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
 
-**当前状态：源还没建起来。** 发布链的 dry-run 已通过，真实发布从未执行。仓库 secrets 里没有 `COPR_LOGIN` 与 `COPR_TOKEN`，COPR 上的 `fft-infra` 账号和 `piano-fedora` 项目都不存在（`api_3/user` 与 `api_3/project` 均返回 404）。`piano-fedora-configs` 随包带出的 `.repo` 因此指向一个 404 地址，设备上 `dnf upgrade` 只会得到 `skip_if_unavailable=True` 下的静默跳过。下面写的是建成之后的流程，不是现在可用的能力。在设备上核对现状用 `scripts/verify-copr-device.py`，它的判定与本节一致。
+**当前状态：源还没建起来。** 发布链的 dry-run 已通过，真实发布从未执行。仓库 secrets 里没有 `COPR_LOGIN` 与 `COPR_TOKEN`，COPR 上的 `fft-infra` 账号和 `piano-fedora` 项目都不存在（`api_3/user` 与 `api_3/project` 均返回 404）。`piano-fedora-configs` 随包带出的 `.repo` 因此指向一个 404 地址，设备上 `dnf upgrade` 只会得到 `skip_if_unavailable=True` 下的静默跳过。
+
+下面写的是建成之后的流程，不是现在可用的能力。在设备上核对现状用 `scripts/verify-copr-device.py`，它的判定与本节一致。
 
 **内核不在升级范围内。** `kernel-piano` 会发布进仓库供审计，但仓库文件用 `exclude=kernel-piano*` 排除它。用户态 `dnf upgrade` 更新不了 SunUEFI 从 ESP 引导的 `Image`。装上 COPR 的内核只会让 ESP 与 `/usr/lib/modules` 脱钩。内核更新跟着 release bundle 走。
 
