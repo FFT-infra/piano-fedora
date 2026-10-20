@@ -55,7 +55,7 @@
 从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包。仓库目前还没有 Release 与 tag，该链接是空的。发布前用 `build-bundle` 下载的完整 deploy-bundle，不要在本地重新打包历史 `out/` 目录充当发布资产。
 
 - `piano-installer-*.zip`：只剩本地打包器会生成它，流水线不产出。没有 Release 时用仓库里的 `scripts/installer/`；
-- `boot_sunuefi.img`：SunUEFI 引导头；
+- `boot_sunuefi.img`：ESP 内部的 Linux 载荷，不刷任何分区；
 - `sunuefi_esp.img`：SunUEFI ESP 分区镜像；
 - `pianoroot.f2fs.img.zst`：封存的基础盘，不能直接首装；
 - `root-install/pianoroot.f2fs.sparse.img`：`prepare-install` 按本机容量扩容后的传输镜像；
