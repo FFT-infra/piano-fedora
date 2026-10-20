@@ -2,9 +2,11 @@
 """导出自包含安装入口与固定上游的只读 GPT/BOOT 消费代码，不带任何设备数据。"""
 
 import argparse
+import ast
 import importlib.util
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
@@ -14,8 +16,40 @@ from piano_sparse import require
 ROOT = Path(__file__).resolve().parents[1]
 
 SCRIPTS = ("install-f2fs.py", "update-f2fs.py", "plan-first-partition.py", "prepare-device-boot.py",
-           "verify-native-boot.py", "apply-patches.py", "piano_artifacts.py", "piano_sparse.py")
+           "verify-native-boot.py", "apply-patches.py", "piano_artifacts.py", "piano_sparse.py",
+           "piano_gpt.py")
 TOOLS = ("install_piano.py", "provision_piano_bluetooth.py", "provision_piano_ssh.py", "compose_piano_dtb.py")
+# 脚本按路径加载的同目录模块（`spec_from_file_location("piano_gpt", …/piano_gpt.py)`）
+# 不一定走 import，按文件名文字再扫一遍。
+LOCAL_MODULE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*+)\.py\b")
+
+
+def require_complete_dependencies(names):
+    """导出脚本引用的同目录模块必须一起交付。
+
+    漏掉一个同目录模块时导出本身不报错，安装方第一次调用才 `ImportError`：
+    prepare-install 在 `install-f2fs.py` 找不到 `piano_gpt` 时就是这样红的。
+    导出前同时按 import 和路径字面量扫描，缺一个就在写输出目录之前停下。
+    """
+    shipped = {name.removesuffix(".py") for name in names}
+    missing = set()
+    for name in names:
+        text = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+        for module in set(LOCAL_MODULE.findall(text)):
+            if (ROOT / "scripts" / (module + ".py")).is_file() and module not in shipped:
+                missing.add(f"{name} -> {module}.py")
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, ast.Import):
+                modules = [alias.name.split(".")[0] for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                modules = [node.module.split(".")[0]]
+            else:
+                continue
+            for module in modules:
+                if (ROOT / "scripts" / (module + ".py")).is_file() and module not in shipped:
+                    missing.add(f"{name} -> {module}.py")
+    require(not missing, "exported scripts depend on modules that are not exported: "
+            + ", ".join(sorted(missing)))
 
 
 def copy_verified(source, dest):
@@ -52,6 +86,7 @@ def main():
     installer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(installer)
     installer.load_source(args.sunuefi)
+    require_complete_dependencies(SCRIPTS)
     output = args.output.absolute()
     require(not output.exists() and not output.is_symlink(), "installer output already exists")
     sources = [("sources.lock.json", "sources.lock.json"), ("docs/installation.md", "INSTALL.md")]
