@@ -119,6 +119,10 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
 
 `plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量。任何一项与现场不符就停止。同时确认设备当前槽位是 `a`，`root-install-manifest.json` 顶层的 `android_slot` 是 `_a`。首装不能用 `_b`：一键脚本固定写 `boot_b`，会覆盖 Android 唯一的启动路径。
 
+计划本身是一份 JSON，`--plan` 指到哪里就写到哪里，通常是 `first-install-plan.json`。它记录磁盘几何、原分区表、每个分区的 `first`/`last` 变化与容量，`baseline_sha256` 绑定这份表的来源。`apply` 重算一遍并逐字段比较，设备或输入包有任何变化都停。
+
+同一份算术也能离线跑：`plan-first-partition.py` 读整盘设备、两段 `dd` 读数或文本 dump，写出同样的计划，加 `--emit-gpt` 还能写出两段可直接 `dd` 的整表 blob 与分区前的原表。手动分区流程用的就是它，逐条命令见[安装指南](installation.md#手动分区不使用安装脚本)。`--emit-gpt` 产出的是文件，不写设备。
+
 默认把扣除 ESP 后的 userdata 对半分。要固定 Android 的容量，在 `plan` 与 `apply` 上加同一个 `--android-data-mib`，例如 `--android-data-mib 307200` 给 Android 留 300 GiB，Linux 取剩余空间。`plan` 把取值写进计划，`apply` 只接受相同的取值。
 
 root 镜像与分区容量解耦。执行器要求 `expanded_bytes <= linux_root_mib` 且不小于 F2FS 下限，计划里记下 `grow_at_first_boot` 与差额；封存镜像只有 8192 MiB，所以默认就会触发首启扩容。initramfs 在挂载根之前比 `blkid -p -o export` 的 `FSSIZE` 与分区字节数，`fs_bytes < part_bytes` 时依次跑 `fsck.f2fs -f`、`resize.f2fs`、`fsck.f2fs -f`，再复核两者相等；任一步失败即停，不会带着半截容量进系统。`fs_bytes > part_bytes` 直接报错，`resize.f2fs` 不支持缩小。第二次启动时两者相等，`resize.f2fs` 什么都不做。
@@ -162,6 +166,8 @@ python3 boot-tools/installer/scripts/install-f2fs.py apply \
 注入和实际刷入的摘要。不传 `--ssh-key` 时只保留口令登录。
 
 执行器重新读取设备，保存原 GPT 与 BOOT。执行器随后写入并读回完整 GPT，显式执行 `fastboot erase userdata`，再传输 ESP、F2FS sparse root 和当前槽的 Android 默认 BOOT。结束时状态应为 `IMAGES_TRANSFERRED_FIRST_BOOT_PENDING`。
+
+GPT 写入用 `dd`，不用 `sgdisk`：设备上的 Fedora 只装了 util-linux，Android 侧也不保证有 `sgdisk`。整表编成两段 blob 写，顺序是**先尾后头**：先写备份分区表与备份表头，`fsync`，再写保护性 MBR、主表头与主分区表。任何一次中断后，旧主表头的 `alternate_lba` 仍指向刚写好的新尾部，重启能解析出一份自洽的表；反过来先写头会留下"头新尾旧"，尾部还指向旧布局。写入前执行器用一次 4 KiB 的 `dd` 探针证明设备上的 `dd` 接受 `conv=fsync,notrunc`，失败则不动设备。写完读回主表头、主分区表、备份表头与备份分区表，用锁定上游的 `parse_gpt` 再解析一次，与计划逐项比对；不一致就按"先头后尾"写回会话里保存的原表，再报错。
 
 这时 Linux 还没启动，`apply` 结束时设备停在原厂 Fastboot。先断开 USB，再执行一次普通重启，让设备按当前槽启动 Android：
 
