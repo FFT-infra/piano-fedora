@@ -279,6 +279,10 @@ def build(args):
     rpm_package("piano-runtime", payload, output, version="0.2.0",
                 requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
                           "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils",
+                          # piano-sensors-import reads the Android odm/vendor EROFS
+                          # images with dump.erofs; without it the import fails and
+                          # adsprpcd-sensorspd never starts.
+                          "erofs-utils",
                           # The sensor libraries now come from the RPM matrix only.
                           "libssc", "iio-sensor-proxy"))
     provenance["rpms"] = {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}

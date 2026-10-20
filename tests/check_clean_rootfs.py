@@ -272,6 +272,35 @@ def main():
               f"build-rootfs.yml must assert rootfs ownership and the setuid "
               f"bit before packaging (missing {needle})")
 
+    # 13. ESP 的挂载上下文。vfat 默认落 dosfs_t，targeted 策略不允许 init_t
+    #     读它；piano-first-boot-ssh-key.service 是普通 oneshot，跑在 init_t，
+    #     首启拷贝 /boot/efi/piano-ssh-key.pub 时拿到 EACCES，导入公钥失败，
+    #     传了 --ssh-key 也登不进去。2026-10-20 的真机日志：
+    #     AVC denied read tcontext=dosfs_t，unit 结果 exit-code 1。
+    policy = (ROOT / "scripts" / "apply-rootfs-policy.py").read_text(encoding="utf-8")
+    check("context=system_u:object_r:boot_t:s0" in policy,
+          "apply-rootfs-policy.py must mount the ESP with the boot_t context; "
+          "the vfat default dosfs_t is unreadable from init_t, so the first-boot "
+          "SSH key import fails with EACCES")
+    check("umask=0077" in policy,
+          "apply-rootfs-policy.py must keep umask=0077 on the ESP mount")
+    check('"/boot/efi ' not in policy,
+          "apply-rootfs-policy.py must build the ESP fstab line from ESP_LABEL, "
+          "not from a hard-coded /boot/efi device")
+
+    # 14. piano-sensors-import 用 dump.erofs 读 Android 的 odm/vendor EROFS
+    #     镜像。缺 erofs-utils 时脚本走到 "command not found"，下游
+    #     adsprpcd-sensorspd.service 以依赖失败停止，真机传感器全部不可用。
+    profile = json.loads((ROOT / "scripts" / "profiles" / "fedora.json")
+                         .read_text(encoding="utf-8"))
+    check("erofs-utils" in profile["base_packages"],
+          "scripts/profiles/fedora.json must install erofs-utils: "
+          "piano-sensors-import needs dump.erofs")
+    runtime = (ROOT / "scripts" / "build-device-runtime.py").read_text(encoding="utf-8")
+    check('"erofs-utils"' in runtime,
+          "the piano-runtime RPM must declare erofs-utils in its Requires, "
+          "otherwise a rootfs built without the profile silently loses sensors")
+
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)

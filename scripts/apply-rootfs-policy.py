@@ -37,9 +37,15 @@ ESP_PARTNAME = "sunuefi_esp"
 
 # 与上游一致的挂载策略，只把类型和选项换成 F2FS。
 # data_flush/fsync_mode=strict 是 F2FS 根分区的常见取舍，与 sheng 相同。
+#
+# ESP 的挂载上下文必须是 boot_t。默认的 dosfs_t 会被 targeted 策略挡在
+# init_t 之外：piano-first-boot-ssh-key.service 是普通 oneshot，跑在 init_t，
+# 读 /boot/efi/piano-ssh-key.pub 直接拿到 EACCES（AVC: denied read
+# tclass=file tcontext=dosfs_t），首启导入公钥因此失败，装了 --ssh-key 也进不去。
 FSTAB = (
     f"LABEL={ROOT_LABEL} / f2fs defaults,noatime,data_flush,fsync_mode=strict 0 0\n"
-    f"LABEL={ESP_LABEL} /boot/efi vfat umask=0077,nofail 0 2\n"
+    f"LABEL={ESP_LABEL} /boot/efi vfat "
+    f"context=system_u:object_r:boot_t:s0,umask=0077,nofail 0 2\n"
 )
 
 UDEV_RULES = f'''SUBSYSTEM!="block", GOTO="release_end"

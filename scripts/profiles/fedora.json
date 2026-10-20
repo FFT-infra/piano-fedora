@@ -25,6 +25,7 @@
     "busybox",
     "python3",
     "f2fs-tools",
+    "erofs-utils",
     "selinux-policy-targeted",
     "policycoreutils",
     "libselinux-utils",
