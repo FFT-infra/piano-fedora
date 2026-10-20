@@ -30,3 +30,12 @@ Copyright (c) 2026 phxinyang
 
 上游仓库、锁定 commit 与各自角色见 `sources.lock.json`。各组件按自身许可
 取用，不复制进本仓库。`piano-firmware` 许可不明，只在构建时取用，不入库。
+
+## 改编进仓库的上游源码
+
+| 位置 | 来源 | 许可 |
+| --- | --- | --- |
+| `packages/xiaomi-piano-thp/src/src/` 里带 `Adapted from` 或 `Modified from` 头的文件 | [ianchb/xiaomi-sheng-thp](https://github.com/ianchb/xiaomi-sheng-thp) 的触控与笔驱动，按本设备改动后入库 | Apache-2.0 |
+| 同目录下标注 MIT 的自有文件（帧处理、校准、方向、回放） | 本仓库 | MIT |
+
+这些文件头部保留了 SPDX 标识与改编说明。改动清单随补丁与提交历史一起维护。
