@@ -52,11 +52,13 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 | 阶段 | run | 关键产物 |
 | --- | --- | --- |
-| host-check → piano-rpms | 39308151788 | 九类矩阵 RPM 与 `kernel-piano` |
-| build-rootfs | 39326376636 | `rootfs-44-gnome` |
-| build-image | 39327676776 | `root-image-8192` |
-| build-bundle | 39328903515 | `deploy-bundle` |
-| prepare-install | 39329477706 | `root-install`（`size_mib=479990`，`expanded_bytes=503305994240`） |
+| host-check → piano-rpms | 39350753680 | 九类矩阵 RPM 与 `kernel-piano` |
+| build-rootfs | 39351293283 | `rootfs-44-gnome` |
+| build-image | 39352196914 | `root-image-8192` |
+| build-bundle | 39353127010 | `deploy-bundle` |
+| prepare-install | 39353803394 | `root-install`（`size_mib=479990`，`expanded_bytes=503305994240`） |
+
+这一轮从 `main` 的 `1aa64af6` 起链，中途只改了文档与 `flash-linux.sh` 的 `python3` 前置检查，没有动构建输入。上一轮（39308151788 → 39329477706）的产物不再作为基线。
 
 `size_mib=479990` 是那一轮 `product.json` 里的 `root_size_mib`，与当时设备 `sunuefi_root` 的实时容量相同。分区容量按设备实时 GPT 计算。换了设备或改了分区，就要重新取 `fastboot getvar partition-size:sunuefi_root`，不要沿用这里的数字。
 
