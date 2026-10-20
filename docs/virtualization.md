@@ -39,10 +39,11 @@ payload DTB 的 `/hypervisor/qcom,resource-manager-rpc@…` 节点 `reg` 记录�
 驱动按 `compatible` 查找节点，并按两个 u64 读取 `reg`。
 传入过期值时，hypervisor 判定首次 RM 请求为 ARG_INVAL。`gunyah_rm_msgq_send` 的许可永不返回，调用者停在 D 状态，`VM_START` 无法发出。
 
-补丁在把 DTB 移交内核前，使用产品已校验的 inherited FDT 覆盖这 16 字节。
-覆盖操作仅在满足以下条件时执行：两棵树各自恰好存在一个匹配节点、继承值正好为 16 字节、两个 id 均非零，且目标属性结构符合驱动读取要求。
-出现任何缺失、歧义或无法读取时，补丁保留 payload 原值并记录日志。
-补丁不修改节点名里的 unit-address，Linux 侧不读取该字段。
+补丁在把 DTB 移交内核前，用产品已校验的 inherited FDT 覆盖这 16 字节。
+覆盖只在四个条件同时成立时执行：两棵树各自恰好有一个匹配节点，继承值正好
+16 字节，两个 id 均非零，目标属性结构符合驱动读取要求。
+出现缺失、歧义或读取失败时，补丁保留 payload 原值并记录日志。
+补丁不改节点名里的 unit-address，Linux 侧也不读这个字段。
 
 验证分为两层。
 主机侧提取待发布的 C 源码，搭配真实 libfdt（两个独立的 1.8.1 环境），对真实抓取的 payload DTB 与 inherited FDT 进行重放。重放后仅 RM `reg` 与 `uefi-live-memory` 的内存项发生变动。九条策略用例与三条反向改坏对照均符合预期。
