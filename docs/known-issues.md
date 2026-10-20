@@ -83,6 +83,10 @@ A 槽启动，不切活动槽，也不改 GPT。
 - 请求页偏移 37490688（0x23C1000），magic `SUNUEFI-NEXTv1`，两页相隔 4096
   字节滚动写入。
 
+helper 优先读 Android 安装器维护的 ESP 记录
+`/boot/efi/EFI/SunUEFI/boot-request.json`，OTA 换槽后由 Android 侧刷新；
+`/etc/piano/boot-request.json` 只在早于共享槽位追踪的旧安装上回退使用。
+
 旧的 B 槽布局（Linux 写进 `boot_b`、`set_active b`）不再使用。保留一条历史
 排障记录：qbootctl 的 `set_active` 只改活动标志，不交换槽位 type GUID；A 活动
 时执行 `qbootctl -s b` 会留下“B 活动 + generic GUID”的表，ABL 的
