@@ -488,8 +488,10 @@ sparse 文件用 RAW 与显式零 FILL，不用 DONT_CARE；展开后的完整�
    - 点击 GNOME 应用抽屉里的**「返回 Android」**图标；
    - 或在终端输入 `piano-next-boot android --reboot`，系统同步数据后重启进入 HyperOS。
 2. **从 Android 切换回 Linux**：
-   - 在 Android (HyperOS) 中安装并启用 `piano-switch-ksu` (KernelSU / SukiSU) 模块；
-   - 点击控制中心磁贴或模块界面里的**「进入 Linux」**，即可切回 Fedora。
+   - `piano-switch-ksu` (KernelSU / SukiSU) 模块目前还不能安装，缺 manager 要求的
+     `bin/` 原生工具与策略文件，见[已知问题](known-issues.md#android-侧)；
+   - 现阶段用开机前 3 秒的引导菜单，或从原厂 Fastboot 执行
+     `fastboot set_active b` 后重启。
 3. **开机引导菜单**：
    - 开机亮屏后的 **前 3 秒内** 按音量上/下键，呼出 SunUEFI 图形引导菜单。
 
