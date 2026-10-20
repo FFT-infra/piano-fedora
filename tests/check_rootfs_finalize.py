@@ -241,6 +241,12 @@ def _libcrypt_crypt():
 def check_service_staging_order(root):
     """在空树执行 main 的真实服务准备顺序，enable 时必须已有自建单元。"""
     root.mkdir()
+    # main() 在服务准备之后才调用 stage_boot_diagnostics；它只核对 RPM 拥有的
+    # collector 在位，不再写一份副本，所以这里先按镜像的实际情况放好。
+    collector = root / "usr/bin/piano-collect-boot"
+    collector.parent.mkdir(parents=True)
+    collector.write_text("#!/bin/sh\n# packaged by piano-fedora-configs\n")
+    collector.chmod(0o755)
     tree = ast.parse((ROOT / "scripts/finalize-fedora-rootfs.py").read_text())
     main_node = next(node for node in tree.body
                      if isinstance(node, ast.FunctionDef) and node.name == "main")
@@ -377,6 +383,10 @@ def check_first_boot_ssh_key(root):
     # Running the hardware staging on an empty tree must not create one either.
     root.mkdir()
     finalizer.stage_piano_hardware_fixes(root)
+    collector = root / "usr/bin/piano-collect-boot"
+    collector.parent.mkdir(parents=True, exist_ok=True)
+    collector.write_text("#!/bin/sh\n# packaged by piano-fedora-configs\n")
+    collector.chmod(0o755)
     finalizer.stage_boot_diagnostics(root)
     seeded = [path for path in root.rglob("authorized_keys")]
     assert not seeded, "the finalized image carries pre-provisioned SSH keys: " + str(seeded)
@@ -411,8 +421,22 @@ def main():
         else:
             raise AssertionError("an unexpected runtime escape was normalized")
         assert (binary / "bad").is_symlink()
+        # The collector belongs to piano-fedora-configs. The finalizer must not
+        # write a second copy over the RPM-owned path, so it refuses a rootfs
+        # that lacks it.
+        try:
+            finalizer.stage_boot_diagnostics(root)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("the finalizer must require the packaged collector")
+        collector = root / "usr/bin/piano-collect-boot"
+        collector.write_text("#!/bin/sh\n# packaged by piano-fedora-configs\n")
+        collector.chmod(0o755)
+        packaged = collector.read_bytes()
         staged = finalizer.stage_boot_diagnostics(root)
         assert "usr/bin/piano-collect-boot" in staged
+        assert collector.read_bytes() == packaged, "the finalizer overwrote the packaged collector"
         gdm = root / "etc/systemd/system/gdm.service.d/20-piano-display.conf"
         assert "Requires=piano-display.service" in gdm.read_text()
         assert "After=piano-display.service" in gdm.read_text()

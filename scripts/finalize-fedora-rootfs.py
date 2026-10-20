@@ -241,10 +241,11 @@ def stage_boot_diagnostics(root):
         target = safe_destination(root, name)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text)
+    # piano-collect-boot 由 piano-fedora-configs RPM 拥有，这里只核对在位，
+    # 不再覆盖一份同路径的副本，否则 rpm 的文件归属与镜像内容会分叉。
     target = safe_destination(root, "usr/bin/piano-collect-boot")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(ROOT / "scripts/collect-boot-evidence.sh", target)
-    target.chmod(0o755)
+    if not target.is_file() or not target.stat().st_mode & 0o111:
+        raise ValueError("rootfs lacks the packaged collector: usr/bin/piano-collect-boot")
     return sorted([*files, "usr/bin/piano-collect-boot", *stage_linux_debug_handoff(root)])
 
 
