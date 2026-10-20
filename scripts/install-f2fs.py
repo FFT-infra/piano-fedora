@@ -20,6 +20,7 @@ import zlib
 
 from piano_artifacts import sha256, verify_uefi_source
 import piano_gpt as gpt_entry
+import piano_sparse
 from piano_sparse import require
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,8 +138,13 @@ def root_transport(bundle, root_install, generic, root, image):
         return root_install / "pianoroot.f2fs.sparse.img", prepared
     bundled = generic["files"].get("pianoroot.f2fs.sparse.img")
     require(bundled is not None, "neither root-install nor the bundle carries a root transport")
-    require(bundled["expanded_sha256"] == image["sha256"], "root transport is not the sealed root image")
-    return bundle / "pianoroot.f2fs.sparse.img", bundled
+    # bundle-manifest 只记文件摘要；解码后的字节要与封存镜像逐字节相同，
+    # 由 verify-bundle 在发布前证明。这里现算一遍，改动过的 sparse 过不去。
+    transport = bundle / "pianoroot.f2fs.sparse.img"
+    decoded = piano_sparse.inspect(transport)
+    require((decoded["expanded_bytes"], decoded["expanded_sha256"]) == (image["bytes"], image["sha256"]),
+            "root transport is not the sealed root image")
+    return transport, {**bundled, **decoded}
 
 
 def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, existing=False,

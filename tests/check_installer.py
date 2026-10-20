@@ -131,6 +131,33 @@ def main():
         else:
             raise AssertionError(message + " was accepted")
 
+    # bundle 自带的 sparse 必须解码回封存镜像；root-install 缺席时刷的就是它。
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        raw = work / "pianoroot.raw"
+        raw.write_bytes(b"piano".ljust(64 * 1024**2, b"\0"))
+        bundle = work / "bundle"
+        bundle.mkdir()
+        installer.piano_sparse.encode(raw, bundle / "pianoroot.f2fs.sparse.img")
+        image = {"bytes": raw.stat().st_size, "sha256": installer.sha256(raw)}
+        generic = {"files": {"pianoroot.f2fs.sparse.img": {"bytes": (bundle / "pianoroot.f2fs.sparse.img").stat().st_size}}}
+        transport, meta = installer.root_transport(bundle, bundle, generic, {}, image)
+        assert transport == bundle / "pianoroot.f2fs.sparse.img", transport
+        assert (meta["expanded_bytes"], meta["expanded_sha256"]) == (image["bytes"], image["sha256"]), meta
+        assert meta["dont_care_chunks"] == 0 and meta["zero_policy"] == "explicit-zero-fill", meta
+        # 换成另一份 sparse 就必须拒绝，不能只看文件名。
+        other = work / "other.raw"
+        other.write_bytes(b"other".ljust(64 * 1024**2, b"\0"))
+        bundle.joinpath("pianoroot.f2fs.sparse.img").unlink()
+        installer.piano_sparse.encode(other, bundle / "pianoroot.f2fs.sparse.img")
+        try:
+            installer.root_transport(bundle, bundle, generic, {}, image)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("a bundled sparse that decodes to other bytes was accepted")
+
     explicit = installer.partition_plan(gpt, 307200)
     assert explicit["allocation"] == "explicit-android-size"
     assert explicit["capacity"]["android_userdata_mib"] == 307200, explicit["capacity"]
