@@ -52,7 +52,9 @@
   4. Android `userdata` 与 `sunuefi_root` 默认按剩余空间对半分配，也可以固定 Android 的容量（`--userdata-mib`，见第四节）；
   5. 所有新分区起点按 1 MiB 对齐，两边相差不超过 2 MiB。
 
-  `product.json` 的 `root_size_mib` 只是一台设备的实测记录，给 `prepare-install` 当默认值，**不是所有设备的约定**。容量变了就按第四节手动流程重算，或者给 `prepare-install` 传自己的 `root_size_mib`。
+  `product.json` 的 `root_size_mib` 是封存镜像的容量（8192 MiB），与设备无关。`sunuefi_root` 的实际容量从实时 GPT 算，文件系统在首启时长满该分区。
+
+  **Android 侧需要 root 才能读写块设备。** 获取 root 是本节的前提，本仓库不提供方法。没有 root 就只能用执行器在 Fastboot 侧完成分区。
 
 ---
 
@@ -370,7 +372,7 @@ fastboot reboot
 
 ### 手动分区（不使用安装脚本）
 
-不用安装脚本的路径是原厂 Fastboot 加 `sgdisk`。每一步都能单独核对，适合容量与 `product.json` 不一致、或者想自己控制边界的设备。**这些命令会清空 userdata，执行前先备份 Android 数据。**
+不用安装脚本的路径只用设备上一定有的 `dd`，配合 `scripts/plan-first-partition.py` 离线算出新的整表。每一步都能单独核对，适合容量与默认分配不一致、或者想自己控制边界的设备。**这些命令会清空 userdata，执行前先备份 Android 数据。**
 
 #### 1. 读取真实 GPT
 
@@ -386,10 +388,17 @@ fastboot getvar partition-size:sunuefi_esp
 
 ```sh
 cat /sys/block/sda/queue/physical_block_size   # 这台设备是 4096
-sgdisk --print /dev/sda
+cat /sys/block/sda/size                        # 总扇区数
 ```
 
-`sgdisk --print` 给出总扇区数、First/Last usable sector 和每个分区的起止扇区。把完整输出存一份，作为这块盘分区前的 GPT 基线。
+再读整张表。表项数由主表头自己决定，先读一小段探一次，再按结果读准；备份表在盘尾，同样读一段：
+
+```sh
+dd if=/dev/sda of=/tmp/gpt-head.raw bs=4096 count=8
+dd if=/dev/sda of=/tmp/gpt-tail.raw bs=4096 skip=$(( $(cat /sys/block/sda/size) - 6 )) count=6
+```
+
+两份原始读数就是分区前的 GPT 基线。`plan-first-partition.py --head/--tail --sectors` 能直接解析它们。
 
 #### 2. 算容量
 
@@ -422,41 +431,60 @@ userdata     起始扇区保持不变，最后扇区改为 root 起始扇区 - 1
 
 1 MiB 对齐会把起始扇区往前推，实际容量只会大于等于请求值，Android 与 Linux 两侧相差不超过 2 MiB。
 
-可以离线核对这套算术：把 `sgdisk --print` 的输出存成文件，用 `scripts/plan-first-partition.py --dump` 跑一遍，它给出同样的边界和容量，不接触设备。按 Android 容量规划时把 `--equal-split` 换成 `--userdata-mib 307200`。
+这套算术不用手算。把现场读数交给规划器，它写出新的整表与两份摘要：
+
+```sh
+python3 scripts/plan-first-partition.py --device /dev/sda --userdata-mib 307200 \
+  --output first-install-plan.json --emit-gpt gpt/
+```
+
+`--emit-gpt` 产出四个文件：`gpt-head.bin`（保护性 MBR + 主表头 + 主分区表）、
+`gpt-tail.bin`（备份分区表 + 备份表头）、`original-gpt-head.bin`、
+`original-gpt-tail.bin`（分区前的原表）与 `SHA256SUMS`。这些是**文件，还没写进设备**。
+规划器在写出前会核对现场读数与计划是同一条表，不一致就停。
+
+只有文本 dump 时也能规划，但不能 `--emit-gpt`。`sfdisk --dump` 的文本不带总扇区数与表项数，要自己补：
+
+```sh
+sfdisk --dump /dev/sda > gpt.txt
+python3 scripts/plan-first-partition.py --dump gpt.txt --sectors "$(cat /sys/block/sda/size)" \
+  --entries 64 --userdata-mib 307200
+```
 
 #### 3. 写 GPT
 
-在设备上依次执行。`<n_root>` 和 `<n_esp>` 用 `sgdisk --print` 里尚未占用的
-两个分区号：
+先回读核对：`gpt-head.bin` 与 `gpt-tail.bin` 推上设备后，必须与本地逐字节相同。
 
 ```sh
-# 缩短 userdata，只改末尾
-sgdisk --delete=<n_userdata> /dev/sda
-sgdisk --new=<n_userdata>:<U>:<new_userdata_last> /dev/sda
-sgdisk --change-name=<n_userdata>:userdata /dev/sda
-sgdisk --typecode=<n_userdata>:<原 userdata 的 type GUID> /dev/sda
-
-# Linux root（位于 ESP 之前）
-sgdisk --new=<n_root>:<root_first>:<root_last> /dev/sda
-sgdisk --change-name=<n_root>:sunuefi_root /dev/sda
-sgdisk --typecode=<n_root>:8300 /dev/sda
-
-# ESP（占据盘尾）
-sgdisk --new=<n_esp>:<esp_first>:<L> /dev/sda
-sgdisk --change-name=<n_esp>:sunuefi_esp /dev/sda
-sgdisk --typecode=<n_esp>:EF00 /dev/sda
-
-sync
+adb push gpt/gpt-tail.bin gpt/gpt-head.bin /data/local/tmp/
+adb shell su -c 'sha256sum /data/local/tmp/gpt-tail.bin /data/local/tmp/gpt-head.bin'
+sha256sum gpt/gpt-tail.bin gpt/gpt-head.bin
 ```
 
-`--delete` 会同时重写主 GPT 和备份 GPT。写完立刻回读核对；任何一项不一致就停下：
+再按**先尾后头**的顺序写入。尾部先落盘，中断后旧主表头的 `alternate_lba` 仍能找到新尾部；反过来会留下“头新尾旧”。`S-5` 是尾部 blob 的起始扇区，按 `S`（总扇区数）算出来：
 
 ```sh
-sgdisk --verify /dev/sda
-sgdisk --print /dev/sda
+S=$(cat /sys/block/sda/size)
+adb shell su -c "dd if=/data/local/tmp/gpt-tail.bin of=/dev/sda bs=4096 seek=$((S-5)) conv=fsync,notrunc"
+adb shell su -c 'dd if=/data/local/tmp/gpt-head.bin of=/dev/sda bs=4096 seek=0 conv=fsync,notrunc && sync'
 ```
 
-核对要点：`userdata` 的起始扇区与原来相同。`sunuefi_esp` 结束在 `L`。`sunuefi_root` 紧贴 ESP 之前。三个分区互不重叠，且都在 usable 范围内。
+写完立刻回读，两份都必须与源 blob 相同：
+
+```sh
+adb shell su -c "dd if=/dev/sda bs=4096 skip=$((S-5)) count=3 | sha256sum"
+adb shell su -c 'dd if=/dev/sda bs=4096 count=4 | sha256sum'
+```
+
+核对要点：`userdata` 的起始扇区与原来相同，`sunuefi_esp` 结束在 `L`，`sunuefi_root` 紧贴 ESP 之前。任一项不一致就用 `original-gpt-*.bin` 按同样顺序写回，不要继续。
+
+写回的顺序与写入相反：先恢复头部，再恢复尾部。这两份是分区前从设备读到的原表，写回去等于撤销本次分区。
+
+```sh
+adb push gpt/original-gpt-head.bin gpt/original-gpt-tail.bin /data/local/tmp/
+adb shell su -c 'dd if=/data/local/tmp/original-gpt-head.bin of=/dev/sda bs=4096 seek=0 conv=fsync,notrunc'
+adb shell su -c "dd if=/data/local/tmp/original-gpt-tail.bin of=/dev/sda bs=4096 seek=$((S-5)) conv=fsync,notrunc && sync"
+```
 
 #### 4. 让 Android 重建 userdata
 

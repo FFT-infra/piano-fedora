@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+import piano_sparse
 from piano_artifacts import uefi_patch_identities
 
 
@@ -61,7 +62,8 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     root.mkdir()
     digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     write = lambda name, value: (root / name).write_text(json.dumps(value))
-    raw = b"verified fixture raw bytes"
+    # 4096 的整数倍：bundle 自带的 sparse 必须能编码回同一份封存镜像。
+    raw = b"verified fixture raw bytes".ljust(4096, b"\0")
     for name in ("sunuefi_esp.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst"):
         (root / name).write_bytes(b"fixture")
     (root / "boot_sunuefi.img").write_bytes(b"ANDROID!fixture")
@@ -97,6 +99,10 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
              **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
                 for name in ("rootfs", "kernel", "runtime", "mesa", "ffmpeg", "initramfs")}}
     write("root-image-manifest.json", image)
+    # bundle 自带一份与封存镜像相同的 sparse；verify-bundle 会把它解码比对。
+    (root / "pianoroot.raw").write_bytes(raw)
+    piano_sparse.encode(root / "pianoroot.raw", root / "pianoroot.f2fs.sparse.img")
+    (root / "pianoroot.raw").unlink()
     write("source-runs.json", {"kernel_run": "fixture", "uefi_run": "12345"})
     source = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["sunuefi"]["commit"]
     uefi = {"schema_version": 1, "run_id": "12345", "workflow": ".github/workflows/build-uefi.yml",

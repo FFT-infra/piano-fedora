@@ -33,6 +33,7 @@ import importlib.util
 import json
 import os
 import re
+import struct
 import sys
 from pathlib import Path
 
@@ -443,11 +444,16 @@ def main(argv=None):
         if args.emit_gpt is not None:
             if gpt is None:
                 raise PlanError("--emit-gpt needs --device or --head/--tail")
-            if args.device:
-                with open(args.device, "rb") as stream:
-                    mbr = stream.read(SECTOR)
-            else:
-                mbr = Path(args.head).read_bytes()[:SECTOR]
+            # 保护性 MBR 不在两段读数里：尾部读数只覆盖盘尾，头部读数虽从
+            # LBA 0 开始，但规划只需要表本身。缺 MBR 时用规范里的那一种。
+            with Path(args.device or args.head).open("rb") as stream:
+                mbr = stream.read(SECTOR)
+            if mbr[510:512] != b"\x55\xaa":
+                mbr = bytearray(SECTOR)
+                mbr[510:512] = b"\x55\xaa"
+                mbr[446:462] = struct.pack("<BBBBBBBBII", 0, 0, 2, 0, 0xEE, 0xFF, 0xFF, 0xFF,
+                                           1, 0xFFFFFFFF)
+                mbr = bytes(mbr)
             result["gpt_blobs"] = emit(result, gpt, mbr, args.emit_gpt)
 
         if args.output:

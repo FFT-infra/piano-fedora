@@ -7,7 +7,8 @@
 * 章节里的容量公式在多种磁盘容量上都能算出对半分配；
 * 文档给出的扇区边界与规划器在真实 GPT fixture 上一致；
 * 命令序列顺序正确：先缩短 userdata，再建 root，再建 ESP；
-* 明确包含 `sgdisk --verify`、GPT 回读核对和 `fastboot erase userdata`；
+* 写 GPT 只用 `dd`，先尾后头，写完回读，并给出 `original-gpt-*.bin` 的回滚；
+* 明确包含 `fastboot erase userdata`，且排在回读之后；
 * 不包含任何会碰 Android 固定分区的命令。
 
 文档公式是独立实现，不 import 规划器；两者都用同一个 GPT fixture 计算，
@@ -120,39 +121,51 @@ def test_command_blocks():
     assert blocks, "manual partition chapter has no sh code blocks"
     code = "\n".join(blocks)
     checks = [
-        ("sgdisk --print", "must read the real GPT first"),
-        ("--delete=", "must delete before re-creating userdata"),
-        ("--change-name", "must name the new partitions"),
-        ("sunuefi_esp", "must create the ESP"),
-        ("sunuefi_root", "must create the Linux root"),
-        ("sgdisk --verify", "must verify the written table"),
+        ("cat /sys/block/sda/size", "must read the real sector count first"),
+        ("dd if=/dev/sda of=/tmp/gpt-head.raw", "must dump the live GPT head"),
+        ("dd if=/dev/sda of=/tmp/gpt-tail.raw", "must dump the live GPT tail"),
+        ("plan-first-partition.py", "must plan the new table before writing it"),
+        ("--emit-gpt", "must emit both GPT blobs"),
+        ("gpt-tail.bin", "must write the backup table"),
+        ("gpt-head.bin", "must write the primary table"),
+        ("conv=fsync,notrunc", "writes must not truncate the rest of the disk"),
+        ("sha256sum", "must compare the blobs against the device readback"),
+        ("original-gpt-head.bin", "must offer a rollback of the primary table"),
+        ("original-gpt-tail.bin", "must offer a rollback of the backup table"),
         ("fastboot erase userdata", "must erase userdata explicitly"),
     ]
     failures = [reason for token, reason in checks if token not in code]
-    # Order matters only inside the block that writes the GPT: the earlier
-    # read-only probe mentions partition names too.
-    write_blocks = [b for b in blocks if "sgdisk --delete=" in b]
-    if not write_blocks:
+
+    def at(token):
+        index = code.find(token)
+        return index if index >= 0 else -1
+
+    write_block = next((b for b in blocks if "gpt-tail.bin" in b and "of=/dev/sda" in b), None)
+    if write_block is None:
         failures.append("no code block actually writes the partition table")
     else:
-        write = write_blocks[0]
-        delete_at = write.find("--delete=")
-        root_at = write.find("sunuefi_root")
-        esp_at = write.find("sunuefi_esp")
-        verify_at = code.find("sgdisk --verify")
-        erase_block = next((b for b in blocks if "fastboot erase userdata" in b), None)
-        if erase_block is None:
-            failures.append("userdata must be erased explicitly after repartitioning")
-            erase_at = -1
-        else:
-            erase_at = code.find("fastboot erase userdata")
-            if "reboot" not in erase_block:
-                failures.append("erase userdata must be followed by a reboot")
-        if not (0 <= delete_at < root_at < esp_at < verify_at < erase_at):
-            failures.append(
-                "order must be userdata delete -> create root -> create ESP -> verify -> erase userdata")
-        if "sgdisk --verify" not in write and "sgdisk --verify" not in code:
-            failures.append("the written table must be verified")
+        tail_at = write_block.find("gpt-tail.bin")
+        head_at = write_block.find("gpt-head.bin")
+        if not (0 <= tail_at < head_at):
+            failures.append("the backup table must land before the primary table (tail first)")
+        if write_block.count("dd if=") < 2:
+            failures.append("the write block must dd both blobs")
+
+    readback_at = next((code.find(line) for line in code.splitlines()
+                        if "dd if=/dev/sda" in line and "sha256sum" in line), -1)
+    erase_block = next((b for b in blocks if "fastboot erase userdata" in b), None)
+    if erase_block is None:
+        failures.append("userdata must be erased explicitly after repartitioning")
+        erase_at = -1
+    else:
+        erase_at = code.find("fastboot erase userdata")
+        if "reboot" not in erase_block:
+            failures.append("erase userdata must be followed by a reboot")
+    if "sgdisk" in code:
+        failures.append("manual partitioning must not depend on sgdisk")
+    if not (0 <= at("gpt-head.raw") < at("--emit-gpt") < at("gpt-tail.bin") < readback_at < erase_at):
+        failures.append(
+            "order must be read GPT -> plan blobs -> write tail then head -> readback -> erase userdata")
     assert not failures, "; ".join(failures)
 
 
@@ -161,9 +174,12 @@ def test_no_android_partition_writes():
     forbidden = ("boot_a", "dtbo_a", "super", "init_boot", "vendor_boot", "vbmeta")
     failures = []
     for token in forbidden:
-        # Allowed only as a name in prose, never as an sgdisk target.
-        if re.search(r"sgdisk[^\n]*" + re.escape(token), text):
-            failures.append(f"manual partitioning must not touch {token}")
+        # Allowed only as a name in prose, never as a dd target.
+        if re.search(r"of=/dev/sda[^\n]*" + re.escape(token), text):
+            failures.append(f"manual partitioning must not write {token}")
+    for token in ("boot_a", "dtbo_a", "super", "init_boot", "vendor_boot", "vbmeta"):
+        if re.search(r"dd[^\n]*of=" + re.escape(token), text):
+            failures.append(f"manual partitioning must not dd onto {token}")
     assert not failures, "; ".join(failures)
 
 
