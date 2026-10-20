@@ -9,8 +9,8 @@
 
 import argparse
 import json
+import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,28 +37,31 @@ def build(sun, product, output, cc=None, sysroot=None):
     output.mkdir(parents=True)
     marker = output / '.incomplete'
     marker.write_text('boot-tools 尚未完成。\n')
+    # 上游 selector_only 要求输出目录尚不存在；它会在里面写 selector.bin 与
+    # selector.json，prototype_policy 之后才能删除。
+    selector_dir = output / '.selector'
     try:
-        with tempfile.TemporaryDirectory(prefix='selector-', dir=output) as directory:
-            selector_dir = Path(directory)
-            selector_meta = trampoline.selector_only(selector_dir)
-            selector = (selector_dir / 'selector.bin').read_bytes()
-            module.check_selector_layout(selector, selector_meta['selector_memory_bytes'],
-                                         selector_meta['metadata_offset'])
-            (output / 'selector.bin').write_bytes(selector)
-            native_dir = output / 'native'
-            binary, native = repack.build(native_dir, 'aarch64', cc, sysroot)
-            # prototype_policy 用同一批 payload 补上 product_fd_sha256 与
-            # app_payload_sha256：安装器靠这两个摘要证明 selector 属于这张产品镜像。
-            app = output / 'app.bin'
-            app.write_bytes(payloads['app.bin'])
-            try:
-                repack.prototype_policy(binary, native, selector_dir, product, app, native_dir)
-            finally:
-                app.unlink()
-            selector_module = json.loads((native_dir / 'selector-module.json').read_text())
+        selector_meta = trampoline.selector_only(selector_dir)
+        selector = (selector_dir / 'selector.bin').read_bytes()
+        module.check_selector_layout(selector, selector_meta['selector_memory_bytes'],
+                                     selector_meta['metadata_offset'])
+        (output / 'selector.bin').write_bytes(selector)
+        native_dir = output / 'native'
+        binary, native = repack.build(native_dir, 'aarch64', cc, sysroot)
+        # prototype_policy 用同一批 payload 补上 product_fd_sha256 与
+        # app_payload_sha256：安装器靠这两个摘要证明 selector 属于这张产品镜像。
+        app = output / 'app.bin'
+        app.write_bytes(payloads['app.bin'])
+        try:
+            repack.prototype_policy(binary, native, selector_dir, product, app, native_dir)
+        finally:
+            app.unlink()
+        selector_module = json.loads((native_dir / 'selector-module.json').read_text())
     except Exception:
         marker.unlink(missing_ok=True)
         raise
+    finally:
+        shutil.rmtree(selector_dir, ignore_errors=True)
     marker.unlink()
     return {'product': product_record, 'selector': selector_module,
             'native': native['executable'], 'output': str(output)}
