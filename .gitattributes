@@ -1,0 +1,5 @@
+# cmd.exe 按字节偏移跳转 batch 标签，CRLF 是 Windows 脚本的唯一稳妥行尾。
+*.bat text eol=crlf
+
+# 安装脚本在 Linux/macOS 上直接执行，行尾必须是 LF。
+*.sh text eol=lf
