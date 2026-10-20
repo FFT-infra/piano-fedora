@@ -34,7 +34,7 @@
   - dtbo_a                                                        - dtbo_b (保留原厂内容，供 ABL 校验)
   - init_boot_a                                                   - init_boot_b
   - super (Android 系统与厂商镜像)                                 - sunuefi_esp (512 MiB, FAT32)
-  - userdata (原厂扣减 Linux 后的剩余空间)                         - sunuefi_root (468+ GiB, 高性能 F2FS)
+  - userdata (原厂扣减 Linux 后的剩余空间)                         - sunuefi_root (剩余空间, 高性能 F2FS)
 ```
 
 > **不要擦除 `dtbo_b`。** 高通 ABL 启动时校验活动槽位的整条引导链，空 DTBO 会被拒绝，报 `Failed to load/authenticate boot image: Device Error`，平板卡在 Fastboot。
@@ -49,7 +49,7 @@
   1. 保留 Android 的全部固定分区（`boot_a`、`dtbo_a`、`super` 等）不动；
   2. `userdata` 从尾部缩短，让出 Linux 需要的空间；
   3. 让出的空间放 `sunuefi_esp`（512 MiB）和 `sunuefi_root`（其余全部）；
-  4. Android `userdata` 与 `sunuefi_root` 按剩余空间对半分配；
+  4. Android `userdata` 与 `sunuefi_root` 默认按剩余空间对半分配，也可以固定 Android 的容量（`--userdata-mib`，见第四节）；
   5. 所有新分区起点按 1 MiB 对齐，两边相差不超过 2 MiB。
 
   `product.json` 的 `root_size_mib` 只是一台设备的实测记录，给 `prepare-install` 当默认值，**不是所有设备的约定**。容量变了就按第四节手动流程重算，或者给 `prepare-install` 传自己的 `root_size_mib`。
