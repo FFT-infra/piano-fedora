@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import sys
 
@@ -84,7 +85,14 @@ def main():
                 'encoded_sha256': hashlib.sha256(encoded.read_bytes()).hexdigest()}
 
     try:
-        run('vainfo', ['vainfo', '--display', 'drm', '--device', args.device])
+        # vainfo 只打印驱动能力清单，不是编解码链路的一环。目标镜像没有装
+        # libva-utils，硬把这一步当门槛会让整份验收在 `vainfo: No such file`
+        # 上直接失败，而下面的 h264_vaapi/hevc_vaapi 编码本身是好的。
+        # 有 vainfo 就留一份能力记录，没有就跳过并记明原因。
+        if shutil.which('vainfo'):
+            run('vainfo', ['vainfo', '--display', 'drm', '--device', args.device])
+        else:
+            report['vainfo'] = 'skipped: libva-utils is not installed in the image'
         for codec, software_encoder in (('h264', 'libx264'), ('hevc', 'libx265')):
             hardware_decoder = codec + '_v4l2m2m'
             name = codec + '-vaapi-gop60'
@@ -111,7 +119,6 @@ def main():
                 source = args.fixture_dir.resolve() / (name + '.mp4')
                 if not source.is_file():
                     raise RuntimeError(f'{name}: fixture missing at {source}')
-                import shutil
                 shutil.copyfile(source, encoded)
                 types = None
                 if args.fixture_types:
