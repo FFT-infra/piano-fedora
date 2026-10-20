@@ -19,6 +19,15 @@ def main():
     spec = importlib.util.spec_from_file_location("runtime_kernel", ROOT / "scripts/prepare-runtime-kernel.py")
     runtime = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(runtime)
+    # syncconfig 按本机 rustc 重算的探测项，在 Rust 未启用时不影响编译。
+    sealed = "CONFIG_MODULES=y\nCONFIG_RUSTC_VERSION=109900\nCONFIG_RUSTC_LLVM_VERSION=230101\n"
+    assert runtime.comparable_config(sealed) == runtime.comparable_config(
+        sealed.replace("109900", "109901"))
+    assert runtime.comparable_config(sealed) != runtime.comparable_config(
+        sealed.replace("CONFIG_MODULES=y", "CONFIG_MODULES=n"))
+    rust = "CONFIG_RUST=y\nCONFIG_RUSTC_VERSION=109900\n"
+    assert runtime.comparable_config(rust) != runtime.comparable_config(
+        rust.replace("109900", "109901"))
     with tempfile.TemporaryDirectory(prefix="runtime-source-") as directory:
         base = Path(directory)
         sun = base / "sunuefi"
@@ -69,7 +78,7 @@ def main():
                 raise AssertionError("伪造的文件摘要清单被接受")
         assert git(["status", "--porcelain"], source).strip() == ""
         assert git(["status", "--porcelain"], driver).strip() == ""
-    print("OK: experimental runtime source replay, identity/hash rejection, clean inputs")
+    print("OK: experimental runtime source replay, identity/hash rejection, config probe drift, clean inputs")
 
 
 if __name__ == "__main__":
