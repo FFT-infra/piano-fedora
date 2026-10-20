@@ -50,6 +50,8 @@ Fedora 官方 COPR 实例没有启用二进制 RPM 上传。运行中实例的 A
 
    需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`。脚本幂等创建项目 `fft-infra/piano-fedora`，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。任一 `failed` 或 `canceled` 都让整个步骤失败。
 
+   这两项 secrets 尚未配置，因此这一步在仓库里从未执行过。唯一一次 `publish-copr` run（39248465786）只跑了第 2 步的校验，`publish` job 是 skipped。要启用这条源，先申请 COPR 账号并创建项目，再把凭据加进仓库 secrets。
+
 ## 启用仓库
 
 `piano-fedora-configs` 已经带上 `/etc/yum.repos.d/piano-fedora-copr.repo`：
