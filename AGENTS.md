@@ -4,7 +4,7 @@
 
 ## 项目
 
-小米平板 8 Pro（piano / 25091RP04C / SM8750）的 Fedora + HyperOS 双系统构建仓库，Linux 根分区用 F2FS。SunUEFI 按 commit 锁定为上游，本仓库只带 Fedora 后端、F2FS 全链路、首次分区三样增量。
+小米平板 8 Pro（piano / 25091RP04C / SM8750）的 Fedora + HyperOS 双系统构建仓库，Linux 根分区用 F2FS。SunUEFI 按 commit 锁定为上游。本仓库只带四样增量：Fedora 后端、F2FS 全链路、首次分区，以及 `patches/uefi-*` 下的 UEFI 启动补丁。
 
 仓库地址是 `FFT-infra/piano-fedora`。补丁 `From:` 行与文档里的仓库名用这个名字，不是本地目录名。
 

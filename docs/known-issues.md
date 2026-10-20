@@ -47,15 +47,12 @@ target=2（Linux）；无人现场时不要留下 target=0。
 
 ## Android 侧
 
-Android 侧模块已安装，`install-state.json` 为 `ADOPTED_READ_ONLY_VERIFIED`、
-`boot_written=false`，`app_sha256=6c38318a…`，与当前 BOOT 的 generation 不同。
-这份历史不一致需要随模块一起复核。
+Android 侧现在装的是匹配模块 `piano-matching-core`，由本地打包器复制成 `piano-switch-ksu-<版本>.zip`。`install-state.json` 为 `ADOPTED_READ_ONLY_VERIFIED`、`boot_written=false`，`app_sha256=6c38318a…`，与当前 BOOT 的 generation 不同。这份历史不一致需要随模块一起复核。
+
+更早的脚手架 `piano_sunuefi_module.zip` 只有模块脚手架及根目录 request 程序，缺少 manager 要求的 bin/ 原生工具和策略/状态。它不能安装，也不要和上面的匹配模块混用。
 
 Android 实测运行在 SELinux Permissive，启动参数带 `selinux=permissive`。
 手动 `setenforce 1` 可用，但不能当持久策略，固化方式还没落实。
-
-`piano_sunuefi_module.zip` 只有模块脚手架及根目录 request 程序，缺少 manager
-要求的 bin/ 原生工具和策略/状态，不能安装使用。
 
 ## 充电
 

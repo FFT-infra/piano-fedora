@@ -8,6 +8,7 @@
 
 1. **解锁 Bootloader**：通过小米官方渠道完成 BL 解锁。刷入前电量保持 **30% 以上**，建议 50%。
 2. **电脑端工具**：装好 Android Platform Tools，`fastboot` 与 `adb` 在 PATH 里。Linux 主机还要配好设备 udev 规则，或者用有 `sudo` 权限的 shell。
+   - Python 3：`flash-linux.sh` 用它读 `root-install-manifest.json` 的 `android_slot`。脚本不检查这个依赖，缺了会在校验之后、写入之前中断。Fedora `sudo dnf install python3`，Ubuntu/Debian `sudo apt install python3`，macOS 用系统自带的 `python3`。
    - `mtools` 提供 `mcopy` 与 `mtype`：注入 SSH 公钥、以及核对 ESP 里的内核版本都要用它。Fedora `sudo dnf install mtools`，Ubuntu/Debian `sudo apt install mtools`，macOS `brew install mtools`。不走手动刷机又不注入公钥时可以省掉。
 3. **备份数据**：首次分区会把原厂 `userdata` 一分为二，一半留给 Android，一半给 Linux。**这一步会清空 Android 用户数据，先备份到电脑或外置存储。**
 
@@ -155,8 +156,7 @@ cd piano-install
 | `SHA256SUMS` | deploy-bundle 内 BOOT/ESP 等资产的 SHA256 清单 | 不刷入，只用于校验 |
 | `root-install/SHA256SUMS` | root-install 内 sparse 镜像与 manifest 的 SHA256 清单 | 不刷入，只用于校验 |
 
-`piano-installer-*.zip` 和 `piano-switch-ksu-*.zip` 是给一键脚本和 Android 侧
-切换模块用的，手动刷机不需要。不要把 deploy-bundle 里的
+`piano-installer-*.zip` 和 `piano-switch-ksu-*.zip` 只有本地打包器 `scripts/package-release-bundle.sh` 会生成，流水线与 deploy-bundle 都不含它们；手动刷机不需要。不要把 deploy-bundle 里的
 `pianoroot.f2fs.img.zst` 解压后直接刷；它不是按本机 `sunuefi_root` 容量派生的。
 
 ### 2. 校验下载到的文件
@@ -303,7 +303,11 @@ fastboot reboot
 
 自动化的首装走 `install-f2fs.py plan` 与 `apply`，完成同一套分区、擦除与传输。命令、run id 记录、产物契约与 PR 验收门槛见[维护与验收](internals.md)。
 
-`device-boot/boot-request.json` 必须记录首装 Android 所在的 `/dev/disk/by-partlabel/boot_a`，`app_generation` 要与 `deploy-bundle/PianoUEFI-product.img` 里的 APPv1 载荷一致。请求页写在 `boot_a` 的合体 BOOT 内，只有 Linux 启动镜像写 `boot_b`；不要把请求配置改到 `boot_b`。`root-install` 已在 `etc/piano/boot-request.json` 写入同一份配置，首启后也不要猜设备名或改槽，否则“返回 Android”和后续启动请求都会失败。
+`device-boot/boot-request.json` 的 `boot_device` 必须指向首装 Android 所在的槽，即 `/dev/disk/by-partlabel/boot_a`。`app_generation` 要与 `deploy-bundle/PianoUEFI-product.img` 里的 APPv1 载荷一致。
+
+请求页写在 Android 槽的合体 BOOT 内。首装把 Android 留在 A 槽，所以请求页在 `boot_a`，Linux 启动镜像才写 `boot_b`。把 `boot_device` 改成 `boot_b` 会让 helper 去 Linux 的 BOOT 上找请求页，写不进去。
+
+`root-install` 已在 `etc/piano/boot-request.json` 写入同一份配置，首启后也不要猜设备名或改槽。否则“返回 Android”和后续启动请求都会失败。
 
 ### 手动分区（不使用安装脚本）
 
@@ -485,7 +489,7 @@ sparse 文件用 RAW 与显式零 FILL，不用 DONT_CARE；展开后的完整�
 ### 默认状态
 * **120 Hz 与触控**：Mesa 硬件加速默认开启；触控服务加载 5 阶自适应卡尔曼滤波与 24 像素死区防抖。
 * **声学保护**：内核与 ALSA UCM2 把 FS19xx 四功放截断在 -15 dB；麦克风有 +40 dB 硬件增益。
-* **电池与电源**：`/hypervisor` 节点已软隔离，GNOME 显示原生双电芯电量，支持合盖与深度挂起。休眠（hibernate）与混合睡眠默认关闭，见 `scripts/finalize-fedora-rootfs.py` 写的 `logind.conf`。
+* **电池与电源**：`/hypervisor` 节点已软隔离，GNOME 显示原生双电芯电量，支持合盖与深度挂起。休眠（hibernate）与混合睡眠默认关闭：`sleep.conf.d/piano.conf` 由 `scripts/finalize-fedora-rootfs.py` 写入，`logind.conf.d/piano.conf` 由 `piano-fedora-configs` 包提供。
 * **触控提频**：`uperf-linux` 监听触控输入，触点按下后 1 ms 内拉高全大核频率。
 
 ---
@@ -498,8 +502,7 @@ sparse 文件用 RAW 与显式零 FILL，不用 DONT_CARE；展开后的完整�
    - 点击 GNOME 应用抽屉里的**「返回 Android」**图标；
    - 或在终端输入 `piano-next-boot android --reboot`，系统同步数据后重启进入 HyperOS。
 2. **从 Android 切换回 Linux**：
-   - `piano-switch-ksu` (KernelSU / SukiSU) 模块目前还不能安装，缺 manager 要求的
-     `bin/` 原生工具与策略文件，见[已知问题](known-issues.md#android-侧)；
+   - `piano-switch-ksu` (KernelSU / SukiSU) 匹配模块可以装，但只接管已有核心，不重写 BOOT；Android→Linux 的自动切换尚未验收，见[已知问题](known-issues.md#android-侧)；
    - 现阶段用开机前 3 秒的引导菜单，或从原厂 Fastboot 执行
      `fastboot set_active b` 后重启。
 3. **开机引导菜单**：

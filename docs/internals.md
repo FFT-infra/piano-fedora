@@ -119,13 +119,9 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
 
 `plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量。任何一项与现场不符就停止。同时确认设备当前槽位是 `a`，`root-install-manifest.json` 顶层的 `android_slot` 是 `_a`。首装不能用 `_b`：一键脚本固定写 `boot_b`，会覆盖 Android 唯一的启动路径。
 
-`device-boot/boot-request.json` 必须记录首装 Android 所在的
-`/dev/disk/by-partlabel/boot_a`，其 `app_generation` 必须与
-`deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。请求页写在
-`boot_a` 的合体 BOOT 内，Linux 启动镜像才写入 `boot_b`。不要把请求配置
-改成 `boot_b`。`root-install` 已在 `etc/piano/boot-request.json` 写入同一份
-配置，首启后也不要猜测设备名或改槽。否则 Linux 的“返回 Android”和后续
-启动请求会失败。
+`device-boot/boot-request.json` 的 `boot_device` 必须指向首装 Android 所在的槽，即 `/dev/disk/by-partlabel/boot_a`，其 `app_generation` 必须与 `deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。
+
+请求页写在 Android 槽的合体 BOOT 内。首装把 Android 留在 A 槽，所以请求页在 `boot_a`，Linux 启动镜像才写入 `boot_b`。把 `boot_device` 改成 `boot_b` 会让 helper 去 Linux 的 BOOT 上找请求页。`root-install` 已在 `etc/piano/boot-request.json` 写入同一份配置，首启后也不要猜测设备名或改槽，否则 Linux 的“返回 Android”和后续启动请求会失败。
 
 ### 3. 执行破坏性首次分区并初始化 Android userdata
 
