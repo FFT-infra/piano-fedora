@@ -586,6 +586,18 @@ ls /usr/lib/modules/          # 有与 uname -r 同名的目录
 再完整重启一次，确认仍进 GNOME。双系统往返按下一节执行，往返后核对
 `fastboot getvar current-slot`。
 
+编解码另有一条可复现的取证命令，在设备上跑，`MEDIA_OUTPUT` 必须是新的目录：
+
+```sh
+make test-device-media MEDIA_OUTPUT=/tmp/media-check
+```
+
+`ffmpeg-free` 不含 `libx264`/`libx265`，生成 B 帧素材那一步会失败。在别的机器上用
+`-bf 3 -g 60` 编一份 300 帧的 H.264 与 HEVC 素材，连同 `pict_type` 清单放到设备上，
+用 `--fixture-dir` 与 `--fixture-types` 指过去；设备上的 `ffprobe` 把开源码流的
+`pict_type` 报成 `?`，没有清单会判成“没有 B 帧”。目标镜像也没装 `libva-utils`，
+`vainfo` 那一步会跳过，`result.json` 里记为 skipped。
+
 发布验收的标准比这里更严：必须从原始 GPT/UFS 重新分区，并使用同一条流水线新
 产出的 bundle 与 root-install。门槛见[维护与验收](internals.md#pr-验收门槛)。
 
