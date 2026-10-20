@@ -48,23 +48,23 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 `docs/upstreams.json` 登记研究与对照仓库，只用来限定实现范围。源码直接依赖以 `sources.lock.json` 为准，参考文档不会自动进入生产依赖。下载和生成的文件放在被忽略的 `build/`、`out/`。固件、校准和密钥不进代码仓库。
 
-## 2026-10-20 发布链
+## 2026-10-21 发布链
 
-当前验收基线来自这一轮，五个阶段全部 success：
+当前基线来自 `dev` 上的这一轮，每一阶段都 success：
 
 | 阶段 | run | 关键产物 |
 | --- | --- | --- |
-| host-check → piano-rpms | 39350753680 | 九类矩阵 RPM 与 `kernel-piano` |
-| build-rootfs | 39351293283 | `rootfs-44-gnome` |
-| build-image | 39352196914 | `root-image-8192` |
-| build-bundle | 39353127010 | `deploy-bundle` |
-| prepare-install | 39353803394 | `root-install`（`size_mib=479990`，`expanded_bytes=503305994240`） |
+| host-check（FFmpeg） | 39466090328 | `piano-fedora-ffmpeg` |
+| build-image | 39468564677 | `root-image-8192`，initramfs 带 `fsck.f2fs` |
+| build-bundle | 39470546378 | `deploy-bundle`，含 `pianoroot.f2fs.sparse.img` |
 
-这一轮从 `main` 的 `1aa64af6` 起链，中途只改了文档与 `flash-linux.sh` 的 `python3` 前置检查，没有动构建输入。上一轮（39308151788 → 39329477706）的产物不再作为基线。
+这一轮换了 root 的容量约定：封存镜像固定 8192 MiB，与设备无关，首次启动由 initramfs 长满 `sunuefi_root`。因此 `prepare-install` 不再是发布链的一环，bundle 自带的 sparse 就是装机材料。`prepare-install` 仍然可用，只在想预先扩到某个容量时才跑。
 
-`size_mib=479990` 是那一轮 `product.json` 里的 `root_size_mib`，与当时设备 `sunuefi_root` 的实时容量相同。分区容量按设备实时 GPT 计算。换了设备或改了分区，就要重新取 `fastboot getvar partition-size:sunuefi_root`，不要沿用这里的数字。
+`verify-bundle.py` 在这一轮解码 `pianoroot.f2fs.sparse.img`，与 `pianoroot.f2fs.img.zst` 展开后的字节和摘要比对；initramfs manifest 的 `f2fs_tools_verified` 为 `true`，归档里有 `usr/sbin/fsck.f2fs` 与指向它的 `resize.f2fs`。ABL 诊断链的 manifest 是 `false`，那条链不做扩容。
 
-这一轮修掉的三处真实故障。`stage-rootfs-payload.py` 先把封存内核里的 `build`/`source` 链接当成差异。`kernel-piano.spec` 的 `brp-strip` 改写 `.ko` 的 `.symtab`，使 RPM 与封存内核不再逐字节相同。`build-clean-rootfs.py` 没有给本地仓库设 priority，dnf 装了版本号更高的发行版 Mesa。
+上一轮（39350753680 → 39353803394）的产物不再是基线：那一轮把 root 离线扩到 `size_mib=479990`，与设备容量绑死，同一份镜像装不到别的容量上。
+
+这一轮修掉的两处真实故障。手动分区文档把 `/sys/block/sda/size` 当 LBA 总数，它其实是 512 字节扇区数，与 4096 字节 LBA 差 8 倍，`dd` 会落在盘中间；现在从主表头的 `alternate_lba` 取。`build-f2fs-image.py` 的 loop 探针只看 `losetup -f` 的退出码，而它不碰设备、容器里照样返回 0，CI 装上 `f2fs-tools` 后走到真实挂载才暴露；现在真挂一个 4 KiB 临时文件。
 
 ## 尚需验证
 
