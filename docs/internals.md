@@ -37,6 +37,10 @@ build-bundle
 
 boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。安装入口在 boot-tools 的 `installer/scripts`，锁定的上游代码附带源码清单，不需要在设备主机上重编译。普通发行版主机需要 Python 3、adb、fastboot；BOOT 准备用 Actions 提供的宿主工具。
 
+`host-check` 的 `package_prepare_run` 是另一个可选入口：填一个成功的 `prepare-install` run，它调用 `package-install.yml` 把那份 `root-install` 压成 zstd，只压缩已校验的产物，不重建文件系统。
+
+只读排查用的两个脚本不进流水线，直接在本机跑：`scripts/probe-device.sh` 取设备身份、槽位与 GPT，`scripts/verify-new-image.sh` 挂载镜像核对交接前提。两者都只读。
+
 ## 本机 BOOT
 
 先确认当前原 BOOT 的完整摘要、槽位和系统版本。`prepare-device-boot.py` 用这些输入和同核心的 Actions 工具生成 `boot_android.img`、`boot_linux.img` 与 `boot-request.json`。默认目标是普通 Android。
