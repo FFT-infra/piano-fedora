@@ -8,7 +8,7 @@
 
 1. **解锁 Bootloader**：通过小米官方渠道完成 BL 解锁。刷入前电量保持 **30% 以上**，建议 50%。
 2. **电脑端工具**：装好 Android Platform Tools，`fastboot` 与 `adb` 在 PATH 里。Linux 主机还要配好设备 udev 规则，或者用有 `sudo` 权限的 shell。
-   - Python 3：`flash-linux.sh` 用它读 `root-install-manifest.json` 的 `android_slot`。脚本不检查这个依赖，缺了会在校验之后、写入之前中断。Fedora `sudo dnf install python3`，Ubuntu/Debian `sudo apt install python3`，macOS 用系统自带的 `python3`。
+   - Python 3：`flash-linux.sh` 用它读 `root-install-manifest.json`。脚本在校验摘要之前就检查 `python3`，缺了直接停下，不会写设备。Windows 脚本改用系统自带的 PowerShell，不需要 Python。Fedora `sudo dnf install python3`，Ubuntu/Debian `sudo apt install python3`，macOS 用系统自带的 `python3`。
    - `mtools` 提供 `mcopy` 与 `mtype`：注入 SSH 公钥、以及核对 ESP 里的内核版本都要用它。Fedora `sudo dnf install mtools`，Ubuntu/Debian `sudo apt install mtools`，macOS `brew install mtools`。不走手动刷机又不注入公钥时可以省掉。
 3. **备份数据**：首次分区会把原厂 `userdata` 一分为二，一半留给 Android，一半给 Linux。**这一步会清空 Android 用户数据，先备份到电脑或外置存储。**
 
