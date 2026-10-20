@@ -15,10 +15,6 @@ on:
         required: false
         default: "44"
   workflow_call:
-    outputs:
-      run_id:
-        description: "Resolved build-kernel run used by this matrix"
-        value: ${{ jobs.rpms.outputs.kernel_run }}
     inputs:
       kernel_run_id:
         description: "Successful build-kernel run with kernel-release-7.2.9 and kernel-sdk-7.2.9"
@@ -49,8 +45,6 @@ jobs:
     needs: inputs
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
-    outputs:
-      kernel_run: ${{ steps.kernel.outputs.run_id }}
     steps:
       - uses: actions/checkout@v4
 
