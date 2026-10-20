@@ -23,6 +23,10 @@ def prepare(stock, tools, host_tool, bundle, slot, source_sha, output):
             "expected the full current 96 MiB BOOT")
     require(sha256(stock) == source_sha, "BOOT does not match the measured current-device digest")
     require(not output.exists() and not output.is_symlink(), "use a new output directory")
+    for name in ("selector-module.json", "native/manifest.json"):
+        require((tools / name).is_file(), f"boot-tools lacks {name}: {tools}")
+    for name in ("manifest.json", "piano-boot-repack"):
+        require((host_tool / name).is_file(), f"host tool lacks {name}: {host_tool}")
     selector_meta = json.loads((tools / "selector-module.json").read_text())
     product = tools / "product"
     product_meta = json.loads((product / "manifest.json").read_text())
