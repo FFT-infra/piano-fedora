@@ -8,10 +8,12 @@ import subprocess
 from pathlib import Path
 
 from piano_artifacts import sha256, verify_uefi_source
+import piano_sparse
 
 PROJECT = Path(__file__).resolve().parents[1]
 
 REQUIRED = {"sunuefi_esp.img", "boot_sunuefi.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst",
+            "pianoroot.f2fs.sparse.img",
             "root-image-manifest.json", "kernel-manifest.json", "initramfs-manifest.json",
             "esp-manifest.json", "runtime-manifest.json", "mesa-manifest.json",
             "ffmpeg-manifest.json", "rootfs-manifest.json", "source-runs.json", "uefi-source.json"}
@@ -77,6 +79,13 @@ def verify(root):
             raise ValueError("compressed root image failed to decode")
     if expanded != image["bytes"] or raw_hash.hexdigest() != image["sha256"]:
         raise ValueError("compressed root image differs from the verified raw image")
+    # 封存镜像与设备容量无关，传输格式在 bundle 里现成提供，装机不需要 Actions。
+    transport = root / "pianoroot.f2fs.sparse.img"
+    if not transport.is_file():
+        raise ValueError("bundle is missing the flashable root transport")
+    decoded = piano_sparse.inspect(transport)
+    if (decoded["expanded_bytes"], decoded["expanded_sha256"]) != (image["bytes"], image["sha256"]):
+        raise ValueError("root transport does not decode to the sealed image")
     with (root / "boot_sunuefi.img").open("rb") as f:
         if f.read(8) != b"ANDROID!":
             raise ValueError("Linux boot payload is not an Android boot container")

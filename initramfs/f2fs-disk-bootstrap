@@ -189,6 +189,31 @@ if [ "$boot_chain" = abl-storage ]; then
 fi
 umount /sysroot || fail 'Cannot finish read-only inspection'
 verify_device || fail 'Root identity changed before writable mount'
+# 封存镜像与设备容量无关，根文件系统在首次读写挂载之前长满自己的分区。
+# resize.f2fs 只支持扩容，而且拒绝已挂载的设备，所以只能在这里做。
+# 缩小过的分区无法靠 resize.f2fs 回退，直接停在救援。
+grow_root() {
+    [ "$boot_chain" = sunuefi ] || return 0
+    part=${rootdev##*/}
+    sectors=$(cat "/sys/class/block/$part/size" 2>/dev/null) || fail 'Cannot read the root partition size'
+    part_bytes=$((sectors * 512))
+    fs_bytes=$(/usr/bin/blkid -p -o export "$rootdev" 2>/dev/null | sed -n 's/^FSSIZE=//p')
+    [ -n "$fs_bytes" ] || fail 'Cannot read the F2FS capacity'
+    [ "$fs_bytes" -le "$part_bytes" ] || fail "The F2FS root is larger than its partition ($fs_bytes > $part_bytes); shrinking is unsupported"
+    [ "$fs_bytes" -lt "$part_bytes" ] || return 0
+    log "ROOT_GROW_STARTED: fs_bytes=$fs_bytes part_bytes=$part_bytes"
+    /usr/sbin/fsck.f2fs -f "$rootdev" >/dev/null 2>&1
+    status=$?
+    [ "$status" -le 1 ] || fail "fsck refused the root before growing (status=$status)"
+    /usr/sbin/resize.f2fs "$rootdev" >/dev/null 2>&1 || fail 'resize.f2fs failed'
+    /usr/sbin/fsck.f2fs -f "$rootdev" >/dev/null 2>&1
+    status=$?
+    [ "$status" -le 1 ] || fail "fsck refused the root after growing (status=$status)"
+    grown=$(/usr/bin/blkid -p -o export "$rootdev" 2>/dev/null | sed -n 's/^FSSIZE=//p')
+    [ "$grown" = "$part_bytes" ] || fail "The root did not grow to fill its partition ($grown != $part_bytes)"
+    log "ROOT_GROW_DONE: fs_bytes=$grown"
+}
+grow_root
 # 读写挂载。身份已在上一步核对过，这里再核对一次防止设备在两步之间变化。
 mount -t f2fs -o rw "$rootdev" /sysroot || fail 'Writable Linux mount failed'
 mkdir -p /sysroot/dev /sysroot/proc /sysroot/sys /sysroot/run /sysroot/tmp || fail 'Root mountpoints failed'

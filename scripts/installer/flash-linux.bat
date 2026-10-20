@@ -420,11 +420,12 @@ if not defined ROOT_PARTITION_SIZE (
     endlocal & exit /b 1
 )
 REM Fastboot reports the capacity as hexadecimal without a 0x prefix.
-powershell -NoProfile -Command "if ([Convert]::ToUInt64('!ROOT_PARTITION_SIZE!', 16) -ne [Convert]::ToUInt64('!ROOT_EXPANDED_BYTES!', 10)) { exit 1 }"
+powershell -NoProfile -Command "if ([Convert]::ToUInt64('!ROOT_EXPANDED_BYTES!', 10) -gt [Convert]::ToUInt64('!ROOT_PARTITION_SIZE!', 16)) { exit 1 }"
 if errorlevel 1 (
-    echo [ERROR] root-install expanded bytes != sunuefi_root partition capacity.
+    echo [ERROR] root-install is larger than the sunuefi_root partition.
     echo   root-install : !ROOT_EXPANDED_BYTES!
     echo   sunuefi_root : 0x!ROOT_PARTITION_SIZE!
+    echo A smaller image grows to fill the partition on first boot; a larger one cannot be written.
     endlocal & exit /b 1
 )
 for %%F in ("%ROOT_IMG%") do set "ROOT_SPARSE_BYTES=%%~zF"
@@ -432,7 +433,7 @@ if /i "!ROOT_SPARSE_BYTES!"=="!ROOT_EXPANDED_BYTES!" (
     echo [ERROR] root-install is a raw image, not the sparse transport from prepare-install.
     endlocal & exit /b 1
 )
-echo   OK root-install targets Android slot _a and matches sunuefi_root capacity.
+echo   OK root-install targets Android slot _a and fits inside sunuefi_root.
 endlocal & exit /b 0
 
 :verify_transport_digest

@@ -90,8 +90,9 @@ Step 3 - Confirm the device before writing anything:
    fastboot getvar current-slot     -> must be "a" for this first-install path
                                      (Linux is always written to Slot B)
    fastboot getvar partition-size:sunuefi_root
-                                    -> must equal expanded_bytes in
-                                       root-install-manifest.json
+                                    -> must be at least expanded_bytes in
+                                       root-install-manifest.json; the root
+                                       grows to fill the partition on first boot
 
 Step 4 - Flash, one command at a time (each must print OKAY):
    fastboot set_active b

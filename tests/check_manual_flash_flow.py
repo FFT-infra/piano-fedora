@@ -403,8 +403,9 @@ def main():
         if not assert_no_device_write(cross_log):
             failures.append("cross-bundle root-install caused a device write")
 
-        # A root-install from the right bundle but the wrong capacity must also
-        # fail before set_active or any flash command is issued.
+        # A root-install larger than the partition cannot be written; it must
+        # fail before set_active or any flash command is issued. A smaller one
+        # is accepted and grows on first boot.
         capacity = work / "capacity"
         capacity.mkdir()
         capacity_assets, capacity_root_install = make_asset_set(capacity)
@@ -425,10 +426,10 @@ def main():
             "ESP_IMG": str(capacity_staging / "sunuefi_esp.img"),
         }
         result = invoke_installer(capacity_staging, capacity_env, boot=device_boot)
-        if result.returncode == 0 or "must exactly match sunuefi_root" not in (result.stdout + result.stderr):
-            failures.append("wrong-capacity root-install was not rejected")
+        if result.returncode == 0 or "must fit inside sunuefi_root" not in (result.stdout + result.stderr):
+            failures.append("oversized root-install was not rejected")
         if not assert_no_device_write(capacity_log):
-            failures.append("wrong-capacity root-install caused a device write")
+            failures.append("oversized root-install caused a device write")
 
         # The root-install must target the Android slot that is active now. A
         # root prepared for _a must not overwrite boot_b on a _b device.
@@ -499,7 +500,7 @@ def main():
     erase = 'device.call(["fastboot", "-s", identity["factory_serial"], "erase", "userdata"]'
     if erase not in installer:
         failures.append("first-install executor does not explicitly erase userdata")
-    if installer.index(erase) < installer.index('device.shell("sgdisk --load-backup='):
+    if installer.index(erase) < installer.index("write_gpt_blobs(device, identity, session"):
         failures.append("first-install executor erases userdata before the GPT write")
     if 'journal["device_writes"] = True' not in installer[:installer.index(erase)]:
         failures.append("first-install executor does not journal the destructive write boundary")

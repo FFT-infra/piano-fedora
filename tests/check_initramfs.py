@@ -71,6 +71,18 @@ def build_fixture(tmp, busybox):
                 shutil.copy2(loader.resolve(), rootfs / "lib" / "ld-linux-aarch64.so.1")
                 break
 
+    # 首启扩容要 fsck.f2fs，resize.f2fs 在 Fedora 里是它的链接。
+    (rootfs / "usr" / "sbin").mkdir(parents=True)
+    fsck = shutil.which("fsck.f2fs") or "/usr/sbin/fsck.f2fs"
+    if Path(fsck).is_file():
+        shutil.copy2(Path(fsck).resolve(), rootfs / "usr" / "sbin" / "fsck.f2fs")
+        for library in ("libselinux.so.1", "libf2fs.so.10", "libpcre2-8.so.0", "libgcc_s.so.1", "libc.so.6"):
+            for directory in ("/usr/lib64", "/lib64", "/usr/lib", "/usr/lib/aarch64-linux-gnu", "/lib/aarch64-linux-gnu"):
+                source = Path(directory) / library
+                if source.exists():
+                    shutil.copy2(source.resolve(), rootfs / "lib64" / library)
+                    break
+
     rescue = rootfs / "usr/local/sbin/piano-debug-bootstrap"
     rescue.parent.mkdir(parents=True)
     rescue.write_text("#!/bin/sh\nexit 0\n")
@@ -228,6 +240,22 @@ def main():
                 check(any(name.startswith("lib64/") or name.startswith("lib/")
                           for name in records),
                       "ELF dependency closure missing")
+            # 首启扩容：工具、链接与引导脚本的分支都要在归档里。
+            if (rootfs / "usr" / "sbin" / "fsck.f2fs").is_file():
+                check("usr/sbin/fsck.f2fs" in records, "fsck.f2fs missing from initramfs")
+                check(records.get("usr/sbin/resize.f2fs") == b"fsck.f2fs",
+                      "resize.f2fs must be a relative link to fsck.f2fs")
+                check("lib64/libf2fs.so.10" in records,
+                      "f2fs-tools library must be in the ELF closure")
+                check(manifest["verification"]["f2fs_tools_verified"] is True,
+                      "manifest must record the f2fs tools check")
+                bootstrap = records["pianoinit"]
+                check(b"ROOT_GROW_STARTED" in bootstrap and b"/usr/sbin/resize.f2fs" in bootstrap,
+                      "bootstrap must grow the root before the writable mount")
+                check(b"shrinking is unsupported" in bootstrap,
+                      "a root larger than its partition must stop the boot")
+                check(bootstrap.index(b"grow_root\n") < bootstrap.index(b'mount -t f2fs -o rw'),
+                      "the grow branch must run before the writable mount")
 
     if failures:
         for item in failures:

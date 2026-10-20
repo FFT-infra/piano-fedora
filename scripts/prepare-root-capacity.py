@@ -149,14 +149,15 @@ def configure_source(source, bundle, slot, work):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--bundle", type=Path, required=True)
-    ap.add_argument("--size-mib", type=int, required=True)
+    ap.add_argument("--size-mib", type=int, help="把镜像预先扩到这个容量；留空则只写设备配置")
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--android-slot", choices=("_a", "_b"))
     args = ap.parse_args()
     require(os.geteuid() == 0, "run with sudo")
-    require(64 <= args.size_mib <= 1024**2, "target must be 64 MiB..1 TiB")
+    if args.size_mib is not None:
+        require(64 <= args.size_mib <= 1024**2, "target must be 64 MiB..1 TiB")
     for name in ("zstd", "resize.f2fs", "fsck.f2fs", "cp", "mount", "umount"):
         require(shutil.which(name), "missing tool: " + name)
     spec = importlib.util.spec_from_file_location("bundle_verifier", Path(__file__).with_name("verify-bundle.py"))
@@ -175,12 +176,22 @@ def main():
     source, target = work / "source.raw", work / "expanded.raw"
     expand_zstd(bundle / "pianoroot.f2fs.img.zst", source, root_meta["bytes"], root_meta["sha256"])
     device_config = configure_source(source, bundle, args.android_slot, work) if args.android_slot else None
-    proof = resize_and_verify(source, target, args.size_mib, work)
-    sparse = output / "pianoroot.f2fs.sparse.img"
-    transport = encode(target, sparse)
-    decoded = inspect(sparse)
-    require(decoded["expanded_sha256"] == proof["expanded_sha256"] and
-            decoded["expanded_bytes"] == proof["expanded_bytes"], "sparse transport differs from verified F2FS bytes")
+    if args.size_mib is None:
+        # 不预扩：镜像保持封存容量，首启扩容会把它长满分区。
+        sparse = output / "pianoroot.f2fs.sparse.img"
+        transport = encode(source, sparse)
+        decoded = inspect(sparse)
+        require(decoded["expanded_sha256"] == root_meta["sha256"], "sparse transport differs from the sealed image")
+        proof = {"expanded_sha256": root_meta["sha256"], "expanded_bytes": root_meta["bytes"],
+                 "target_size_mib": root_meta["size_mib"], "pre_expanded": False}
+    else:
+        proof = resize_and_verify(source, target, args.size_mib, work)
+        sparse = output / "pianoroot.f2fs.sparse.img"
+        transport = encode(target, sparse)
+        decoded = inspect(sparse)
+        require(decoded["expanded_sha256"] == proof["expanded_sha256"] and
+                decoded["expanded_bytes"] == proof["expanded_bytes"], "sparse transport differs from verified F2FS bytes")
+        proof["target_size_mib"], proof["pre_expanded"] = args.size_mib, True
     record = {"schema_version": 1, "status": "ROOT_CAPACITY_VERIFIED_NOT_DEVICE_VERIFIED",
               # The flash scripts compare the selected root-install's slot with
               # the bootloader's current-slot before the first write. Keep this
@@ -190,22 +201,25 @@ def main():
               "source_root_sha256": root_meta["sha256"],
               "source_bundle_manifest_sha256": sha256(bundle / "bundle-manifest.json"),
               "source_root_manifest_sha256": sha256(bundle / "root-image-manifest.json"),
-              "target_size_mib": args.size_mib, "root_label": "PIANOROOT",
+              "target_size_mib": proof["target_size_mib"], "root_label": "PIANOROOT",
               "device_configuration": device_config,
               **proof, "transport": {**transport, **decoded, "file": sparse.name,
                                      "sha256": sha256(sparse), "bytes": sparse.stat().st_size}}
     manifest = output / "root-install-manifest.json"
     manifest.write_text(json.dumps(record, indent=2) + "\n")
     (output / "SHA256SUMS").write_text("".join(sha256(p) + "  " + p.name + "\n" for p in (sparse, manifest)))
-    # 仅清理本次新建、已完成验证的两个 raw 工作副本。
+    # 仅清理本次新建、已完成验证的工作副本。
     source.unlink()
-    target.unlink()
+    if target.exists():
+        target.unlink()
     left, right = work / "source-mount", work / "target-mount"
     left.rmdir()
-    right.rmdir()
+    if right.exists():
+        right.rmdir()
     work.rmdir()
     marker.unlink()
-    print(json.dumps({"status": record["status"], "size_mib": args.size_mib, "transport": record["transport"]}))
+    print(json.dumps({"status": record["status"], "size_mib": record["target_size_mib"],
+                      "pre_expanded": proof["pre_expanded"], "transport": record["transport"]}))
 
 
 if __name__ == "__main__":

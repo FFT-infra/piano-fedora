@@ -417,9 +417,21 @@ def verify_archive(archive, kernel_manifest=None, expected_chain=None):
         raise InitramfsError("/usr/bin/blkid must be the independent util-linux ELF")
     if re.search(rb"(?<![/\w-])blkid\s+-p", rows["pianoinit"]["data"]):
         raise InitramfsError("bootstrap must call /usr/bin/blkid explicitly")
+    if chain == "sunuefi":
+        # 首启扩容的工具与链接必须在归档里，缺一个就会停在救援而不是少用容量。
+        fsck = rows.get("usr/sbin/fsck.f2fs", {})
+        if not stat.S_ISREG(fsck.get("mode", 0)) or not fsck["mode"] & 0o111 or not fsck["data"].startswith(b"\x7fELF"):
+            raise InitramfsError("usr/sbin/fsck.f2fs must be the executable f2fs-tools ELF")
+        link = rows.get("usr/sbin/resize.f2fs", {})
+        if not stat.S_ISLNK(link.get("mode", 0)) or link["data"] != b"fsck.f2fs":
+            raise InitramfsError("usr/sbin/resize.f2fs must be a relative link to fsck.f2fs")
+        for program in (rb"/usr/sbin/fsck\.f2fs", rb"/usr/sbin/resize\.f2fs"):
+            if not re.search(program, rows["pianoinit"]["data"]):
+                raise InitramfsError("bootstrap must call the f2fs tools explicitly")
     return {"entries": len(rows), "elf_closure_verified": True,
             "module_identities_verified": kernel_manifest is not None,
             "relative_links_verified": True, "canonical_blkid_verified": True,
+            "f2fs_tools_verified": chain == "sunuefi",
             "busybox_applets_verified": True, "bootstrap_programs_verified": True}
 
 
@@ -475,8 +487,10 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
     if missing:
         raise InitramfsError("busybox is missing applets: " + ", ".join(sorted(missing)))
 
-    # blkid 走动态链接，需要它的完整依赖闭包。
-    files = runtime_files(rootfs, ("/usr/bin/blkid",))
+    # blkid 与 f2fs-tools 走动态链接，需要它们的完整依赖闭包。
+    # 首启扩容在读写挂载之前完成，那时 rootfs 还不可执行。
+    programs = ["/usr/bin/blkid"] + (["/usr/sbin/fsck.f2fs"] if boot_chain == "sunuefi" else [])
+    files = runtime_files(rootfs, programs)
 
     module_dir = kernel / "modules" / "lib" / "modules" / release
     if not module_dir.is_dir():
@@ -559,6 +573,9 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
         {"name": "bin/" + name, "mode": stat.S_IFLNK | 0o777, "data": b"busybox"}
         for name in APPLETS + (("devmem",) if boot_chain == "abl-storage" else ())
     ]
+    if boot_chain == "sunuefi":
+        # Fedora 里 resize.f2fs 是 fsck.f2fs 的符号链接，归档只留一份二进制。
+        entries.append({"name": "usr/sbin/resize.f2fs", "mode": stat.S_IFLNK | 0o777, "data": b"fsck.f2fs"})
 
     archive = make_newc(entries)
     verification = verify_archive(archive, kernel_manifest, boot_chain)

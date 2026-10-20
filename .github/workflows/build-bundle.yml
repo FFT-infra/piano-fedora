@@ -198,6 +198,12 @@ jobs:
           test ! -e bundle/esp.img
           test ! -e bundle/boot.img
           cp build/in/image/pianoroot.f2fs.img.zst bundle/
+          # 封存镜像与设备容量无关。直接可刷的 sparse 随 bundle 一起发布，
+          # 装机不需要再跑 prepare-install 去按本机分区容量重算一份。
+          zstd -dc bundle/pianoroot.f2fs.img.zst > build/pianoroot.f2fs.img
+          python3 -c "import sys; sys.path.insert(0, 'scripts'); import piano_sparse; \
+            piano_sparse.encode('build/pianoroot.f2fs.img', 'bundle/pianoroot.f2fs.sparse.img')"
+          rm -f build/pianoroot.f2fs.img
           cp build/in/image/diagnostic-abl-storage.tar.zst bundle/
           cp build/in/image/root-image-manifest.json build/in/image/source-runs.json build/in/image/runtime-manifest.json bundle/
           cp build/in/image/mesa-manifest.json build/in/image/ffmpeg-manifest.json build/in/image/rootfs-manifest.json bundle/

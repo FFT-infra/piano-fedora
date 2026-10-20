@@ -9,7 +9,7 @@ on:
         required: true
         default: ""
       root_size_mib:
-        description: "Linux root MiB（留空使用 product.json 中已核对的容量）"
+        description: "可选：把 root 预先扩到这个 MiB；留空则用封存容量，首启长满分区"
         required: false
         default: ""
       android_slot:
@@ -69,12 +69,9 @@ jobs:
         run: |
           set -euo pipefail
           (cd build/in/bundle && sha256sum -c SHA256SUMS)
-          if [ -z "$ROOT_SIZE_MIB" ]; then
-            ROOT_SIZE_MIB=$(python3 -c 'import json; print(json.load(open("product.json"))["target"]["root_size_mib"])')
-          fi
           sudo env TMPDIR="$TMPDIR" python3 scripts/prepare-root-capacity.py \
-            --bundle build/in/bundle --size-mib "$ROOT_SIZE_MIB" --output build/root-install \
-            --android-slot "$ANDROID_SLOT"
+            --bundle build/in/bundle ${ROOT_SIZE_MIB:+--size-mib "$ROOT_SIZE_MIB"} \
+            --output build/root-install --android-slot "$ANDROID_SLOT"
           sudo chown -R "$(id -u):$(id -g)" build/root-install
           (cd build/root-install && sha256sum -c SHA256SUMS)
       - uses: actions/upload-artifact@v4

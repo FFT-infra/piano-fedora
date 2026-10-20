@@ -16,8 +16,8 @@
     "root_label": "PIANOROOT",
     "esp_label": "SUNUEFI_ESP",
     "esp_size_mib": 512,
-    "root_size_mib": 479990,
+    "root_size_mib": 8192,
     "partition_allocation": "equal-userdata-after-esp"
   },
-  "note": "root_size_mib 来自 2026-10-10 本机 4 KiB GPT：保留 Android 固定分区，userdata 扣除 ESP 后对半分。执行安装前必须与实时 GPT 重算结果一致。"
+  "note": "root_size_mib 是封存镜像的容量，与设备无关；sunuefi_root 的实际容量一律从实时 GPT 算，文件系统在首启时长满该分区。"
 }

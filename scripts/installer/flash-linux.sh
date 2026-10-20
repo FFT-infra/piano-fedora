@@ -456,11 +456,14 @@ if [ "$SKIP_CHECKSUM" -eq 0 ]; then
         echo -e "${RED}[ERROR] root-install manifest does not describe the selected sparse image.${NC}"
         exit 1
     fi
-    if [ -z "$root_expanded_bytes" ] || [ "$root_expanded_bytes" != "$ROOT_PARTITION_SIZE" ]; then
-        echo -e "${RED}[ERROR] root-install was expanded to '${root_expanded_bytes}' bytes, but sunuefi_root is ${ROOT_PARTITION_SIZE} bytes.${NC}"
-        echo "The root-install capacity must exactly match sunuefi_root."
-        echo "Regenerate root-install from the current GPT capacity."
+    if [ -z "$root_expanded_bytes" ] || [ "$root_expanded_bytes" -gt "$ROOT_PARTITION_SIZE" ]; then
+        echo -e "${RED}[ERROR] root-install is '${root_expanded_bytes}' bytes, but sunuefi_root is ${ROOT_PARTITION_SIZE} bytes.${NC}"
+        echo "The root image must fit inside sunuefi_root. A smaller image grows to fill"
+        echo "the partition on first boot; a larger one cannot be written at all."
         exit 1
+    fi
+    if [ "$root_expanded_bytes" -lt "$ROOT_PARTITION_SIZE" ]; then
+        echo -e "  ${GREEN}✓${NC} root image fits sunuefi_root; the first boot grows it to $ROOT_PARTITION_SIZE bytes."
     fi
     if [ "$root_android_slot" != "_a" ]; then
         echo -e "${RED}[ERROR] root-install was prepared for Android slot '${root_android_slot}', but this installer requires '_a'.${NC}"
@@ -476,7 +479,7 @@ if [ "$SKIP_CHECKSUM" -eq 0 ]; then
 else
     echo -e "${RED}[ERROR] --skip-checksum is not accepted for the first-install path.${NC}"
     echo "The installer must verify both SHA256SUMS, the bundle/root provenance,"
-    echo "the Android slot, and the exact sunuefi_root capacity before any write."
+    echo "the Android slot, and the sunuefi_root capacity before any write."
     exit 1
 fi
 
