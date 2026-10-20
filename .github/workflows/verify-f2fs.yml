@@ -1,4 +1,4 @@
-name: verify-tools
+name: verify-f2fs
 
 # 在 CI 上验证镜像工具的实际行为，并如实记录边界。
 #

@@ -1,4 +1,4 @@
-.PHONY: test test-device-media plan clean build-rpms release-bundle
+.PHONY: test test-device-media plan plan-clean clean build-rpms release-bundle
 
 test:
 	python3 tests/check_sources.py

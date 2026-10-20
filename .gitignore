@@ -10,6 +10,7 @@
 *.img.zst
 *.tar.gz
 *.tar.xz
+*.tar.zst
 *.rpm
 *.zip
 

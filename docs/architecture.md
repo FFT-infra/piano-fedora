@@ -46,6 +46,12 @@ F2FS 排在分区之前。F2FS 是技术风险，可能走不通。分区是工�
 | `verify-f2fs.yml` | push / PR | 小 fixture 的 F2FS 元数据往返验证 |
 | `build-image.yml` | 手动 | 同一次集成的设备 rootfs、initramfs、F2FS 镜像及相互绑定的 manifest |
 | `build-bundle.yml` | 手动 | 汇总内核、UEFI、rootfs、镜像为部署包 |
+| `prepare-install.yml` | 手动 | 按 bundle run 扩容 root、写入设备配置，产出 `root-install` 与 `boot-tools` |
+| `package-install.yml` | 手动 / `host-check` 调用 | 压缩已校验的 `root-install`，不重建文件系统 |
+| `publish-copr.yml` | 手动 | 从矩阵 SRPM 在 COPR 重建用户态包 |
+| `upstream-watch.yml` | 每周一 | 上游漂移看板，必要时开 draft PR 改 pin |
+
+上表只列构建与发布链。`host-check.yml` 也会在 push 与 PR 上跑 `make test`。
 
 产物由各 workflow 显式上传。上传失败不计为交付完成。
 
