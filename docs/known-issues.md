@@ -18,11 +18,24 @@
 
 ## 刷写与读回
 
+写 `sunuefi_root`（6.1 GB sparse）之后，设备侧的 ABL 会挂死。`lsusb` 仍能
+看到 `18d1:d00d`，但 bulk 端点上任何传输都超时，`fastboot getvar` 不回包。
+主机侧救不回来：`USBDEVFS_RESET`、hub 端口 `disable` 重新枚举、`authorized`
+翻转都试过，设备重新枚举后仍然不回包。只能长按电源键断电重来。断电回来后再
+写 `boot_b` 只要 2.4 秒，说明挂死只跟大分区写入有关。
+
+因此一次完整安装要按这个顺序做：先写 `boot_b`，再写 `sunuefi_esp`，最后写
+`sunuefi_root`；root 写完直接断电，重新进 Fastboot 只做槽位切换或重启，不再
+写大分区。一键脚本已经是这个顺序。
+
 原厂 ABL 不实现 `fastboot fetch`。主机 fastboot 37.0.0 认得这个子命令，设备
 回 `Device does not support fetch command`，宿主上留下一个 0 字节读回文件。
 `sunuefi_esp` 分区也比镜像大（537899008 对 536870912 字节），即使换了支持
 `fetch` 的引导器，整份哈希也不会等于镜像摘要。读回只能作辅助证据，刷写正确
 与否最终以启动后的 `uname -r`、`findmnt /` 和 GNOME 桌面为准。
+
+`boot_b` 的读回可以直接读分区前 4 KiB 与末尾 64 字节判断，
+`prepare-device-boot.py` 写的 `os_version`、AVB 算法和请求页偏移都能对上。
 
 ## 双系统切换
 

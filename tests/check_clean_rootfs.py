@@ -288,8 +288,24 @@ def main():
           "apply-rootfs-policy.py must build the ESP fstab line from ESP_LABEL, "
           "not from a hard-coded /boot/efi device")
 
-    # 14. piano-sensors-import 用 dump.erofs 读 Android 的 odm/vendor EROFS
-    #     镜像。缺 erofs-utils 时脚本走到 "command not found"，下游
+    # 读通 ESP 只解决了一半。helper 的写入目标是 /home/piano/.ssh/authorized_keys，
+    # 上下文是 ssh_home_t；init_t 对它有默认拒绝，单元报
+    # "authorized_keys: Permission denied"，真机日志是
+    # AVC denied { append } tcontext=ssh_home_t。公钥因此一直留在 ESP，
+    # --ssh-key 装完仍然只能用口令登录。策略里必须同时有 file append 与
+    # dir add_name/search，缺一个 helper 仍会失败。
+    selinux = (ROOT / "rootfs" / "selinux" / "piano_hardware.te").read_text(encoding="utf-8")
+    check("type ssh_home_t;" in selinux,
+          "piano_hardware.te must declare ssh_home_t; without it init_t cannot "
+          "write the imported key and the first-boot unit fails")
+    for rule in ("allow init_t ssh_home_t:file", "allow init_t ssh_home_t:dir"):
+        check(rule in selinux, f"piano_hardware.te is missing '{rule}'")
+    module = ROOT / "rootfs" / "selinux" / "piano_hardware.pp"
+    check(module.is_file() and module.stat().st_size > 0,
+          "rootfs/selinux/piano_hardware.pp must ship the compiled policy; "
+          "the .te source alone is not loaded at runtime")
+
+    # 14. piano-sensors-import 用 dump.erofs 读 Android 的 odm/vendor EROFS    #     镜像。缺 erofs-utils 时脚本走到 "command not found"，下游
     #     adsprpcd-sensorspd.service 以依赖失败停止，真机传感器全部不可用。
     profile = json.loads((ROOT / "scripts" / "profiles" / "fedora.json")
                          .read_text(encoding="utf-8"))

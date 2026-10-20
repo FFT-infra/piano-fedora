@@ -182,6 +182,20 @@ chmod +x flash-linux.sh
 
 Windows 脚本用系统自带的 Windows PowerShell 读 JSON 清单。槽位与容量核对走 `ConvertFrom-Json`，找不到 `powershell` 就直接停下。
 
+## SELinux 策略模块
+
+`rootfs/selinux/piano_hardware.te` 是策略源码，`piano_hardware.pp` 是编译产物。镜像里装的是 `.pp`，改 `.te` 不重新编译不会生效。`piano-selinux-policy.service` 在首次开机时导入它，之后的更新靠 `semodule -i`。
+
+编译要在有 `checkpolicy` 的 Fedora 上做，模块名必须和文件名一致：
+
+```sh
+cd rootfs/selinux
+checkmodule -M -m -o piano_hardware.mod piano_hardware.te
+semodule_package -o piano_hardware.pp -m piano_hardware.mod
+```
+
+每条 `allow` 都对应一次真机 AVC 拒绝，注释里写明是哪个单元、哪次启动。策略放宽前先在设备上 `semodule -i` 试装，确认对应单元从 `failed` 变成 `inactive`、再 `semodule -r piano_hardware` 卸载，验证过的规则才写回 `.te` 并重新编译。
+
 ## PR 验收门槛
 
 五项全部通过后，才能把 PR 标为设备验收通过：

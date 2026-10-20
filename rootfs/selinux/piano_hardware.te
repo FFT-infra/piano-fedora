@@ -12,9 +12,10 @@ require {
 	type unlabeled_t;
 	type iiosensorproxy_t;
 	type syslogd_t;
+	type ssh_home_t;
 	class chr_file { open read write ioctl map };
-	class file { create write open getattr };
-	class dir { add_name write };
+	class file { create write open getattr append read };
+	class dir { add_name write search getattr };
 	class unix_dgram_socket { sendto };
 	class qipcrtr_socket { create bind read write getattr getopt setopt };
 }
@@ -29,6 +30,15 @@ allow init_t proc_t:file { create write open getattr };
 # which live on an unlabeled path in the image.
 allow init_t unlabeled_t:dir { add_name write };
 allow init_t unlabeled_t:file { create write open getattr };
+
+# piano-first-boot-ssh-key.service imports the installer's public key into
+# /home/piano/.ssh/authorized_keys. The ESP side is mounted boot_t, but the
+# destination is ssh_home_t, and init_t has no write access there: the unit
+# failed with "authorized_keys: Permission denied" and the device log showed
+# AVC denied { append } tcontext=ssh_home_t. The key therefore stayed on the
+# ESP and an install with --ssh-key still could not log in by public key.
+allow init_t ssh_home_t:file { create write open getattr append read };
+allow init_t ssh_home_t:dir { search getattr add_name write };
 
 # iio-sensor-proxy logs to the journal.
 allow iiosensorproxy_t syslogd_t:unix_dgram_socket { sendto };
