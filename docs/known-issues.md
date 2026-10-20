@@ -70,11 +70,11 @@ Android 实测运行在 SELinux Permissive，启动参数带 `selinux=permissive
 ## 充电
 
 固定源码已包含 SC8541/MCA 直充支持，设备参数 cp_charge、hv_charge、
-charge_current、mipps_auth、charge_policy 均开启。这不等于实际达到 45 W。
+charge_current、mipps_auth、charge_policy 都开启。这不等于实际达到 45 W。
 0036 不应重复套用到已有实现。
 
 已有遥测是高电量下的一次采样：电量 94%，MCA USB online、PD_PPS，约
-8.60–8.74 V，sysfs 电压乘电流估算输入 12.075–21.429 W；双电池均 Charging，
+8.60–8.74 V，sysfs 电压乘电流估算输入 12.075–21.429 W；双电池都 Charging，
 温度 32.8–35.5 °C 与 31.9–34.4 °C；SC8541 online 始终为 0。低电量直充与
 最高 45 W 未证明，也没有外置功率计读数。需要真实充电器、线材和负载记录功率
 与温度。
@@ -101,7 +101,7 @@ charge_current、mipps_auth、charge_policy 均开启。这不等于实际达到
 
 相机另有一条容易误判的路径：`piano-camerad` 在没有上游产帧方时会给
 v4l2loopback 写黑帧，所以"节点能取到帧"不等于传感器在出图。判定要看 camerad
-日志里有没有该路相机的 CAMSS 媒体设备，以及帧内容是不是全黑。2026-10-17
+日志里有没有对应相机的 CAMSS 媒体设备，以及帧内容是不是全黑。2026-10-17
 在设备上取的两张样张就分属两种情况：前摄那张是正常灰阶画面，另一张只有
 一小块亮区、其余全黑。只统计"两个节点各取到 3 帧"会把后者算成通过。
 
