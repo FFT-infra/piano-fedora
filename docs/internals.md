@@ -37,7 +37,7 @@ build-bundle
 
 boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。安装入口在 boot-tools 的 `installer/scripts`。锁定的上游代码附带源码清单，不需要在设备主机上重编译。普通发行版主机需要 Python 3、adb、fastboot。BOOT 准备用 Actions 提供的宿主工具。
 
-`host-check` 的 `package_prepare_run` 是另一个可选入口。填一个成功的 `prepare-install` run，它调用 `package-install.yml` 把那份 `root-install` 压成 zstd。它只压缩已校验的产物，不重建文件系统。
+`host-check` 的 `package_prepare_run` 是另一个可选入口。填一个成功的 `prepare-install` run，`host-check` 调用 `package-install.yml` 把那份 `root-install` 压成 zstd。`package-install.yml` 只压缩已校验的产物，不重建文件系统。
 
 只读排查用的两个脚本不进流水线，直接在本机跑。`scripts/probe-device.sh` 取设备身份、槽位与 GPT。`scripts/verify-new-image.sh` 挂载镜像核对交接前提。两者都只读。
 
@@ -47,7 +47,7 @@ boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。
 
 包装后恢复必须得到完整原 BOOT 的同一 SHA256。Linux 持久请求、只读预览和改回 Android 后的再次完整恢复都要成功。文件检查替代不了真机旁路和 Recovery 验收。
 
-使用 `python3 scripts/prepare-device-boot.py --help` 查看文件参数。原 BOOT、生成的设备 BOOT、安装记录和私钥均留在本地，不进入代码仓库。
+使用 `python3 scripts/prepare-device-boot.py --help` 查看文件参数。原 BOOT、生成的设备 BOOT、安装记录和私钥都留在本地，不进入代码仓库。
 
 ## 实际首次安装
 
@@ -119,7 +119,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
 
 `plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量。任何一项与现场不符就停止。同时确认设备当前槽位是 `a`，`root-install-manifest.json` 顶层的 `android_slot` 是 `_a`。首装不能用 `_b`：一键脚本固定写 `boot_b`，会覆盖 Android 唯一的启动路径。
 
-`device-boot/boot-request.json` 的 `boot_device` 必须指向首装 Android 所在的槽，即 `/dev/disk/by-partlabel/boot_a`，其 `app_generation` 必须与 `deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。
+`device-boot/boot-request.json` 的 `boot_device` 必须指向首装 Android 所在的槽，即 `/dev/disk/by-partlabel/boot_a`，里面的 `app_generation` 必须与 `deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。
 
 请求页写在 Android 槽的合体 BOOT 内。首装把 Android 留在 A 槽，所以请求页在 `boot_a`，Linux 启动镜像才写入 `boot_b`。把 `boot_device` 改成 `boot_b` 会让 helper 去 Linux 的 BOOT 上找请求页。`root-install` 已在 `etc/piano/boot-request.json` 写入同一份配置，首启后也不要猜测设备名或改槽，否则 Linux 的“返回 Android”和后续启动请求会失败。
 
@@ -194,7 +194,7 @@ checkmodule -M -m -o piano_hardware.mod piano_hardware.te
 semodule_package -o piano_hardware.pp -m piano_hardware.mod
 ```
 
-每条 `allow` 都对应一次真机 AVC 拒绝，注释里写明是哪个单元、哪次启动。策略放宽前先在设备上 `semodule -i` 试装，确认对应单元从 `failed` 变成 `inactive`、再 `semodule -r piano_hardware` 卸载，验证过的规则才写回 `.te` 并重新编译。
+每条 `allow` 都对应一次真机 AVC 拒绝，注释里写明是哪个单元、哪次启动。策略放宽前先在设备上 `semodule -i` 试装。确认对应单元从 `failed` 变成 `inactive` 后，再用 `semodule -r piano_hardware` 卸载。验证过的规则才写回 `.te` 并重新编译。
 
 ## PR 验收门槛
 
@@ -204,18 +204,18 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
 2. 从原始 GPT/UFS 开始完成首次分区、显式擦除 userdata、Android 首次开机。
 3. Slot B 冷启动进入 GNOME 桌面，不是热修复或历史镜像启动。
 4. 完整重启一次后仍能进入 GNOME，且 `systemctl --failed` 为空。
-5. Android→Linux、Linux→Android 和原厂 Recovery 均完成，保存屏幕、命令输出、
+5. Android→Linux、Linux→Android 和原厂 Recovery 都完成，保存屏幕、命令输出、
    `uname -r`、`/usr/lib/modules/`、F2FS 挂载与分区容量证据。
 
 任一项失败都不能写成“设备验收通过”。构建或离线测试通过只记为 CI 证据。证据格式见[安装指南的真机验收](installation.md#真机验收清单)。
 
-设备热修复替代不了发布资产测试。PR 最终必须从原始 GPT/UFS 布局开始，用本流水线重新生成的 rootfs 与 ESP 完成冷启动、GNOME 桌面和重启复现。
+设备热修复替代不了发布资产测试。PR 最终必须从原始 GPT/UFS 布局开始，用流水线重新生成的 rootfs 与 ESP 完成冷启动、GNOME 桌面和重启复现。
 
 `fastboot erase userdata` 是首次安装的必经写入，不能省略。`plan` 会检查 `/data` 的 formattable 合同，但 AOSP `fs_mgr` 只在 `wiped`、或元数据加密关闭且 `!is_fs_valid` 时自动格式化。缩短 GPT 本身不会清掉旧的 F2FS 超级块。
 
 所以执行器必须显式擦除，再让 Android 第一次启动，重建加密 userdata 并完成首次开机。不要直接在宿主上格式化 Android 的加密映射。
 
-会话的 result.json 记录每个完成的阶段和错误。GPT 写入或擦除之后中断时，先看记录和实际设备状态，不要自动重试、恢复旧 GPT 或启动 Android。恢复 GPT 也找不回已擦除的 Android 文件。
+会话的 `result.json` 记录每个完成的阶段和错误。GPT 写入或擦除之后中断时，先看记录和实际设备状态，不要自动重试、恢复旧 GPT 或启动 Android。恢复 GPT 也找不回已擦除的 Android 文件。
 
 ## 里程碑
 
