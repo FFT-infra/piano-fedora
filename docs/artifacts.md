@@ -58,6 +58,8 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 | build-bundle | 39328903515 | `deploy-bundle` |
 | prepare-install | 39329477706 | `root-install`（`size_mib=479990`，`expanded_bytes=503305994240`） |
 
+`size_mib=479990` 是那一轮 `product.json` 里的 `root_size_mib`，与当时设备 `sunuefi_root` 的实时容量相同。分区容量按设备实时 GPT 计算，换了设备或改了分区就要重新取 `fastboot getvar partition-size:sunuefi_root`，不要沿用这里的数字。
+
 这一轮修掉的三处真实故障。`stage-rootfs-payload.py` 先把封存内核里的 `build`/`source` 链接当成差异。`kernel-piano.spec` 的 `brp-strip` 改写 `.ko` 的 `.symtab`，使 RPM 与封存内核不再逐字节相同。`build-clean-rootfs.py` 没有给本地仓库设 priority，dnf 装了版本号更高的发行版 Mesa。
 
 ## 尚需验证
