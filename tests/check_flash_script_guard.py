@@ -113,6 +113,60 @@ def check_script(path):
     return failures
 
 
+def check_boot_image_selection():
+    """boot_b 只能写 prepare-device-boot.py 产出的 boot_linux.img。
+
+    实机教训（2026-10-20）：deploy-bundle 的 boot_sunuefi.img 是 ESP 内部的
+    Linux 载荷，Header v2、os_version=0、没有 AVB footer 和 SUNUEFI-NEXTv1
+    请求页。SunUEFI 固件能加载它，ABL 不能。把它写进 boot_b，ABL 拒绝整条
+    引导链，平板停在 Fastboot，B 槽被标记 unbootable。
+
+    `ab24a6a` 只改了 shell 脚本和文档，Windows 脚本与 ZIP 内的 README 仍把
+    boot_sunuefi.img 当 boot_b 镜像刷。这里对三个文件一起加约束，避免再漏一个。
+    """
+    failures = []
+    sh = (ROOT / "scripts/installer/flash-linux.sh").read_text(encoding="utf-8")
+    bat = (ROOT / "scripts/installer/flash-linux.bat").read_text(encoding="utf-8")
+    readme = INSTALLER_README.read_text(encoding="utf-8")
+
+    # 两个安装器都必须能找到设备镜像。
+    for name, text in (("flash-linux.sh", sh), ("flash-linux.bat", bat)):
+        if "boot_linux.img" not in text:
+            failures.append(f"{name}: does not look for boot_linux.img")
+
+    # Windows 脚本此前把 boot_sunuefi.img 硬编码成 BOOT_IMG，然后原样刷进
+    # boot_b。硬编码赋值是最容易复发的形态，单独点出来。
+    for lineno, line in enumerate(bat.splitlines(), 1):
+        stripped = line.strip().lower()
+        if stripped.startswith("set boot_img=boot_sunuefi.img") or (
+                stripped.startswith("set \"boot_img=boot_sunuefi.img\"")):
+            failures.append(
+                f"flash-linux.bat:{lineno}: flashes boot_sunuefi.img to boot_b; "
+                "use boot_linux.img from prepare-device-boot.py")
+
+    # 设备镜像不在 deploy-bundle 的 SHA256SUMS 里，不能对它做清单校验；
+    # 反过来，boot_sunuefi.img 必须仍然出现在清单校验路径上（它被刷进 ESP）。
+    if 'for %%F in ("%BOOT_IMG%" "%ESP_IMG%")' in bat:
+        failures.append(
+            "flash-linux.bat: verifies boot_linux.img against the deploy-bundle "
+            "SHA256SUMS; that image is device-specific and is not listed there")
+
+    # ZIP 内的 README 要写清 boot_b 该用哪个文件，并明确禁止 boot_sunuefi.img。
+    if "fastboot flash boot_b device-boot/boot_linux.img" not in readme:
+        failures.append(
+            "README-INSTALL.txt: manual flash still does not write "
+            "device-boot/boot_linux.img to boot_b")
+    if "fastboot flash boot_b boot_sunuefi.img" in readme:
+        failures.append(
+            "README-INSTALL.txt: manual flash still writes boot_sunuefi.img to boot_b")
+    if "NEVER flash boot_sunuefi.img to boot_b" not in readme:
+        failures.append(
+            "README-INSTALL.txt: does not warn that boot_sunuefi.img is not a "
+            "boot_b image")
+
+    return failures
+
+
 def check_docs():
     failures = []
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -192,6 +246,7 @@ def main():
             continue
         failures.extend(check_script(path))
     failures.extend(check_docs())
+    failures.extend(check_boot_image_selection())
 
     if failures:
         for item in failures:

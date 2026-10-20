@@ -22,7 +22,8 @@ Requirements:
 Required Files in this Folder:
 - flash-linux.sh / flash-linux.bat (installer scripts)
 - README-INSTALL.txt               (this guide)
-- boot_sunuefi.img                 (SunUEFI boot image for Slot B)
+- boot_sunuefi.img                 (ESP-internal Linux payload; NOT a boot_b image)
+- device-boot/boot_linux.img       (boot_b image from prepare-device-boot.py)
 - sunuefi_esp.img                  (SunUEFI EFI System Partition)
 - SHA256SUMS                       (deploy-bundle BOOT/ESP checksums)
 - bundle-manifest.json             (deploy-bundle provenance)
@@ -94,10 +95,18 @@ Step 3 - Confirm the device before writing anything:
 
 Step 4 - Flash, one command at a time (each must print OKAY):
    fastboot set_active b
-   fastboot flash boot_b boot_sunuefi.img
+   fastboot flash boot_b device-boot/boot_linux.img
    fastboot flash sunuefi_esp sunuefi_esp.img
    fastboot flash sunuefi_root root-install/pianoroot.f2fs.sparse.img
    fastboot reboot
+
+   boot_b takes device-boot/boot_linux.img, generated once by
+   scripts/prepare-device-boot.py from this tablet's stock BOOT. It carries a
+   non-zero os_version and a SHA256_RSA4096 AVB footer; without both the ABL
+   drops back to the Android slot and the screen looks like nothing happened.
+   NEVER flash boot_sunuefi.img to boot_b. That file is the Linux payload inside
+   the ESP (Header v2, os_version=0, no AVB footer): SunUEFI loads it, the ABL
+   does not, and the tablet then sticks in Fastboot with no bootable slot.
 
 Step 5 - Verify after reboot:
    GNOME desktop appears; "uname -r" shows the release kernel;

@@ -100,9 +100,28 @@ for %%P in (boot_b sunuefi_esp sunuefi_root) do (
 echo [INFO] Target partitions boot_b, sunuefi_esp, sunuefi_root verified.
 
 REM 4. Image file validation
-set BOOT_IMG=boot_sunuefi.img
-if not exist "%BOOT_IMG%" (
-    echo [ERROR] Missing boot image: boot_sunuefi.img!
+REM boot_b takes the device-specific boot_linux.img that prepare-device-boot.py
+REM repacks from this tablet's stock 96 MiB BOOT. The deploy-bundle's
+REM boot_sunuefi.img is the Linux payload inside the ESP: Header v2,
+REM os_version=0, no AVB footer and no SUNUEFI-NEXTv1 request page. SunUEFI
+REM loads it; the ABL does not, and rejects the whole chain when it is written
+REM to boot_b.
+set "BOOT_IMG="
+if exist "boot_linux.img" set "BOOT_IMG=boot_linux.img"
+if not defined BOOT_IMG if exist "device-boot\boot_linux.img" set "BOOT_IMG=device-boot\boot_linux.img"
+if not defined BOOT_IMG (
+    echo [ERROR] Missing boot_b image: boot_linux.img
+    echo Generate it once with scripts/prepare-device-boot.py from this tablet's
+    echo stock BOOT, then keep boot_linux.img or device-boot\boot_linux.img
+    echo next to this installer.
+    echo.
+    echo boot_sunuefi.img is the ESP payload, not a boot_b image. Flashing it
+    echo leaves the tablet in Fastboot with no bootable slot.
+    pause
+    exit /b 1
+)
+if /i "%BOOT_IMG%"=="boot_sunuefi.img" (
+    echo [ERROR] boot_sunuefi.img is the ESP payload, not a boot_b image.
     pause
     exit /b 1
 )
@@ -145,7 +164,10 @@ if not exist "root-install\SHA256SUMS" (
     exit /b 1
 )
 echo [INFO] Verifying deploy-bundle and root-install integrity...
-for %%F in ("%BOOT_IMG%" "%ESP_IMG%") do (
+REM boot_linux.img is device-specific: prepare-device-boot.py produces it from
+REM this tablet's stock BOOT, so it is not in the deploy-bundle SHA256SUMS.
+REM Only the deploy-bundle's own boot_sunuefi.img is covered there.
+for %%F in ("%ESP_IMG%") do (
     call :verify_one "%%~nxF" "%%~fF" "SHA256SUMS"
     if errorlevel 1 goto error
 )
@@ -232,7 +254,7 @@ echo --^> Skipping dtbo_b: keeping the stock DTBO for the active slot.
 echo     Qualcomm ABL rejects an empty DTBO with "Device Error"; SunUEFI reads
 echo     its board DTB from vendor_boot_b plus the stock dtbo_b overlay.
 
-echo --^> Step 2/4: Flashing SunUEFI bootloader to boot_b...
+echo --^> Step 2/4: Flashing the device boot image to boot_b...
 %FASTBOOT% flash boot_b "%BOOT_IMG%"
 if %ERRORLEVEL% neq 0 goto error
 
