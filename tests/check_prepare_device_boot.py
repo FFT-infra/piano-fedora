@@ -67,6 +67,30 @@ def main():
                                                    work / "fresh"),
                        "selector-module.json")
 
+        # 持久引导的门槛值。0x1e0001a9 = Android 15 加 2026-09 补丁，与本地
+        # 打包器一致；写成 15 << 11 会得到 0x79a9，ABL 同样拒绝。
+        assert device_boot.BOOT_OS_VERSION == 0x1E0001A9, hex(device_boot.BOOT_OS_VERSION)
+        assert device_boot.BOOT_PARTITION_BYTES == 96 * 1024 * 1024
+        assert device_boot.BOOT_PARTITION_NAME == "boot"
+
+        # 去掉 NONE footer 时只留原始镜像，长度与 footer 里的 original_size 相同。
+        signed = work / "signed-boot.img"
+        original = 4096
+        footer = bytearray(64)
+        footer[0:4] = b"AVBf"
+        footer[4:8] = (1).to_bytes(4, "big")
+        footer[12:20] = original.to_bytes(8, "big")
+        head = b"ANDROID!" + b"\0" * (original - len(b"ANDROID!"))
+        signed.write_bytes(head + bytes(device_boot.BOOT_PARTITION_BYTES - original - 64) + bytes(footer))
+        stripped = device_boot.strip_avb_footer(signed)
+        assert len(stripped) == original, len(stripped)
+        assert stripped[:8] == b"ANDROID!"
+
+        # 没有 footer 的镜像不能静默当成已签名产物。
+        bare = work / "bare-boot.img"
+        bare.write_bytes(b"ANDROID!" + b"\0" * (device_boot.BOOT_PARTITION_BYTES - 8))
+        expect_refusal(lambda: device_boot.strip_avb_footer(bare), "no AVB footer")
+
     print("OK: BOOT 包装拒绝错误槽位、截断镜像、摘要不符与已存在的输出目录")
     return 0
 

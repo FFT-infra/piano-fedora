@@ -585,10 +585,25 @@ if data[:8] != b"ANDROID!":
 version = struct.unpack_from("<I", data, 40)[0]
 if version != 4:
     sys.exit(f"{path.name}: Header v{version}; SM8750 ABL requires v4")
+# Persistent boot needs both a non-zero os_version and a signed AVB footer.
+# prepare-device-boot.py writes them; an unsigned NONE footer (what
+# piano-boot-repack emits for RAM boot) is rejected by ABL, and so is a
+# signature with os_version still 0. Both cases were measured on 2026-10-20.
 if struct.unpack_from("<I", data, 16)[0] == 0:
-    sys.exit(f"{path.name}: os_version is 0; SM8750 ABL rejects it")
-if b"AVB0" not in data:
+    sys.exit(f"{path.name}: os_version is 0; SM8750 ABL rejects it. "
+             "Rebuild with scripts/prepare-device-boot.py, which sets it.")
+footer = data[-64:]
+if footer[:4] != b"AVBf":
     sys.exit(f"{path.name}: no AVB footer")
+vb_off, vb_size = struct.unpack_from(">QQ", footer, 20)
+vbmeta = data[vb_off:vb_off + vb_size]
+if vbmeta[:4] != b"AVB0":
+    sys.exit(f"{path.name}: AVB footer does not point at a vbmeta block")
+algorithm = struct.unpack_from(">I", vbmeta, 28)[0]
+auth_size = struct.unpack_from(">Q", vbmeta, 12)[0]
+if algorithm != 2 or auth_size == 0:
+    sys.exit(f"{path.name}: AVB algorithm {algorithm} with {auth_size} auth bytes; "
+             "ABL needs the SHA256_RSA4096 signature prepare-device-boot.py writes")
 if b"SUNUEFI-NEXTv1\0" not in data:
     sys.exit(f"{path.name}: no SUNUEFI-NEXTv1 boot request page")
 PYEOF

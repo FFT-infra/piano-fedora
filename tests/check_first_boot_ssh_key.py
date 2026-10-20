@@ -271,8 +271,24 @@ def make_boot_linux_image(root):
     data[0:8] = b"ANDROID!"
     struct.pack_into("<I", data, 16, 0x0026C059)
     struct.pack_into("<I", data, 40, 4)
-    data[4096:4100] = b"AVB0"
     data[8192:8207] = b"SUNUEFI-NEXTv1\0"
+    # 与 check_manual_flash_flow.py 相同的签名形态：分区内的 AVB vbmeta 块
+    # 加上末尾 footer，算法 SHA256_RSA4096（2），auth 字节非零。
+    vbmeta_offset, vbmeta_size = 4096, 256
+    vbmeta = bytearray(vbmeta_size)
+    vbmeta[0:4] = b"AVB0"
+    struct.pack_into(">I", vbmeta, 4, 1)
+    struct.pack_into(">Q", vbmeta, 12, 512)
+    struct.pack_into(">Q", vbmeta, 20, 256)
+    struct.pack_into(">I", vbmeta, 28, 2)
+    data[vbmeta_offset:vbmeta_offset + vbmeta_size] = vbmeta
+    footer = bytearray(64)
+    footer[0:4] = b"AVBf"
+    struct.pack_into(">I", footer, 4, 1)
+    struct.pack_into(">Q", footer, 12, 8192 + 512)
+    struct.pack_into(">Q", footer, 20, vbmeta_offset)
+    struct.pack_into(">Q", footer, 28, vbmeta_size)
+    data[-64:] = footer
     path.write_bytes(bytes(data))
     (folder / "SHA256SUMS").write_text(f"{sha256(path)}  {path.name}\n")
     return path
