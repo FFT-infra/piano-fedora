@@ -32,6 +32,9 @@ cp -a usr %{buildroot}/
 %files
 %{_datadir}/alsa/ucm2/Qualcomm/sm8750/Xiaomi-Pad-8-Pro/Xiaomi-Pad-8-Pro.conf
 %{_datadir}/alsa/ucm2/Qualcomm/sm8750/Xiaomi-Pad-8-Pro/HiFi.conf
+# UCM2 先按 /conf.d 里的同名条目找设备，再进 Qualcomm/ 目录读详细配置。
+# 两处内容相同是有意的：删掉任何一份，设备要么不出现在 ucm2 列表里，要么
+# 找不到自己的 HiFi.conf。不要在清理时合并它们。
 "%{_datadir}/alsa/ucm2/conf.d/sm8750/Xiaomi Pad 8 Pro.conf"
 
 %changelog
