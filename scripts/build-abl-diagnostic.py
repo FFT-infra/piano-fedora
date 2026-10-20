@@ -99,7 +99,7 @@ def build(kernel, initramfs, source, output, dtbo):
                           "repo": "debian-piano",
                           "commit": json.loads((ROOT / "sources.lock.json").read_text())["sources"]["debian-piano"]["commit"],
                           "dts": "boot/dtbo-piano-power.dts",
-                          "builder": "scripts/build-dtbo.py",
+                          "builder": "debian-piano:scripts/build-dtbo.py",
                           "note": "build-image.yml 从该 pin 构建；CLI 本身未证明传入二进制来自它",
                       },
                   },

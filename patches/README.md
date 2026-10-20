@@ -40,8 +40,7 @@ scripts/apply-patches.py --sunuefi DIR
 
 XATTR / POSIX_ACL / SECURITY 三项对应镜像制作时用 `tar --xattrs --acls`
 写入的元数据。少任何一项，Fedora rootfs 的 capability 或 ACL 就会在挂载后
-读不回来。这三项与 sheng 的 `sm8550.config` 一致，来源见
-`sources/sheng-Reference/mipad-6s-pro-linux/sm8550.config`。
+读不回来。这三项与上游参考配置一致；参考仓库登记在 `docs/upstreams.json`。
 
 `CONFIG_F2FS_CHECK_FS` 不开：它是运行时一致性检查，代价是性能，镜像制作阶段
 已用 `fsck.f2fs` 单独校验。
