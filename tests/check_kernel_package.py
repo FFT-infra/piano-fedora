@@ -131,6 +131,16 @@ def check_build_script(failures):
     if "updates/v4l2loopback.ko" not in body:
         failures.append("build-rpms.sh does not stage updates/v4l2loopback.ko")
 
+    # spec 从 piano-tools/ 装哪些文件，build-rpms.sh 就必须暂存哪些文件。
+    # 少一个不是缺文件那么简单：rpmbuild 的 %install 在矩阵 job 里才失败，
+    # 而前面每一步都是绿的。
+    spec = strip_spec_comments(SPEC.read_text(encoding="utf-8"))
+    staged = set(re.findall(r"piano-tools/([A-Za-z0-9_.+-]+)", spec))
+    for name in sorted(staged):
+        if not re.search(r'"?\$REPO_ROOT/[^"\s]*' + re.escape(name) + r'"?', body):
+            failures.append(f"kernel-piano.spec installs piano-tools/{name} "
+                            "but build-rpms.sh never stages it")
+
 
 def check_built_rpm(failures):
     rpms = sorted(RPMS.glob("kernel-piano-*.rpm")) if RPMS.is_dir() else []

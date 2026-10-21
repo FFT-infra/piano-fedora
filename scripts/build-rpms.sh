@@ -187,9 +187,11 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
             cp -a "$REPO_ROOT/scripts/build-initramfs.py" \
                  "$REPO_ROOT/scripts/piano_artifacts.py" \
                  "$REPO_ROOT/scripts/piano_boot_container.py" \
+                 "$REPO_ROOT/scripts/piano-kernel-esp-update" \
                  "$REPO_ROOT/initramfs/f2fs-disk-bootstrap" \
                  "$STAGE/piano-tools/"
-            chmod 0755 "$STAGE/piano-tools/f2fs-disk-bootstrap"
+            chmod 0755 "$STAGE/piano-tools/f2fs-disk-bootstrap" \
+                       "$STAGE/piano-tools/piano-kernel-esp-update"
             # v4l2loopback 由本包拥有：它是给这一版内核编的外部模块，路径里的
             # release 就是本包的 release。放进 updates/ 让它与内核模块树同生共死。
             # 找不到就中止：少一个模块的 RPM 装上去相机起不来，而构建全程绿灯。
