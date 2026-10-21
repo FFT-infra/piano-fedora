@@ -629,7 +629,7 @@ ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，�
 
 ## 五、 首次登录与桌面环境配置
 
-刷完后平板自动重启，进入 120 Hz 的桌面。四档都自动登录到 `piano` 用户；GNOME 走 GDM，KDE 走 SDDM，niri 与 Hyprland 走 greetd 的 `tuigreet` 兜底。
+刷完后平板自动重启，进入 120 Hz 的桌面。四档都自动登录到 `piano` 用户；GNOME 走 GDM，KDE 走 plasma-login-manager，niri 与 Hyprland 走 greetd 的 `tuigreet` 兜底。
 
 * **默认用户**：`piano`
 * **默认密码**：`piano123456`

@@ -38,7 +38,7 @@ Images are built per desktop from the same release chain and differ only in the 
 | Profile | Session | Login | Auto-rotate | Acceptance |
 |---|---|---|---|---|
 | `gnome` | GNOME 44 workstation | GDM autologin | Mutter | On device |
-| `kde` | KDE Plasma | SDDM autologin | KWin, needs `qt6-qtsensors` | Not on device |
+| `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Not on device |
 | `niri` | niri | greetd + tuigreet | None; manual `transform` | Not on device |
 | `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None; manual rotate | Not on device |
 

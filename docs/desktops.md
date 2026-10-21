@@ -9,7 +9,7 @@
 | 档位 | 会话 | 登录 | 电源策略 | 自动旋转 | 验收状态 |
 |---|---|---|---|---|---|
 | `gnome` | GNOME 44 workstation | GDM 自动登录 | dconf（`00-power`） | 走 Mutter | 真机通过 |
-| `kde` | KDE Plasma | SDDM 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，需 `qt6-qtsensors` | 未上真机 |
+| `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，需 `qt6-qtsensors` | 未上真机 |
 | `niri` | niri | greetd `[initial_session]` | 仅 logind | 无，需手动 `transform` | 未上真机 |
 | `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 无，需手动 rotate | 未上真机 |
 | `server` | 无 | 无 | 仅 logind | — | 只用于测试装配 |
@@ -20,10 +20,13 @@
 
 - **GNOME**：`/etc/gdm/custom.conf` 写 `AutomaticLoginEnable=True` 与
   `AutomaticLogin=piano`，由 `gdm.service` 接管。
-- **KDE**：`/etc/sddm.conf.d/10-piano-autologin.conf` 写 `Session=plasma`。
-  SDDM 按 `<session>.desktop` 在 `wayland-sessions` 目录里找条目，装配后
-  `validate_against_rootfs()` 会确认 `/usr/share/wayland-sessions/plasma.desktop`
-  真的在树里；名字对不上时 SDDM 只在日志里留一句错误，退回登录界面。
+- **KDE**：`/etc/plasmalogin.conf` 写 `Session=plasma`。Fedora 44 的
+  `kde-desktop` 组把登录管理器换成了 `plasma-login-manager`（`plasmalogin.service`），
+  它是 SDDM 的衍生实现，`[Autologin]` 的键与按 `<session>.desktop` 查找会话的
+  规则都沿用 SDDM。装配后 `validate_against_rootfs()` 会确认
+  `/usr/share/wayland-sessions/plasma.desktop` 真的在树里；名字对不上时
+  只在日志里留一句错误，退回登录界面。SDDM 与 plasmalogin 都会往
+  `display-manager.service` 建别名，同装必冲突，所以 profile 里只装后者。
 - **niri / Hyprland**：`/etc/greetd/config.toml` 的 `[initial_session]` 指向
   `niri-session` 或 `start-hyprland`，`[default_session]` 留 `tuigreet --time`
   兜底。会话崩溃或用户注销后回到 tuigreet 的文本选择界面，而不是黑屏 VT。

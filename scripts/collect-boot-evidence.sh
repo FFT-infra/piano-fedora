@@ -37,7 +37,7 @@ if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     # （GNOME/KDE/niri/Hyprland/server），写死 gdm.service 在其余档位上
     # 只会得到 "could not be found"，真正的会话问题反而看不到。
     units='graphical.target display-manager.service piano-display.service piano-touch.service piano-camera.service piano-camerad.service'
-    for unit in gdm.service sddm.service greetd.service; do
+    for unit in gdm.service sddm.service plasmalogin.service greetd.service; do
         [ ! -e "/usr/lib/systemd/system/$unit" ] || units="$units $unit"
     done
     for unit in $units; do
@@ -46,7 +46,7 @@ if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     if command -v journalctl >/dev/null 2>&1; then
         section journal
         journal_args=
-        for unit in gdm.service sddm.service greetd.service; do
+        for unit in gdm.service sddm.service plasmalogin.service greetd.service; do
             [ ! -e "/usr/lib/systemd/system/$unit" ] || journal_args="$journal_args -u $unit"
         done
         run journalctl -b --no-pager -n 160 $journal_args -u piano-display.service -u piano-camerad.service

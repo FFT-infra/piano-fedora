@@ -148,12 +148,14 @@ def main():
             kde = json.loads(res_kde.stdout)
             check(kde.get("desktop") == "kde", "kde plan must report desktop kde")
             check(kde.get("root_size_mib") == 8192, "kde plan must use the profile capacity")
-            check(kde.get("display_manager", {}).get("unit") == "sddm.service",
-                  f"kde must use SDDM: {kde.get('display_manager')}")
+            check(kde.get("display_manager", {}).get("unit") == "plasmalogin.service",
+                  f"kde must use plasma-login-manager: {kde.get('display_manager')}")
             check(kde.get("artifact_names", {}).get("image_artifact") == "root-image-44-kde",
                   f"kde artifact name wrong: {kde.get('artifact_names')}")
-            check("sddm" in kde.get("all_packages", []),
-                  "the KDE install set must name sddm")
+            check("plasma-login-manager" in kde.get("all_packages", []),
+                  "the KDE install set must name plasma-login-manager")
+            check("sddm" not in kde.get("all_packages", []),
+                  "sddm must stay out; Fedora 44 ships plasma-login-manager in its place")
             check("iio-sensor-proxy" not in kde.get("all_packages", []),
                   "the stock iio-sensor-proxy must stay out; iio-sensor-proxy-ssc provides it")
 
