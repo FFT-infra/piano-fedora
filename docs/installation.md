@@ -678,6 +678,12 @@ ls /usr/lib/modules/          # 有与 uname -r 同名的目录
 | 无线 | Wi-Fi 连接、蓝牙扫描 |
 | 电源与睡眠 | 合盖与 `rtcwake -m mem -s 20` 能唤醒，唤醒后无 failed unit |
 
+浏览器放 H.264 视频另算一项，且三家结果不同：Google Chrome 与 Firefox 默认走
+硬件解码；Fedora 的 Chromium 连 MP4 都打不开，因为它链接系统 `libavcodec`，
+而 `ffmpeg-free` 去掉了软件 H.264 解码器。装 RPM Fusion 的
+`libavcodec-freeworld` 后能播，但仍然软解。细节见
+[已知问题](known-issues.md#触屏网络音频与相机)。
+
 再完整重启一次，确认仍进所选桌面。双系统往返按下一节执行，往返后核对
 `fastboot getvar current-slot`。
 

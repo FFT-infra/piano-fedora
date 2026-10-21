@@ -64,6 +64,13 @@ make test-device-media MEDIA_HOST=<ssh 目标> MEDIA_OUTPUT=<新的证据目录>
 COPR 仓库验收：`scripts/verify-copr-device.py`，在设备上跑，只读模式与
 `--install-test` 两种，见 [COPR 软件源](copr-repository.md#设备侧验证)。
 
+浏览器硬解验收：`scripts/verify-browser-video.py --output <新的证据目录>`，
+在设备上以登录用户身份跑，需要一个能播放的 H.264 文件（`--video`，默认
+`/tmp/browser-h264.mp4`）。它逐个启动 Chromium、Chrome 与 Firefox，播放同一段
+视频，然后只看两件事：Iris 中断在播放窗口内有没有增长，以及有没有进程打开
+`/dev/video0`。两者都成立才算硬解。浏览器自报的 GPU 状态不算证据，软件解码
+同样会拉高 GPU 中断。
+
 ## 本机 BOOT
 
 先确认当前原 BOOT 的完整摘要、槽位和系统版本。`prepare-device-boot.py` 用这些输入和同核心的 Actions 工具生成 `boot_android.img`、`boot_linux.img` 与 `boot-request.json`。默认目标是普通 Android。

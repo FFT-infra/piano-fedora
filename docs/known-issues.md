@@ -160,14 +160,31 @@ charge_current、mipps_auth、charge_policy 都开启。这不等于实际达到
 ## 触屏、网络、音频与相机
 
 这些模块已有实机行为记录，持续负载下的表现还要单独取证：负载下的持续触控
-输入、浏览器实际硬解、音频长时间录放、前摄与后摄在正常光线下取帧。全部项目
+输入、音频长时间录放、前摄与后摄在正常光线下取帧。全部项目
 验收前，设备整体状态记为未验证。验收项见[安装指南的真机验收](installation.md#真机验收清单)。
 
 编解码本身已复验通过。H.264 与 HEVC 各 300 帧的 GOP60 硬件编码与解码，
 以及各 300 帧带 B 帧的硬件解码，逐帧摘要与软件解码一致，Iris 中断在每段都有
 增长。验收脚本在维护者机器上驱动平板运行，命令见[维护与验收](internals.md#真机取证脚本)；
-目标镜像没有 `make` 和 `libx264`/`libx265`，素材由主机准备。浏览器里
-是否走向硬件解码仍要单独看。
+目标镜像没有 `make` 和 `libx264`/`libx265`，素材由主机准备。
+
+浏览器硬解已单独取证，三家结果不同：
+
+| 浏览器 | 能否播 H.264 | 是否硬解 |
+|---|---|---|
+| Fedora Chromium 155 | 装上 `libavcodec-freeworld` 后能 | 否 |
+| Google Chrome 156（aarch64） | 能 | 是，默认开启 |
+| Firefox 158 | 能 | 是，默认开启 |
+
+Chromium 不走硬解有两个叠加原因。Fedora 的 Chromium 链接系统 `libavcodec`，
+而 `ffmpeg-free` 在构建时用 `--disable-decoder` 去掉了软件 H.264，所以原样
+连 MP4 都打不开，`FFmpegDemuxer: open context failed`；补上 RPM Fusion 的
+`libavcodec-freeworld` 才能播放。播放之后它仍然交给软件解码：GPU 进程没有打开
+`/dev/video0`，Iris 中断在整个播放窗口内不增长。Chrome 自带 FFmpeg 与 V4L2
+解码路径，Firefox 走自己的 VA-API 路径，两者都直接把 `msm_drv_video.so` 用起来。
+
+验收判定不能只看浏览器自己报的状态：软件解码同样拉高 GPU 中断。脚本同时要求
+Iris 中断增长和 `/dev/video0` 有持有者，两者缺一即判为非硬解。
 
 相机另有一条容易误判的路径：`piano-camerad` 在没有上游产帧方时会给
 v4l2loopback 写黑帧，所以“节点能取到帧”不等于传感器在出图。判定要看 camerad
