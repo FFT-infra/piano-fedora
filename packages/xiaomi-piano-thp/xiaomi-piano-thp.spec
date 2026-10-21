@@ -5,7 +5,7 @@ Name:           xiaomi-piano-thp
 Version:        0.2.0
 Release:        2%{?dist}
 Summary:        Touch Host Processor (THP) and Xiaomi Focus Pen driver for Xiaomi Pad 8 Pro (piano)
-License:        Apache-2.0 AND BSD-2-Clause-Patent AND GPL-2.0-only
+License:        Apache-2.0 AND BSD-2-Clause-Patent AND GPL-2.0-only AND MIT
 URL:            https://github.com/FFT-infra/piano-fedora
 Source0:        %{name}-%{version}.tar.gz
 

@@ -269,8 +269,7 @@ eDP，内屏走 DSI，用不上。
 
 - `README.md` 与 `README.en.md` 的骨架由 `tests/check_readme_parity.py` 锁定：
   标题层级数量、语言切换行、指向的文档列表必须一致。改一版要同步另一版。
-- `docs/public-release-gaps.md` 的电极校准一项仍待许可决定。在此之前不要把
-  带校准表的 bundle 挂成公开 Release。
+- `docs/public-release-gaps.md` 的电极校准一项已决定：数据早已在公开仓库与公开 COPR 里，`NOTICE` 写明来源，发布不再因此阻挡。`release.yml` 仍默认只建 draft，转公开要显式传 `publish=true`。
 - 三个 UEFI 补丁的 `series.json` 里 `note` 引用的文档分两类。`docs/status.md`、
   `docs/ufs-dedicated-area-audit.md` 与 `docs/piano-full-ddr-producer-gaps.md`
   在上游 SunUEFI 仓库，按 `sources.lock.json` 的 pin 取。`docs/device-acceptance-20261015.md`

@@ -30,9 +30,9 @@
 - 桌面差异只出现在 `scripts/profiles/`、`scripts/piano_desktop.py` 与桌面运行时探测里。其他层（workflow、发布、安装器）只消费派生出来的名字与字段，不手写桌面列表。
 - 固件、校准数据、密钥不入库。
 - 证据分层。作者记录、构建通过、设备可用是三件事，不互相代替。
-- 未定的值留 null 并让工具报错，不猜。`product.json` 里的 null 就是待定项。
+- 未定的值留 null 并让工具报错，不猜。现在的 `product.json` 里没有 null，规则是为将来留的。
 - 目录跟着实际交付走。没有文件就不建目录。
-- 没有生成文件。若将来引入，源与产物分开，产物不入库。
+- 没有生成文件。若将来引入，源与产物分开，产物不入库。唯一的例外是 `rootfs/selinux/piano_hardware.pp`：设备上的 `semodule -i` 加载的是编译后的模块，`.te` 本身不会被读取，所以它必须入库。改 `.te` 之后跑 `make selinux` 重新生成（需要 `checkpolicy` 与 `policycoreutils`），否则镜像里装的还是旧策略。
 
 ## 命令
 
@@ -40,6 +40,7 @@
 make test                  # 全部离线检查
 make plan RELEASEVER=44    # 打印 Fedora rootfs 构建计划（默认桌面档）
 make plan-desktop DESKTOP=kde RELEASEVER=44   # 另一档的装配计划
+make selinux               # 从 .te 重新生成 piano_hardware.pp
 ```
 
 ## 长构建

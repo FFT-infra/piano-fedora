@@ -150,10 +150,7 @@ jobs:
 
           校验构建来源: \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`
           EOF
-          # 默认 draft，等电极校准数据的再分发许可确认后再 --draft=false。
-          # 见 docs/public-release-gaps.md。
-          # 许可结论已定：校准数据从 4649de7 起就在公开仓库与公开 COPR 里，
-          # 发布不增加暴露面。门禁改为显式参数，默认仍停 draft。
+          # 默认 draft：转公开要显式传 publish=true。
           gh release create "$TAG" --draft --title "piano Fedora 44 ${TAG}" \
             --notes-file build/stage/notes.md
 

@@ -41,7 +41,7 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 | `build-kernel.yml` | 手动 | F2FS/SELinux Image、完整模块与匹配 SDK |
 | `build-uefi.yml` | 手动 | UEFI 产品与原始 manifest |
 | `build-mesa.yml` | 手动 | Fedora 原生 A830v1 Mesa RPM 与实际驱动检查记录 |
-| `build-device-runtime.yml` | 手动 | Fedora 原生设备运行时与匹配内核 ABI 的外部模块 |
+| `build-device-runtime.yml` | 手动 | Fedora 原生设备运行时；ABI 匹配的 `v4l2loopback` 由 `build-piano-rpms.yml` 编进 `kernel-piano` |
 | `build-initramfs.yml` | 手动 | 独立 initramfs 构建与检查。正式 bundle 消费 build-image 的 initramfs |
 | `verify-f2fs.yml` | push / PR | 小 fixture 的 F2FS 元数据往返验证 |
 | `build-image.yml` | 手动 | 单档：同一次集成的设备 rootfs、initramfs、F2FS 镜像及相互绑定的 manifest，产物名 `root-image-<rel>-<desktop>` |
@@ -57,6 +57,26 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 产物由各 workflow 显式上传。上传失败不计为交付完成。
 
 产物清单与部署包结构见 [部署产物](artifacts.md)。
+
+## 为什么不用 UKI
+
+[fedora-sheng](https://github.com/GhfunNiHe/sheng_fedora_packages) 与 [nabu_fedora](https://github.com/jhuang6451/nabu_fedora) 用 UKI（`systemd-stub` + `.efi` 内核镜像）把内核、initramfs 和 cmdline 打成一个 EFI 可执行文件，由固件直接启动。这条路在本设备上不通，原因是固件，不是 Fedora 那一侧。
+
+`PianoEspBootSource.c` 只读 `\EFI\Piano\stable\boot.img`，格式是 Android boot v2，要求 pagesize 4096、`Second` / `RecoveryDtbo` / `Signature` / `Trailing` 全零、内核段 56 字节处是 `ARM\x64`。UKI 是 PE/COFF，塞不进这个解析器。
+
+固件里另有一条 `Image.efi` 路径：`PianoProductOsController.c` 定义了 `\EFI\Piano\stable\Image.efi` + `piano.dtb` + `initramfs.cpio` 的加载，形式上接近 UKI。它没有接上，原因是三处编译期约束：
+
+- 模块没有绑定到产品调用链，上游文档写明 "not yet bound to the product Core/Policy callsite"，`git grep` 也找不到 INF/DSC 引用。
+- 它对三份载荷做 `PinValid()` 编译期固定哈希与长度校验，换内核必须重编固件。
+- `PianoProductCore.c` 只调 `PianoRawLinuxLoadStable`，没有分支走 `PianoProductOsController`。
+
+还有一处 live-memory 补丁与 UKI 不兼容：本项目给 UEFI 打的 `patches/uefi-live-memory` 在 ExitBootServices 之前把运行中内核的内存映射交给 `EFI_DT_FIXUP_PROTOCOL` 处理。`systemd-stub` 自己接管 LoadImage/StartImage 与内存描述符，两套机制叠在一起没有验证过的顺序。
+
+代价对比也偏向现有路径。合体 BOOT 路径的 `AcceptedSha` 来自 ESP 上文件自身的 sha256，换内核不需要重编固件；UKI 至少要改 `PinValid()` 的编译期 pin。切系统（Android ↔ Fedora）不受影响：`PianoRawLinuxLoadStable` 的槽位与返回 Android 的路径都由 `piano-next-boot-helper` 写请求页，与内核容器格式无关。
+
+所以内核升级走的是另一条路：`kernel-piano` 的 `%posttrans` 在设备上重建 initramfs、把新内核重新打成 Android boot v2 容器、原子替换 ESP 的 `boot.img`。细节见 [COPR 软件源](copr-repository.md)。
+
+如果上游以后把 `PianoProductOsController` 接进产品调用链、并把 pin 改成运行时校验，UKI 才值得重新评估。当前不作为路线。
 
 ## 从 nabu_fedora 取什么
 

@@ -1,4 +1,4 @@
-.PHONY: test test-device-media plan plan-desktop clean build-rpms release-bundle
+.PHONY: test test-device-media plan plan-desktop clean build-rpms release-bundle selinux
 
 test:
 	python3 tests/check_sources.py
@@ -87,3 +87,14 @@ build-rpms:
 
 release-bundle:
 	./scripts/package-release-bundle.sh
+
+# rootfs/selinux/piano_hardware.pp 是本仓库唯一的已提交生成物：运行时
+# semodule -i 加载的是编译后的模块，.te 本身不会被设备读取。改动 .te 之后
+# 必须重跑这一步，否则镜像里装的是旧策略，而源码看起来已经改过。
+# 需要 checkpolicy 与 policycoreutils（Fedora: dnf install checkpolicy）。
+SELINUX_TE ?= rootfs/selinux/piano_hardware.te
+SELINUX_PP ?= rootfs/selinux/piano_hardware.pp
+selinux:
+	mkdir -p build
+	checkmodule -M -m -o build/piano_hardware.mod $(SELINUX_TE)
+	semodule_package -o $(SELINUX_PP) -m build/piano_hardware.mod
