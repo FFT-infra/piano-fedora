@@ -167,8 +167,13 @@ def copr_cli():
     return binary
 
 
-def write_copr_config(path):
-    """从 secrets 写一份临时 copr 配置，权限 0600，退出时删除。"""
+def write_copr_config(path, username):
+    """从 secrets 写一份临时 copr 配置，权限 0600，退出时删除。
+
+    `login` 是 API 登录名（哈希），`username` 是 FAS 用户名。copr-cli
+    不带参数执行 `list` 时按 `username` 查项目，两者混用会让已经建好的
+    项目在下一次发布时看起来不存在。
+    """
     login = os.environ.get("COPR_LOGIN")
     token = os.environ.get("COPR_TOKEN")
     if not login or not token:
@@ -177,7 +182,7 @@ def write_copr_config(path):
     path.write_text(
         "[copr-cli]\n"
         f"login = {login}\n"
-        f"username = {login}\n"
+        f"username = {username}\n"
         f"token = {token}\n"
         "copr_url = https://copr.fedorainfracloud.org\n"
     )
@@ -194,11 +199,21 @@ def run_cli(binary, config, args, *, check=True):
     return result
 
 
+def project_listed(stdout, name):
+    """`copr-cli list` 的输出里是否出现这个项目。
+
+    copr-cli 2.4 的列表是 `print_project_info()` 的逐行输出，项目名在
+    `Name: piano-fedora` 这一行。按裸名字匹配永远不命中，于是每次发布
+    都先撞一次 "You already have a project named"。
+    """
+    return re.search(rf"^\s*Name:\s*{re.escape(name)}\s*$", stdout, re.M) is not None
+
+
 def ensure_project(binary, config, project):
-    """幂等创建项目；已存在就只确认 chroot 打开着。"""
+    """幂等创建项目：已存在就返回，不存在才 create。"""
+    name = project.split("/")[-1]
     listing = run_cli(binary, config, ["list"], check=False)
-    if listing.returncode == 0 and re.search(
-            rf"^\s*{re.escape(project.split('/')[-1])}\s*$", listing.stdout, re.M):
+    if listing.returncode == 0 and project_listed(listing.stdout, name):
         return "exists"
     created = run_cli(binary, config, [
         "create", project, "--chroot", CHROOT,
@@ -210,11 +225,24 @@ def ensure_project(binary, config, project):
     if created.returncode:
         # 并发创建或权限问题：再看一次列表，真的没有才算失败。
         again = run_cli(binary, config, ["list"], check=False)
-        if again.returncode == 0 and re.search(
-                rf"^\s*{re.escape(project.split('/')[-1])}\s*$", again.stdout, re.M):
+        if again.returncode == 0 and project_listed(again.stdout, name):
             return "raced"
         raise PublishError(f"cannot create {project}: {created.stderr.strip()}")
     return "created"
+
+
+def parse_build_ids(stdout):
+    """从 `copr-cli build` 的 stdout 里取出 build id。
+
+    copr-cli 2.4（CI 钉住的版本）固定打印
+    `Created builds: <id> [<id> ...]`，见 main.py 的
+    print_build_info_and_wait()。
+    """
+    ids = []
+    for line in stdout.splitlines():
+        if "Created builds:" in line:
+            ids.extend(re.findall(r"\d+", line.split("Created builds:", 1)[1]))
+    return ids
 
 
 def submit(binary, config, project, srpm_dir, package):
@@ -224,9 +252,14 @@ def submit(binary, config, project, srpm_dir, package):
     result = run_cli(binary, config, [
         "build", project, str(matches[0]), "--chroot", CHROOT,
     ])
-    # `copr-cli build` 在构建失败时返回非零；成功时 stdout 里有 build id。
-    match = re.search(r"Build was created:.*?(\d+)|Created builds:\s*(.+)", result.stdout)
-    return result.stdout.strip(), match
+    # `copr-cli build` 不带 --nowait 时自己等完构建，失败以非零退出；
+    # 但 id 仍要从 stdout 解析，发布记录和事后核对都靠它。
+    ids = parse_build_ids(result.stdout)
+    if len(ids) != 1:
+        raise PublishError(
+            f"{package}: expected one build id, got {ids or 'none'}: "
+            f"{result.stdout.strip()[:400]}")
+    return result.stdout.strip(), ids[0]
 
 
 def wait_for_builds(binary, config, project, build_ids, timeout=7200, interval=30):
@@ -258,7 +291,7 @@ def main():
                         help="成功的 host-check run，必须带 piano-rpms artifact")
     parser.add_argument("--rpms", default="build/in/piano-rpms",
                         help="下载后的 piano-rpms artifact 目录")
-    parser.add_argument("--project", default="fft-infra/piano-fedora")
+    parser.add_argument("--project", default="xinyang26/piano-fedora")
     parser.add_argument("--kernel-run-id", default="",
                         help="可选：要求 manifest 的内核 run 与此值一致")
     parser.add_argument("--record", default="build/copr-publication.json")
@@ -266,6 +299,9 @@ def main():
                         help="真正上传并等待构建；默认只校验")
     parser.add_argument("--timeout", type=int, default=7200)
     args = parser.parse_args()
+    owner, separator, name = args.project.partition("/")
+    if not separator or not owner or not name:
+        raise PublishError("--project must be owner/name")
 
     run = verify_run(args.run_id)
     manifest = load_manifest(args.rpms)
@@ -295,17 +331,17 @@ def main():
         return 0
 
     binary = copr_cli()
-    config = write_copr_config(Path(args.record).with_suffix(".copr.conf"))
+    config = write_copr_config(Path(args.record).with_suffix(".copr.conf"), owner)
     try:
         record["project_state"] = ensure_project(binary, config, args.project)
         outputs, ids = {}, []
         for package in BUILD_ORDER:
             if package not in packages:
                 raise PublishError(f"{package} was not built by this run")
-            output, match = submit(binary, config, args.project, Path(args.rpms) / "srpms", package)
+            output, build_id = submit(binary, config, args.project,
+                                      Path(args.rpms) / "srpms", package)
             outputs[package] = output
-            if match and match.group(1):
-                ids.append(match.group(1))
+            ids.append(build_id)
         states = wait_for_builds(binary, config, args.project, ids, timeout=args.timeout)
         record.update(status="PUBLISHED", build_ids=ids, build_states=states,
                       outputs=outputs)

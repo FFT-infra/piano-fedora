@@ -22,7 +22,8 @@ def main():
         raise RuntimeError('logrotate is required for the collision regression')
     with tempfile.TemporaryDirectory(prefix='boot-log-', dir=os.environ.get('TMPDIR')) as directory:
         root = Path(directory)
-        finalizer.stage_piano_hardware_fixes(root)
+        finalizer.stage_piano_hardware_fixes(
+            root, finalizer.piano_desktop.load('gnome', '44'))
         configuration = root / 'etc/logrotate.d/bootlog'
         assert configuration.is_file(), 'image does not install collision-safe boot log rotation'
         log = root / 'boot.log'

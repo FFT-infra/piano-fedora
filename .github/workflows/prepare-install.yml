@@ -146,8 +146,9 @@ jobs:
           (cd build/in/bundle && sha256sum -c SHA256SUMS)
           tar -I zstd -xf build/in/uefi/uefi-product.tar.zst -C build/product
           cmp build/product/PianoUEFI-product.img build/in/bundle/PianoUEFI-product.img
-          python3 build/installer-sources/sunuefi/tools/prepare_android_module.py \
-            --product build/product --output build/boot-tools --cc gcc --package none
+          python3 scripts/build-boot-tools.py \
+            --sunuefi build/installer-sources/sunuefi \
+            --product build/product --output build/boot-tools --cc gcc
           python3 build/installer-sources/sunuefi/tools/build_boot_request.py \
             --output build/boot-tools/boot-request --cc gcc
           cp -a build/product build/boot-tools/product

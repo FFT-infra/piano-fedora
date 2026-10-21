@@ -19,8 +19,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-DEFAULT_REPO_ID = "copr:copr.fedorainfracloud.org:fft-infra:piano-fedora"
-DEFAULT_BASEURL = "https://download.copr.fedorainfracloud.org/results/fft-infra/piano-fedora/"
+DEFAULT_REPO_ID = "copr:copr.fedorainfracloud.org:xinyang26:piano-fedora"
+DEFAULT_BASEURL = "https://download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/"
 EXCLUDED = "kernel-piano"
 
 

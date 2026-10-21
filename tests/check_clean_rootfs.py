@@ -100,6 +100,13 @@ def main():
             check(data.get("distro") == "fedora", "distro must be fedora")
             check(data.get("releasever") == "44", "releasever must be 44")
             check(data.get("desktop") == "gnome", "desktop must be gnome")
+            check(data.get("display_manager", {}).get("unit") == "gdm.service",
+                  "the default desktop plan must name the GNOME display manager")
+            names = data.get("artifact_names", {})
+            check(names.get("image") == "pianoroot-fedora44-gnome-f2fs.img",
+                  f"GNOME image name changed: {names.get('image')}")
+            check(names.get("image_artifact") == "root-image-44-gnome",
+                  f"GNOME image artifact changed: {names.get('image_artifact')}")
             check(EXPECTED_PIANO_PACKAGES.issubset(set(data.get("piano_packages", []))),
                   "all 9 expected piano RPM packages must be scheduled in plan")
             check(EXPECTED_KERNEL_PACKAGE in data.get("all_packages", []),
@@ -126,6 +133,29 @@ def main():
 
     # 3. 拒绝未知桌面环境
     check(run("--plan", "--desktop", "dde").returncode == 2, "unknown desktop must exit 2")
+
+    # 3.1 KDE 档只能产出 KDE 的名字与 SDDM 摘要；四个档位共用同一份基础包。
+    with tempfile.TemporaryDirectory() as fixture_dir:
+        fixture_path = Path(fixture_dir)
+        (fixture_path / "repodata").mkdir(parents=True, exist_ok=True)
+        (fixture_path / "repodata" / "repomd.xml").write_text("<repomd/>\n", encoding="utf-8")
+        for pkg in EXPECTED_PIANO_PACKAGES | {EXPECTED_KERNEL_PACKAGE}:
+            (fixture_path / f"{pkg}-0.1.0-1.fc44.noarch.rpm").touch()
+        res_kde = run("--plan", "--releasever", "44", "--desktop", "kde",
+                      "--rpms-dir", str(fixture_path))
+        check(res_kde.returncode == 0, f"kde plan should succeed: {res_kde.stderr}")
+        if res_kde.returncode == 0:
+            kde = json.loads(res_kde.stdout)
+            check(kde.get("desktop") == "kde", "kde plan must report desktop kde")
+            check(kde.get("root_size_mib") == 8192, "kde plan must use the profile capacity")
+            check(kde.get("display_manager", {}).get("unit") == "sddm.service",
+                  f"kde must use SDDM: {kde.get('display_manager')}")
+            check(kde.get("artifact_names", {}).get("image_artifact") == "root-image-44-kde",
+                  f"kde artifact name wrong: {kde.get('artifact_names')}")
+            check("sddm" in kde.get("all_packages", []),
+                  "the KDE install set must name sddm")
+            check("iio-sensor-proxy" not in kde.get("all_packages", []),
+                  "the stock iio-sensor-proxy must stay out; iio-sensor-proxy-ssc provides it")
 
     # 4. 仓库路径缺失检测
     with tempfile.TemporaryDirectory() as empty_dir:

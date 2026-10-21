@@ -205,9 +205,9 @@ with path.open("rb") as f:
     if b"SUNUEFI-SPLITv1\0" not in data:
         sys.exit("Error: Boot image lacks SUNUEFI-SPLITv1 layout (24GB live-memory dynamic mapping missing)")
 
-    expected_gen = bytes.fromhex("2b191f0dd3bca52d20950ec58199f95b")
+    expected_gen = bytes.fromhex("a771e3e95ce298160aff7a189b7dc7ec")
     if expected_gen not in data:
-        sys.exit("Error: Boot image lacks verified 24GB live-memory app_generation (2b191f0dd3bca52d20950ec58199f95b)")
+        sys.exit("Error: Boot image lacks verified 24GB live-memory app_generation (a771e3e95ce298160aff7a189b7dc7ec)")
 
     next_pos = data.find(b"SUNUEFI-NEXTv1\0")
     if next_pos == -1:
@@ -228,7 +228,7 @@ with path.open("rb") as f:
     if target != 2:
         sys.exit(f"Error: SUNUEFI-NEXTv1 default target is {target}, expected 2 (Linux)")
 
-print(f"    Verified Boot Image: Header v4 (96MB), AVB0 RSA4096 OK, live-memory OK (2b191f0d), NEXTv1 target=2 (Linux)")
+print(f"    Verified Boot Image: Header v4 (96MB), AVB0 RSA4096 OK, live-memory OK (a771e3e9), NEXTv1 target=2 (Linux)")
 PY
 }
 
@@ -376,12 +376,23 @@ else
 fi
 
 # 4. Resolve and copy/compress RootFS image
-ROOT_ROW=$(resolve_candidate "$ROOT_IN" \
-    "$REPO_ROOT/build/bundle/pianoroot.f2fs.img.zst" \
-    "$REPO_ROOT/build/clean-distros/fedora-44-gnome/pianoroot-fedora44-gnome-f2fs.img.zst" \
-    "$REPO_ROOT/build/clean-distros/fedora-44-gnome/pianoroot-fedora44-gnome-f2fs.img" \
-    "$REPO_ROOT/../mipad8p-piano/out/offline-bringup-20261011-r2/deploy-bundle/pianoroot.f2fs.img.zst" \
-    "$REPO_ROOT/out/deploy-stage-20261014/pianoroot.f2fs.img.zst" || true)
+# 候选列表由桌面档生成：GNOME 排第一，其余可构建档位依次跟随。桌面名与
+# 镜像名都不在这里手写，加一档不需要改这个脚本。
+ROOT_CANDIDATES=("$REPO_ROOT/build/bundle/pianoroot.f2fs.img.zst")
+PIANO_RELEASEVER="${PIANO_RELEASEVER:-$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["target"]["releasever"])' "$REPO_ROOT/product.json")}"
+DESKTOP_IMAGES="$(python3 "$SCRIPT_DIR/piano_desktop.py" images --releasever "$PIANO_RELEASEVER")" || {
+    echo "Error: cannot derive the rootfs candidates from the desktop profiles." >&2
+    exit 1
+}
+while IFS=$'\t' read -r _desktop rel_path; do
+    [ -n "$rel_path" ] || continue
+    ROOT_CANDIDATES+=("$REPO_ROOT/$rel_path.zst" "$REPO_ROOT/$rel_path")
+done <<<"$DESKTOP_IMAGES"
+ROOT_CANDIDATES+=(
+    "$REPO_ROOT/../mipad8p-piano/out/offline-bringup-20261011-r2/deploy-bundle/pianoroot.f2fs.img.zst"
+    "$REPO_ROOT/out/deploy-stage-20261014/pianoroot.f2fs.img.zst"
+)
+ROOT_ROW=$(resolve_candidate "$ROOT_IN" "${ROOT_CANDIDATES[@]}" || true)
 
 if [ -n "$ROOT_ROW" ]; then
     ROOT_FOUND="${ROOT_ROW%%$'\t'*}"

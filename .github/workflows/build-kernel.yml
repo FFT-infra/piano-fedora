@@ -96,6 +96,20 @@ jobs:
       - name: Prepare production kernel including Gunyah
         run: python3 scripts/prepare-production-kernel.py --sunuefi sunuefi
 
+      - name: Report a failed source preparation
+        if: failure()
+        working-directory: sunuefi
+        run: |
+          set -euo pipefail
+          # 准备失败时把记录打出来：派生树摘要不在本地算得出来，只能从这里的
+          # actual_tree 取回再回填 prepare_release_kernel.py。
+          for f in build/kernel-worktrees/*.failure.json; do
+            if [ -f "$f" ]; then
+              echo "== $f"
+              cat "$f"
+            fi
+          done
+
       - name: Validate the complete Fedora configuration before compilation
         working-directory: sunuefi
         run: |

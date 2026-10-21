@@ -4,10 +4,14 @@ name: build-image
 on:
   workflow_dispatch:
     inputs:
+      desktop:
+        description: "桌面档；rootfs_artifact 与 size_mib 留空时由它推导"
+        required: false
+        default: "gnome"
       rootfs_artifact:
-        description: "Fedora 基础树 artifact"
-        required: true
-        default: "rootfs-44-gnome"
+        description: "Fedora 基础树 artifact；留空则用 rootfs-<releasever>-<desktop>"
+        required: false
+        default: ""
       kernel_artifact:
         description: "正式内核 artifact（内建 Gunyah）：kernel-release-7.2.9"
         required: true
@@ -17,9 +21,9 @@ on:
         required: true
         default: "piano-fedora-runtime"
       size_mib:
-        description: "测试 root 镜像容量（MiB），不修改设备分区"
+        description: "测试 root 镜像容量（MiB）；留空则用 profile 的 root_size_mib"
         required: false
-        default: "8192"
+        default: ""
       kernel_run_id:
         description: "固定内核与 SDK 的成功 run（发布构建必填）"
         required: false
@@ -74,7 +78,9 @@ jobs:
         id: source
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DESKTOP: ${{ inputs.desktop }}
           ROOTFS_ARTIFACT: ${{ inputs.rootfs_artifact }}
+          SIZE_MIB: ${{ inputs.size_mib }}
           KERNEL_ARTIFACT: ${{ inputs.kernel_artifact }}
           RUNTIME_ARTIFACT: ${{ inputs.runtime_artifact }}
           KERNEL_RUN: ${{ inputs.kernel_run_id }}
@@ -85,6 +91,30 @@ jobs:
           RELEASE_MODE: ${{ inputs.release_mode }}
         run: |
           set -euo pipefail
+          # 桌面档是输入的唯一真源：rootfs artifact 与镜像容量都从 profile 派生，
+          # 不留第二份桌面名或容量。
+          releasever=$(python3 -c 'import json;print(json.load(open("product.json"))["target"]["releasever"])')
+          derived=$(python3 scripts/piano_desktop.py expand --desktop "$DESKTOP" --releasever "$releasever")
+          # 这三个 workflow 一次只做一个桌面档；`all` 属于 build-rootfs 的矩阵，
+          # 在这里会让派生名悄悄取第一行，所以直接拒绝。
+          test "$(python3 -c 'import json,sys;print(len(json.loads(sys.argv[1])))' "$derived")" -eq 1 || {
+            echo "desktop '$DESKTOP' expands to more than one entry; name a single desktop" >&2
+            exit 2
+          }
+          ROOTFS_ARTIFACT=${ROOTFS_ARTIFACT:-$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])[0]["rootfs_artifact"])' "$derived")}
+          root_size=$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])[0]["root_size_mib"])' "$derived")
+          SIZE_MIB=${SIZE_MIB:-$root_size}
+          echo "rootfs_artifact=$ROOTFS_ARTIFACT" >> "$GITHUB_OUTPUT"
+          echo "size_mib=$SIZE_MIB" >> "$GITHUB_OUTPUT"
+          echo "releasever=$releasever" >> "$GITHUB_OUTPUT"
+          echo "desktop=$DESKTOP" >> "$GITHUB_OUTPUT"
+          echo "OK: desktop $DESKTOP consumes $ROOTFS_ARTIFACT at ${SIZE_MIB} MiB"
+          # rootfs artifact 名必须就是这一档的派生命，不接受手填别的桌面的树。
+          expected_artifact=$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])[0]["rootfs_artifact"])' "$derived")
+          test "$ROOTFS_ARTIFACT" = "$expected_artifact" || {
+            echo "rootfs_artifact $ROOTFS_ARTIFACT is not the $DESKTOP rootfs ($expected_artifact)" >&2
+            exit 2
+          }
           # 正式产物统一包含 Gunyah；旧实验产物不进入新交付链。
           test "$KERNEL_ARTIFACT" = kernel-release-7.2.9 || {
             echo "only production kernel-release-7.2.9 is accepted" >&2; exit 2;
@@ -121,7 +151,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: ${{ inputs.rootfs_artifact }}
+          name: ${{ steps.source.outputs.rootfs_artifact }}
           path: build/in/base
           run-id: ${{ steps.source.outputs.rootfs_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -172,6 +202,7 @@ jobs:
       - name: Require a fully assembled release rootfs
         env:
           KERNEL_RUN: ${{ steps.source.outputs.kernel_run }}
+          DESKTOP: ${{ steps.source.outputs.desktop }}
         run: |
           set -euo pipefail
           root=build/device-root/rootfs
@@ -185,6 +216,12 @@ jobs:
           record = json.loads((root.parent / "clean-manifest.json").read_text())
           ROOT = os.environ["GITHUB_WORKSPACE"]
           assert record["status"] == "BUILT_AND_AUDITED"
+          # 桌面档必须与这次 build-image 的输入一致：拿错 rootfs artifact
+          # （例如 KDE 的树配 GNOME 的输入）在这里就停下，而不是等到最终
+          # 镜像装上去才发现登录的是另一个桌面。
+          assert record.get("desktop") == os.environ["DESKTOP"], (
+              "rootfs was assembled for desktop "
+              f"{record.get('desktop')!r}, not {os.environ['DESKTOP']!r}")
           assert record["audit"]["audit_passed"] is True
           local = record.get("local_inputs", {})
           kernel = json.loads(Path("build/kernel/manifest.json").read_text())
@@ -247,7 +284,7 @@ jobs:
                 "kernel-piano owns the module tree")
           PY
 
-      - name: Reject a base rootfs without the GNOME session bus
+      - name: Reject a base rootfs without the session bus
         run: |
           set -euo pipefail
           root=build/device-root/rootfs
@@ -283,7 +320,7 @@ jobs:
           for path in ("usr/bin/dbus-daemon", "usr/bin/dbus-run-session",
                        "usr/lib64/security/pam_systemd.so"):
               assert (root / path).exists(), path
-          print("OK: base rootfs carries the GNOME session bus")
+          print("OK: base rootfs carries the session bus")
           PY
 
       - name: Validate and stage the sealed kernel payload
@@ -310,7 +347,8 @@ jobs:
           set -euo pipefail
           sudo python3 scripts/finalize-fedora-rootfs.py --rootfs build/device-root/rootfs \
             --kernel build/kernel --runtime build/runtime --mesa build/mesa \
-            --ffmpeg build/ffmpeg --output build/device-root
+            --ffmpeg build/ffmpeg --output build/device-root \
+            --desktop "${{ steps.source.outputs.desktop }}"
           sudo python3 - <<'PY'
           import json, sys
           from pathlib import Path
@@ -367,22 +405,30 @@ jobs:
           python3 scripts/build-abl-diagnostic.py --kernel build/kernel \
             --initramfs build/initramfs-abl --source "$source" \
             --dtbo build/dtbo-abl-storage.img --output build/diagnostic-abl-storage
-          sudo tar -I 'zstd -6 -T0' -cf diagnostic-abl-storage.tar.zst -C build/diagnostic-abl-storage .
+          # 平台资产要在四档之间逐字节相同，tar 必须固定 mtime 与排序；
+          # 否则同一份内容每次打包都得到不同字节，发布门禁会误报分叉。
+          sudo tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+            -I 'zstd -6 -T0' -cf diagnostic-abl-storage.tar.zst -C build/diagnostic-abl-storage .
           sudo chown "$(id -u):$(id -g)" diagnostic-abl-storage.tar.zst
 
       - name: Build and fully verify the F2FS image
         env:
-          ROOT_SIZE: ${{ inputs.size_mib }}
+          ROOT_SIZE: ${{ steps.source.outputs.size_mib }}
+          DESKTOP: ${{ steps.source.outputs.desktop }}
         run: |
           set -euo pipefail
           sudo env TMPDIR="$GITHUB_WORKSPACE/build/image-tmp" python3 scripts/build-f2fs-image.py \
             --rootfs build/device-root/rootfs --size-mib "$ROOT_SIZE" \
             --output pianoroot.f2fs.img --verify --manifest root-image-manifest.json
-          sudo python3 - <<'PY'
-          import hashlib, json
+          # sudo 默认重置环境，DESKTOP 必须显式带进去。
+          sudo env DESKTOP="$DESKTOP" python3 - <<'PY'
+          import hashlib, json, os
           from pathlib import Path
           p = Path('root-image-manifest.json')
           m = json.loads(p.read_text())
+          # 桌面档随镜像走：下游 bundle、root-install 与 Release 都从这里取，
+          # 不再回头猜 artifact 名字。
+          m["desktop"] = os.environ["DESKTOP"]
           for name, folder in (('rootfs', 'device-root'), ('kernel', 'kernel'),
                                ('runtime', 'runtime'), ('mesa', 'mesa'),
                                ('ffmpeg', 'ffmpeg'), ('initramfs', 'initramfs')):
@@ -400,11 +446,14 @@ jobs:
           RUNTIME_RUN: ${{ steps.source.outputs.runtime_run }}
           MESA_RUN: ${{ steps.source.outputs.mesa_run }}
           FFMPEG_RUN: ${{ steps.source.outputs.ffmpeg_run }}
+          DESKTOP: ${{ steps.source.outputs.desktop }}
         run: |
           set -euo pipefail
           sudo tar --format=pax --numeric-owner --xattrs --xattrs-include='*' --acls --selinux \
             -I 'zstd -6 -T0' -cf device-root.tar.zst -C build/device-root rootfs manifest.json packages.tsv
-          tar -I 'zstd -6 -T0' -cf initramfs.tar.zst -C build/initramfs .
+          # 同上：initramfs 与镜像无关，四档共用一个 tar。
+          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+            -I 'zstd -6 -T0' -cf initramfs.tar.zst -C build/initramfs .
           cp build/kernel/manifest.json kernel-manifest.json
           cp build/runtime/manifest.json runtime-manifest.json
           cp build/mesa/manifest.json mesa-manifest.json
@@ -419,6 +468,7 @@ jobs:
               'runtime_run': os.environ['RUNTIME_RUN'], 'mesa_run': os.environ['MESA_RUN'],
               'ffmpeg_run': os.environ['FFMPEG_RUN'],
               'image_run': os.environ['GITHUB_RUN_ID'],
+              'desktop': os.environ['DESKTOP'],
               'image_source_commit': os.environ['GITHUB_SHA']}, indent=2) + '\n')
           PY
           sudo chown "$(id -u):$(id -g)" device-root.tar.zst root-image-manifest.json
@@ -426,7 +476,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: root-image-${{ inputs.size_mib }}
+          name: root-image-${{ steps.source.outputs.releasever }}-${{ steps.source.outputs.desktop }}
           path: |
             pianoroot.f2fs.img.zst
             root-image-manifest.json

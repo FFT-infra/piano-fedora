@@ -1,6 +1,6 @@
 # Xiaomi Pad 8 Pro (piano) 安装、分区与双系统指南
 
-本指南讲两件事：在**小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）**上从零安装 Fedora 44 GNOME，以及对已有 Linux 分区做增量更新。
+本指南讲两件事：在**小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）**上从零安装 Fedora 44，以及对已有 Linux 分区做增量更新。默认桌面是 GNOME，其余档位的差异见[桌面档](desktops.md)。
 
 ---
 
@@ -47,7 +47,7 @@
 > SunUEFI 的板级 DTB 来自 `vendor_boot_a` 底包，再叠加原厂 `dtbo_a` 的增量片段。原厂内容必须留在原位。
 
 * **`sunuefi_esp`（512 MiB，FAT32）**：SunUEFI EDK2 固件、合并设备树（DTB）、Linux 7.2 适配内核与 initramfs。
-* **`sunuefi_root`（F2FS）**：Fedora 44 GNOME 根文件系统。F2FS 为闪存设计，能发挥 UFS 4.0 的顺序与随机读写性能。
+* **`sunuefi_root`（F2FS）**：Fedora 44 根文件系统，桌面按档位装配。F2FS 为闪存设计，能发挥 UFS 4.0 的顺序与随机读写性能。
 * **引导稳定性（`qbootctl`）**：`qbootctl.service` 在每次 Linux 引导成功后向底层 GPT 写入 `Successful = 1`，ABL 的启动计数器不会归零。
 * **容量按实时 GPT 计算。** 容量不是固定值，**每台设备按自己实时的 GPT 计算**，512 GiB、1 TiB 或其他容量都走同一套规则：
 
@@ -59,7 +59,7 @@
 
   `product.json` 的 `root_size_mib` 是封存镜像的容量（8192 MiB），与设备无关。`sunuefi_root` 的实际容量从实时 GPT 算，文件系统在首启时长满该分区。
 
-  **Android 侧需要 root 才能读写块设备。** 获取 root 是本节的前提，本仓库不提供方法。没有 root 就只能用执行器在 Fastboot 侧完成分区。
+  **Android 侧需要 root 才能读写块设备。** 获取 root 是本指南的前提，本仓库不提供方法。首次分区只有两条路：用 `install-f2fs.py apply` 在已 root 的 Android 上写 GPT，或者按本节的手动步骤在 Android 上执行 `adb shell su -c`。两者都离不开 root；原厂 Fastboot 只能读分区容量、擦除和刷写，不能改分区表。
 
 ---
 
@@ -73,15 +73,23 @@
 Release 资产是扁平的，全部下载到同一个空目录后：
 
 1. `sha256sum -c RELEASE-SHA256SUMS`
-2. `bash unpack-release.sh`
+2. `bash unpack-release.sh --desktop <档位>`
 
-`unpack-release.sh` 会合并大于 2 GiB 的分片、解压 zstd 传输镜像，并把 `root-install/` 放回脚本要求的布局。完成后这个目录就是下面的暂存目录。
+一个 Release 可以带多档桌面（`gnome`、`kde`、`niri`、`hyprland`）。ESP、内核、
+initramfs 与 UEFI 四档逐字节相同，只发布一份；root 镜像与 `root-install/` 每档
+各一份，名字带 `-<档位>` 后缀。`--desktop` 决定哪一档的 root 进入
+`root-install/`；Release 里只有一档时脚本自动识别，多档时不传参数会报错并列出
+可选项。各档有什么差别见[桌面档](desktops.md)。
+
+`unpack-release.sh` 会合并大于 2 GiB 的分片、解压 zstd 传输镜像、把桌面资产还原
+成下面的规范名，并把 `root-install/` 放回脚本要求的布局。完成后这个目录就是下面的
+暂存目录。
 
 - `piano-installer-<tag>.zip`：`flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` 与 `unpack-release.sh`；
 - `piano-boot-tools-<tag>.tar.zst`：生成设备专用 `device-boot/boot_linux.img` 的脚本与 x86-64 工具；
 - `sunuefi_esp.img`：SunUEFI ESP 分区镜像；
 - `boot_sunuefi.img`：ESP 内部的 Linux 载荷，不刷任何分区；
-- `pianoroot.f2fs.img.zst`：封存的基础盘，不能直接首装；
+- `pianoroot.f2fs.img.zst`（单档）或 `pianoroot-<档位>.f2fs.img.zst`（多档）：封存的基础盘，不能直接首装；
 - `pianoroot.f2fs.sparse.img`：deploy-bundle 自带的可刷传输镜像；
 - `root-install/pianoroot.f2fs.sparse.img`：`prepare-install` 写入设备配置后的传输镜像；
 - `SHA256SUMS`：deploy-bundle 内资产的摘要；
@@ -197,7 +205,7 @@ Windows 脚本不自动注入；需要时按 `flash-linux.bat` 的提示手工�
 
 ### 1. 从 Release 取哪些文件
 
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。资产是扁平的，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh`；手动刷机只认解包后的文件名。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及这个 run 派生的 `prepare-install` 的 `root-install`。不要拿历史 `out/` 目录拼装。
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。资产是扁平的，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh --desktop <档位>`（只有一档时可省略）；手动刷机只认解包后的文件名。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及这个 run 派生的 `prepare-install` 的 `root-install`。不要拿历史 `out/` 目录拼装。
 
 手动刷机至少需要这些资产：
 
@@ -350,9 +358,9 @@ ls /usr/lib/modules/
 
 `uname -r` 与 ESP 里的字符串不符，说明刷进去的不是这一版资产。`/usr/lib/modules/` 下没有同名目录，说明 rootfs 与 ESP 的内核不是一套；系统能起来，但一个驱动都加载不了。
 
-能进 GNOME 桌面就是刷写成功最直接的证据。
+能进所选桌面就是刷写成功最直接的证据。
 
-上面的读回与启动后检查要在从原始 GPT/UFS 重新分区的设备上执行；构建成功、热修复启动、历史资产启动都不能当作 PR 验收证据。
+这些检查要在从原始 GPT/UFS 重新分区的设备上做一次才有意义。在旧的 root 分区上热替换文件，或者用历史资产启动的机器，都不能说明这份镜像能装。
 
 ### 6. 回滚到 Android
 
@@ -377,7 +385,26 @@ fastboot reboot
 
 已经有 `sunuefi_root` 与 `sunuefi_esp` 时走下面的更新入口。`install-f2fs.py apply` 会清空 userdata，不能用它做更新。
 
-自动化的首装走 `install-f2fs.py plan` 与 `apply`，完成同一套分区、擦除与传输。命令、run id 记录、产物契约与 PR 验收门槛见[维护与验收](internals.md)。
+自动化的首装走 `install-f2fs.py plan` 与 `apply`，完成同一套分区、擦除与传输。先在已 root 的 Android 上生成只读计划：
+
+```sh
+python3 boot-tools/installer/scripts/install-f2fs.py plan \
+  --sunuefi boot-tools/installer/sunuefi --serial <序列号> \
+  --bundle deploy-bundle --root-install root-install --device-boot device-boot \
+  --stock-boot stock-recovery/boot.img --plan first-install-plan.json
+```
+
+逐项复核计划后才执行。`apply` 会清空 userdata，必须同时给 `--execute`、`--accept-data-loss` 和一个尚不存在的 session 目录：
+
+```sh
+python3 boot-tools/installer/scripts/install-f2fs.py apply \
+  --sunuefi boot-tools/installer/sunuefi --serial <序列号> \
+  --bundle deploy-bundle --root-install root-install --device-boot device-boot \
+  --stock-boot stock-recovery/boot.img --plan first-install-plan.json \
+  --session sessions/first-install --execute --accept-data-loss
+```
+
+每步的输入契约、run id 记录与验收门槛见[维护与验收](internals.md)。
 
 `device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_a`。`app_generation` 要与 `deploy-bundle/PianoUEFI-product.img` 里的 APPv1 载荷一致。
 
@@ -580,7 +607,7 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 
 执行前重新比较设备、完整 GPT 基线、内存描述、槽位与材料，保存 GPT 双副本和原 BOOT。进入原厂 bootloader 后，第一笔传输之前核对两个目标的实时容量；fastbootd、序列号不对或槽位不对都拒绝。只传输 `sunuefi_esp` 与 `sunuefi_root`，完成后停在 Fastboot，状态是 `UPDATE_TRANSFERRED_FIRST_BOOT_AND_READBACK_PENDING`。
 
-传输成功不等于读回或启动通过。下一步依次是临时 `boot_linux.img` 启动与设备读回、GNOME 与硬件验收、临时 Android 旁路。全部通过后才单独安装持久 BOOT。
+传输成功不等于读回或启动通过。下一步依次是临时 `boot_linux.img` 启动与设备读回、桌面与硬件验收、临时 Android 旁路。全部通过后才单独安装持久 BOOT。
 
 中途中断时先读 session 的 result.json 和实际设备状态，不要自动重试或回滚 GPT。
 
@@ -602,7 +629,7 @@ ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，�
 
 ## 五、 首次登录与桌面环境配置
 
-刷完后平板自动重启，进入 120 Hz 的 Fedora 44 GNOME 桌面。
+刷完后平板自动重启，进入 120 Hz 的桌面。四档都自动登录到 `piano` 用户；GNOME 走 GDM，KDE 走 SDDM，niri 与 Hyprland 走 greetd 的 `tuigreet` 兜底。
 
 * **默认用户**：`piano`
 * **默认密码**：`piano123456`
@@ -611,14 +638,14 @@ ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，�
 ### 默认状态
 * **120 Hz 与触控**：Mesa 硬件加速默认开启；触控服务加载 5 阶自适应卡尔曼滤波与 24 像素死区防抖。
 * **声学保护**：内核与 ALSA UCM2 把 FS19xx 四功放截断在 -15 dB；麦克风有 +40 dB 硬件增益。
-* **电池与电源**：`/hypervisor` 节点已软隔离，GNOME 显示原生双电芯电量，支持合盖与深度挂起。休眠（hibernate）与混合睡眠默认关闭：`sleep.conf.d/piano.conf` 由 `scripts/finalize-fedora-rootfs.py` 写入，`logind.conf.d/piano.conf` 由 `piano-fedora-configs` 包提供。
+* **电池与电源**：`/hypervisor` 节点已软隔离，桌面显示原生双电芯电量，支持合盖与深度挂起。休眠（hibernate）与混合睡眠默认关闭：`sleep.conf.d/piano.conf` 由 `scripts/finalize-fedora-rootfs.py` 写入，`logind.conf.d/piano.conf` 由 `piano-fedora-configs` 包提供。
 * **触控提频**：`uperf-linux` 监听触控输入，触点按下后 1 ms 内拉高全大核频率。
 
 ---
 
 ## 六、 双系统往返
 
-1. **从 Linux 切换回 Android**：点击 GNOME 应用抽屉里的**「返回 Android」**图标，
+1. **从 Linux 切换回 Android**：点击应用抽屉里的**「返回 Android」**图标，
    或在终端执行 `piano-next-boot android --reboot`。helper 把持久请求写成
    Android 后正常重启，选择器在下次开机时进入 Android。已在真机验收（2026-10-21）。
 2. **从 Android 切换回 Linux**：安装 Android 的「SunUEFI 引导助手」模块，在模块
@@ -651,7 +678,7 @@ ls /usr/lib/modules/          # 有与 uname -r 同名的目录
 | 无线 | Wi-Fi 连接、蓝牙扫描 |
 | 电源与睡眠 | 合盖与 `rtcwake -m mem -s 20` 能唤醒，唤醒后无 failed unit |
 
-再完整重启一次，确认仍进 GNOME。双系统往返按下一节执行，往返后核对
+再完整重启一次，确认仍进所选桌面。双系统往返按下一节执行，往返后核对
 `fastboot getvar current-slot`。
 
 编解码另有一条可复现的取证命令，在设备上跑，`MEDIA_OUTPUT` 必须是新的目录：

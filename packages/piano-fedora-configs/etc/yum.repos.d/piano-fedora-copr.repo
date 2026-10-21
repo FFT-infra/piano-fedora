@@ -1,10 +1,10 @@
-[copr:copr.fedorainfracloud.org:fft-infra:piano-fedora]
+[copr:copr.fedorainfracloud.org:xinyang26:piano-fedora]
 name=Copr repo for piano-fedora (Xiaomi Pad 8 Pro) - $basearch
-baseurl=https://download.copr.fedorainfracloud.org/results/fft-infra/piano-fedora/fedora-$releasever-$basearch/
+baseurl=https://download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/fedora-$releasever-$basearch/
 type=rpm-md
 skip_if_unavailable=True
 gpgcheck=1
-gpgkey=https://download.copr.fedorainfracloud.org/results/fft-infra/piano-fedora/pubkey.gpg
+gpgkey=https://download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/pubkey.gpg
 repo_gpgcheck=0
 enabled=1
 # kernel-piano is published to this repository for auditing, but a user-space

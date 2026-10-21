@@ -10,7 +10,7 @@
 
 [![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
 
-在小米平板 8 Pro（代号 `piano`，高通骁龙 8 至尊版 SM8750）上原生运行 Fedora 44 + GNOME。引导链是 SunUEFI（EDK2），内核是 Linux 7.2.9 主线适配，根文件系统用 F2FS，与原生 HyperOS 组成双系统：合体 BOOT 里的 3 秒选择器与 Android 引导助手负责往返，两个方向都不需要电脑。
+在小米平板 8 Pro（代号 `piano`，高通骁龙 8 至尊版 SM8750）上原生运行 Fedora 44，默认桌面是 GNOME。引导链是 SunUEFI（EDK2），内核是 Linux 7.2.9 主线适配，根文件系统用 F2FS，与原生 HyperOS 组成双系统：合体 BOOT 里的 3 秒选择器与 Android 引导助手负责往返，两个方向都不需要电脑。
 
 ## 硬件支持
 
@@ -31,14 +31,30 @@
 | 手写笔 | 🟡 | 守护服务与 Type 29 协议就绪，等待实物划线终验 |
 | 指纹 / IR / HDR | ❌ | 依赖闭源 TEE 固件，主线不支持 |
 
+## 桌面
+
+镜像按桌面分档构建，同一份发布链出四档 root 文件系统。四档共用内核、ESP、
+安装器与刷写脚本，只有 root 镜像与 `root-install/` 不同。
+
+| 档位 | 会话 | 登录 | 自动旋转 | 验收状态 |
+|---|---|---|---|---|
+| `gnome` | GNOME 44 workstation | GDM 自动登录 | Mutter | 真机通过 |
+| `kde` | KDE Plasma | SDDM 自动登录 | KWin，需 `qt6-qtsensors` | 未上真机 |
+| `niri` | niri | greetd + tuigreet | 无，手动 `transform` | 未上真机 |
+| `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无，手动 rotate | 未上真机 |
+
+下载时用 `bash unpack-release.sh --desktop <档位>` 选档，不传参数时取 Release
+里唯一的那一档。每档的登录、电源行为、旋转能力与已知缺口见
+[桌面档](docs/desktops.md)。
+
 ## 安装
 
 1. 解锁 Bootloader，准备好 `fastboot`。
 2. 原始 GPT 的设备先按[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)分区、擦除 `userdata`、让 Android 首次开机。**没有这一步，一键脚本不能运行。**
-3. 从 [Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh`。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle` 与该 run 派生的 `prepare-install` 的 `root-install`，不要混用不同 run 的资产。
+3. 从 [Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh --desktop <档位>`（Release 只有一档时可省略）。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle` 与该 run 派生的 `prepare-install` 的 `root-install`，不要混用不同 run 的资产。
 4. 按[安装指南第三节](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本)整理暂存目录：Release 的 `piano-installer-<tag>.zip` 里有刷写脚本；从源码构建时把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat` 放进同一层。
 
-   脚本把当前目录当作暂存目录，不会从仓库里找镜像。
+   刷写前还要用 Release 的 `piano-boot-tools-<tag>.tar.zst` 在本机生成一次 `device-boot/boot_linux.img`。它由这台平板自己的原厂 BOOT 重打包而成，通用产物的 `boot_sunuefi.img` 不能顶替。脚本把当前目录当作暂存目录，不会从仓库里找镜像。
 
 5. 关机后长按 `电源键 + 音量减键` 进入 Fastboot，确认 `fastboot getvar current-slot` 返回 `a`，在暂存目录里执行：
 
@@ -48,7 +64,7 @@
 
    Windows 双击 `flash-linux.bat`（不自动注入公钥）。
 
-6. 刷完自动重启进入 GNOME。用户名 `piano`，默认密码 `piano123456`，登录后尽快用 `passwd` 修改。
+6. 刷完自动重启进入所选桌面。用户名 `piano`，默认密码 `piano123456`，登录后尽快用 `passwd` 修改。
 
    传了 `--ssh-key` 就可以直接用密钥登录。
 
@@ -62,15 +78,15 @@
 
 ## 发布产物
 
-正式 Release 由 tag 触发，只包含同一次 `build-bundle` 与它派生的 `prepare-install` 已验证产物；大镜像自动分片，附带 `RELEASE-SHA256SUMS` 与 `unpack-release.sh`：
+正式 Release 由 tag 触发，只包含同一次 `build-bundle` 与它派生的 `prepare-install` 已验证产物；大镜像自动分片，附带 `RELEASE-SHA256SUMS` 与 `unpack-release.sh`。一个 Release 可以带多档桌面：ESP、内核、initramfs 与 UEFI 四档逐字节相同，只发布一份；root 镜像与 `root-install/` 按 `-<desktop>` 加后缀，每档各一份：
 
 | 文件 | 说明 |
 |---|---|
 | `boot_sunuefi.img` | ESP 内部的 Linux 载荷，不刷进 `boot_a` |
 | `sunuefi_esp.img` | SunUEFI EDK2、DTB、Linux 7.2.9 内核与 initramfs |
 | `PianoUEFI-product.img` | SunUEFI 产品固件本体，`sunuefi_esp.img` 的载荷来源 |
-| `pianoroot.f2fs.img.zst` | 封存的 Fedora 44 GNOME 根文件系统，不能直接刷 |
-| `root-install/` | 写入设备配置后的 sparse 根镜像与清单（由 `unpack-release.sh` 还原） |
+| `pianoroot.f2fs.img.zst` / `pianoroot-<desktop>.f2fs.img.zst` | 封存的根文件系统，不能直接刷；单档时不带后缀 |
+| `root-install/` | 写入设备配置后的 sparse 根镜像与清单（由 `unpack-release.sh --desktop <档位>` 还原） |
 | `SHA256SUMS` | 各资产哈希 |
 
 Release 另带 `piano-installer-<tag>.zip`（刷写脚本与说明）和 `piano-boot-tools-<tag>.tar.zst`（本机生成 `device-boot/boot_linux.img`）。`scripts/package-release-bundle.sh` 是本地兼容打包器，不是发布主入口。
@@ -78,6 +94,7 @@ Release 另带 `piano-installer-<tag>.zip`（刷写脚本与说明）和 `piano-
 ## 文档
 
 - [系统架构](docs/architecture.md)：Fedora、SunUEFI 与 Android 的边界
+- [桌面档](docs/desktops.md)：四档的登录、电源、旋转与验收状态
 - [安装与分区](docs/installation.md)：分区计算、GPT 检查、一键与手动刷写、首次登录
 - [交付物与流水线](docs/artifacts.md)：内核、RPM、initramfs 与 bundle 的组装标准
 - [维护与验收](docs/internals.md)：流水线入口、产物绑定、run id 传递、PR 门槛
@@ -89,7 +106,6 @@ Release 另带 `piano-installer-<tag>.zip`（刷写脚本与说明）和 `piano-
 - [参与贡献](CONTRIBUTING.md)：本地检查、提交格式与 PR 门槛
 - [安全策略](SECURITY.md)：漏洞报告渠道与处理范围
 
-本地调试记录、事故复盘和交接笔记不入库。
 
 ## 构建与检查
 

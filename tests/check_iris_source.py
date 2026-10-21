@@ -4,12 +4,24 @@ import argparse
 import ast
 import hashlib
 import importlib.util
+import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def sequence(tree, name):
+    """取出函数里唯一元组循环的键序列；元素可能是纯字符串或 (键, 说明, 变量)。"""
+    function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
+    loops = [n for n in ast.walk(function) if isinstance(n, ast.For)
+             and isinstance(n.iter, ast.Tuple)]
+    assert len(loops) == 1, 'unexpected loop in ' + name
+    items = [ast.literal_eval(n) for n in loops[0].iter.elts]
+    return [item[0] if isinstance(item, tuple) else item for item in items]
 
 
 def main():
@@ -34,13 +46,28 @@ def main():
     )
     assert all(key in policy for key in keys), 'Iris patches are archived but not consumed'
     tree = ast.parse(tool.read_text())
-    merge = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'merge_stable')
-    # 摘要检查通过还不够：生产应用循环必须也包含两项输入。
-    loops = [n for n in ast.walk(merge) if isinstance(n, ast.For)
-             and isinstance(n.iter, ast.Tuple)]
-    assert len(loops) == 1, 'unexpected stable patch application loop'
-    applied = [ast.literal_eval(n)[0] for n in loops[0].iter.elts]
-    assert applied[-len(keys):] == list(keys), 'Iris/display/audio patches missing from actual application sequence'
+    applied = sequence(tree, 'merge_stable')
+    # 上游会继续往这个元组尾部追加补丁，所以按 key 定位而不是按末尾下标。
+    check = [key for key in applied if key in keys]
+    assert check == list(keys), 'Iris/display/audio patches missing from actual application sequence'
+    # 我们的补丁整行替换这两个序列时，漏掉一个上游键不会报错：prepare 静默跳过
+    # 那条补丁，派生树摘要也跟着自洽地错下去。拿 pin 上的原文件逐个比对。
+    pin = json.loads((ROOT / 'sources.lock.json').read_text(encoding='utf-8'))['sources']['sunuefi']['commit']
+    try:
+        pristine = subprocess.check_output(
+            ['git', '-C', str(sun), 'show', f'{pin}:tools/prepare_release_kernel.py'],
+            text=True, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        print('SKIP: pristine prepare_release_kernel.py needs the pinned git checkout')
+    else:
+        upstream = ast.parse(pristine)
+        for name, ours in (('update_patches', sequence(tree, 'update_patches')),
+                           ('merge_stable', applied)):
+            expected = sequence(upstream, name)
+            missing = [key for key in expected if key not in ours]
+            assert not missing, f'{name} dropped upstream patches: {missing}'
+            assert [key for key in ours if key in set(expected)] == expected, \
+                f'{name} reordered the upstream patch sequence'
     assert policy['target_tree'] != policy['stable_merged_tree'], 'derived tree is not sealed'
     with tempfile.TemporaryDirectory(prefix='iris-source-') as directory:
         root = Path(directory).resolve()
@@ -65,7 +92,7 @@ def main():
             else:
                 raise AssertionError('modified Iris patch accepted: ' + key)
             path.write_bytes(original)
-    print('OK: both Iris patches consumed in order; real hash validation rejects changed bytes')
+    print('OK: both Iris patches consumed in order; upstream patch sequences intact; real hash validation rejects changed bytes')
 
 
 if __name__ == '__main__':

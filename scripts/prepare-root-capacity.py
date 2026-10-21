@@ -208,6 +208,9 @@ def main():
                 decoded["expanded_bytes"] == proof["expanded_bytes"], "sparse transport differs from verified F2FS bytes")
         proof["target_size_mib"], proof["pre_expanded"] = args.size_mib, True
     record = {"schema_version": 1, "status": "ROOT_CAPACITY_VERIFIED_NOT_DEVICE_VERIFIED",
+              # 桌面档从 root 镜像记录里带下来：下载页按桌面分资产，安装脚本
+              # 与 SHA256SUMS 核对都靠这个字段确认取对了档。
+              "desktop": root_meta.get("desktop"),
               # The flash scripts compare the selected root-install's slot with
               # the bootloader's current-slot before the first write. Keep this
               # top-level field stable and available even when older manifests

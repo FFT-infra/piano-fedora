@@ -31,7 +31,7 @@
 回 `Device does not support fetch command`，宿主上留下一个 0 字节读回文件。
 `sunuefi_esp` 分区也比镜像大（537899008 对 536870912 字节），即使换了支持
 `fetch` 的引导器，整份哈希也不会等于镜像摘要。读回只能作辅助证据，刷写正确
-与否最终以启动后的 `uname -r`、`findmnt /` 和 GNOME 桌面为准。
+与否最终以启动后的 `uname -r`、`findmnt /` 和进入所选桌面为准。
 
 `boot_a` 的读回可以直接读分区前 4 KiB 与镜像内的 `SUNUEFI-NEXTv1` 请求页判断：
 首块是 `ANDROID!` 包装头，请求页的目标与 generation 和 `device-boot` 清单一致。
@@ -82,6 +82,10 @@ A 槽启动，不切活动槽，也不改 GPT。
   sequence=4，35 秒）。`ro.boot.slot_suffix` 始终是 `_a`，`sys.boot_completed=1`。
 - 请求页偏移 37490688（0x23C1000），magic `SUNUEFI-NEXTv1`，两页相隔 4096
   字节滚动写入。
+
+helper 优先读 Android 安装器维护的 ESP 记录
+`/boot/efi/EFI/SunUEFI/boot-request.json`，OTA 换槽后由 Android 侧刷新；
+`/etc/piano/boot-request.json` 只在早于共享槽位追踪的旧安装上回退使用。
 
 旧的 B 槽布局（Linux 写进 `boot_b`、`set_active b`）不再使用。保留一条历史
 排障记录：qbootctl 的 `set_active` 只改活动标志，不交换槽位 type GUID；A 活动

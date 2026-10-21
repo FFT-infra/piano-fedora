@@ -32,6 +32,8 @@ def main():
 
     series_files = sorted(PATCHES.glob("*/series.json"))
     check(bool(series_files), "at least one patch series should exist")
+    # series.json 的 base 只是记录，应用时不读；漏改会静默漂移，所以在这里对齐锁文件。
+    pin = json.loads((ROOT / "sources.lock.json").read_text(encoding="utf-8"))["sources"]["sunuefi"]["commit"]
 
     for manifest in series_files:
         folder = manifest.parent
@@ -43,6 +45,8 @@ def main():
 
         check(series.get("schema_version") == 1, f"{manifest}: schema_version must be 1")
         check(bool(series.get("patches")), f"{manifest}: patches must not be empty")
+        check((series.get("base") or {}).get("sunuefi_commit") == pin,
+              f"{manifest}: base.sunuefi_commit must match sources.lock.json")
 
         for patch in series.get("patches", []):
             name = patch.get("file")

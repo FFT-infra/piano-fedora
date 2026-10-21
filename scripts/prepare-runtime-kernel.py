@@ -11,6 +11,19 @@ from pathlib import Path
 
 from piano_artifacts import inspect_kernel, sha256
 
+# syncconfig 会用当前主机的 rustc 重算这些探测项。Rust 未启用时它们不参与
+# 内核或模块编译，构建机与运行机之间的小版本差异（1.99.0 对 1.99.1）不应
+# 让封印配置比对失败。
+HOST_TOOLCHAIN_PROBES = ("CONFIG_RUSTC_",)
+
+
+def comparable_config(text):
+    """去掉未启用 Rust 时的工具链探测项，其余内容保持逐字节比较。"""
+    lines = text.splitlines()
+    if any(line == "CONFIG_RUST=y" for line in lines):
+        return "\n".join(lines)
+    return "\n".join(line for line in lines if not line.startswith(HOST_TOOLCHAIN_PROBES))
+
 
 def run(command, **kw):
     subprocess.run([str(x) for x in command], check=True, **kw)
@@ -71,6 +84,7 @@ def main():
     run(["tar", "-I", "zstd", "-xf", archive, "-C", restored])
     if sha256(restored / ".config") != record["config_sha256"]:
         raise ValueError("SDK configuration differs from the sealed kernel")
+    sealed_config = (restored / ".config").read_text()
     # 编译外部模块仍使用 Ubuntu 的同一 LLVM 工具链，Fedora 只编用户态程序。
     build = sun / "build/kernels/fedora-runtime"
     build.mkdir(parents=True)
@@ -79,11 +93,12 @@ def main():
     command = ["make", "-C", prepared["worktree"], "O=" + str(build),
                "ARCH=arm64", "LLVM=1", "LLVM_IAS=1"]
     run([*command, "-j4", "modules_prepare"])
-    if sha256(build / ".config") != record["config_sha256"]:
+    after_config = (build / ".config").read_text()
+    if comparable_config(after_config) != comparable_config(sealed_config):
         # syncconfig 会重写 .config；把差异打出来，否则只能看到一条哈希不符。
         changed = difflib.unified_diff(
-            (restored / ".config").read_text().splitlines(),
-            (build / ".config").read_text().splitlines(),
+            comparable_config(sealed_config).splitlines(),
+            comparable_config(after_config).splitlines(),
             "sealed", "after modules_prepare", lineterm="", n=0)
         raise ValueError("module preparation changed the kernel configuration:\n"
                          + "\n".join(list(changed)[:40]))

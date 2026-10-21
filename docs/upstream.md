@@ -33,4 +33,4 @@
 
 上线后的只读更新计划要验两件事：Linux 描述的 RAM 是当次 Android FDT 的子集，固定保留区与 Linux RAM 相交的部分仍受保护。比较失败就拒绝更新。不要猜扩容后的地址，也不要放宽内存门槛。比较通过也不证明物理 DDR 所有权或完整 24 GB 可用。
 
-来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73/docs/devel/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73/uefi/core/PianoRawLinuxBoot.c)。
+来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/devel/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/uefi/core/PianoRawLinuxBoot.c)。

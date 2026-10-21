@@ -3,14 +3,14 @@
   "target": "sunuefi",
   "note": "Fedora 正式内核默认包含完整 built-in Gunyah；驱动按锁定 commit 原样导入，源码清单供 SDK 重放核验。",
   "base": {
-    "sunuefi_commit": "50f29a92a9f43a96e0e8aaf28e0fdbd5a7c64c73"
+    "sunuefi_commit": "065b192b863b6f99e12ba65d3cab27c0ddd6dca4"
   },
   "patches": [
     {
       "file": "0001-isolated-gunyah-profile.patch",
       "summary": "Fedora 正式配置默认启用 Gunyah，缺少驱动源码时拒绝构建",
       "targets": {
-        "tools/build_piano_full_kernel.py": "c0bd1adbfec8c6fe6929f833c3d17d4c9745d4654ed61664258fd6b9ac94baf1"
+        "tools/build_piano_full_kernel.py": "0d97be22a62d3027813c60f4621af9c478f3b054f5ca7280eb02435bf76716da"
       },
       "creates": []
     }

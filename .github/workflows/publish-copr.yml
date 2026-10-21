@@ -18,7 +18,7 @@ on:
       project:
         description: "COPR project (owner/name)"
         required: true
-        default: "fft-infra/piano-fedora"
+        default: "xinyang26/piano-fedora"
       execute:
         description: "false = validate only (dry-run); true = upload and wait for builds"
         required: true

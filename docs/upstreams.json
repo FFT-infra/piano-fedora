@@ -753,8 +753,8 @@
       "decision": "consume",
       "reason": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
       "lock_key": "sunuefi",
-      "reference_commit": "1b0e201e3e7fb0737d73c41624a855482a4df7c5",
-      "reference_date": "2026-10-12"
+      "reference_commit": "79417e7fc5b73e41e1fa9d70f69e7f906caa559d",
+      "reference_date": "2026-10-20"
     },
     {
       "repo": "sm8750-mainline/linux",
@@ -937,5 +937,5 @@
       "reason": "正式 Fedora 运行时按固定源码构建并核验安装字节"
     }
   ],
-  "checked_date": "2026-10-14"
+  "checked_date": "2026-10-21"
 }

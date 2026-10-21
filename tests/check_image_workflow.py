@@ -258,15 +258,18 @@ def resolve_step_env(root, workflows, artifacts, runs):
 
 
 def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_run="",
-                rootfs_run="", mesa_run="", ffmpeg_run="", release_mode="false"):
+                rootfs_run="", mesa_run="", ffmpeg_run="", release_mode="false",
+                desktop="gnome", rootfs_artifact=None, size_mib=""):
     workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
                  "build-mesa.yml", "host-check.yml"]
-    artifacts = ["rootfs-44-gnome", "kernel-release-7.2.9", "kernel-sdk-7.2.9",
+    artifacts = ["rootfs-44-gnome", "rootfs-44-kde", "kernel-release-7.2.9", "kernel-sdk-7.2.9",
                  "kernel-experimental-gunyah", "piano-fedora-runtime",
                  "piano-fedora-runtime-gunyah", "piano-fedora-mesa", "piano-fedora-ffmpeg"]
     runs = {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml"}
     env, output = resolve_step_env(root, workflows, artifacts, runs)
-    env.update(ROOTFS_ARTIFACT="rootfs-44-gnome", KERNEL_ARTIFACT=kernel_artifact,
+    env.update(DESKTOP=desktop,
+               ROOTFS_ARTIFACT="" if rootfs_artifact is None else rootfs_artifact,
+               SIZE_MIB=size_mib, KERNEL_ARTIFACT=kernel_artifact,
                RUNTIME_ARTIFACT=runtime_artifact,
                KERNEL_RUN=kernel_run, RUNTIME_RUN=runtime_run,
                ROOTFS_RUN=rootfs_run, MESA_RUN=mesa_run,
@@ -296,7 +299,8 @@ def check_image_kernel_tiers(root):
                               ["rootfs-44-gnome", "kernel-release-7.2.9", "kernel-sdk-7.2.9",
                                "piano-fedora-runtime", "piano-fedora-mesa", "piano-fedora-ffmpeg"],
                               {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml"})
-    env.update(KERNEL_ARTIFACT="kernel-experimental-gunyah",
+    env.update(DESKTOP="gnome", SIZE_MIB="",
+               KERNEL_ARTIFACT="kernel-experimental-gunyah",
                ROOTFS_ARTIFACT="rootfs-44-gnome",
                RUNTIME_ARTIFACT="piano-fedora-runtime-gunyah", KERNEL_RUN="7001", RUNTIME_RUN="7002")
     result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
@@ -311,6 +315,24 @@ def check_image_kernel_tiers(root):
             ("kernel-experimental-gunyah", "piano-fedora-runtime-gunyah", "7001", "", "missing runtime run")):
         result, _ = run_resolve(root / ("reject-" + why.replace(" ", "-")), kernel, runtime, krun, rrun)
         assert result.returncode != 0, "accepted a bad selection: " + why
+    # `all` 只属于 build-rootfs 的矩阵；单档 workflow 必须拒绝，不能取第一行。
+    result, _ = run_resolve(root / "reject-all", "kernel-release-7.2.9",
+                            "piano-fedora-runtime", desktop="all")
+    assert result.returncode != 0, "build-image expanded a whole desktop matrix"
+    assert "name a single desktop" in result.stderr, result.stderr
+    # 显式给别的桌面的 rootfs artifact 也必须拒绝。
+    result, _ = run_resolve(root / "reject-foreign", "kernel-release-7.2.9",
+                            "piano-fedora-runtime", desktop="kde",
+                            rootfs_artifact="rootfs-44-gnome")
+    assert result.returncode != 0, "build-image accepted another desktop's rootfs"
+    assert "rootfs-44-kde" in result.stderr, result.stderr
+    # 非 GNOME 档派生出自己的 artifact 与容量。
+    result, output = run_resolve(root / "kde", "kernel-release-7.2.9",
+                                 "piano-fedora-runtime", desktop="kde")
+    assert result.returncode == 0, result.stderr
+    assert "rootfs_artifact=rootfs-44-kde" in output, output
+    assert "desktop=kde" in output, output
+    assert "size_mib=" in output, output
 
 
 def make_tar(path, member, content):
@@ -365,7 +387,7 @@ def check_bundle_kernel_resolution(root):
 
 
 def check_bundle_image_binding(root):
-    """The image manifest must identify the exact build-image run being bundled."""
+    """The image manifest must identify the exact build-image run and desktop."""
     root.mkdir(parents=True)
     image = root / "build/in/image"
     image.mkdir(parents=True)
@@ -377,11 +399,12 @@ def check_bundle_image_binding(root):
         "ffmpeg_run": "7005",
         "image_run": "7100",
         "image_source_commit": "1" * 40,
+        "desktop": "gnome",
     }
     (image / "source-runs.json").write_text(json.dumps(record))
     output = root / "github-output"
     output.write_text("")
-    env = {**os.environ, "ROOT_RUN": "7100", "GITHUB_OUTPUT": str(output)}
+    env = {**os.environ, "ROOT_RUN": "7100", "DESKTOP": "gnome", "GITHUB_OUTPUT": str(output)}
     result = subprocess.run(
         ["/bin/bash", "-euo", "pipefail", "-c",
          step_body(".github/workflows/build-bundle.yml",
@@ -395,6 +418,16 @@ def check_bundle_image_binding(root):
                    "Require one integrated image source record")],
         cwd=root, env=env, capture_output=True, text=True)
     assert result.returncode != 0, "bundle accepted an image record from another run"
+    # 桌面档必须一致：KDE 的镜像不能配 GNOME 的 bundle 输入。
+    env["ROOT_RUN"] = "7100"
+    env["DESKTOP"] = "kde"
+    result = subprocess.run(
+        ["/bin/bash", "-euo", "pipefail", "-c",
+         step_body(".github/workflows/build-bundle.yml",
+                   "Require one integrated image source record")],
+        cwd=root, env=env, capture_output=True, text=True)
+    assert result.returncode != 0, "bundle accepted an image built for another desktop"
+    assert "desktop" in result.stderr, result.stderr
 
 
 def check_kernel_unpack(root):
@@ -438,6 +471,9 @@ def check_clean_rootfs_release_entry():
         "build-rootfs.yml still invokes the unaudited base-tree generator")
     assert "scripts/build-fedora-rootfs.py" not in rootfs, (
         "the release workflow must not use the legacy base-tree backend")
+    assert not (ROOT / "scripts" / "build-fedora-rootfs.py").exists(), (
+        "the legacy base-tree backend was deleted; a second Fedora backend must "
+        "not come back")
     assert "--rpms-dir build/local-rpms" in rootfs
     assert "piano-rpms" in rootfs
     assert "piano_rpms_run_id" in rootfs
@@ -451,7 +487,7 @@ def check_clean_rootfs_release_entry():
     assert 'os.environ["FFMPEG_RUN"]' in rootfs
 
     image = (ROOT / ".github/workflows/build-image.yml").read_text()
-    assert "Reject a base rootfs without the GNOME session bus" in image, (
+    assert "Reject a base rootfs without the session bus" in image, (
         "build-image must reject any rootfs that did not pass the clean audit")
     assert 'record["status"] == "BUILT_AND_AUDITED"' in image
     assert 'for package in ("dbus-daemon", "systemd-pam")' in image
@@ -529,6 +565,54 @@ def executable(path, text):
     path.chmod(0o755)
 
 
+def run_workflow_step(step_file, step_name, env_extra, workflows, artifacts, runs):
+    """在仓库根上实跑某个 resolve step，gh 走桩。"""
+    with tempfile.TemporaryDirectory() as directory:
+        scratch = Path(directory)
+        env, output = resolve_step_env(scratch, workflows, artifacts, runs)
+        env.update(env_extra)
+        result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
+                                 step_body(step_file, step_name)],
+                                cwd=ROOT, env=env, capture_output=True, text=True)
+        return result, output.read_text()
+
+
+def check_image_artifact_follows_the_desktop():
+    """build-bundle 与 build-initramfs 的镜像 artifact 必须由桌面档派生。"""
+    workflows = ["build-image.yml", "build-uefi.yml"]
+    artifacts = ["root-image-44-gnome", "root-image-44-kde", "uefi-product"]
+    runs = {}
+    for step_file, step_name, env_key in (
+            (".github/workflows/build-bundle.yml", "Resolve complete image and UEFI inputs",
+             "root_image_artifact"),
+            (".github/workflows/build-initramfs.yml", "Resolve the complete device root",
+             "rootfs_artifact")):
+        common = {"GH_TOKEN": "x", "UEFI_ARTIFACT": "uefi-product"}
+        # 留空：按桌面档派生。
+        result, output = run_workflow_step(
+            step_file, step_name, {**common, "DESKTOP": "kde", "ROOT_IMAGE": "",
+                                   "ROOT_ARTIFACT": "", "ROOT_RUN": "", "UEFI_RUN": ""},
+            workflows, artifacts, runs)
+        assert result.returncode == 0, (step_file, result.stderr)
+        assert f"{env_key}=root-image-44-kde" in output, output
+        # 显式给 GNOME 的镜像却选了 KDE：必须拒绝。
+        result, _ = run_workflow_step(
+            step_file, step_name, {**common, "DESKTOP": "kde",
+                                   "ROOT_IMAGE": "root-image-44-gnome",
+                                   "ROOT_ARTIFACT": "root-image-44-gnome",
+                                   "ROOT_RUN": "", "UEFI_RUN": ""},
+            workflows, artifacts, runs)
+        assert result.returncode != 0, f"{step_file} accepted another desktop's image"
+        assert "root-image-44-kde" in result.stderr, result.stderr
+        # `all` 只属于 build-rootfs 的矩阵。
+        result, _ = run_workflow_step(
+            step_file, step_name, {**common, "DESKTOP": "all", "ROOT_IMAGE": "",
+                                   "ROOT_ARTIFACT": "", "ROOT_RUN": "", "UEFI_RUN": ""},
+            workflows, artifacts, runs)
+        assert result.returncode != 0, f"{step_file} expanded a whole desktop matrix"
+        assert "name a single desktop" in result.stderr, result.stderr
+
+
 def main():
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
@@ -538,6 +622,7 @@ def main():
         check_image_kernel_tiers(root / "tiers")
         check_bundle_kernel_resolution(root / "bundle-kernel")
         check_bundle_image_binding(root / "bundle-image-binding")
+        check_image_artifact_follows_the_desktop()
         check_kernel_unpack(root / "unpack")
         check_clean_rootfs_release_entry()
         check_bundle_asset_names()
