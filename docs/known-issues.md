@@ -265,6 +265,16 @@ eDP，内屏走 DSI，用不上。
 补丁只把 `display_info.bpc` 报对，提交信息自己写明"不声称支持 HDR 或
 12-bit 传输"。这一项要等上游 DRM 层的实质推进，本机单方面做不了。
 
+## 内核在线升级
+
+`dnf upgrade` 现在会带上 `kernel-piano`，事务收尾时由 `%posttrans` 重建
+initramfs 并重打 ESP 上的 `boot.img`。这条路径只在离线测试和构建链里验证过，
+**还没有在平板上跑过一次真实升级**：容器字节、原子替换与 `depmod` 的顺序都有
+测试覆盖，但"升级事务收尾时这套工具在真机上能跑通"这件事缺实机记录。
+
+失败边界是写盘失败时旧 `boot.img` 保持不动，设备继续用旧内核启动。装好但起不
+来的内核没有自动回滚，回滚方式见 `docs/copr-repository.md`。
+
 ## 仓库整理
 
 - `README.md` 与 `README.en.md` 的骨架由 `tests/check_readme_parity.py` 锁定：
