@@ -29,7 +29,9 @@
 | 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk 与 virtio-net、单 vCPU 客体启动；SMP、图形与 GUI 操作待验收 |
 | 双系统往返 | ✅ | 合体 BOOT 装在 `boot_a`：Linux→Android 用 `piano-next-boot android --reboot`，Android→Linux 用「SunUEFI 引导助手」模块或开机 3 秒菜单；两次往返实测，见[已知问题](docs/known-issues.md#双系统切换) |
 | 手写笔 | ✅ | Type 29 协议就绪，压感 0–1，位置与倾斜正常；实测捕获 1906 条轴事件、22 条 proximity、18 条 tip，见[已知问题](docs/known-issues.md#手写笔) |
-| 指纹 / IR / HDR | ❌ | 依赖闭源 TEE 固件，主线不支持 |
+| 指纹 | ❌ | 侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。主线没有对应的控制驱动与 libfprint 后端，短期不可用，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
+| 红外 | ❌ | 消费级红外发射器（QUPv3 SE15）。主线 `ir-spi` 驱动完整，但我们这条链上 DT 缺 IR 节点、内核也没编 `LIRC`。与 TEE 无关，是可解项，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
+| HDR | ❌ | 面板支持 HDR10，但 msm 没有挂 `HDR_OUTPUT_METADATA`、没有 colorop 管线，现有的 msm 静态 HDR 系列只覆盖 DP/eDP，内屏走 DSI 用不上。等上游，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 
 ## 桌面
 

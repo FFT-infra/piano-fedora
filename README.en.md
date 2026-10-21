@@ -29,7 +29,9 @@ Fedora 44 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are still pending |
 | Dual boot | ✅ | The combined BOOT lives in `boot_a`: Linux→Android uses `piano-next-boot android --reboot`, Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two round trips verified; see [known issues](docs/known-issues.md#双系统切换) |
 | Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally; 1906 axis events, 22 proximity and 18 tip events captured, see [known issues](docs/known-issues.md#手写笔) |
-| Fingerprint / IR / HDR | ❌ | Require closed TEE firmware; mainline does not support them |
+| Fingerprint | ❌ | Side-mounted capacitive, Goodix; authentication runs in the TEE's `gfpia` TA. Mainline has neither the control driver nor a libfprint backend, so it is not usable short-term. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| IR | ❌ | Consumer IR blaster (QUPv3 SE15). Mainline's `ir-spi` driver is complete, but our DT has no IR node and the kernel is built without `LIRC`. Unrelated to TEE and fixable. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| HDR | ❌ | The panel supports HDR10, but msm attaches no `HDR_OUTPUT_METADATA` and has no colorop pipeline; the current msm static-HDR series only covers DP/eDP, not the internal DSI panel. Waiting on upstream. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
 
 ## Desktops
 

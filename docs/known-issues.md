@@ -213,6 +213,58 @@ loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255）�
 收敛之后的帧。上面前摄与后摄两组数据的第一帧与末帧差距明显：
 后摄第一帧 p50=30、同一轮末帧 p50=78，只取开头就会把它误判成暗场。
 
+## 指纹、红外与 HDR
+
+这三项以前被合写成一句"依赖闭源 TEE 固件，主线不支持"。逐项核实后只有指纹
+跟 TEE 有关，红外与 HDR 是另外两回事。
+
+### 指纹
+
+侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。主线没有
+`drivers/input/fingerprint/` 这个目录，厂商树里的 `mi_fp` 也只做电源、复位、
+中断和 netlink 上报，图像采集与比对全在 TA 里，移植过来不解决任何实质问题。
+
+主线的 QSEECOM 只白名单 `qcom.tz.uefisecapp` 一个应用，不提供通用 TA 客户端
+接口，任何第三方 TA（含 `gfpia`）都无法通过它启动。`drivers/tee/qcomtee/`
+自 6.18 起在主线，但走 object-IPC，与 piano 的 legacy QSEECom HAL 协议不同，
+不能替代。
+
+用户态没有 libfprint 后端能驱动 `gfpia`。唯一跑通的 Goodix + QSEE 完整栈针对
+的是另一颗 TA（`gfenu`）、另一套传感器，且明确未上游。
+
+### 红外
+
+消费级红外发射器，接在 QUPv3 SE15（SPI `0x89c000`）。它不是结构光、ToF 或
+接近传感器，这个设备**只发不收**——所以"没有 IR 输入设备节点"不能作为它
+不支持的判据，正确的检查是 `/dev/lirc0` 存在且能发码。
+
+主线 `drivers/media/rc/ir-spi.c` 完整实现了 CIR 发射，但当前这条链上有四处
+缺口叠在一起：
+
+- 设备上 `/dev/lirc*` 与 `/sys/class/rc/` 都不存在；
+- 内核配置是 `CONFIG_RC_CORE=m` 但 `# CONFIG_LIRC is not set`，而 `IR_SPI`
+  依赖 `LIRC`；
+- DT 里没有 SE15 的节点：设备上唯一的 SPI 设备是触控
+  （`/soc/qcom,qupv3_1_geni_se@ac0000/spi@a88000/touchscreen@0`），
+  `0x89c000` 那段不存在；
+- 主线驱动认的 compatible 是 `ir-spi-led`，而厂商 DT 写的是 `ir-spi`。
+
+要让它出 `/dev/lirc0`，得补 SE15 控制器节点、把 compatible 改对、打开
+`CONFIG_LIRC` 与 `CONFIG_IR_SPI`。原厂的波形是 32 位 SPI 字、1.92 MHz 采样、
+40% 占空比，主线驱动是 16 bits/pulse、默认 50%，载波会有偏差，需要小改驱动
+才能完全一致。
+
+### HDR
+
+面板硬件支持 HDR10，30bpp DSC 传输。Linux 侧没有输出路径：msm 不挂
+`HDR_OUTPUT_METADATA` 属性，也没有接 DRM 的 colorop 管线。SM8750 的 DSPP
+gamma 块直到 2026 年 9 月才修好。目前唯一的 msm 静态 HDR 系列只覆盖 DP 与
+eDP，内屏走 DSI，用不上。
+
+面板驱动本身也不在主线（`drivers/gpu/drm/panel/` 里没有 nt36532），我们的
+补丁只把 `display_info.bpc` 报对，提交信息自己写明"不声称支持 HDR 或
+12-bit 传输"。这一项要等上游 DRM 层的实质推进，本机单方面做不了。
+
 ## 仓库整理
 
 - `README.md` 与 `README.en.md` 的骨架由 `tests/check_readme_parity.py` 锁定：
