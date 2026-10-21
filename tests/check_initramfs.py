@@ -172,6 +172,15 @@ def main():
             line for line in text.splitlines() if not line.lstrip().startswith("#")
         )
         check("ext4" not in code, "bootstrap must not depend on ext4")
+        # 看门狗规则由 piano-fedora-configs 的 RPM 提供。initramfs 里写文件会
+        # 绕过 SELinux 标签事务，systemd-modules-load 读到 unlabeled_t，规则
+        # 不生效；那个文件也不属于任何包。引导脚本只做存在性断言，读它可以，
+        # 写它不行。
+        writes = [line for line in code.splitlines()
+                  if "/sysroot/etc/modprobe.d" in line and (">" in line or "mkdir" in line)]
+        check(not writes, f"bootstrap must not write /etc/modprobe.d entries: {writes}")
+        check("piano-blacklist-watchdog.conf" in code,
+              "bootstrap must assert the watchdog blacklist reached the rootfs")
 
     # 参数缺失：拒绝。
     check(run("--rootfs", "/nonexistent", "--kernel", "/nonexistent",

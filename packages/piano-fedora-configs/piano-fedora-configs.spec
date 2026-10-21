@@ -69,6 +69,7 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %config(noreplace) %{_sysconfdir}/systemd/logind.conf.d/piano.conf
 %config(noreplace) %{_sysconfdir}/modules-load.d/piano-bwmon.conf
 %config(noreplace) %{_sysconfdir}/modules-load.d/piano-stats.conf
+%config(noreplace) %{_sysconfdir}/modprobe.d/piano-blacklist-watchdog.conf
 %config(noreplace) %{_sysconfdir}/udev/rules.d/70-piano-power-button.rules
 %config(noreplace) %{_sysconfdir}/dconf/db/local.d/00-power
 
