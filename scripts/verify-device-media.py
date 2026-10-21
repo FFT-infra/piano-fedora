@@ -31,6 +31,19 @@ def checksums(path):
             if line.strip() and not line.startswith('#')]
 
 
+def encoder_available(name, listing=None):
+    """Fedora 的 ffmpeg-free 不编译 libx264/libx265。
+
+    直接跑会得到一句 `returned non-zero exit status 8`，看不出缺的是编码器。
+    先查一张清单，缺了就把该走的路线写进报错。
+    """
+    if listing is None:
+        listing = subprocess.run(['ffmpeg', '-hide_banner', '-encoders'],
+                                 capture_output=True, text=True, check=True).stdout
+    return any(line.split()[1:2] == [name] for line in listing.splitlines()
+               if line.startswith(' V'))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True, help='新的证据目录，不覆盖旧结果')
@@ -125,6 +138,11 @@ def main():
                     types = json.loads((args.fixture_types.resolve() /
                                         (name + '-types.json')).read_text())
             else:
+                if not encoder_available(software_encoder):
+                    raise RuntimeError(
+                        f'{name}: ffmpeg has no {software_encoder}. Fedora builds '
+                        'ffmpeg without libx264/libx265; generate the fixture on a host '
+                        'that has them and pass --fixture-dir/--fixture-types.')
                 extra = ['-x265-params', 'pools=2:frame-threads=2'] if codec == 'hevc' else []
                 run(name + '-generate', [*ffmpeg, '-f', 'lavfi', '-i',
                                         'testsrc2=size=1920x1080:rate=30', '-c:v', software_encoder,

@@ -9,6 +9,7 @@ test:
 	python3 tests/check_release_desktops.py
 	python3 tests/check_release_assets.py
 	python3 tests/check_render_screenshot.py
+	python3 tests/check_device_media.py
 	python3 tests/check_copr_release.py
 	python3 tests/check_product.py
 	python3 tests/check_links.py
