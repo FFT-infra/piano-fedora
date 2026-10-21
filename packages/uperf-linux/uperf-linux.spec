@@ -17,6 +17,13 @@ BuildRequires:  gcc
 BuildRequires:  pkgconfig(dbus-1)
 BuildRequires:  pkgconfig(polkit-gobject-1)
 BuildRequires:  systemd-rpm-macros
+# 上游 CMakeLists 的 pkg_check_modules 要求 json-c、glib-2.0>=2.56，
+# -DBUILD_GUI=ON 还要 gtk4>=4.6 与 libadwaita-1>=1.2。之前只有本地矩阵
+# 容器手工装了这四个包，spec 自己没声明，COPR 的干净 chroot 会直接失败。
+BuildRequires:  glib2-devel
+BuildRequires:  json-c-devel
+BuildRequires:  gtk4-devel
+BuildRequires:  libadwaita-devel
 
 Requires:       polkit
 Requires:       systemd

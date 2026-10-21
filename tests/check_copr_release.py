@@ -168,10 +168,12 @@ def test_project_create_is_idempotent(module, tmp):
         def __init__(self, code=0, out=""):
             self.returncode, self.stdout, self.stderr = code, out, ""
 
+    # copr-cli 2.4 prints each project through print_project_info(), so the
+    # name lives on a `Name: <project>` line. A bare-name match never hits.
     def run_cli(binary, config, args, check=True):
         calls.append(list(args))
         if args[0] == "list":
-            return Result(0, "piano-fedora\n")
+            return Result(0, "Name: piano-fedora\n  Description: Fedora 44 aarch64\n\n")
         return Result(0, "")
 
     original = module.run_cli
@@ -182,6 +184,56 @@ def test_project_create_is_idempotent(module, tmp):
         module.run_cli = original
     assert state == "exists"
     assert not any(c[0] == "create" for c in calls), calls
+
+
+def test_project_listing_formats(module):
+    listed = "Name: piano-fedora\n  Description: demo\n"
+    assert module.project_listed(listed, "piano-fedora")
+    # A different project must not count as present.
+    assert not module.project_listed(listed, "piano-extras")
+    assert not module.project_listed("", "piano-fedora")
+
+
+def cli_result(stdout="", code=0, stderr=""):
+    class Result:
+        pass
+
+    result = Result()
+    result.returncode, result.stdout, result.stderr = code, stdout, stderr
+    return result
+
+
+def test_submit_parses_every_created_build(module, tmp):
+    srpm_dir = Path(tmp) / "srpms"
+    srpm_dir.mkdir(parents=True, exist_ok=True)
+    (srpm_dir / "libssc-0.1.0-1.fc44.src.rpm").write_bytes(b"srpm")
+    # copr-cli 2.4 always prints `Created builds: <id>`; the old code only
+    # captured the `Build was created:` alternative and ended up with no ids.
+    created = ("Build was added to piano-fedora:\n"
+               "  https://copr.fedorainfracloud.org/coprs/build/1234/\n"
+               "Created builds: 1234\n")
+    assert module.parse_build_ids(created) == ["1234"]
+    # A batch-shaped line must keep every id.
+    assert module.parse_build_ids("Created builds: 11 22\n") == ["11", "22"]
+
+    original = module.run_cli
+    module.run_cli = lambda *a, **k: cli_result(stdout=created)
+    try:
+        _, build_id = module.submit("copr-cli", "conf", "xinyang26/piano-fedora",
+                                    srpm_dir, "libssc")
+    finally:
+        module.run_cli = original
+    assert build_id == "1234"
+
+    # Unparseable output must fail loudly instead of yielding an empty id set
+    # that later reads as "nothing pending, publish succeeded".
+    module.run_cli = lambda *a, **k: cli_result(stdout="something else\n")
+    try:
+        expect_error(module,
+                     lambda: module.submit("copr-cli", "conf", "p", srpm_dir, "libssc"),
+                     "expected one build id")
+    finally:
+        module.run_cli = original
 
 
 def test_build_failure_is_not_success(module):
@@ -268,6 +320,8 @@ def main():
         test_bad_kernel_run(module, tmp)
         test_copr_config_is_private_and_removed(module, tmp, _MonkeyPatch())
         test_project_create_is_idempotent(module, tmp)
+        test_submit_parses_every_created_build(module, tmp)
+    test_project_listing_formats(module)
     test_run_id_validation(module, _MonkeyPatch())
     test_failed_run_rejected(module, _MonkeyPatch())
     test_missing_credentials(module, _MonkeyPatch())

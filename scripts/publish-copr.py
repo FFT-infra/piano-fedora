@@ -199,11 +199,21 @@ def run_cli(binary, config, args, *, check=True):
     return result
 
 
+def project_listed(stdout, name):
+    """`copr-cli list` 的输出里是否出现这个项目。
+
+    copr-cli 2.4 的列表是 `print_project_info()` 的逐行输出，项目名在
+    `Name: piano-fedora` 这一行。按裸名字匹配永远不命中，于是每次发布
+    都先撞一次 "You already have a project named"。
+    """
+    return re.search(rf"^\s*Name:\s*{re.escape(name)}\s*$", stdout, re.M) is not None
+
+
 def ensure_project(binary, config, project):
-    """幂等创建项目；已存在就只确认 chroot 打开着。"""
+    """幂等创建项目：已存在就返回，不存在才 create。"""
+    name = project.split("/")[-1]
     listing = run_cli(binary, config, ["list"], check=False)
-    if listing.returncode == 0 and re.search(
-            rf"^\s*{re.escape(project.split('/')[-1])}\s*$", listing.stdout, re.M):
+    if listing.returncode == 0 and project_listed(listing.stdout, name):
         return "exists"
     created = run_cli(binary, config, [
         "create", project, "--chroot", CHROOT,
@@ -215,11 +225,24 @@ def ensure_project(binary, config, project):
     if created.returncode:
         # 并发创建或权限问题：再看一次列表，真的没有才算失败。
         again = run_cli(binary, config, ["list"], check=False)
-        if again.returncode == 0 and re.search(
-                rf"^\s*{re.escape(project.split('/')[-1])}\s*$", again.stdout, re.M):
+        if again.returncode == 0 and project_listed(again.stdout, name):
             return "raced"
         raise PublishError(f"cannot create {project}: {created.stderr.strip()}")
     return "created"
+
+
+def parse_build_ids(stdout):
+    """从 `copr-cli build` 的 stdout 里取出 build id。
+
+    copr-cli 2.4（CI 钉住的版本）固定打印
+    `Created builds: <id> [<id> ...]`，见 main.py 的
+    print_build_info_and_wait()。
+    """
+    ids = []
+    for line in stdout.splitlines():
+        if "Created builds:" in line:
+            ids.extend(re.findall(r"\d+", line.split("Created builds:", 1)[1]))
+    return ids
 
 
 def submit(binary, config, project, srpm_dir, package):
@@ -229,9 +252,14 @@ def submit(binary, config, project, srpm_dir, package):
     result = run_cli(binary, config, [
         "build", project, str(matches[0]), "--chroot", CHROOT,
     ])
-    # `copr-cli build` 在构建失败时返回非零；成功时 stdout 里有 build id。
-    match = re.search(r"Build was created:.*?(\d+)|Created builds:\s*(.+)", result.stdout)
-    return result.stdout.strip(), match
+    # `copr-cli build` 不带 --nowait 时自己等完构建，失败以非零退出；
+    # 但 id 仍要从 stdout 解析，发布记录和事后核对都靠它。
+    ids = parse_build_ids(result.stdout)
+    if len(ids) != 1:
+        raise PublishError(
+            f"{package}: expected one build id, got {ids or 'none'}: "
+            f"{result.stdout.strip()[:400]}")
+    return result.stdout.strip(), ids[0]
 
 
 def wait_for_builds(binary, config, project, build_ids, timeout=7200, interval=30):
@@ -310,10 +338,10 @@ def main():
         for package in BUILD_ORDER:
             if package not in packages:
                 raise PublishError(f"{package} was not built by this run")
-            output, match = submit(binary, config, args.project, Path(args.rpms) / "srpms", package)
+            output, build_id = submit(binary, config, args.project,
+                                      Path(args.rpms) / "srpms", package)
             outputs[package] = output
-            if match and match.group(1):
-                ids.append(match.group(1))
+            ids.append(build_id)
         states = wait_for_builds(binary, config, args.project, ids, timeout=args.timeout)
         record.update(status="PUBLISHED", build_ids=ids, build_states=states,
                       outputs=outputs)

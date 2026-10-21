@@ -2,11 +2,19 @@
 
 设备装好 Fedora 后，用户态包（配置、固件、相机、触控、传感器、VA-API、调度器）可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
 
-**当前状态：项目还没建起来。** 发布链的 dry-run 已通过，真实发布从未执行。COPR 账号是 `xinyang26`，`xinyang26/piano-fedora` 项目尚未创建（`api_3/project` 返回 does not exist）。仓库 secrets 里没有 `COPR_LOGIN` 与 `COPR_TOKEN`。`piano-fedora-configs` 随包带出的 `.repo` 已经指向这个地址，项目建好前设备上 `dnf upgrade` 只会得到 `skip_if_unavailable=True` 下的静默跳过。
+**当前状态：项目已建，发布链跑通了一大半。** `xinyang26/piano-fedora` 已经在 COPR 上，`fedora-44-aarch64` 仓库开着，仓库 secrets 的 `COPR_LOGIN` 与 `COPR_TOKEN` 也配好了——2026-10-21 的发布 run 39561375441 确实把 8 个包提交进了构建队列。其中七个成功并出现在设备仓库的 repodata 里：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`libssc`、`piano-camera`、`piano-fedora-configs`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。
 
-下面写的是建成之后的流程，不是现在可用的能力。在设备上核对现状用 `scripts/verify-copr-device.py`，脚本的判定与本节写的一致。
+还差三项：
 
-**内核不在升级范围内。** `kernel-piano` 会发布进仓库供审计，但仓库文件用 `exclude=kernel-piano*` 排除它。用户态 `dnf upgrade` 更新不了 SunUEFI 从 ESP 引导的 `Image`。装上 COPR 的内核只会让 ESP 与 `/usr/lib/modules` 脱钩。内核更新跟着 release bundle 走。
+- `sm8750-video-accel` 构建失败（build 11181429）。根因是 spec 漏声明 `egl`、`glesv2`、`gbm` 三个 BuildRequires，`meson.build:12:6` 直接报 `Dependency "egl" not found`。已补进 spec，等下一次发布重跑。
+- `uperf-linux` 与 `kernel-piano` 排在它之后，那次发布在失败处中止，两者从未提交过。
+- 同一个发布脚本还有两处缺陷会在重跑时误报：项目已存在时仍去 `create`（撞 "You already have a project named"），以及 `Created builds:` 分支解析不到 build id。两处都已修，`tests/check_copr_release.py` 有回归。
+
+在这三个包补齐之前，设备上 `dnf upgrade` 只能拿到上面七个包的更新。核对现状用 `scripts/verify-copr-device.py`。
+
+**内核不在升级范围内。** `kernel-piano` 会发布进仓库供审计，但仓库文件用 `exclude=kernel-piano*` 排除它。原因在引导路径上：SunUEFI 只读 ESP 的 `/EFI/Piano/stable/boot.img`（`PianoEspBootSource.c` 里的固定路径），`PianoProductCore.c` 也只调 `PianoRawLinuxLoadStable`，没有走 `Image.efi` + `PianoProductOsController` 那条路。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，ESP 上的 `boot.img` 不动，装上 COPR 的内核就是让两者脱钩——一台起不来的机器，而且 SunUEFI 没有 boot counter，新内核失败不会自动回滚。
+
+内核更新跟着 release bundle 走。切换条件写在这里，方便日后复查：上游把 `simpleinit.static.uefi.json` 的 `Image.efi` 配置改成 `enabled: true` 且 `PianoProductCore.c` 开始调 `PianoProductOsController` 时，或者引导链引入 boot counter 之后，就能迁移到 `kernel-install` / UKI，把内核纳入设备侧升级。
 
 ## 为什么是 COPR 重建，而不是上传二进制
 
@@ -50,9 +58,9 @@ Fedora 官方 COPR 实例没有启用二进制 RPM 上传。运行中实例的 A
      -f execute=true
    ```
 
-   需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`。脚本幂等创建项目 `xinyang26/piano-fedora`，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。任一 `failed` 或 `canceled` 都让整个步骤失败。
+   需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`（已配置）。脚本幂等创建项目 `xinyang26/piano-fedora`，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。任一 `failed` 或 `canceled` 都让整个步骤失败。
 
-   这两项 secrets 尚未配置，因此这一步在仓库里从未执行过。最近一次 dry-run（39537510967）通过了第 2 步的全部校验，`publish` job 是 skipped。要启用这条源，先在 COPR 上创建 `xinyang26/piano-fedora` 项目，再把 `https://copr.fedorainfracloud.org/api/` 生成的 `login` 与 `token` 加进仓库 secrets。API token 有效 180 天，过期后重新生成并更新 secret。
+   脚本对已存在的项目不会重复创建，构建 id 从 `Created builds:` 行解析；解析不到就报错而不是当作空集合放行。API token 有效 180 天，过期后重新生成并更新 secret。
 
 ## 启用仓库
 
