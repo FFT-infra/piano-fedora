@@ -4,9 +4,13 @@
 
 **当前状态：10 个包已发布，用户态可以 `dnf upgrade` 升级。** 项目是 `xinyang26/piano-fedora`，`fedora-44-aarch64` 仓库开着，仓库里现在有全部 10 个包名：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-camera`、`piano-fedora-configs`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。其中 `kernel-piano` 只供审计，仓库文件用 `exclude` 排除，见下一段。核对方法见下面的启用仓库一节，或在设备上跑 `python3 scripts/verify-copr-device.py`。
 
-**内核不在升级范围内。** `kernel-piano` 会发布进仓库供审计，但仓库文件用 `exclude=kernel-piano*` 排除它。原因在引导路径上：SunUEFI 只读 ESP 的 `/EFI/Piano/stable/boot.img`（`PianoEspBootSource.c` 里的固定路径），`PianoProductCore.c` 也只调 `PianoRawLinuxLoadStable`，没有走 `Image.efi` + `PianoProductOsController` 那条路。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，ESP 上的 `boot.img` 不动，装上 COPR 的内核就是让两者脱钩——一台起不来的机器，而且 SunUEFI 没有 boot counter，新内核失败不会自动回滚。
+**内核不在升级范围内。** `kernel-piano` 会发布进仓库供审计，但仓库文件用 `exclude=kernel-piano*` 排除它。原因在引导路径上：SunUEFI 只读 ESP 的 `/EFI/Piano/stable/boot.img`（`PianoEspBootSource.c` 里的固定路径），`PianoProductCore.c` 也只调 `PianoRawLinuxLoadStable`，没有走 `Image.efi` + `PianoProductOsController` 那条路。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，ESP 上的 `boot.img` 不动，装上 COPR 的内核就是让两者脱钩——一台起不来的机器。
 
-内核更新跟着 release bundle 走。切换条件写在这里，方便日后复查：上游把 `simpleinit.static.uefi.json` 的 `Image.efi` 配置改成 `enabled: true` 且 `PianoProductCore.c` 开始调 `PianoProductOsController` 时，或者引导链引入 boot counter 之后，就能迁移到 `kernel-install` / UKI，把内核纳入设备侧升级。
+真正卡住的是**没有启动尝试计数**：上游全树没有 `bootcount` / `BootAttempt` / `BootFailure` 这类机制，也没有自动回退，坏内核写进 ESP 只能靠 fastboot 或按键手工救。存储底座其实已经有了——`PianoNvJournal.c` 是带序列号和 torn-write 恢复的双槽 NV journal，缺的只是有人往里写尝试计数。
+
+`Image.efi` 那条路短期内帮不上忙。`PianoProductOsController.c` 里确实定义了 `\EFI\Piano\stable\Image.efi` + `piano.dtb` + `initramfs.cpio` 的加载路径，但模块没有绑定到产品调用链（上游文档自己写着 "not yet bound to the product Core/Policy callsite"，`git grep` 也找不到任何 INF/DSC 引用）。而且它对三份载荷做**编译期固定哈希与长度校验**，就算接上，换内核反而必须重编固件。
+
+所以切换条件改成：上游引入 boot counter / 自动回退之后，才能把内核纳入设备侧升级。届时要么沿用现有合体 BOOT 路径（`PianoRawLinuxLoadStable`，哈希来自 ESP 文件本身，换 boot.img 不用重编固件），要么等 `PianoProductOsController` 放宽成运行时校验。
 
 ## 为什么是 COPR 重建，而不是上传二进制
 
