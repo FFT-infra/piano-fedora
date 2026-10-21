@@ -205,7 +205,7 @@ Windows 脚本不自动注入；需要时按 `flash-linux.bat` 的提示手工�
 
 ### 1. 从 Release 取哪些文件
 
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。资产是扁平的，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh`；手动刷机只认解包后的文件名。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及这个 run 派生的 `prepare-install` 的 `root-install`。不要拿历史 `out/` 目录拼装。
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。资产是扁平的，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh --desktop <档位>`（只有一档时可省略）；手动刷机只认解包后的文件名。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及这个 run 派生的 `prepare-install` 的 `root-install`。不要拿历史 `out/` 目录拼装。
 
 手动刷机至少需要这些资产：
 
