@@ -16,7 +16,14 @@ Fedora 官方 COPR 实例没有启用二进制 RPM 上传。运行中实例的 A
 
 ## 发布流程（维护者）
 
-发布走 `publish-copr.yml`，需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`。流程是先在 `main` 上跑一次带 `build_piano_rpms=true` 的 `host-check` 拿到 `piano-rpms` artifact，再用它的 run id 触发 `publish-copr.yml`：先 `execute=false` 做 dry-run，校验 run 状态、每个 RPM 与 SRPM 的大小和摘要、清单里的包是否齐全；通过后 `execute=true` 真实提交。脚本幂等创建项目，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。
+发布走 `publish-copr.yml`，需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`。先在 `main` 上跑一次带 `build_piano_rpms=true` 的 `host-check` 拿到 `piano-rpms` artifact，再用它的 run id 触发 `publish-copr.yml`：
+
+```bash
+gh workflow run publish-copr.yml --ref main \
+  -f rpms_run_id=<host-check run> -f kernel_run_id=<同一个内核 run> -f execute=false
+```
+
+`execute=false` 是 dry-run：核对 run 状态、每个 RPM 与 SRPM 的大小和摘要、清单里的包是否齐全。通过后把 `execute` 换成 `true` 真实提交。脚本幂等创建项目，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。
 
 CI 的 RPM 矩阵、COPR 的重建产物与 bundle 里的 RPM 版本号相同但构建环境不同，不是逐字节同一份。要完全一致的二进制就用 bundle 里的 RPM。
 
