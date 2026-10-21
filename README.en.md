@@ -75,11 +75,7 @@ For step-by-step control, see [Manual flashing](docs/installation.md#三之二-�
 
 ## Release artifacts
 
-A release is triggered by a tag and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Large images are split automatically, with `RELEASE-SHA256SUMS` and `unpack-release.sh`.
-
-Tags look like `v44.1` or `v44.1-20261021`: a `v` prefix, with the Fedora release as the major version. A tag must point at the commit whose artifacts are being released; `release.yml` checks that the tag commit matches the commit this run checked out and fails otherwise. Releases are created as drafts by default; publishing requires passing `publish=true` explicitly.
-
-One release can carry several desktops: the ESP, kernel, initramfs and UEFI are byte-identical across profiles and are published once, while the root image and `root-install/` are published per profile with a `-<desktop>` suffix:
+A release is triggered by a tag (for example `v44.1`) and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Large images are split automatically, with `RELEASE-SHA256SUMS` and `unpack-release.sh`. One release can carry several desktops: the ESP, kernel, initramfs and UEFI are byte-identical across profiles and are published once, while the root image and `root-install/` are published per profile with a `-<desktop>` suffix:
 
 | File | Contents |
 |---|---|

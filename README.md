@@ -78,11 +78,7 @@
 
 ## 发布产物
 
-正式 Release 由 tag 触发，只包含同一次 `build-bundle` 与它派生的 `prepare-install` 已验证产物；大镜像自动分片，附带 `RELEASE-SHA256SUMS` 与 `unpack-release.sh`。
-
-tag 形如 `v44.1` 或 `v44.1-20261021`，前缀 `v`，主版本是 Fedora 版本号。tag 必须打在被发布链产物的那个 commit 上，`release.yml` 会核对 tag 指向的 commit 与这次运行 checkout 的 commit 一致，不一致直接失败。发版默认只建 draft，转公开要显式传 `publish=true`。
-
-一个 Release 可以带多档桌面：ESP、内核、initramfs 与 UEFI 四档逐字节相同，只发布一份；root 镜像与 `root-install/` 按 `-<desktop>` 加后缀，每档各一份：
+正式 Release 由 tag 触发（形如 `v44.1`），只包含同一次 `build-bundle` 与它派生的 `prepare-install` 已验证产物；大镜像自动分片，附带 `RELEASE-SHA256SUMS` 与 `unpack-release.sh`。一个 Release 可以带多档桌面：ESP、内核、initramfs 与 UEFI 四档逐字节相同，只发布一份；root 镜像与 `root-install/` 按 `-<desktop>` 加后缀，每档各一份：
 
 | 文件 | 说明 |
 |---|---|
