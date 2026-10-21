@@ -25,10 +25,10 @@ Fedora 44 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 
 | Audio | ✅ | Speaker amp capped at 215 (-15 dB), microphone gain +40 dB; 120 seconds of playback with no xrun, 130 seconds of recording with signal throughout |
 | Scheduling | ✅ | `uperf-linux` raises frequency on touch |
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
-| Sensors | 🟡 | `iio-sensor-proxy` is installed and running, but no device is bound in the IIO subsystem, so accelerometer, ambient light, proximity and compass report nothing; auto-rotate does not work |
+| Sensors | ✅ | SSC backend (`libssc` + `iio-sensor-proxy-ssc` over QRTR/MHI): accelerometer, ambient light and proximity all report data, and auto-rotate works on device, rotating the screen 90° when the tablet is turned to `left-up` |
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are still pending |
 | Dual boot | ✅ | The combined BOOT lives in `boot_a`: Linux→Android uses `piano-next-boot android --reboot`, Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two round trips verified; see [known issues](docs/known-issues.md#双系统切换) |
-| Stylus | 🟡 | Daemon and Type 29 protocol are ready; a physical drawing test is pending |
+| Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally; 1906 axis events, 22 proximity and 18 tip events captured, see [known issues](docs/known-issues.md#手写笔) |
 | Fingerprint / IR / HDR | ❌ | Require closed TEE firmware; mainline does not support them |
 
 ## Desktops
@@ -37,7 +37,7 @@ Images are built per desktop from the same release chain and differ only in the 
 
 | Profile | Session | Login | Auto-rotate | Acceptance |
 |---|---|---|---|---|
-| `gnome` | GNOME 44 workstation | GDM autologin | Mutter | Desktop reached; rotation untested |
+| `gnome` | GNOME 44 workstation | GDM autologin | Mutter | Desktop reached; rotation verified on device |
 | `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Not on device |
 | `niri` | niri | greetd + tuigreet | None; manual `transform` | Not on device |
 | `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None; manual rotate | Not on device |

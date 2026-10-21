@@ -8,7 +8,7 @@
 
 | 档位 | 会话 | 登录 | 电源策略 | 自动旋转 | 验收状态 |
 |---|---|---|---|---|---|
-| `gnome` | GNOME 44 workstation | GDM 自动登录 | dconf（`00-power`） | 走 Mutter，传感器链路未通 | 已登录桌面，旋转未验 |
+| `gnome` | GNOME 44 workstation | GDM 自动登录 | dconf（`00-power`） | 走 Mutter，已实机验证 | 已登录桌面，旋转已验 |
 | `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，需 `qt6-qtsensors` | 未上真机 |
 | `niri` | niri | greetd `[initial_session]` | 仅 logind | 无，需手动 `transform` | 未上真机 |
 | `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 无，需手动 rotate | 未上真机 |
@@ -65,10 +65,11 @@
 里是否存在活动的图形会话（`Class=user`、`Type=wayland|x11`、`Active=yes`、用户名
 不是 greeter），不再扫 `gnome-shell` 进程名。
 
-**只有 GNOME 与 KDE 走桌面自身的旋转路径，且都需要加速度计真的出现在 IIO 子系统里。**
+**只有 GNOME 与 KDE 走桌面自身的旋转路径。**
 
 - GNOME（Mutter）订阅 `iio-sensor-proxy` 的 `AccelerometerOrientation`，平板模式
-  打开时自动旋转。
+  打开时自动旋转。已在真机验证：平板从平放转成 `left-up`，逻辑显示器的
+  `transform` 从 0 变成 1，屏幕跟着转。
 - KDE（KWin）依赖 `qt6-qtsensors`。F44 的 `kwin` 包声明了 `iio-sensor-proxy`，
   没有声明 `qt6-qtsensors`，所以 Plasma 6 上自动旋转要这个包在位才出现
   「自动」选项。
@@ -76,10 +77,9 @@
   `transform "90"` 之类的值；Hyprland 用 `hyprctl keyword monitor` 或配置里的
   `transform`。没有自动旋转是预期行为，不是缺陷。
 
-**GNOME 的自动旋转尚未在真机上验证。** 实机检查时 `/sys/bus/iio/devices`
-为空，`iio-sensor-proxy` 虽然 active 但没有设备可绑定，Mutter 因此拿不到
-`AccelerometerOrientation`。这是传感器驱动没绑定，不是桌面配置问题。三种桌面
-的旋转能力都等传感器链路打通后再验。
+传感器走 SSC 后端，不经过 IIO 子系统。`/sys/bus/iio/devices` 为空是正常的；
+`libssc` 与 `iio-sensor-proxy-ssc` 装上、`qrtr_smd`/`qrtr_mhi`/`mhi` 加载之后，
+代理能直接拿到加速度计、环境光与接近传感器。
 
 桌面旋转之外，`iio-sensor-proxy` 仍提供光感与接近传感器，四档都装了。
 

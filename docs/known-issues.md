@@ -129,33 +129,26 @@ charge_current、mipps_auth、charge_policy 都开启。这不等于实际达到
 最高 45 W 未证明，也没有外置功率计读数。需要真实充电器、线材和负载记录功率
 与温度。
 
-## 手写笔与输入
-
-用户操作手写笔期间，libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip
-事件，压感 0–1，位置及倾斜变化正常。未捕获 TABLET_TOOL_BUTTON。蓝牙键盘/鼠标
-节点上的按键、捏握、防误触、绘图应用效果、充电与重连仍需分别验证。
-
-## 虚拟化
-
-正式内核已通过 RM 实时交接和单 vCPU VM_START；virtio-blk 上 64 MiB ext4 写入
-与读回通过，virtio-net 连通（`NET_OK=1 NET_RX=2`），三轮 disk+net 与一轮有界
-失败退出通过，进程、PID 与 socket 清理干净。GUI 实际创建和操作客体仍需人手在
-场确认，完整 SELinux 流程待测。SMP、UEFI、图形和 Incus 需要分别实现与验收，
-不由单 vCPU 结果推定。门槛见[虚拟化](virtualization.md)。
-
 ## 传感器与自动旋转
 
-`iio-sensor-proxy` 装好了也在跑，但 `/sys/bus/iio/devices` 是空的，
-`/proc/device-tree` 下没有对应的传感器节点，也没有 SSC 设备节点，
-`libssc` 没有可用的单元。代理拿不到任何设备，加速度计、环境光、接近与
-罗盘都不出数据。
+传感器走 SSC，不走 IIO。`libssc` 与 `iio-sensor-proxy-ssc` 都已装好，
+`qrtr_smd`、`qrtr_mhi` 与 `mhi` 三个模块加载后代理能拿到设备：
+`HasAccelerometer`、`HasAmbientLight`、`HasProximity` 全为 true，
+环境光有实际读数（例如 164 lux），`AccelerometerTilt` 随摆放姿态变化
+（平放 `face-up`，举起 `tilted-up`）。`/sys/bus/iio/devices` 为空是正常的，
+SSC 后端不经过 IIO 子系统。
 
-直接后果是自动旋转不工作：Mutter 订阅的是 `iio-sensor-proxy` 的
-`AccelerometerOrientation`，没有传感器就没有这个属性。这是驱动没绑定，
-不是桌面配置问题。
+Mutter 订阅 `AccelerometerOrientation`，自动旋转已实测：把平板从平放转成
+`left-up`，`GetCurrentState` 的逻辑显示器变换从 0 变成 1（顺时针 90°），
+屏幕跟着转。旋转锁为 false。罗盘没有对应属性，不参与这一链。
 
-还缺什么：确认传感器走的是 SSC（`libssc`）还是独立的 IIO 驱动，以及
-`iio-sensor-proxy-ssc` 这个包在设备上是否真的装上了、有没有被 SELinux 拦住。
+## 手写笔
+
+libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压感 0–1，
+位置及倾斜变化正常，未捕获 TABLET_TOOL_BUTTON。设备节点是
+`Piano Focus Pen Pro`（`virtual:0022:5081`）与蓝牙侧的
+`Xiaomi Focus Pen Pro Mouse/Keyboard`。蓝牙键盘/鼠标节点上的按键、捏握、
+防误触、绘图应用效果、充电与重连仍需分别验证。
 
 ## 触屏、网络、音频与相机
 
