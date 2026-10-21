@@ -22,11 +22,10 @@
 看到 `18d1:d00d`，但 bulk 端点上任何传输都超时，`fastboot getvar` 不回包。
 主机侧救不回来：`USBDEVFS_RESET`、hub 端口 `disable` 重新枚举、`authorized`
 翻转都试过，设备重新枚举后仍然不回包。只能长按电源键断电重来。断电回来后再
-写 `boot_b` 只要 2.4 秒，说明挂死只跟大分区写入有关。
+写 `boot_a` 只要 2.4 秒，说明挂死只跟大分区写入有关。
 
-因此一次完整安装要按这个顺序做：先写 `boot_b`，再写 `sunuefi_esp`，最后写
-`sunuefi_root`；root 写完直接断电，重新进 Fastboot 只做槽位切换或重启，不再
-写大分区。一键脚本已经是这个顺序。
+因此一次完整安装要按这个顺序做：先写 `boot_a`，再写 `sunuefi_esp`，最后写
+`sunuefi_root`；root 写完直接断电，重新进 Fastboot 只重启，不再写大分区。一键脚本已经是这个顺序。
 
 原厂 ABL 不实现 `fastboot fetch`。主机 fastboot 37.0.0 认得这个子命令，设备
 回 `Device does not support fetch command`，宿主上留下一个 0 字节读回文件。
@@ -34,8 +33,8 @@
 `fetch` 的引导器，整份哈希也不会等于镜像摘要。读回只能作辅助证据，刷写正确
 与否最终以启动后的 `uname -r`、`findmnt /` 和 GNOME 桌面为准。
 
-`boot_b` 的读回可以直接读分区前 4 KiB 与末尾 64 字节判断，
-`prepare-device-boot.py` 写的 `os_version`、AVB 算法和请求页偏移都能对上。
+`boot_a` 的读回可以直接读分区前 4 KiB 与镜像内的 `SUNUEFI-NEXTv1` 请求页判断：
+首块是 `ANDROID!` 包装头，请求页的目标与 generation 和 `device-boot` 清单一致。
 
 ## 首次安装的 userdata
 
@@ -67,53 +66,49 @@ partition-size:sunuefi_root` 的字节数。`findmnt -bno SIZE /` 报的是 stat
 
 ## 双系统切换
 
-Linux → Android 已通过真机验收（2026-10-21，OS3.0.309.0 + 7.2.9-piano-gnome）。
-`piano-next-boot android --reboot` 把活动槽切到 A，ABL 直接加载原厂 `boot_a`，
-Android 16 启动完成（`ro.boot.slot_suffix=_a`、`sys.boot_completed=1`），SukiSU
-root 可用。连续两次往返都通过。
+2026-10-21 起按上游 SunUEFI 的合体 BOOT 模型工作：`boot_a` 里是原厂 Android
+内核、3 秒选择器与 UEFI 核心，请求页在这份镜像末尾。Android 与 Linux 都从
+A 槽启动，不切活动槽，也不改 GPT。
 
-Android → Linux 还缺一条不依赖电脑的路径。现在要从主机执行：
+- Linux → Android：`piano-next-boot android --reboot` 把持久请求写成 target=0，
+  正常重启后选择器进入 Android。
+- Android → Linux：安装「SunUEFI 引导助手」模块（KernelSU/SukiSU），在模块页面
+  选 Linux；没有模块时，开机前 3 秒按音量键选 Linux，选择会被保存。
+- 2026-10-21 两次独立实测：`boot_android.img` 从请求页 target 0→2→0→2→0、
+  sequence 0→4；随后 `flash boot_a device-boot/boot_linux.img`（未签名，
+  SHA256 `8fc67dc4…`）直接进 Linux（target=2、sequence=1，40 秒），helper 回
+  Android（target=0、sequence=2，45 秒），模块重新采纳后再切 Linux
+  （target=2、sequence=3，120 秒），helper 再回 Android（target=0、
+  sequence=4，35 秒）。`ro.boot.slot_suffix` 始终是 `_a`，`sys.boot_completed=1`。
+- 请求页偏移 37490688（0x23C1000），magic `SUNUEFI-NEXTv1`，两页相隔 4096
+  字节滚动写入。
 
-```sh
-adb reboot bootloader
-fastboot set_active b
-fastboot reboot
-```
+旧的 B 槽布局（Linux 写进 `boot_b`、`set_active b`）不再使用。保留一条历史
+排障记录：qbootctl 的 `set_active` 只改活动标志，不交换槽位 type GUID；A 活动
+时执行 `qbootctl -s b` 会留下“B 活动 + generic GUID”的表，ABL 的
+`ValidateSlotGuids` 会拒绝启动，报 `BootableSlot _b does not have valid guids`。
+`fastboot set_active` 走 ABL 的 `SetActiveSlot → SwitchPtnSlots`，会交换 GUID
+并切 UFS boot LUN；UFS boot LUN 必须与活动槽一致（1 = A，2 = B）。手工重建 GPT
+时主表和备份表要一起写，两份 CRC 都要重算。
 
-根因在 qbootctl：`boot_ctl_set_active_slot_for_partitions` 只改活动标志，不交换
-槽位的 type GUID。A 活动时执行 `qbootctl -s b` 会留下“B 活动、GUID 仍是
-generic”的表。ABL 的 `ValidateSlotGuids` 比对活动槽 `boot` 与 `abl_<槽>` 的
-type GUID，相等就报 `BootableSlot _b does not have valid guids`，然后掉进
-Fastboot。`qbootctl -s a` 在 B 活动时是安全的：A 拿到当前活动槽的 specific
-GUID，B 回到 generic，UFS boot LUN 同时切到 A。
-
-`fastboot set_active` 走 ABL 自己的 `SetActiveSlot → SwitchPtnSlots`，会交换
-GUID 并切换 UFS boot LUN，两个方向都正确。目标槽已经是活动槽时只修 LUN，
-不交换 GUID。
-
-UFS boot LUN 必须与活动槽一致（1 = A，2 = B）。`ValidateSlotGuids` 同时检查
-这一项，不一致时报 `Boot lun: %x and BootableSlot: %s do not match`。
-
-请求页实测：`boot_b` 的 NEXT 页在偏移 `37490688`（0x23C1000），magic
-`SUNUEFI-NEXTv1`，两页相隔 4096 字节滚动写入。`BOOT_a` 没有 SunUEFI 布局。
-`piano-next-boot linux` 只读确认活动槽是 B 再写请求页；活动槽不是 B 时拒绝，
-不会调用 `qbootctl -s b`。写入后重启（sequence 1 → 2）Linux 正常启动。
-
-`piano-next-boot android` 不带 `--reboot` 时只切槽不重启。切到 A 之后 Linux
-侧没有安全的切回方式，只能用 fastboot；图形入口始终带 `--reboot`。
-
-原厂 Recovery 往返这次没有执行：退出 Recovery 需要现场按键，远程做会把设备
-留在 Recovery。
+仍停在旧 B 槽布局的设备按这条路径迁移：把 `device-boot/boot_android.img` 写进
+`boot_a`，把 `/etc/piano/boot-request.json` 的 `boot_device` 改成 `boot_a`，
+再用 `fastboot set_active a` 切回 A（B→A 方向 qbootctl 也安全）。
 
 ## Android 侧
 
-2026-10-21 的 r4 重新分区擦掉了 userdata，`/data/adb/modules/` 不存在，
-`piano-matching-core` 匹配模块没有装回。SukiSU root 还在：它打在 `init_boot_a`
-里，`su -c id` 返回 uid=0、context `u:r:ksu:s0`。要恢复模块，重装 APK 并重新
-授权 su，再刷模块 zip；模块的 `install-state.json` 与当前 BOOT generation 的
-历史不一致要在那时一起复核。
+2026-10-21 已装回与当前 BOOT generation `bcd89b66…` 匹配的「SunUEFI 引导助手」
+模块（`/data/adb/modules/piano_sunuefi`）。安装走 `adopt` 只读识别现有合体
+BOOT，不重写内核；模块页面用它写请求页与重装引导。SukiSU root 仍在
+`init_boot_a`：`su -c id` 返回 uid=0、context `u:r:ksu:s0`。
 
 更早的脚手架 `piano_sunuefi_module.zip` 只有模块脚手架及根目录 request 程序，缺少 manager 要求的 bin/ 原生工具和策略/状态。它不能安装，也不要和上面的匹配模块混用。
+
+`boot_a` 被重刷成另一份镜像（例如重新跑 `fastboot flash boot_a device-boot/boot_linux.img`）
+后，模块的 `install-state.json` 仍指向旧镜像，`switch linux` 会报
+`current BOOT header is not the owned wrapper header`。在模块页面执行一次
+“重新安装引导”（`sh /data/adb/modules/piano_sunuefi/manager.sh reinstall`），
+让只读 `adopt` 重新采纳当前 BOOT 即可，不需要重写内核。
 
 Android 实测运行在 SELinux Permissive，启动参数带 `selinux=permissive`。
 手动 `setenforce 1` 可用，但不能当持久策略，固化方式还没落实。

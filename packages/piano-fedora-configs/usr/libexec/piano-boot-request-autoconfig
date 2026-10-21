@@ -20,7 +20,7 @@ def main():
 
     # Wait briefly if block partition labels are settling
     for _ in range(10):
-        if any(os.path.exists(f'/dev/disk/by-partlabel/boot_{s}') for s in ('b', 'a')):
+        if any(os.path.exists(f'/dev/disk/by-partlabel/boot_{s}') for s in ('a', 'b')):
             break
         time.sleep(0.5)
 
@@ -34,7 +34,9 @@ def main():
     except Exception as e:
         print(f"piano-boot-request-autoconfig: qbootctl failed: {e}", file=sys.stderr)
 
-    for slot in ('b', 'a'):
+    # The combined BOOT lives in the active slot, which is A in this layout.
+    # Try the slot qbootctl reports first, then A, then B for migrated devices.
+    for slot in ('a', 'b'):
         if slot not in candidate_slots:
             candidate_slots.append(slot)
 

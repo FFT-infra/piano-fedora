@@ -10,9 +10,10 @@ Fastboot。脚本此前带着这条命令，文档还写着“已清空，使用
 
 * `flash-linux.sh` / `flash-linux.bat` 不得出现任何 `fastboot erase`，也不得
   出现 `fastboot -w`、`fastboot format`、`flashing` 之类的破坏性命令。
-* 两个脚本只允许写 `boot_b`、`sunuefi_esp`、`sunuefi_root` 三个分区，且必须
-  有 `set_active b`。
-* 安装文档不得再声称擦除 dtbo_b，也不得把 `erase dtbo_b` 写进步骤里。
+* 两个脚本只允许写 `boot_a`、`sunuefi_esp`、`sunuefi_root` 三个分区，且不得
+  调用 `set_active`（合体 BOOT 留在当前槽，不切槽）。
+* 安装文档不得再声称擦除活动槽的 dtbo，也不得把 `erase dtbo_a` / `erase dtbo_b`
+  写进步骤里。
 """
 
 from pathlib import Path
@@ -26,7 +27,7 @@ INSTALL_DOC = ROOT / "docs/installation.md"
 INSTALLER_README = ROOT / "scripts/installer/README-INSTALL.txt"
 
 # Partitions the one-click installer is allowed to write.
-ALLOWED_FLASH_TARGETS = {"boot_b", "sunuefi_esp", "sunuefi_root"}
+ALLOWED_FLASH_TARGETS = {"boot_a", "sunuefi_esp", "sunuefi_root"}
 
 # The scripts route every device write through a wrapper that pins the serial:
 # `fb` in shell, `%FASTBOOT%` in batch. Match all three command spellings.
@@ -77,8 +78,8 @@ def check_script(path):
     if missing:
         failures.append(f"{path.name}: missing flash targets {sorted(missing)}")
 
-    if "set_active b" not in code:
-        failures.append(f"{path.name}: missing 'set_active b'")
+    if "set_active" in code:
+        failures.append(f"{path.name}: switches slots; the combined BOOT must stay on the active slot")
 
     # The shell installer must pin the serial for every device write, otherwise a
     # second tablet appearing mid-flash would receive the partitions instead.
@@ -114,15 +115,15 @@ def check_script(path):
 
 
 def check_boot_image_selection():
-    """boot_b 只能写 prepare-device-boot.py 产出的 boot_linux.img。
+    """boot_a 只能写 prepare-device-boot.py 产出的 boot_linux.img。
 
     实机教训（2026-10-20）：deploy-bundle 的 boot_sunuefi.img 是 ESP 内部的
     Linux 载荷，Header v2、os_version=0、没有 AVB footer 和 SUNUEFI-NEXTv1
-    请求页。SunUEFI 固件能加载它，ABL 不能。把它写进 boot_b，ABL 拒绝整条
-    引导链，平板停在 Fastboot，B 槽被标记 unbootable。
+    请求页。SunUEFI 固件能加载它，ABL 不能。把它写进 boot_a，ABL 拒绝整条
+    引导链，平板停在 Fastboot，活动槽被标记 unbootable。
 
     `ab24a6a` 只改了 shell 脚本和文档，Windows 脚本与 ZIP 内的 README 仍把
-    boot_sunuefi.img 当 boot_b 镜像刷。这里对三个文件一起加约束，避免再漏一个。
+    boot_sunuefi.img 当 boot_a 镜像刷。这里对三个文件一起加约束，避免再漏一个。
     """
     failures = []
     sh = (ROOT / "scripts/installer/flash-linux.sh").read_text(encoding="utf-8")
@@ -135,13 +136,13 @@ def check_boot_image_selection():
             failures.append(f"{name}: does not look for boot_linux.img")
 
     # Windows 脚本此前把 boot_sunuefi.img 硬编码成 BOOT_IMG，然后原样刷进
-    # boot_b。硬编码赋值是最容易复发的形态，单独点出来。
+    # boot_a。硬编码赋值是最容易复发的形态，单独点出来。
     for lineno, line in enumerate(bat.splitlines(), 1):
         stripped = line.strip().lower()
         if stripped.startswith("set boot_img=boot_sunuefi.img") or (
                 stripped.startswith("set \"boot_img=boot_sunuefi.img\"")):
             failures.append(
-                f"flash-linux.bat:{lineno}: flashes boot_sunuefi.img to boot_b; "
+                f"flash-linux.bat:{lineno}: flashes boot_sunuefi.img to boot_a; "
                 "use boot_linux.img from prepare-device-boot.py")
 
     # 设备镜像不在 deploy-bundle 的 SHA256SUMS 里，不能对它做清单校验；
@@ -151,18 +152,18 @@ def check_boot_image_selection():
             "flash-linux.bat: verifies boot_linux.img against the deploy-bundle "
             "SHA256SUMS; that image is device-specific and is not listed there")
 
-    # ZIP 内的 README 要写清 boot_b 该用哪个文件，并明确禁止 boot_sunuefi.img。
-    if "fastboot flash boot_b device-boot/boot_linux.img" not in readme:
+    # ZIP 内的 README 要写清 boot_a 该用哪个文件，并明确禁止 boot_sunuefi.img。
+    if "fastboot flash boot_a device-boot/boot_linux.img" not in readme:
         failures.append(
             "README-INSTALL.txt: manual flash still does not write "
-            "device-boot/boot_linux.img to boot_b")
-    if "fastboot flash boot_b boot_sunuefi.img" in readme:
+            "device-boot/boot_linux.img to boot_a")
+    if "fastboot flash boot_a boot_sunuefi.img" in readme:
         failures.append(
-            "README-INSTALL.txt: manual flash still writes boot_sunuefi.img to boot_b")
-    if "NEVER flash boot_sunuefi.img to boot_b" not in readme:
+            "README-INSTALL.txt: manual flash still writes boot_sunuefi.img to boot_a")
+    if "NEVER flash boot_sunuefi.img to boot_a" not in readme:
         failures.append(
             "README-INSTALL.txt: does not warn that boot_sunuefi.img is not a "
-            "boot_b image")
+            "boot_a image")
 
     return failures
 
@@ -193,7 +194,7 @@ def check_docs():
     for required in ("THIS INSTALLER DOES NOT PARTITION A STOCK TABLET.",
                      "sunuefi_esp and sunuefi_root",
                      "follow docs/installation.md section 4 first",
-                     "Android must remain on\nSlot A",
+                     "Android stays bootable from the same",
                      'must be "a" for this first-install path',
                      "partition-size:sunuefi_root",
                      "expanded_bytes"):
@@ -215,9 +216,8 @@ def check_docs():
                 f"docs/installation.md:{lineno}: still instructs 'fastboot erase dtbo_b'")
 
     # The manual flash chapter must exist and cover the required ground.
-    required = ("手动刷机", "SHA256SUMS", "sha256sum -c", "fastboot flash boot_b",
-                "fastboot flash sunuefi_esp", "fastboot flash sunuefi_root",
-                "fastboot set_active b", "fastboot set_active a")
+    required = ("手动刷机", "SHA256SUMS", "sha256sum -c", "fastboot flash boot_a",
+                "fastboot flash sunuefi_esp", "fastboot flash sunuefi_root")
     for token in required:
         if token not in doc:
             failures.append(f"docs/installation.md: manual-flash chapter missing {token!r}")
@@ -253,8 +253,8 @@ def main():
             print(f"FAIL: {item}", file=sys.stderr)
         return 1
 
-    print("OK: 一键脚本无 erase/-w/format，只写 boot_b/sunuefi_esp/sunuefi_root；"
-          "文档保留原厂 dtbo_b 且含手动刷机章节")
+    print("OK: 一键脚本无 erase/-w/format，只写 boot_a/sunuefi_esp/sunuefi_root 且不切槽；"
+          "文档保留原厂 dtbo 且含手动刷机章节")
     return 0
 
 

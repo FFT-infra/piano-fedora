@@ -1,6 +1,6 @@
 > **实验性项目。** 这个仓库面向驱动适配与硬件调试，不是可以日常使用的稳定版本。
 >
-> 刷入会解锁 Bootloader、改写 GPT、擦写 A/B 槽位与启动链。操作不规范会让平板变砖或丢失全部数据。开始之前，自行备份全部分区与个人数据。
+> 刷入会解锁 Bootloader、改写 GPT、替换 `boot_a` 里的合体 BOOT 并重写 Linux 分区。操作不规范会让平板变砖或丢失全部数据。开始之前，自行备份全部分区与个人数据。
 >
 > 本项目按 [MIT 许可证](LICENSE) 原样提供，作者与贡献者不承担设备损坏、数据丢失或保修失效的责任。
 
@@ -10,7 +10,7 @@
 
 [![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
 
-在小米平板 8 Pro（代号 `piano`，高通骁龙 8 至尊版 SM8750）上原生运行 Fedora 44 + GNOME。引导链是 SunUEFI（EDK2），内核是 Linux 7.2.9 主线适配，根文件系统用 F2FS，可以与原厂 HyperOS 双系统免电脑往返。
+在小米平板 8 Pro（代号 `piano`，高通骁龙 8 至尊版 SM8750）上原生运行 Fedora 44 + GNOME。引导链是 SunUEFI（EDK2），内核是 Linux 7.2.9 主线适配，根文件系统用 F2FS，与原生 HyperOS 组成双系统：合体 BOOT 里的 3 秒选择器与 Android 引导助手负责往返，两个方向都不需要电脑。
 
 ## 硬件支持
 
@@ -27,7 +27,7 @@
 | 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
 | 传感器 | ✅ | `iio-sensor-proxy` 采集加速度计、环境光、接近、罗盘 |
 | 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk 与 virtio-net、单 vCPU 客体启动；SMP、图形与 GUI 操作待验收 |
-| 双系统往返 | 🟡 | Linux→Android 已真机验收（活动槽切到 A，ABL 直接加载原厂 `boot_a`）；Android→Linux 还需要主机执行 `fastboot set_active b`，见[已知问题](docs/known-issues.md#双系统切换) |
+| 双系统往返 | ✅ | 合体 BOOT 装在 `boot_a`：Linux→Android 用 `piano-next-boot android --reboot`，Android→Linux 用「SunUEFI 引导助手」模块或开机 3 秒菜单；两次往返实测，见[已知问题](docs/known-issues.md#双系统切换) |
 | 手写笔 | 🟡 | 守护服务与 Type 29 协议就绪，等待实物划线终验 |
 | 指纹 / IR / HDR | ❌ | 依赖闭源 TEE 固件，主线不支持 |
 
@@ -57,8 +57,8 @@
 ### 双系统切换
 
 - Linux → Android：应用抽屉点「返回 Android」，或执行 `piano-next-boot android --reboot`。已真机验收。
-- Android → Linux：还没有不依赖电脑的路径。进 Fastboot 执行 `fastboot set_active b` 再重启，见[已知问题](docs/known-issues.md#双系统切换)。
-- 引导菜单：只在 Linux 槽（B）被引导时出现，开机 3 秒内按音量键；Android 槽（A）由 ABL 直接加载。
+- Android → Linux：安装「SunUEFI 引导助手」模块，在模块页面选 Linux；没有模块时，开机 3 秒内按音量键在菜单里选，选择会保存。
+- 两个方向都写同一份 `boot_a` 请求页，不切活动槽，也不改 GPT。
 
 ## 发布产物
 
@@ -66,7 +66,7 @@
 
 | 文件 | 说明 |
 |---|---|
-| `boot_sunuefi.img` | ESP 内部的 Linux 载荷，不刷进 `boot_b` |
+| `boot_sunuefi.img` | ESP 内部的 Linux 载荷，不刷进 `boot_a` |
 | `sunuefi_esp.img` | SunUEFI EDK2、DTB、Linux 7.2.9 内核与 initramfs |
 | `PianoUEFI-product.img` | SunUEFI 产品固件本体，`sunuefi_esp.img` 的载荷来源 |
 | `pianoroot.f2fs.img.zst` | 封存的 Fedora 44 GNOME 根文件系统，首装经 `prepare-install` 扩容 |

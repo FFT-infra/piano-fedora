@@ -10,7 +10,6 @@
 import hashlib
 import importlib.util
 import json
-import struct
 import sys
 import tempfile
 from pathlib import Path
@@ -68,70 +67,27 @@ def main():
                                                    work / "fresh"),
                        "selector-module.json")
 
-        # 持久引导的门槛值。0x1e0001a9 = Android 15 加 2026-09 补丁，与本地
-        # 打包器一致；写成 15 << 11 会得到 0x79a9，ABL 同样拒绝。
-        assert device_boot.BOOT_OS_VERSION == 0x1E0001A9, hex(device_boot.BOOT_OS_VERSION)
+        # 合体 BOOT 保持上游的 unsigned AVB NONE 元数据。槽 A 的 ABL 直接加载
+        # 这份镜像；2026-10-21 用未签名镜像在真机上完成 Android→Linux→Android
+        # 往返。若在这里补 os_version 或 RSA4096 footer，piano-boot-repack 的
+        # probe/request/adopt 会因为首块偏移 16 与原厂头不符而拒绝，Android
+        # 侧的引导助手再也切不了 Linux。这条断言防止 B 槽时代的补签逻辑被
+        # 重新引入。
+        source = (ROOT / "scripts/prepare-device-boot.py").read_text()
+        for forbidden in ("avbtool", "add_hash_footer", "BOOT_OS_VERSION", "set_os_version",
+                          "sign_boot_image", "strip_avb_footer"):
+            assert forbidden not in source, f"prepare-device-boot signs the BOOT again: {forbidden}"
         assert device_boot.BOOT_PARTITION_BYTES == 96 * 1024 * 1024
-        assert device_boot.BOOT_PARTITION_NAME == "boot"
 
-        # 去掉 NONE footer 时只留原始镜像，长度与 footer 里的 original_size 相同。
-        signed = work / "signed-boot.img"
-        original = 4096
-        footer = bytearray(64)
-        footer[0:4] = b"AVBf"
-        footer[4:8] = (1).to_bytes(4, "big")
-        footer[12:20] = original.to_bytes(8, "big")
-        head = b"ANDROID!" + b"\0" * (original - len(b"ANDROID!"))
-        signed.write_bytes(head + bytes(device_boot.BOOT_PARTITION_BYTES - original - 64) + bytes(footer))
-        stripped = device_boot.strip_avb_footer(signed)
-        assert len(stripped) == original, len(stripped)
-        assert stripped[:8] == b"ANDROID!"
-
-        # 没有 footer 的镜像不能静默当成已签名产物。
-        bare = work / "bare-boot.img"
-        bare.write_bytes(b"ANDROID!" + b"\0" * (device_boot.BOOT_PARTITION_BYTES - 8))
-        expect_refusal(lambda: device_boot.strip_avb_footer(bare), "no AVB footer")
-
-        # 签名只允许改首块的 os_version；probe 会把首块与包装器里保存的原厂头
-        # 逐字节比较，所以签名后的校验不能再用 probe。
-        body_bytes = 4096
-        unsigned = bytearray(device_boot.BOOT_PARTITION_BYTES)
-        unsigned[:8] = b"ANDROID!"
-        struct.pack_into("<I", unsigned, 40, 4)
-        signed = bytearray(unsigned)
-        struct.pack_into("<I", signed, 16, device_boot.BOOT_OS_VERSION)
-        signed[-64:-60] = b"AVBf"
-        struct.pack_into(">Q", signed, len(signed) - 64 + 12, body_bytes)
-        signed_path, unsigned_path = work / "signed.img", work / "unsigned.img"
-        signed_path.write_bytes(signed)
-        unsigned_path.write_bytes(unsigned)
-        device_boot.verify_signed_boot(signed_path, unsigned_path, body_bytes)
-
-        broken = bytearray(signed)
-        broken[100] ^= 0xFF
-        signed_path.write_bytes(broken)
-        expect_refusal(lambda: device_boot.verify_signed_boot(signed_path, unsigned_path, body_bytes),
-                       "signing changed the boot wrapper header")
-        broken = bytearray(signed)
-        struct.pack_into(">Q", broken, len(broken) - 64 + 12, body_bytes + 1)
-        signed_path.write_bytes(broken)
-        expect_refusal(lambda: device_boot.verify_signed_boot(signed_path, unsigned_path, body_bytes),
-                       "footer does not describe")
-        signed_path.write_bytes(signed[:-1])
-        expect_refusal(lambda: device_boot.verify_signed_boot(signed_path, unsigned_path, body_bytes),
-                       "does not fill its partition")
-
-    # 请求页只在当前引导的那份镜像里被读到，Linux 首装从 boot_b 启动。三个
-    # 生产者写进 boot-request 的 boot_device 必须一致，否则 root-install 与
-    # device-boot 的配置互相对不上，或者指向一张读了也没用的分区。
-    assert device_boot.LINUX_BOOT_DEVICE == "/dev/disk/by-partlabel/boot_b", \
-        device_boot.LINUX_BOOT_DEVICE
-    for name in ("install-f2fs", "prepare-root-capacity"):
-        spec = importlib.util.spec_from_file_location(name.replace("-", "_"), ROOT / "scripts" / (name + ".py"))
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        assert module.LINUX_BOOT_DEVICE == device_boot.LINUX_BOOT_DEVICE, (
-            f"{name}.LINUX_BOOT_DEVICE differs from prepare-device-boot")
+    # 请求页只在当前引导的那份镜像里被读到。合体 BOOT 装进 Android 的当前槽，
+    # 三个生产者写进 boot-request 的 boot_device 都必须由该槽推出，否则
+    # root-install 与 device-boot 的配置互相对不上，或者指向一张读了也没用的分区。
+    expected = '"/dev/disk/by-partlabel/boot" + slot'
+    for name in ("prepare-device-boot", "install-f2fs", "prepare-root-capacity"):
+        text = (ROOT / "scripts" / (name + ".py")).read_text()
+        assert expected in text, f"{name} does not derive boot_device from the active slot"
+        assert "boot_b\"" not in text and "LINUX_BOOT_DEVICE" not in text, \
+            f"{name} still hard-codes the Linux slot"
 
     print("OK: BOOT 包装拒绝错误槽位、截断镜像、摘要不符与已存在的输出目录")
     return 0

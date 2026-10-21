@@ -9,12 +9,12 @@
 提取出来执行一遍**，配一个桩 `fastboot`，验证
 
 * 文档里的命令逐条可执行，没有笔误或引用了不存在的资产名；
-* 写入顺序是 set_active b -> boot_b -> sunuefi_esp -> sunuefi_root；
+* 写入顺序是 boot_a -> sunuefi_esp -> sunuefi_root，全程不切槽；
 * 全程没有任何 erase/-w/format；
 * 两份真实摘要（deploy-bundle 与 root-install）分别校验通过；
 * root-install 的来源摘要与当前 deploy-bundle 不一致时必须失败；
 * 首次分区执行器在 GPT 写入后显式执行 `fastboot erase userdata`。
-* 首装请求页指向 `boot_a`，Linux payload 才写入 `boot_b`。
+* 首装请求页与合体 BOOT 都留在 `boot_a`，不再写 `boot_b`。
 
 桩 fastboot 会把每次调用记进日志并返回合理输出，不触碰任何真实设备。
 """
@@ -75,7 +75,7 @@ elif cmd == "getvar":
         "is-userspace": "no",
         # Android fastboot prints these as bare hexadecimal; the installer must
         # not compare that text directly with decimal manifest bytes.
-        "partition-size:boot_b": format(100663296, "x"),
+        "partition-size:boot_a": format(100663296, "x"),
         "partition-size:sunuefi_esp": format(537899008, "x"),
         "partition-size:sunuefi_root": format(515225600000, "x"),
     }
@@ -177,11 +177,12 @@ def make_asset_set(root, cross_bundle=False):
 
 
 def make_boot_linux_image(root):
-    """A boot_b image that satisfies the SM8750 ABL contract.
+    """A boot_a image shaped like prepare-device-boot.py output.
 
-    The bundle's boot_sunuefi.img is the ESP payload and the installer refuses
-    it for boot_b, so these fixtures keep a separate device image with its own
-    SHA256SUMS, exactly like prepare-device-boot.py produces.
+    The combined BOOT keeps the upstream unsigned AVB NONE metadata and the
+    SPLITv1 wrapper; the bundle's boot_sunuefi.img is the ESP payload and the
+    installer refuses it for boot_a, so these fixtures keep a separate device
+    image with its own SHA256SUMS.
     """
     import struct
 
@@ -190,19 +191,18 @@ def make_boot_linux_image(root):
     path = folder / "boot_linux.img"
     data = bytearray(100663296)
     data[0:8] = b"ANDROID!"
-    struct.pack_into("<I", data, 16, 0x0026C059)
+    struct.pack_into("<I", data, 16, 0)  # stock BOOT keeps os_version 0
     struct.pack_into("<I", data, 40, 4)
-    data[8192:8207] = b"SUNUEFI-NEXTv1\0"
-    # vbmeta 块与分区末尾的 AVB footer，形状同 prepare-device-boot.py 用
-    # SHA256_RSA4096 重新封装后的产物。安装器要在这里确认算法是 2、
-    # auth 字节非零，否则 ABL 会拒绝持久引导。
+    data[8192:8208] = b"SUNUEFI-SPLITv1\0"
+    data[16384:16500] = (b"SUNUEFI-NEXTv1\0").ljust(116, b"\0")
+    # vbmeta 块与分区末尾的 AVB footer，形状同 piano-boot-repack 的产物：
+    # 算法 NONE、没有 auth 字节。安装器只核对包装形状，不再要求签名。
     vbmeta_offset, vbmeta_size = 4096, 256
     vbmeta = bytearray(vbmeta_size)
     vbmeta[0:4] = b"AVB0"
     struct.pack_into(">I", vbmeta, 4, 1)
-    struct.pack_into(">Q", vbmeta, 12, 512)
     struct.pack_into(">Q", vbmeta, 20, 256)
-    struct.pack_into(">I", vbmeta, 28, 2)
+    struct.pack_into(">I", vbmeta, 28, 0)
     data[vbmeta_offset:vbmeta_offset + vbmeta_size] = vbmeta
     footer = bytearray(64)
     footer[0:4] = b"AVBf"
@@ -320,13 +320,15 @@ def main():
                 verbs.append(("set_active", args[i + 1] if i + 1 < len(args) else ""))
 
         # The flash sequence, optionally followed by the documented rollback
-        # (`set_active a`) from the "回滚到 Android" step.
-        expected = [("set_active", "b"), ("flash", "boot_b"),
-                    ("flash", "sunuefi_esp"), ("flash", "sunuefi_root")]
+        # (`set_active a`) from the "回滚到 Android" step. The combined BOOT
+        # stays in the active slot, so no set_active precedes the flash.
+        expected = [("flash", "boot_a"), ("flash", "sunuefi_esp"),
+                    ("flash", "sunuefi_root")]
         if verbs[:len(expected)] != expected:
             failures.append(f"documented write order is {verbs}, expected {expected}")
         tail = verbs[len(expected):]
-        if tail and tail != [("set_active", "a")]:
+        # A rollback example may re-flash the stock boot image afterwards.
+        if tail and tail != [("flash", "boot_a")]:
             failures.append(f"unexpected writes after the flash sequence: {tail}")
 
         # Nothing destructive may appear, even in the manual path.
@@ -352,12 +354,12 @@ def main():
             failures.append("manual chapter does not verify the prepared root capacity")
         if "expanded_bytes" not in chapter:
             failures.append("manual chapter does not bind root capacity to the manifest")
-        # 请求页在"正在引导的那份镜像"末尾；首装后 Linux 从 boot_b 启动，
-        # 所以 boot-request 必须指向 boot_b，指向 boot_a 的配置写得进去却读不到。
-        if "/dev/disk/by-partlabel/boot_b`" not in document:
-            failures.append("first-install boot request is not documented as boot_b")
-        if "/dev/disk/by-partlabel/boot_a`" in document:
-            failures.append("first-install boot request is incorrectly documented as boot_a")
+        # 请求页在"正在引导的那份镜像"末尾；合体 BOOT 装进当前槽 A，
+        # 所以 boot-request 必须指向 boot_a。
+        if "/dev/disk/by-partlabel/boot_a`" not in document:
+            failures.append("first-install boot request is not documented as boot_a")
+        if "/dev/disk/by-partlabel/boot_b`" in document:
+            failures.append("first-install boot request is still documented as boot_b")
 
         # The install-time SSH key is documented in both paths: the one-click
         # installer takes --ssh-key, and the manual path writes the key with
@@ -404,7 +406,7 @@ def main():
             failures.append("cross-bundle root-install caused a device write")
 
         # A root-install larger than the partition cannot be written; it must
-        # fail before set_active or any flash command is issued. A smaller one
+        # fail before any flash command is issued. A smaller one
         # is accepted and grows on first boot.
         capacity = work / "capacity"
         capacity.mkdir()
@@ -432,7 +434,7 @@ def main():
             failures.append("oversized root-install caused a device write")
 
         # The root-install must target the Android slot that is active now. A
-        # root prepared for _a must not overwrite boot_b on a _b device.
+        # root prepared for _a must not be flashed onto a _b device.
         slot = work / "slot"
         slot.mkdir()
         slot_assets, slot_root_install = make_asset_set(slot)
@@ -457,8 +459,9 @@ def main():
         if not assert_no_device_write(slot_log):
             failures.append("wrong-slot root-install caused a device write")
 
-        # The one-click installer always writes Linux to Slot B. If Android is
-        # currently on B, it must stop before overwriting the Android boot path.
+        # The one-click installer writes the combined BOOT to the active Slot A.
+        # If Android is currently on B, it must stop before overwriting the
+        # Android boot path.
         current = work / "current-slot-b"
         current.mkdir()
         current_assets, _ = make_asset_set(current)
@@ -495,6 +498,55 @@ def main():
             failures.append("first-install path accepted --skip-checksum")
         if not assert_no_device_write(bypass_log):
             failures.append("--skip-checksum caused a device write")
+
+        # Positive path: the exact shape prepare-device-boot.py emits (unsigned
+        # AVB NONE, SPLITv1 wrapper, NEXTv1 request page) must reach the flash
+        # sequence. This is the artifact the pipeline actually ships; a verifier
+        # that only accepts signed images rejects its own installer.
+        good = work / "good"
+        good.mkdir()
+        good_assets, _ = make_asset_set(good)
+        good_staging = copy_asset_set(good_assets, good / "piano-install")
+        good_log = good / "fastboot.log"
+        good_env = {
+            **env,
+            "STUB_LOG": str(good_log),
+            "ESP_IMG": str(good_staging / "sunuefi_esp.img"),
+        }
+        result = invoke_installer(good_staging, good_env, boot=device_boot)
+        if result.returncode != 0:
+            failures.append("installer rejected the unsigned device-boot shape: "
+                            + (result.stdout + result.stderr).strip()[:300])
+        good_verbs = []
+        for line in good_log.read_text().splitlines():
+            args = line.split()
+            if "flash" in args:
+                i = args.index("flash")
+                good_verbs.append(("flash", args[i + 1] if i + 1 < len(args) else ""))
+            elif "set_active" in args:
+                i = args.index("set_active")
+                good_verbs.append(("set_active", args[i + 1] if i + 1 < len(args) else ""))
+        if good_verbs[:3] != [("flash", "boot_a"), ("flash", "sunuefi_esp"),
+                              ("flash", "sunuefi_root")]:
+            failures.append(f"successful install wrote {good_verbs}, expected boot_a/ESP/root")
+
+        # A re-signed image (non-zero AVB algorithm) must be rejected: the
+        # signature patches the wrapper header and breaks the Android module.
+        import struct as struct_module
+        signed_dir = work / "signed-boot"
+        signed_dir.mkdir()
+        signed = signed_dir / "boot_linux.img"
+        raw = bytearray(device_boot.read_bytes())
+        struct_module.pack_into(">I", raw, 4096 + 28, 2)
+        signed.write_bytes(bytes(raw))
+        signed_log = work / "signed.log"
+        result = invoke_installer(good_staging, {**good_env, "STUB_LOG": str(signed_log)},
+                                  boot=signed)
+        if result.returncode == 0 or "unsigned NONE" not in (result.stdout + result.stderr):
+            failures.append("installer accepted a re-signed BOOT image")
+        signed_calls = signed_log.read_text().splitlines() if signed_log.exists() else []
+        if any("flash" in line.split() for line in signed_calls):
+            failures.append("re-signed BOOT reached the flash stage")
 
     installer = (ROOT / "scripts/install-f2fs.py").read_text(encoding="utf-8")
     erase = 'device.call(["fastboot", "-s", identity["factory_serial"], "erase", "userdata"]'

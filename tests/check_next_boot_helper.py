@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""离线验证 piano-next-boot-helper 的槽位切换与请求页分支。
+"""离线验证 piano-next-boot-helper 的请求页语义。
 
-r4 布局把 Android 留在 A 槽、Linux 写在 B 槽。ABL 引导 B 槽时给 Android
-内核传 `androidboot.slot_suffix=_b`，而 super 只有 `_a` 的逻辑分区，包装器
-的 Android 直通会反复重启。所以 `android` 必须切活动槽，不能写 target=0。
+合体 BOOT 把 Android 内核、3 秒选择器与 UEFI 核心装进同一个 boot 镜像，
+请求页就在这份镜像末尾。helper 只做一件事：读当前 BOOT 的 generation，
+把它作为期望值写进 `piano-boot-request set --target ... --expect-generation`。
+它不切活动槽、不写 GPT，也不假设 Linux 在哪个槽；`boot_device` 由
+`/etc/piano/boot-request.json` 记录，boot_a 与 boot_b 都合法。
 
-`linux`/`menu`/`setup` 只能确认活动槽是 B，绝不能调用 `qbootctl -s b`：
-qbootctl 不交换槽位 type GUID，在 A 活动时执行 -s b 会留下“B 活动 + generic
-GUID”的状态，ABL 的 ValidateSlotGuids 会拒绝启动。需要回 B 时走主机的
-`fastboot set_active b`。
-
-这里用假的 qbootctl 与 piano-boot-request 检查调用序列、读回与输出，不接触
-设备。真机行为由安装后的 `piano-next-boot` 与第五门验收覆盖。
+这里用假的 piano-boot-request 检查调用序列、generation 绑定的读回与错误
+分支，不接触设备。真机行为由安装后的 `piano-next-boot` 与双系统往返验收
+覆盖。
 """
 
 import contextlib
@@ -20,6 +18,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -27,40 +26,45 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "packages/piano-fedora-configs/usr/libexec/piano-next-boot-helper"
-DEVICE = "/dev/disk/by-partlabel/boot_b"
+DEVICE = "/dev/disk/by-partlabel/boot_a"
+OTHER_DEVICE = "/dev/disk/by-partlabel/boot_b"
 GENERATION = "bcd89b66dde56140979a8ce3b46950c8"
-
-QBOOTCTL = """#!/usr/bin/env python3
-import pathlib, sys
-state = pathlib.Path(__file__).with_name('slot.state')
-log = pathlib.Path(__file__).with_name('qbootctl.log')
-with log.open('a') as stream:
-    stream.write(' '.join(sys.argv[1:]) + '\\n')
-slot = state.read_text().strip() if state.exists() else 'b'
-if sys.argv[1] == '-a':
-    print('Active slot: _' + slot)
-elif sys.argv[1] == '-c':
-    print('Current slot: _' + slot)
-elif sys.argv[1] == '-s':
-    state.write_text(sys.argv[2])
-    print('SLOT 0: Set as active slot')
-else:
-    sys.exit('unsupported qbootctl argument')
-"""
+OTHER_GENERATION = "6c38318a290175eba5ff2bb5ef106768"
 
 NATIVE = """#!/usr/bin/env python3
 import json, pathlib, sys
+work = pathlib.Path(__file__).with_name('native.state')
 log = pathlib.Path(__file__).with_name('native.log')
 with log.open('a') as stream:
     stream.write(' '.join(sys.argv[1:]) + '\\n')
 args = sys.argv[1:]
+state = json.loads(work.read_text())
 targets = {'android': 0, 'menu': 1, 'linux': 2, 'setup': 3}
 if args[0] == 'status':
-    print(json.dumps({'target': 2, 'sequence': 1, 'app_generation': '%s'}))
+    print(json.dumps({'target': state['target'], 'sequence': state['sequence'],
+                      'operation': 'status', 'app_generation': state['app_generation']}))
 else:
-    target = args[args.index('--target') + 1]
-    print(json.dumps({'target': targets[target], 'sequence': 2, 'app_generation': '%s'}))
-""" % (GENERATION, GENERATION)
+    failure = pathlib.Path(__file__).with_name('set-fail')
+    if failure.exists():
+        print(failure.read_text().strip(), file=sys.stderr)
+        sys.exit(1)
+    expected = args[args.index('--expect-generation') + 1]
+    if expected != state['app_generation']:
+        print('generation changed; no write', file=sys.stderr)
+        sys.exit(1)
+    state['target'] = targets[args[args.index('--target') + 1]]
+    state['sequence'] += 1
+    override = pathlib.Path(__file__).with_name('set-target-override')
+    if override.exists():
+        state['target'] = int(override.read_text())
+    generation = state['app_generation']
+    gen_override = pathlib.Path(__file__).with_name('set-generation-override')
+    if gen_override.exists():
+        generation = gen_override.read_text().strip()
+    work.write_text(json.dumps(state))
+    print(json.dumps({'target': state['target'], 'sequence': state['sequence'],
+                      'operation': 'set', 'app_generation': generation}))
+"""
 
 
 def load_helper():
@@ -79,25 +83,21 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
         config = work / "boot-request.json"
-        config.write_text(json.dumps({"version": 1, "boot_device": DEVICE, "app_generation": GENERATION}))
-        qbootctl, native = work / "qbootctl", work / "piano-boot-request"
-        qbootctl.write_text(QBOOTCTL)
+        native = work / "piano-boot-request"
         native.write_text(NATIVE)
-        qbootctl.chmod(0o755)
         native.chmod(0o755)
-        slot_state = work / "slot.state"
+        state = work / "native.state"
         native_log = work / "native.log"
-        qbootctl_log = work / "qbootctl.log"
 
         helper = load_helper()
-        helper.CONFIG, helper.NATIVE, helper.QBOOTCTL = config, native, qbootctl
+        helper.CONFIG, helper.NATIVE = config, native
 
         real_stat, real_fstat, real_euid = os.stat, os.fstat, os.geteuid
-        config_inode = real_stat(config).st_ino
+        config_inode = None
 
         def fake_stat(path, *args, **kwargs):
             name = os.fspath(path)
-            if name in (DEVICE, "/dev/disk/by-partlabel/boot_a"):
+            if name in (DEVICE, OTHER_DEVICE):
                 return fake_result(stat.S_IFBLK | 0o660)
             if name == str(native):
                 return fake_result(stat.S_IFREG | 0o755, size=len(NATIVE))
@@ -109,79 +109,105 @@ def main():
                 return info
             return fake_result(stat.S_IFREG | 0o644, size=len(config.read_bytes()))
 
-        def run(action):
+        def write_config(device=DEVICE, generation=GENERATION, body=None):
+            nonlocal config_inode
+            body = body if body is not None else {"version": 1, "boot_device": device,
+                                                  "app_generation": generation}
+            config.write_text(json.dumps(body))
+            config_inode = real_stat(config).st_ino
+
+        def reset_native(target=0, generation=GENERATION):
+            state.write_text(json.dumps({"target": target, "sequence": 0,
+                                         "app_generation": generation}))
+            for name in ("native.log", "set-target-override", "set-generation-override", "set-fail"):
+                (work / name).unlink(missing_ok=True)
+
+        def run(*argv):
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
-                helper.main([action])
+                helper.main(list(argv))
             return json.loads(output.getvalue())
 
-        def native_calls():
+        def calls():
             return native_log.read_text().splitlines() if native_log.exists() else []
 
-        def qbootctl_calls():
-            return qbootctl_log.read_text().splitlines() if qbootctl_log.exists() else []
+        def expect_error(fragment, *argv):
+            try:
+                run(*argv)
+            except ValueError as error:
+                assert fragment in str(error), (fragment, error)
+            else:
+                raise AssertionError(f"accepted: {argv}")
 
-        def reset_logs():
-            for path in (native_log, qbootctl_log):
-                path.unlink(missing_ok=True)
+        # helper 不再有 qbootctl 分支，也没有活动槽概念。
+        source = HELPER.read_text()
+        assert "qbootctl" not in source and not hasattr(helper, "QBOOTCTL"), "helper still touches qbootctl"
 
         os.geteuid, os.stat, os.fstat = (lambda: 0), fake_stat, fake_fstat
         try:
-            # android：切活动槽（-s a），不碰请求页。
-            slot_state.write_text("b")
-            record = run("android")
-            assert record["mode"] == "active-slot" and record["active_slot"] == "_a", record
-            assert record["request_page_unchanged"] is True, record
-            assert slot_state.read_text().strip() == "a", slot_state.read_text()
-            assert qbootctl_calls() == ["-s a", "-a"], qbootctl_calls()
-            assert native_calls() == [], native_calls()
-
-            # linux：活动槽已是 B 时不写 GPT，只读确认后写请求页。
-            reset_logs()
-            slot_state.write_text("b")
-            record = run("linux")
-            assert record["active_slot"] == "_b" and record["target"] == 2, record
-            # 一次是写请求页前的只读确认，一次是结果里的活动槽读回。
-            assert qbootctl_calls() == ["-a", "-a"], qbootctl_calls()
-            calls = native_calls()
-            assert len(calls) == 2, calls
-            assert calls[0].startswith("status --device"), calls
-            assert "set --device" in calls[1] and "--target linux" in calls[1], calls
-            assert "--expect-generation " + GENERATION in calls[1], calls
-
-            # linux：活动槽是 A 时拒绝，绝不调用 -s b，也不写请求页。
-            reset_logs()
-            slot_state.write_text("a")
-            try:
-                run("linux")
-            except ValueError as error:
-                assert "fastboot set_active b" in str(error), error
-            else:
-                raise AssertionError("linux accepted an A-active slot")
-            assert qbootctl_calls() == ["-a"], qbootctl_calls()
-            assert native_calls() == [], native_calls()
-            assert slot_state.read_text().strip() == "a", slot_state.read_text()
-
-            # status：只读，不切槽也不写请求页。
-            reset_logs()
+            # status：只读，读一次原生请求页，原样带回。
+            write_config()
+            reset_native(target=0)
             record = run("status")
-            assert record["active_slot"] == "_a" and record["target"] == 2, record
-            assert qbootctl_calls() == ["-a"], qbootctl_calls()
-            assert native_calls() == ["status --device " + DEVICE], native_calls()
+            assert record["boot_device"] == DEVICE and record["reboot_planned"] is False, record
+            assert record["target"] == 0 and record["app_generation"] == GENERATION, record
+            assert "active_slot" not in record and "mode" not in record, record
+            assert calls() == ["status --device " + DEVICE], calls()
 
-            # 配置指向 boot_a 时不是这条布局，拒绝切槽而不是猜另一个槽。
-            config.write_text(json.dumps({"version": 1, "boot_device": "/dev/disk/by-partlabel/boot_a",
-                                          "app_generation": GENERATION}))
-            try:
-                run("android")
-            except ValueError as error:
-                assert "只支持 Linux 在 boot_b" in str(error), error
-            else:
-                raise AssertionError("accepted a boot_a layout for the Android slot switch")
+            # android：把 generation 作为期望值写入 target=0，读回后返回。
+            reset_native(target=2)
+            record = run("android")
+            assert record["target"] == 0 and record["sequence"] == 1, record
+            assert record["boot_device"] == DEVICE, record
+            assert calls() == ["status --device " + DEVICE,
+                               "set --device %s --target android --expect-generation %s" % (DEVICE, GENERATION)], calls()
+
+            # linux：同一条路径写 target=2，boot_device 仍来自配置。
+            reset_native(target=0)
+            record = run("linux")
+            assert record["target"] == 2 and record["boot_device"] == DEVICE, record
+
+            # boot_b 布局同样合法：helper 不假设 Linux 只在某个槽。
+            write_config(device=OTHER_DEVICE)
+            reset_native(target=0)
+            record = run("linux")
+            assert record["boot_device"] == OTHER_DEVICE and record["target"] == 2, record
+            assert calls()[1].startswith("set --device " + OTHER_DEVICE), calls()
+
+            # 写请求页时 BOOT 的 generation 变了：报错，不请求重启。
+            write_config()
+            reset_native()
+            (work / "set-generation-override").write_text(OTHER_GENERATION)
+            expect_error("引导镜像已改变", "linux")
+
+            # 原生读回的目标与请求不同：报错，不请求重启。
+            reset_native()
+            (work / "set-target-override").write_text("2")
+            expect_error("读回的目标不同", "android")
+
+            # 原生写入失败：把它的错误原样带出。
+            reset_native()
+            (work / "set-fail").write_text("request page is read-only")
+            expect_error("request page is read-only", "linux")
+
+            # 配置与参数校验。
+            write_config(device="/dev/disk/by-partlabel/boot_c")
+            expect_error("boot_device", "linux")
+            write_config(generation="not-a-generation")
+            expect_error("app_generation", "status")
+            write_config(body={"version": 1, "boot_device": DEVICE, "app_generation": GENERATION, "extra": True})
+            expect_error("启动配置需要", "status")
+            write_config()
+            expect_error("status 是只读操作", "status", "--reboot")
+            expect_error("用法", "uefi")
+
+            # 非 root 不写任何东西。
+            os.geteuid = lambda: 1000
+            expect_error("请使用 piano-next-boot", "linux")
         finally:
             os.geteuid, os.stat, os.fstat = real_euid, real_stat, real_fstat
 
-    print("OK: android 用 -s a 切槽；linux 只读确认 B 且从不调用 -s b；status 只读")
+    print("OK: helper 只写请求页（generation 绑定、读回校验），不切槽也不碰 qbootctl")
     return 0
 
 

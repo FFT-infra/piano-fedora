@@ -40,7 +40,7 @@ clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel r
 
 ## 交付内容
 
-最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。有了 bundle 自带的 sparse，从 Release 装机不需要再跑一次 Actions。发布资产名与 `fastboot flash sunuefi_esp` / `boot_b` 的目标一致。上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
+最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。有了 bundle 自带的 sparse，从 Release 装机不需要再跑一次 Actions。发布资产名与 `fastboot flash sunuefi_esp` / `boot_a` 的目标一致。上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
 
 Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合体 BOOT 必须用本机当前 stock BOOT、槽位和 generation 另行包装；通用构建产物不包含这些个人设备输入。
 

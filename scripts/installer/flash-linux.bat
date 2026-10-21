@@ -87,7 +87,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 REM 3c. Target partitions must exist before anything is written.
-for %%P in (boot_b sunuefi_esp sunuefi_root) do (
+for %%P in (boot_a sunuefi_esp sunuefi_root) do (
     %FASTBOOT% getvar partition-size:%%P 2>&1 | findstr /i "partition-size:%%P:" >nul
     if ERRORLEVEL 1 (
         echo [ERROR] Partition '%%P' was not found on the device.
@@ -97,25 +97,24 @@ for %%P in (boot_b sunuefi_esp sunuefi_root) do (
         exit /b 1
     )
 )
-echo [INFO] Target partitions boot_b, sunuefi_esp, sunuefi_root verified.
+echo [INFO] Target partitions boot_a, sunuefi_esp, sunuefi_root verified.
 
 REM 4. Image file validation
-REM boot_b takes the device-specific boot_linux.img that prepare-device-boot.py
+REM boot_a takes the device-specific boot_linux.img that prepare-device-boot.py
 REM repacks from this tablet's stock 96 MiB BOOT. The deploy-bundle's
 REM boot_sunuefi.img is the Linux payload inside the ESP: Header v2,
-REM os_version=0, no AVB footer and no SUNUEFI-NEXTv1 request page. SunUEFI
-REM loads it; the ABL does not, and rejects the whole chain when it is written
-REM to boot_b.
+REM no SUNUEFI-NEXTv1 request page. SunUEFI loads it from the ESP; the ABL
+REM does not, and rejects the whole chain when it is written to boot_a.
 set "BOOT_IMG="
 if exist "boot_linux.img" set "BOOT_IMG=boot_linux.img"
 if not defined BOOT_IMG if exist "device-boot\boot_linux.img" set "BOOT_IMG=device-boot\boot_linux.img"
 if not defined BOOT_IMG (
-    echo [ERROR] Missing boot_b image: boot_linux.img
+    echo [ERROR] Missing boot_a image: boot_linux.img
     echo Generate it once with scripts/prepare-device-boot.py from this tablet's
     echo stock BOOT, then keep boot_linux.img or device-boot\boot_linux.img
     echo next to this installer.
     echo.
-    echo boot_sunuefi.img is the ESP payload, not a boot_b image. Flashing it
+    echo boot_sunuefi.img is the ESP payload, not a boot_a image. Flashing it
     echo leaves the tablet in Fastboot with no bootable slot.
     pause
     exit /b 1
@@ -224,9 +223,9 @@ REM 6. Safety confirmation
 echo ====================================================================
 echo                  ⚠️  CRITICAL SAFETY WARNING ⚠️
 echo ====================================================================
-echo 1. This will flash Linux SunUEFI into Slot B (boot_b only).
+echo 1. This will write the combined SunUEFI BOOT into the active slot (boot_a only).
 echo 2. This will overwrite 'sunuefi_esp' and 'sunuefi_root' partitions.
-echo 3. Android on Slot A is preserved for dual-boot.
+echo 3. Android stays bootable from the same slot through the SunUEFI chooser.
 echo 4. Ensure Bootloader is UNLOCKED and battery is above 30%%.
 echo.
 set /p CONFIRM="Type YES in all caps to proceed with flashing: "
@@ -241,16 +240,14 @@ echo ====================================================================
 echo                   Starting Flashing Sequence
 echo ====================================================================
 
-echo --^> Step 1/4: Setting active slot to B...
-%FASTBOOT% set_active b
-if %ERRORLEVEL% neq 0 goto error
+echo --^> Step 1/4: Keeping active Slot A; no slot switch...
 
-echo --^> Skipping dtbo_b: keeping the stock DTBO for the active slot.
+echo --^> Skipping dtbo_a: keeping the stock DTBO for the active slot.
 echo     Qualcomm ABL rejects an empty DTBO with "Device Error"; SunUEFI reads
-echo     its board DTB from vendor_boot_b plus the stock dtbo_b overlay.
+echo     its board DTB from vendor_boot plus the stock dtbo_a overlay.
 
-echo --^> Step 2/4: Flashing the device boot image to boot_b...
-%FASTBOOT% flash boot_b "%BOOT_IMG%"
+echo --^> Step 2/4: Flashing the device boot image to boot_a...
+%FASTBOOT% flash boot_a "%BOOT_IMG%"
 if %ERRORLEVEL% neq 0 goto error
 
 echo --^> Step 3/4: Flashing SunUEFI ESP to sunuefi_esp...
@@ -397,13 +394,13 @@ if not defined CURRENT_SLOT (
 )
 if /i not "!CURRENT_SLOT!"=="a" (
     echo [ERROR] Android must be active on Slot A before running this installer.
-    echo This installer always writes Linux to Slot B (boot_b); continuing from
-    echo Android Slot B would overwrite the only Android boot path.
+    echo This installer writes the combined BOOT to the active slot (boot_a);
+    echo Android Slot B has no stock super partitions and is not a first-install target.
     endlocal & exit /b 1
 )
 if /i not "!ROOT_SLOT!"=="_a" (
     echo [ERROR] root-install was prepared for Android slot '!ROOT_SLOT!', but this installer requires '_a'.
-    echo The first-install path keeps Android on Slot A and writes Linux to Slot B.
+    echo The first-install path writes the combined BOOT to the active Slot A.
     echo Generate root-install with --android-slot _a before flashing.
     endlocal & exit /b 1
 )

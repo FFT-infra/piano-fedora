@@ -10,7 +10,7 @@ English | [简体中文](README.md)
 
 [![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
 
-Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 Elite SM8750). The boot chain is SunUEFI (EDK2). The kernel is a mainline Linux 7.2.9 port. The root filesystem is F2FS. The tablet switches between Linux and the stock HyperOS without a PC.
+Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 Elite SM8750). The boot chain is SunUEFI (EDK2). The kernel is a mainline Linux 7.2.9 port. The root filesystem is F2FS. The tablet dual-boots Linux and the stock HyperOS: a 3-second chooser in the combined BOOT plus the Android boot-assistant module handle both directions without a host.
 
 ## Hardware status
 
@@ -27,7 +27,7 @@ Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snap
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
 | Sensors | ✅ | `iio-sensor-proxy` reads accelerometer, ambient light, proximity, compass |
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are still pending |
-| Dual boot | 🟡 | Linux→Android is verified on device: the active slot switches to A and the ABL loads the stock `boot_a` directly. Android→Linux still needs `fastboot set_active b` from a host. See [known issues](docs/known-issues.md#双系统切换) |
+| Dual boot | ✅ | The combined BOOT lives in `boot_a`: Linux→Android uses `piano-next-boot android --reboot`, Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two round trips verified; see [known issues](docs/known-issues.md#双系统切换) |
 | Stylus | 🟡 | Daemon and Type 29 protocol are ready; a physical drawing test is pending |
 | Fingerprint / IR / HDR | ❌ | Require closed TEE firmware; mainline does not support them |
 
@@ -52,13 +52,13 @@ Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snap
 
    If you passed `--ssh-key`, you can log in with that key instead.
 
-For step-by-step control, see [Manual flashing](docs/installation.md#三之二-手动刷机不使用一键脚本). That section lists every `fastboot` command, the SHA256 checks, the read-back verification, and the rollback. **Never erase `dtbo_b`**: the ABL rejects the whole boot chain when it is missing.
+For step-by-step control, see [Manual flashing](docs/installation.md#三之二-手动刷机不使用一键脚本). That section lists every `fastboot` command, the SHA256 checks, the read-back verification, and the rollback. **Never erase `dtbo_a` or `dtbo_b`**: the ABL rejects the whole boot chain when the active slot's DTBO is missing.
 
 ### Switching between systems
 
 - Linux to Android: click "Return to Android" in the app grid, or run `piano-next-boot android --reboot`. Verified on device.
-- Android to Linux: there is no host-free path yet. Enter Fastboot, run `fastboot set_active b`, and reboot. See [known issues](docs/known-issues.md#双系统切换).
-- Boot menu: only appears when the Linux slot (B) is booted; press a volume key within the first 3 seconds. The Android slot (A) is loaded directly by the ABL.
+- Android to Linux: install the SunUEFI boot-assistant module and choose Linux there; without the module, press a volume key within the first 3 seconds and pick Linux. The choice is saved.
+- Both directions write the same request page in `boot_a`. No slot switch and no GPT write.
 
 ## Release artifacts
 
@@ -66,7 +66,7 @@ A release comes from the `deploy-bundle` artifact of `build-bundle`. The `root-i
 
 | File | Contents |
 |---|---|
-| `boot_sunuefi.img` | Linux payload inside the ESP; never flash it to `boot_b` |
+| `boot_sunuefi.img` | Linux payload inside the ESP; never flash it to `boot_a` |
 | `sunuefi_esp.img` | SunUEFI EDK2, DTB, Linux 7.2.9 kernel, initramfs |
 | `PianoUEFI-product.img` | SunUEFI product firmware; the payload inside `sunuefi_esp.img` |
 | `pianoroot.f2fs.img.zst` | Sealed Fedora 44 GNOME root filesystem; `prepare-install` expands it for a first install |

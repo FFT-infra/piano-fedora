@@ -30,9 +30,8 @@ BLOCK = 4096
 DEFAULT_ESP_MIB = 512
 # 封存 root 镜像的最小容量，与 build-f2fs-image.py 的下限一致。
 MIN_ROOT_MIB = 64
-# 请求页由选择器在"正在引导的那份镜像"末尾读取，ABL 只加载当前槽；首装把
-# Linux 写进 boot_b 并 set_active b，所以 Linux 的 boot-request 只能指向它。
-LINUX_BOOT_DEVICE = "/dev/disk/by-partlabel/boot_b"
+# 请求页由选择器在"正在引导的那份镜像"末尾读取，ABL 只加载当前槽；合体 BOOT
+# 装进 Android 的当前槽（首装是 A），请求配置因此必须指向 boot<当前槽>。
 BUNDLE_ASSETS = {
     "sunuefi_esp.img": "sunuefi_esp.img",
     "boot_sunuefi.img": "boot_sunuefi.img",
@@ -108,13 +107,13 @@ def checked(path, meta):
 def require_install_slot(slot, existing):
     """Keep the first-install path on Android Slot A.
 
-    The one-click installer always writes Linux to Slot B and rewrites boot_b.
-    A first install that started from Android Slot B would therefore destroy
-    the only Android boot path. Existing-partition updates may still use B.
+    The combined BOOT is written to the Android active slot and Linux boots
+    from the same slot; a first install that started from Android Slot B would
+    leave the request page in a partition the ABL does not load next.
     """
     require(slot in ("_a", "_b"), "unknown active Android slot")
     if not existing:
-        require(slot == "_a", "first install requires Android Slot A; Slot B is reserved for Linux")
+        require(slot == "_a", "first install requires Android Slot A; the stock super partitions are _a")
 
 
 def root_capacity(image_bytes, partition_bytes):
@@ -183,8 +182,8 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     # root-install 只是把同一份封存镜像预先扩到目标容量的可选产物。带了它就要
     # 与这份 bundle 逐项对上；没带就直接用 bundle 自带的 sparse，此时镜像里
     # 没有 /etc/piano/boot-request.json，由首启的
-    # piano-boot-request-autoconfig.service 按 qbootctl 的当前槽重建（首装后
-    # 是 boot_b），再与 device-boot 记录的同一条配置对上。
+    # piano-boot-request-autoconfig.service 按 qbootctl 读到的当前槽重建（首装后
+    # 是 boot_a），再与 device-boot 记录的同一条配置对上。
     if root:
         require(root.get("status") == "ROOT_CAPACITY_VERIFIED_NOT_DEVICE_VERIFIED"
                 and root["source_bundle_manifest_sha256"] == sha256(bundle / "bundle-manifest.json")
@@ -231,11 +230,12 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     require(combined.get("status") == "DEVICE_BOOT_FILE_VERIFIED_NOT_DEVICE_BOOTED"
             and combined["byte_equal_restoration"] is True and combined["active_slot"] == slot,
             "combined BOOT does not match the current slot or lacks lossless restore proof")
-    # 请求页只在当前引导的那份 BOOT 里被读到。指向 boot_a 的配置写得进去，
-    # 但首装后的 Linux 从 boot_b 启动，下一次启动读不到，切换会静默失效。
-    require(combined["boot_request"].get("boot_device") == LINUX_BOOT_DEVICE,
+    # 请求页只在当前引导的那份 BOOT 里被读到；合体 BOOT 与请求配置都在
+    # Android 的当前槽，所以配置必须指向 boot<当前槽>。
+    expected_boot_device = "/dev/disk/by-partlabel/boot" + slot
+    require(combined["boot_request"].get("boot_device") == expected_boot_device,
             "device-boot records the boot request for "
-            f"{combined['boot_request'].get('boot_device')!r}; it must be {LINUX_BOOT_DEVICE}")
+            f"{combined['boot_request'].get('boot_device')!r}; it must be {expected_boot_device}")
     require(combined["uefi_product_sha256"] == sha256(bundle / "PianoUEFI-product.img"), "BOOT and ESP use different UEFI cores")
     for name in ("boot_android.img", "boot_linux.img", "boot-request.json"):
         checked(boot / name, combined["files"][name])

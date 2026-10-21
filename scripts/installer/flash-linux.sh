@@ -36,7 +36,7 @@ Flashing utility for Fedora 44 Linux on Xiaomi Pad 8 Pro (piano).
 
 Options:
   -y, --yes            Skip safety confirmation prompt (non-interactive)
-  --boot <file>        Device-specific boot_b image (boot_linux.img from
+  --boot <file>        Device-specific boot_a image (boot_linux.img from
                        prepare-device-boot.py). Never the bundle's boot_sunuefi.img.
   --esp <file>         Path to SunUEFI ESP image (sunuefi_esp.img)
   --root <file>        Path to the prepared rootfs transport (pianoroot.f2fs.sparse.img)
@@ -192,8 +192,10 @@ if [ "$CURRENT_SLOT" != "a" ] && [ "$CURRENT_SLOT" != "b" ]; then
 fi
 if [ "$CURRENT_SLOT" != "a" ]; then
     echo -e "${RED}[ERROR] Android must be active on Slot A before running this installer.${NC}"
-    echo "This installer always writes Linux to Slot B (boot_b); continuing from"
-    echo "Android Slot B would overwrite the only Android boot path."
+    echo "This installer writes the combined BOOT to the active slot (boot_a);"
+    echo "Android Slot B has no stock super partitions and is not a first-install target."
+    echo "Switch the active slot back to A from stock Fastboot (see README-INSTALL.txt),"
+    echo "then rerun. ABL swaps the slot type GUIDs and the UFS boot LUN."
     exit 1
 fi
 
@@ -237,7 +239,7 @@ require_partition() {
 
 echo -e "[INFO] Verifying target partitions..."
 ROOT_PARTITION_SIZE=""
-require_partition boot_b 67108864
+require_partition boot_a 67108864
 require_partition sunuefi_esp 536870912
 require_partition sunuefi_root 1073741824 ROOT_PARTITION_SIZE
 
@@ -259,12 +261,12 @@ find_file() {
     return 1
 }
 
-# Auto-detect the boot_b image.
+# Auto-detect the boot_a image.
 # deploy-bundle/boot_sunuefi.img is the Linux payload that lives inside the
-# ESP (EFI/Piano/stable/boot.img): a Header v2 container with no AVB footer and
-# no SUNUEFI-NEXTv1 page. SunUEFI's UEFI firmware loads it; ABL cannot. Writing
-# it to boot_b leaves the tablet in Fastboot with no bootable slot, so it is
-# never used here. boot_b takes the device-specific image that
+# ESP (EFI/Piano/stable/boot.img): a Header v2 container with no SUNUEFI-NEXTv1
+# page. SunUEFI's UEFI firmware loads it from the ESP; ABL cannot. Writing
+# it to boot_a leaves the tablet in Fastboot with no bootable slot, so it is
+# never used here. boot_a takes the device-specific image that
 # prepare-device-boot.py repacks from the stock 96 MiB BOOT.
 if [ -z "$BOOT_IMG" ]; then
     if FOUND=$(find_file "boot_linux.img"); then
@@ -273,7 +275,7 @@ if [ -z "$BOOT_IMG" ]; then
         BOOT_IMG="$FOUND"
     fi
 elif [ "$(basename "$BOOT_IMG")" = "boot_sunuefi.img" ]; then
-    echo -e "${RED}[ERROR] --boot is the bundle's boot_sunuefi.img, which is the ESP payload, not a boot_b image.${NC}"
+    echo -e "${RED}[ERROR] --boot is the bundle's boot_sunuefi.img, which is the ESP payload, not a boot_a image.${NC}"
     echo "Pass device-boot/boot_linux.img from prepare-device-boot.py instead."
     exit 1
 fi
@@ -467,7 +469,7 @@ if [ "$SKIP_CHECKSUM" -eq 0 ]; then
     fi
     if [ "$root_android_slot" != "_a" ]; then
         echo -e "${RED}[ERROR] root-install was prepared for Android slot '${root_android_slot}', but this installer requires '_a'.${NC}"
-        echo "The first-install path keeps Android on Slot A and writes Linux to Slot B."
+        echo "The first-install path writes the combined BOOT to the active Slot A."
         echo "Generate root-install with --android-slot _a before flashing."
         exit 1
     fi
@@ -487,7 +489,7 @@ echo -e "[INFO] Flashing targets resolved:"
 if [ -n "$BOOT_IMG" ]; then
     echo -e "  - Boot image   : ${GREEN}${BOOT_IMG}${NC} ($(stat -c%s "$BOOT_IMG" 2>/dev/null || stat -f%z "$BOOT_IMG") bytes)"
 else
-    echo -e "  - Boot image   : ${YELLOW}none${NC}; boot_b is left untouched"
+    echo -e "  - Boot image   : ${YELLOW}none${NC}; boot_a is left untouched"
 fi
 echo -e "  - ESP image    : ${GREEN}${ESP_IMG}${NC} ($(stat -c%s "$ESP_IMG" 2>/dev/null || stat -f%z "$ESP_IMG") bytes)"
 echo -e "  - RootFS image : ${GREEN}${ROOT_IMG}${NC} (${root_image_size} transfer bytes, ${root_expanded_bytes} expanded bytes)"
@@ -498,9 +500,9 @@ fi
 # 7. Safety Confirmation
 if [ "$AUTO_CONFIRM" -eq 0 ]; then
     echo -e "\n${YELLOW}${BOLD}⚠️  CRITICAL SAFETY WARNING ⚠️${NC}"
-    echo "1. This action will write Linux SunUEFI to Slot B (boot_b only)."
+    echo "1. This action writes the combined SunUEFI BOOT to the active slot (boot_a only)."
     echo "2. This action will overwrite 'sunuefi_esp' and 'sunuefi_root' partitions."
-    echo "3. Existing Android on Slot A is preserved for dual-boot recovery."
+    echo "3. Android stays bootable from the same slot through the SunUEFI chooser."
     echo "4. Ensure your Bootloader is UNLOCKED and battery is above 30%."
     echo ""
     read -rp "Are you sure you want to proceed? Type 'YES' in all caps to continue: " CONFIRM_INPUT
@@ -582,19 +584,18 @@ from pathlib import Path
 path = Path(sys.argv[1])
 data = path.read_bytes()
 if len(data) != 100663296:
-    sys.exit(f"{path.name}: {len(data)} bytes, expected the 96 MiB boot_b image")
+    sys.exit(f"{path.name}: {len(data)} bytes, expected the 96 MiB boot_a image")
 if data[:8] != b"ANDROID!":
     sys.exit(f"{path.name}: not an Android boot container")
 version = struct.unpack_from("<I", data, 40)[0]
 if version != 4:
     sys.exit(f"{path.name}: Header v{version}; SM8750 ABL requires v4")
-# Persistent boot needs both a non-zero os_version and a signed AVB footer.
-# prepare-device-boot.py writes them; an unsigned NONE footer (what
-# piano-boot-repack emits for RAM boot) is rejected by ABL, and so is a
-# signature with os_version still 0. Both cases were measured on 2026-10-20.
-if struct.unpack_from("<I", data, 16)[0] == 0:
-    sys.exit(f"{path.name}: os_version is 0; SM8750 ABL rejects it. "
-             "Rebuild with scripts/prepare-device-boot.py, which sets it.")
+# The combined BOOT keeps the upstream unsigned AVB NONE metadata. Slot A's
+# ABL loads it directly; 2026-10-21 on device, the same unsigned image booted
+# Android and Linux. Check the wrapper shape only. Do not require a non-zero
+# os_version or an RSA4096 signature: piano-boot-repack authenticates the
+# wrapper header byte-for-byte, and patching offset 16 breaks the Android
+# boot-assistant module (switch linux fails).
 footer = data[-64:]
 if footer[:4] != b"AVBf":
     sys.exit(f"{path.name}: no AVB footer")
@@ -603,35 +604,35 @@ vbmeta = data[vb_off:vb_off + vb_size]
 if vbmeta[:4] != b"AVB0":
     sys.exit(f"{path.name}: AVB footer does not point at a vbmeta block")
 algorithm = struct.unpack_from(">I", vbmeta, 28)[0]
-auth_size = struct.unpack_from(">Q", vbmeta, 12)[0]
-if algorithm != 2 or auth_size == 0:
-    sys.exit(f"{path.name}: AVB algorithm {algorithm} with {auth_size} auth bytes; "
-             "ABL needs the SHA256_RSA4096 signature prepare-device-boot.py writes")
+if algorithm != 0:
+    sys.exit(f"{path.name}: AVB algorithm {algorithm}; the combined BOOT must stay "
+             "unsigned NONE. Rebuild with scripts/prepare-device-boot.py.")
+if b"SUNUEFI-SPLITv1\0" not in data:
+    sys.exit(f"{path.name}: no SUNUEFI-SPLITv1 wrapper; not a combined BOOT")
 if b"SUNUEFI-NEXTv1\0" not in data:
     sys.exit(f"{path.name}: no SUNUEFI-NEXTv1 boot request page")
 PYEOF
 fi
 
 if [ -n "$BOOT_IMG" ]; then
-    echo -e "\n--> Step 1/4: Setting active boot slot to B..."
-    fb set_active b
+    echo -e "\n--> Step 1/4: Keeping active Slot A; no slot switch..."
 else
-    echo -e "\n--> Step 1/3: No boot_b image given; the boot slot is left as it is."
-    echo -e "    ${YELLOW}boot_b keeps its current content. Run prepare-device-boot.py and pass${NC}"
-    echo -e "    ${YELLOW}--boot device-boot/boot_linux.img to write it, then set the slot yourself.${NC}"
+    echo -e "\n--> Step 1/3: No boot_a image given; the boot slot is left as it is."
+    echo -e "    ${YELLOW}boot_a keeps its current content. Run prepare-device-boot.py and pass${NC}"
+    echo -e "    ${YELLOW}--boot device-boot/boot_linux.img to write it.${NC}"
 fi
 
-# dtbo_b is deliberately left untouched. Qualcomm ABL authenticates the whole
-# boot chain of the active slot and rejects an empty/foreign DTBO with
-# "Failed to load/authenticate boot image: Device Error"; erasing dtbo_b has
-# been observed to leave the tablet stuck in Fastboot. SunUEFI reads its board
-# DTB from vendor_boot_b plus the stock dtbo_b overlay fragments, so the stock
-# content must stay in place.
-echo -e "\n--> Skipping dtbo_b: keeping the stock DTBO for the active slot."
+# The active slot's dtbo is deliberately left untouched. Qualcomm ABL
+# authenticates the whole boot chain of the active slot and rejects an
+# empty/foreign DTBO with "Failed to load/authenticate boot image: Device
+# Error"; erasing it has been observed to leave the tablet stuck in Fastboot.
+# SunUEFI reads its board DTB from vendor_boot plus the stock dtbo_a overlay
+# fragments, so the stock content must stay in place.
+echo -e "\n--> Skipping dtbo_a: keeping the stock DTBO for the active slot."
 
 if [ -n "$BOOT_IMG" ]; then
-    echo -e "\n--> Step 2/4: Flashing device boot image to boot_b..."
-    fb flash boot_b "$BOOT_IMG"
+    echo -e "\n--> Step 2/4: Flashing device boot image to boot_a..."
+    fb flash boot_a "$BOOT_IMG"
     echo -e "\n--> Step 3/4: Flashing SunUEFI ESP to sunuefi_esp..."
 else
     echo -e "\n--> Step 2/3: Flashing SunUEFI ESP to sunuefi_esp..."
@@ -660,7 +661,7 @@ echo "  - Switch back to Android: Open GNOME App Drawer -> Click 'Return to Andr
 echo ""
 
 if [ "$DO_REBOOT" -eq 1 ] && [ -z "$BOOT_IMG" ]; then
-    echo -e "--> Not rebooting: boot_b was not written, so the active slot stays as it was."
+    echo -e "--> Not rebooting: boot_a was not written, so the active slot stays as it was."
 elif [ "$DO_REBOOT" -eq 1 ]; then
     echo -e "--> Rebooting tablet into Fedora 44 Linux..."
     fb reboot

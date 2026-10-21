@@ -216,7 +216,7 @@ elif cmd == "getvar":
     name = args[-1]
     table = {"product": "piano", "current-slot": "a", "unlocked": "yes",
              "is-userspace": "no",
-             "partition-size:boot_b": format(100663296, "x"),
+             "partition-size:boot_a": format(100663296, "x"),
              "partition-size:sunuefi_esp": format(537899008, "x"),
              "partition-size:sunuefi_root": format(515225600000, "x")}
     print(f"{name}: {table.get(name, 'unknown')}")
@@ -256,7 +256,7 @@ printf '\n# %s\n' "$(cat "$source")" >> "$image"
 
 
 def make_boot_linux_image(root):
-    """A boot_b image with the shape SM8750 ABL accepts.
+    """A boot_a image with the shape SM8750 ABL accepts.
 
     The bundle's boot_sunuefi.img is the ESP payload and must never be flashed
     here, so the fixtures keep both: the payload in the staging directory and a
@@ -269,18 +269,18 @@ def make_boot_linux_image(root):
     path = folder / "boot_linux.img"
     data = bytearray(100663296)
     data[0:8] = b"ANDROID!"
-    struct.pack_into("<I", data, 16, 0x0026C059)
+    struct.pack_into("<I", data, 16, 0)
     struct.pack_into("<I", data, 40, 4)
-    data[8192:8207] = b"SUNUEFI-NEXTv1\0"
-    # 与 check_manual_flash_flow.py 相同的签名形态：分区内的 AVB vbmeta 块
-    # 加上末尾 footer，算法 SHA256_RSA4096（2），auth 字节非零。
+    data[8192:8208] = b"SUNUEFI-SPLITv1\0"
+    data[16384:16399] = b"SUNUEFI-NEXTv1\0"
+    # 与 check_manual_flash_flow.py 相同的合体 BOOT 形态：分区内的 AVB vbmeta
+    # 块加上末尾 footer，算法 NONE（0），没有 auth 字节。
     vbmeta_offset, vbmeta_size = 4096, 256
     vbmeta = bytearray(vbmeta_size)
     vbmeta[0:4] = b"AVB0"
     struct.pack_into(">I", vbmeta, 4, 1)
-    struct.pack_into(">Q", vbmeta, 12, 512)
     struct.pack_into(">Q", vbmeta, 20, 256)
-    struct.pack_into(">I", vbmeta, 28, 2)
+    struct.pack_into(">I", vbmeta, 28, 0)
     data[vbmeta_offset:vbmeta_offset + vbmeta_size] = vbmeta
     footer = bytearray(64)
     footer[0:4] = b"AVBf"
@@ -417,7 +417,7 @@ def check_shell_installer(root, failures):
                                        for line in log4.read_text().splitlines()),
           "a rejected key still flashed partitions")
 
-    # 6. The bundle's ESP payload is refused as a boot_b image.
+    # 6. The bundle's ESP payload is refused as a boot_a image.
     staging6, _ = make_asset_set(root / "shell-payload-boot")
     log6 = root / "fastboot-payload.log"
     result = subprocess.run(
@@ -427,7 +427,7 @@ def check_shell_installer(root, failures):
          "--root", str(staging6 / "root-install/pianoroot.f2fs.sparse.img"),
          "--root-sha256sums", str(staging6 / "root-install/SHA256SUMS")],
         cwd=staging6, env={**env, "STUB_LOG": str(log6)}, capture_output=True, text=True)
-    check(result.returncode != 0, "boot_sunuefi.img was accepted as a boot_b image")
+    check(result.returncode != 0, "boot_sunuefi.img was accepted as a boot_a image")
     check("ESP payload" in result.stdout + result.stderr,
           "the refusal does not explain that boot_sunuefi.img is the ESP payload")
     check(not log6.exists() or not any(" flash " in " " + line + " "

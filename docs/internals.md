@@ -117,7 +117,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
   --plan first-install-plan.json
 ```
 
-`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量。任何一项与现场不符就停止。同时确认设备当前槽位是 `a`，`root-install-manifest.json` 顶层的 `android_slot` 是 `_a`。首装不能用 `_b`：一键脚本固定写 `boot_b`，会覆盖 Android 唯一的启动路径。
+`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量。任何一项与现场不符就停止。同时确认设备当前槽位是 `a`，`root-install-manifest.json` 顶层的 `android_slot` 是 `_a`。首装只能用 `_a`：合体 BOOT 写进 Android 的当前槽，`_b` 没有原厂 super 逻辑分区。
 
 计划本身是一份 JSON，`--plan` 指到哪里就写到哪里，通常是 `first-install-plan.json`。它记录磁盘几何、原分区表、每个分区的 `first`/`last` 变化与容量，`baseline_sha256` 绑定这份表的来源。`apply` 重算一遍并逐字段比较，设备或输入包有任何变化都停。
 
@@ -131,13 +131,13 @@ root 镜像与分区容量解耦。执行器要求 `expanded_bytes <= linux_root
 
 ESP 默认 512 MiB。ESP 分区必须和 `deploy-bundle/sunuefi_esp.img` 等大：镜像按 `product.json` 的 `esp_size_mib` 造出，执行器要求镜像字节数等于计划算出的 ESP 分区容量。两者不一致就停。改过 `esp_size_mib` 就重跑 `build-bundle`，再在 `plan` 与 `apply` 上加同一个 `--esp-mib`；只有 `--esp-mib` 没有配套的重建镜像，执行器会在写设备前拒绝。
 
-`device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_b`，`app_generation` 必须与 `deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。
+`device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_a`（跟随 `--slot`），`app_generation` 必须与 `deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。
 
-选择器读请求页的位置是“正在引导的那份镜像”末尾：ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。首装把 Android 留在 A 槽、Linux 写进 `boot_b`，随后 `set_active b`，所以 Linux 运行时被读到的是 `boot_b` 的页。写成 `boot_a` 也能写成功，但下一次启动读不到，切换会静默失效。
+选择器读请求页的位置是“正在引导的那份镜像”末尾：ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装在 A 槽，Android 与 Linux 都从同一份 `boot_a` 启动，请求页因此指向 `boot_a`；系统不切槽，也不存在第二份需要同步的页。
 
-槽位切换有一条 GPT 约束：活动槽的 `boot`、`abl_<槽>`、`vbmeta_<槽>`、`dtbo_<槽>` 带 specific type GUID，非活动槽带 generic `77036CD4-03D5-42BB-8ED1-37E5A88BAA34`。ABL 的 `ValidateSlotGuids` 要求活动槽的 `boot` 与 `abl_<槽>` GUID 不同，并且 UFS boot LUN 与活动槽一致（1 = A，2 = B）。`fastboot set_active` 走 ABL 的 `SetActiveSlot → SwitchPtnSlots`，会交换 GUID 并切 LUN；`qbootctl -s` 只改活动标志，不交换 GUID，所以只能用它从 B 切到 A。手工重建 GPT 时主表和备份表要一起写，两份 CRC 都要重算。
+合体 BOOT 方案不切槽，因此不触发 GPT 的槽位约束。作为历史排障背景：活动槽的 `boot`、`abl_<槽>`、`vbmeta_<槽>`、`dtbo_<槽>` 带 specific type GUID，非活动槽带 generic `77036CD4-03D5-42BB-8ED1-37E5A88BAA34`；ABL 的 `ValidateSlotGuids` 要求活动槽的 `boot` 与 `abl_<槽>` GUID 不同，且 UFS boot LUN 与活动槽一致（1 = A，2 = B）。`qbootctl -s` 只改活动标志、不交换 GUID，在 A 活动时执行 `-s b` 会留下无法启动的表。手工重建 GPT 时主表和备份表要一起写，两份 CRC 都要重算。
 
-带了 `root-install` 时，镜像里的 `etc/piano/boot-request.json` 就是这条配置，`plan` 会逐字段核对。不带时镜像里没有这个文件，首启的 `piano-boot-request-autoconfig.service` 用 `qbootctl -c` 找到当前槽（首装后是 `_b`）后由 `piano-next-boot-configure` 重建；`plan` 的 `boot_request.source` 记下这次用的是哪一条。首启后不要猜测设备名或改槽，否则 Linux 的“返回 Android”和后续启动请求会失败。
+带了 `root-install` 时，镜像里的 `etc/piano/boot-request.json` 就是这条配置，`plan` 会逐字段核对。不带时镜像里没有这个文件，首启的 `piano-boot-request-autoconfig.service` 用 `qbootctl -c` 找到当前槽（首装后是 `_a`）后由 `piano-next-boot-configure` 重建；`plan` 的 `boot_request.source` 记下这次用的是哪一条。首启后不要猜测设备名或改槽，否则 Linux 的“返回 Android”和后续启动请求会失败。
 
 ### 3. 执行破坏性首次分区并初始化 Android userdata
 
@@ -194,9 +194,9 @@ chmod +x flash-linux.sh
 如果第 3 步已经用 `install-f2fs.py --ssh-key` 注入过，这里不必再传。重复注入
 只会覆盖同一个 `/piano-ssh-key.pub`。两条路径都要求本机有 `mcopy`（mtools）。
 
-脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 能装进实时 `sunuefi_root`。脚本只写 `boot_b`、`sunuefi_esp`、`sunuefi_root`，拒绝 fastbootd、错误产品、多台设备和不完整材料。
+脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 能装进实时 `sunuefi_root`。脚本只写 `boot_a`、`sunuefi_esp`、`sunuefi_root`，不切活动槽，拒绝 fastbootd、错误产品、多台设备和不完整材料。
 
-首装路径拒绝 `--skip-checksum`。两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备重启到 Slot B。
+首装路径拒绝 `--skip-checksum`。两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备从 Slot A 重启，请求页按 `device-boot/boot-request.json` 进入 Linux。
 
 Windows 脚本用系统自带的 Windows PowerShell 读 JSON 清单。槽位与容量核对走 `ConvertFrom-Json`，找不到 `powershell` 就直接停下。
 
@@ -220,7 +220,7 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
 
 1. 同一次新流水线产出的 `deploy-bundle` 和 `root-install` 已记录 run ID 与摘要。
 2. 从原始 GPT/UFS 开始完成首次分区、显式擦除 userdata、Android 首次开机。
-3. Slot B 冷启动进入 GNOME 桌面，不是热修复或历史镜像启动。
+3. Slot A 冷启动进入 GNOME 桌面，不是热修复或历史镜像启动。
 4. 完整重启一次后仍能进入 GNOME，且 `systemctl --failed` 为空。
 5. Android→Linux、Linux→Android 和原厂 Recovery 都完成，保存屏幕、命令输出、
    `uname -r`、`/usr/lib/modules/`、F2FS 挂载与分区容量证据。
@@ -248,8 +248,8 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
    校验镜像里的文件全部归属 RPM 数据库。
 4. **安装链**：`flash-linux.sh` 与 `flash-linux.bat` 带设备身份、分区容量、
    摘要校验；安装文档同时保留不用脚本的手动路径。以下能力尚未具备：
-   - 脚本固定 `fastboot set_active b`，只接受 Android 当前槽为 `a`，不能装到任意槽；
-   - 只检查 `boot_b`、`sunuefi_esp`、`sunuefi_root` 是否存在及容量下限，不核对
+   - 脚本只接受 Android 当前槽为 `a`，不能装到任意槽；
+   - 只检查 `boot_a`、`sunuefi_esp`、`sunuefi_root` 是否存在及容量下限，不核对
      GPT 的 CRC、类型 GUID 或整表布局；
    - 分区不存在时直接拒绝，首次分区仍走 `install-f2fs.py`。
 5. **真机终验**：九类 RPM 已上机，硬解、音频、触控滤波与传感器代理可用；
