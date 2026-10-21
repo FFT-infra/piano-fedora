@@ -271,9 +271,18 @@ def test_workflow_contract():
         'gh release create "$TAG" --draft',
         'gh release edit "$TAG" --draft=false',
         "subject-checksums: build/stage/RELEASE-SHA256SUMS",
+        "if: inputs.publish == 'true'",
+        "if: inputs.publish != 'true'",
     ]
     missing = [item for item in required if item not in text]
     assert not missing, f"release.yml lost: {missing}"
+    # 转公开必须显式传参，默认停在 draft。
+    assert 'default: "false"' in text, "publish/prerelease 输入必须有 false 默认值"
+    publish_block = text[text.index("name: Publish the release"):]
+    publish_block = publish_block[:publish_block.index("name: Leave the release as a draft")]
+    assert "if: inputs.publish == 'true'" in publish_block, (
+        "Publish the release 必须在 publish 输入为 true 时才跑")
+    assert '--draft=false' in publish_block
     # GitHub 的单文件上限是 2 GiB；切片阈值必须严格低于它。
     upload = UPLOAD.read_text()
     assert "release_max_asset=2147000000" in upload

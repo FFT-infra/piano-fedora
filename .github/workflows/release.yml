@@ -35,6 +35,14 @@ on:
         description: "单档：prepare-install 成功 run；留空则按 tag commit 解析"
         required: false
         default: ""
+      publish:
+        description: "转成公开 Release。默认 false，跑完停在 draft"
+        required: false
+        default: "false"
+      prerelease:
+        description: "公开时标为 pre-release"
+        required: false
+        default: "false"
 
 permissions:
   contents: write
@@ -144,6 +152,8 @@ jobs:
           EOF
           # 默认 draft，等电极校准数据的再分发许可确认后再 --draft=false。
           # 见 docs/public-release-gaps.md。
+          # 许可结论已定：校准数据从 4649de7 起就在公开仓库与公开 COPR 里，
+          # 发布不增加暴露面。门禁改为显式参数，默认仍停 draft。
           gh release create "$TAG" --draft --title "piano Fedora 44 ${TAG}" \
             --notes-file build/stage/notes.md
 
@@ -358,10 +368,27 @@ jobs:
           subject-checksums: build/stage/RELEASE-SHA256SUMS
 
       - name: Publish the release
+        if: inputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          extra=()
+          if [ "$PRERELEASE" = "true" ]; then
+            extra+=(--prerelease)
+          fi
+          gh release edit "$TAG" --draft=false "${extra[@]}"
+          gh release view "$TAG" --json url,assets,isDraft,isPrerelease \
+            --jq '{url: .url, draft: .isDraft, prerelease: .isPrerelease,
+                   assets: [.assets[] | {name, size}]}'
+
+      - name: Leave the release as a draft
+        if: inputs.publish != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release edit "$TAG" --draft=false
-          gh release view "$TAG" --json url,assets \
-            --jq '{url: .url, assets: [.assets[] | {name, size}]}'
+          echo "publish 未开启，${TAG} 保持 draft。" >> "$GITHUB_STEP_SUMMARY"
+          gh release view "$TAG" --json url,isDraft \
+            --jq '"draft=\(.isDraft) url=\(.url)"'

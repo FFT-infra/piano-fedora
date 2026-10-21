@@ -39,3 +39,19 @@ Copyright (c) 2026 phxinyang
 | 同目录下标注 MIT 的自有文件（帧处理、校准、方向、回放） | 本仓库 | MIT |
 
 这些文件头部保留了 SPDX 标识与改编说明。改动清单随补丁与提交历史一起维护。
+
+## 面板校准数据
+
+| 位置 | 来源 | 许可 |
+| --- | --- | --- |
+| `packages/xiaomi-piano-thp/usr/share/piano/touch/piano-{csot,boe}.json` | 从本机原厂固件 `/odm/firmware/piano_nova_{csot,boe}_thp_config.ini`（ROM `OS3.0.309.0.WPYCNXM`）提取的电极校准数值，`source_sha256` 指回原文件 | 未确认；见下 |
+| `packages/xiaomi-piano-thp/usr/share/piano/pen/calibration/piano-{csot,boe}.ini` | 同一份原厂 INI 里的笔校准数值，只保留数值项 | 未确认；见下 |
+
+这两组文件只包含校准数值本身，不含原厂 INI 的其余配置。原厂 INI 不入库。
+
+再分发许可未取得厂商确认。本项目按“设备所有者从自己持有的固件中提取、用于同一台设备”的场景分发，
+不主张对这些数值的任何权利。拿到同一镜像的人应当自行确认所在司法辖区是否允许。
+如果厂商提出异议，这些文件会从仓库与发布物中移除，`xiaomi-piano-thp` 改为运行时从用户自己的原厂数据生成。
+
+这组数据自提交 `4649de7` 起就在公开仓库与公开 COPR 中，发布 Release 不增加暴露面。
+
