@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """设备编解码验收脚本的前置检查契约。
 
-`make test-device-media` 在平板本体上跑。2026-10-21 实机第一次跑时，B 帧那一步
+`make test-device-media` 在平板本体上跑。实机第一次跑时，B 帧那一步
 直接抛 `returned non-zero exit status 8`：Fedora 的 `ffmpeg-free` 没编译
 `libx264`/`libx265`，而脚本默认用它们生成素材。文档早就写了“素材在别的机器
 上生成，用 `--fixture-dir` 传过去”，脚本却没说清失败原因。

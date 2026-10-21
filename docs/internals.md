@@ -71,6 +71,12 @@ COPR 仓库验收：`scripts/verify-copr-device.py`，在设备上跑，只读�
 `/dev/video0`。两者都成立才算硬解。浏览器自报的 GPU 状态不算证据，软件解码
 同样会拉高 GPU 中断。
 
+持续触控验收：`scripts/verify-device-touch.py --output <新的证据目录>`，
+同样在设备上跑，需要有人配合划动屏幕。脚本先等第一次真实触摸再开始计时，
+所以等待时间不计入统计。它报 SYN 速率、NVT 中断增长、坐标覆盖范围、多点
+slot 与相邻跳变分位数。速率用 SYN 报文而不是 ABS 事件：协议 B 会把每个
+手指的坐标各发一遍，ABS 计数随手指数翻倍。
+
 ## 本机 BOOT
 
 先确认当前原 BOOT 的完整摘要、槽位和系统版本。`prepare-device-boot.py` 用这些输入和同核心的 Actions 工具生成 `boot_android.img`、`boot_linux.img` 与 `boot-request.json`。默认目标是普通 Android。

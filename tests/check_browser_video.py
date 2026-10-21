@@ -6,7 +6,7 @@
 硬解必须同时有 iris 中断增长和 /dev/video0 持有者。只满足一个不算：软件
 解码同样会拉高 GPU 中断，光看中断会把软解判成硬解。
 
-2026-10-21 实测的差别是这个脚本存在的原因：Fedora 的 Chromium 链接系统
+实测的差别是这个脚本存在的原因：Fedora 的 Chromium 链接系统
 libavcodec，而 ffmpeg-free 用 --disable-decoder 去掉了软件 H.264，装上
 libavcodec-freeworld 后能播但仍走软解；Chrome 自带 FFmpeg 与 V4L2 解码
 路径，Firefox 有自己的 VA-API 路径，两者默认硬解。
