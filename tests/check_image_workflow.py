@@ -67,6 +67,8 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     for name in ("sunuefi_esp.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst"):
         (root / name).write_bytes(b"fixture")
     (root / "boot_sunuefi.img").write_bytes(b"ANDROID!fixture")
+    # 四档共用的 initramfs 归档；它是平台资产，bundle 缺了就不完整。
+    (root / "initramfs.tar.zst").write_bytes(b"fixture")
     write("kernel-manifest.json", {"kernel_release": "fixture"})
     kernel = digest(root / "kernel-manifest.json")
     identity = {"kernel_release": "fixture", "kernel_manifest_sha256": kernel}
@@ -520,6 +522,11 @@ def check_bundle_asset_names():
         assert name in (ROOT / "docs/installation.md").read_text(), f"install docs omit {name}"
     assert "test ! -e bundle/esp.img" in bundle
     assert "test ! -e bundle/boot.img" in bundle
+    # initramfs.tar.zst 是 release-assets.py 声明的平台资产，bundle 必须真的
+    # 带上它。以前只有声明，release.yml 的 test -f 才在发布那一步失败。
+    assert "cp build/in/image/initramfs.tar.zst bundle/" in bundle, (
+        "build-bundle does not carry initramfs.tar.zst into the deploy bundle")
+    assert "initramfs.tar.zst" in verifier, "verify-bundle does not require initramfs.tar.zst"
     assert 'bundle / "boot_sunuefi.img"' in updater
     assert 'bundle / "sunuefi_esp.img"' in updater
     assert 'bundle / "esp.img"' not in installer

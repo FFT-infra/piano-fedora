@@ -13,7 +13,7 @@ import piano_sparse
 PROJECT = Path(__file__).resolve().parents[1]
 
 REQUIRED = {"sunuefi_esp.img", "boot_sunuefi.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst",
-            "pianoroot.f2fs.sparse.img",
+            "pianoroot.f2fs.sparse.img", "initramfs.tar.zst",
             "root-image-manifest.json", "kernel-manifest.json", "initramfs-manifest.json",
             "esp-manifest.json", "runtime-manifest.json", "mesa-manifest.json",
             "ffmpeg-manifest.json", "rootfs-manifest.json", "source-runs.json", "uefi-source.json"}

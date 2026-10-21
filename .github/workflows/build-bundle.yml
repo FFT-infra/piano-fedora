@@ -235,6 +235,11 @@ jobs:
             piano_sparse.encode('build/pianoroot.f2fs.img', 'bundle/pianoroot.f2fs.sparse.img')"
           rm -f build/pianoroot.f2fs.img
           cp build/in/image/diagnostic-abl-storage.tar.zst bundle/
+          # initramfs.tar.zst 由 build-image 用固定时间戳与 owner 打出，四档
+          # 逐字节相同，所以它是平台资产。release.yml 的 platform_files 里
+          # 一直有它，但以前没人把它拷进 bundle，门禁在 release 那一步才以
+          # "deploy-bundle lacks platform asset" 失败。
+          cp build/in/image/initramfs.tar.zst bundle/
           cp build/in/image/root-image-manifest.json build/in/image/source-runs.json build/in/image/runtime-manifest.json bundle/
           cp build/in/image/mesa-manifest.json build/in/image/ffmpeg-manifest.json build/in/image/rootfs-manifest.json bundle/
           cp build/kernel/manifest.json bundle/kernel-manifest.json
