@@ -1,6 +1,6 @@
 # Xiaomi Pad 8 Pro (piano) 安装、分区与双系统指南
 
-本指南讲两件事：在**小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）**上从零安装 Fedora 44 GNOME，以及对已有 Linux 分区做增量更新。
+本指南讲两件事：在**小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）**上从零安装 Fedora 44，以及对已有 Linux 分区做增量更新。默认桌面是 GNOME，其余档位的差异见[桌面档](desktops.md)。
 
 ---
 
@@ -47,7 +47,7 @@
 > SunUEFI 的板级 DTB 来自 `vendor_boot_a` 底包，再叠加原厂 `dtbo_a` 的增量片段。原厂内容必须留在原位。
 
 * **`sunuefi_esp`（512 MiB，FAT32）**：SunUEFI EDK2 固件、合并设备树（DTB）、Linux 7.2 适配内核与 initramfs。
-* **`sunuefi_root`（F2FS）**：Fedora 44 GNOME 根文件系统。F2FS 为闪存设计，能发挥 UFS 4.0 的顺序与随机读写性能。
+* **`sunuefi_root`（F2FS）**：Fedora 44 根文件系统，桌面按档位装配。F2FS 为闪存设计，能发挥 UFS 4.0 的顺序与随机读写性能。
 * **引导稳定性（`qbootctl`）**：`qbootctl.service` 在每次 Linux 引导成功后向底层 GPT 写入 `Successful = 1`，ABL 的启动计数器不会归零。
 * **容量按实时 GPT 计算。** 容量不是固定值，**每台设备按自己实时的 GPT 计算**，512 GiB、1 TiB 或其他容量都走同一套规则：
 
@@ -73,15 +73,23 @@
 Release 资产是扁平的，全部下载到同一个空目录后：
 
 1. `sha256sum -c RELEASE-SHA256SUMS`
-2. `bash unpack-release.sh`
+2. `bash unpack-release.sh --desktop <档位>`
 
-`unpack-release.sh` 会合并大于 2 GiB 的分片、解压 zstd 传输镜像，并把 `root-install/` 放回脚本要求的布局。完成后这个目录就是下面的暂存目录。
+一个 Release 可以带多档桌面（`gnome`、`kde`、`niri`、`hyprland`）。ESP、内核、
+initramfs 与 UEFI 四档逐字节相同，只发布一份；root 镜像与 `root-install/` 每档
+各一份，名字带 `-<档位>` 后缀。`--desktop` 决定哪一档的 root 进入
+`root-install/`；Release 里只有一档时脚本自动识别，多档时不传参数会报错并列出
+可选项。各档有什么差别见[桌面档](desktops.md)。
+
+`unpack-release.sh` 会合并大于 2 GiB 的分片、解压 zstd 传输镜像、把桌面资产还原
+成下面的规范名，并把 `root-install/` 放回脚本要求的布局。完成后这个目录就是下面的
+暂存目录。
 
 - `piano-installer-<tag>.zip`：`flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` 与 `unpack-release.sh`；
 - `piano-boot-tools-<tag>.tar.zst`：生成设备专用 `device-boot/boot_linux.img` 的脚本与 x86-64 工具；
 - `sunuefi_esp.img`：SunUEFI ESP 分区镜像；
 - `boot_sunuefi.img`：ESP 内部的 Linux 载荷，不刷任何分区；
-- `pianoroot.f2fs.img.zst`：封存的基础盘，不能直接首装；
+- `pianoroot.f2fs.img.zst`（单档）或 `pianoroot-<档位>.f2fs.img.zst`（多档）：封存的基础盘，不能直接首装；
 - `pianoroot.f2fs.sparse.img`：deploy-bundle 自带的可刷传输镜像；
 - `root-install/pianoroot.f2fs.sparse.img`：`prepare-install` 写入设备配置后的传输镜像；
 - `SHA256SUMS`：deploy-bundle 内资产的摘要；
@@ -350,7 +358,7 @@ ls /usr/lib/modules/
 
 `uname -r` 与 ESP 里的字符串不符，说明刷进去的不是这一版资产。`/usr/lib/modules/` 下没有同名目录，说明 rootfs 与 ESP 的内核不是一套；系统能起来，但一个驱动都加载不了。
 
-能进 GNOME 桌面就是刷写成功最直接的证据。
+能进所选桌面就是刷写成功最直接的证据。
 
 上面的读回与启动后检查要在从原始 GPT/UFS 重新分区的设备上执行；构建成功、热修复启动、历史资产启动都不能当作 PR 验收证据。
 
@@ -602,7 +610,7 @@ ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，�
 
 ## 五、 首次登录与桌面环境配置
 
-刷完后平板自动重启，进入 120 Hz 的 Fedora 44 GNOME 桌面。
+刷完后平板自动重启，进入 120 Hz 的桌面。四档都自动登录到 `piano` 用户；GNOME 走 GDM，KDE 走 SDDM，niri 与 Hyprland 走 greetd 的 `tuigreet` 兜底。
 
 * **默认用户**：`piano`
 * **默认密码**：`piano123456`
@@ -651,7 +659,7 @@ ls /usr/lib/modules/          # 有与 uname -r 同名的目录
 | 无线 | Wi-Fi 连接、蓝牙扫描 |
 | 电源与睡眠 | 合盖与 `rtcwake -m mem -s 20` 能唤醒，唤醒后无 failed unit |
 
-再完整重启一次，确认仍进 GNOME。双系统往返按下一节执行，往返后核对
+再完整重启一次，确认仍进所选桌面。双系统往返按下一节执行，往返后核对
 `fastboot getvar current-slot`。
 
 编解码另有一条可复现的取证命令，在设备上跑，`MEDIA_OUTPUT` 必须是新的目录：

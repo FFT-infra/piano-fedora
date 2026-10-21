@@ -40,6 +40,8 @@ clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel r
 
 ## 交付内容
 
+每档桌面各有一个 `deploy-bundle` run，bundle 内部文件名不随桌面变化：`verify-bundle.py`、`prepare-root-capacity.py` 与 `flash-linux.sh` 只认规范名。桌面维度在到 Release 时才展开成资产名。
+
 最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。有了 bundle 自带的 sparse，从 Release 装机不需要再跑一次 Actions。发布资产名与 `fastboot flash sunuefi_esp` / `boot_a` 的目标一致。上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
 
 Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合体 BOOT 必须用本机当前 stock BOOT、槽位和 generation 另行包装；通用构建产物不包含这些个人设备输入。
@@ -76,9 +78,16 @@ UEFI 产物取 `build-uefi` 39493739872，Mesa 取 `build-mesa` 39494726711。
 
 `.github/workflows/release.yml` 只搬运已验证的构建，不重新编译。tag 指向的 commit 必须同时有成功的 `build-bundle` 与 `prepare-install` run；缺一个就在写入任何发布资产之前失败。手动触发可以显式传 `bundle_run`、`prepare_run`，两者仍要绑定同一个 tag commit。
 
+多档桌面的 Release 用 `desktop_runs` 给出每档一对 run（`gnome=<bundle>:<prepare>,kde=...`）。每档独立走一遍身份、状态与提交绑定校验，`root-install` 还要与它自己的 bundle 和 root 镜像逐摘要对齐。资产分两组：
+
+- **平台资产**：`PianoUEFI-product.img`、`sunuefi_esp.img`、`boot_sunuefi.img`、`uefi-source.json`、`kernel-manifest.json`、`initramfs.tar.zst`、`initramfs-manifest.json`、`diagnostic-abl-storage.tar.zst` 与三份组件 manifest。名字不带后缀，四档逐字节相同，只上传第一档的副本，其余三档只做 `cmp`，不一致就在写 Release 之前失败。
+- **桌面资产**：`pianoroot.f2fs.img.zst`、`pianoroot.f2fs.sparse.img.zst`、`root-install-manifest.json`、`root-install-SHA256SUMS`、`root-install-pianoroot.f2fs.sparse.img.zst`，以及每档的 `bundle-manifest.json`、`root-image-manifest.json`、`rootfs-manifest.json`、`source-runs.json` 与 `SHA256SUMS`。在第一处 `.` 前插入 `-<desktop>`（`root-install-SHA256SUMS` 没有扩展名，后缀接在末尾）。`esp-manifest.json` 也在这组：上游 `package_release.py` 把 `root.tar.zst` 的摘要写进 `files`，四档不同。
+
+命名规则只在 `scripts/release-assets.py` 与 `scripts/unpack-release.sh` 各写一次，`tests/check_release_assets.py` 逐项比对两条实现。单档 Release 不带后缀，与多桌面之前的资产名一致。
+
 发布前按顺序校验：bundle 的 `SHA256SUMS`、`verify-bundle.py`、root-install 的 `SHA256SUMS`、boot-tools 的 `installer/SHA256SUMS`，以及 root-install manifest 里 `source_bundle_manifest_sha256` 与 `source_root_manifest_sha256` 确实指当前 bundle。Release 只收 `android_slot == "_a"`；`_b` 的 root-install 留给 B 槽设备自己生成。
 
-GitHub 的单个 release asset 必须小于 2 GiB，所以大镜像按 1,900 MiB 切片，两个 root transport 先流式 zstd 压缩。`RELEASE-SHA256SUMS` 覆盖实际发布的扁平资产；`unpack-release.sh` 先校验它，再合并分片、解压并还原 `root-install/`。发布前用 `actions/attest-build-provenance` 对 `RELEASE-SHA256SUMS` 生成 provenance。
+GitHub 的单个 release asset 必须小于 2 GiB，所以大镜像按 1,900 MiB 切片，两个 root transport 先流式 zstd 压缩。`initramfs.tar.zst` 与 `diagnostic-abl-storage.tar.zst` 用 `--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner` 打包：tar 默认记录每个 job 自己的写入时刻，四档按字节比对会必然失败。`RELEASE-SHA256SUMS` 覆盖实际发布的扁平资产，一份覆盖全部桌面；`unpack-release.sh --desktop <档位>` 先校验它，再合并分片、解压、把桌面资产还原成规范名并解出 `root-install/`。只有一档时档位可省略，多档时缺参数报错并列出可选项。发布前用 `actions/attest-build-provenance` 对 `RELEASE-SHA256SUMS` 生成 provenance。
 
 `boot_linux.img` 不进 Release：它由 `prepare-device-boot.py` 用每台平板自己的 96 MiB stock BOOT 生成。Release 附带 `piano-boot-tools-<tag>.tar.zst`，里面是同一 bundle 的 `boot-tools`、x86-64 `host-boot-tool` 和脚本。
 

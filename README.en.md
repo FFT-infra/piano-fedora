@@ -10,7 +10,7 @@ English | [简体中文](README.md)
 
 [![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
 
-Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 Elite SM8750). The boot chain is SunUEFI (EDK2). The kernel is a mainline Linux 7.2.9 port. The root filesystem is F2FS. The tablet dual-boots Linux and the stock HyperOS: a 3-second chooser in the combined BOOT plus the Android boot-assistant module handle both directions without a host.
+Fedora 44 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 Elite SM8750), with GNOME as the default desktop. The boot chain is SunUEFI (EDK2). The kernel is a mainline Linux 7.2.9 port. The root filesystem is F2FS. The tablet dual-boots Linux and the stock HyperOS: a 3-second chooser in the combined BOOT plus the Android boot-assistant module handle both directions without a host.
 
 ## Hardware status
 
@@ -31,6 +31,19 @@ Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snap
 | Stylus | 🟡 | Daemon and Type 29 protocol are ready; a physical drawing test is pending |
 | Fingerprint / IR / HDR | ❌ | Require closed TEE firmware; mainline does not support them |
 
+## Desktops
+
+Images are built per desktop from the same release chain and differ only in the root filesystem and `root-install/`. The kernel, ESP, installer, and flash scripts are shared.
+
+| Profile | Session | Login | Auto-rotate | Acceptance |
+|---|---|---|---|---|
+| `gnome` | GNOME 44 workstation | GDM autologin | Mutter | On device |
+| `kde` | KDE Plasma | SDDM autologin | KWin, needs `qt6-qtsensors` | Not on device |
+| `niri` | niri | greetd + tuigreet | None; manual `transform` | Not on device |
+| `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None; manual rotate | Not on device |
+
+Pick a profile at download time with `bash unpack-release.sh --desktop <profile>`. Without the flag the script takes the only profile in the release. Login, power behavior, rotation, and known gaps per profile are in [Desktops](docs/desktops.md).
+
 ## Install
 
 1. Unlock the bootloader and set up `fastboot`.
@@ -48,7 +61,7 @@ Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snap
 
    On Windows, double-click `flash-linux.bat`. That path does not inject an SSH key.
 
-6. The tablet reboots into GNOME. The user is `piano` and the default password is `piano123456`. Run `passwd` after the first login.
+6. The tablet reboots into the chosen desktop. The user is `piano` and the default password is `piano123456`. Run `passwd` after the first login.
 
    If you passed `--ssh-key`, you can log in with that key instead.
 
@@ -62,15 +75,15 @@ For step-by-step control, see [Manual flashing](docs/installation.md#三之二-�
 
 ## Release artifacts
 
-A release is triggered by a tag and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Large images are split automatically, with `RELEASE-SHA256SUMS` and `unpack-release.sh`:
+A release is triggered by a tag and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Large images are split automatically, with `RELEASE-SHA256SUMS` and `unpack-release.sh`. One release can carry several desktops: the ESP, kernel, initramfs and UEFI are byte-identical across profiles and are published once, while the root image and `root-install/` are published per profile with a `-<desktop>` suffix:
 
 | File | Contents |
 |---|---|
 | `boot_sunuefi.img` | Linux payload inside the ESP; never flash it to `boot_a` |
 | `sunuefi_esp.img` | SunUEFI EDK2, DTB, Linux 7.2.9 kernel, initramfs |
 | `PianoUEFI-product.img` | SunUEFI product firmware; the payload inside `sunuefi_esp.img` |
-| `pianoroot.f2fs.img.zst` | Sealed Fedora 44 GNOME root filesystem; never flash it directly |
-| `root-install/` | Sparse root transport with device configuration written (restored by `unpack-release.sh`) |
+| `pianoroot.f2fs.img.zst` / `pianoroot-<desktop>.f2fs.img.zst` | Sealed root filesystem; never flash it directly. No suffix when the release carries one profile |
+| `root-install/` | Sparse root transport with device configuration written (restored by `unpack-release.sh --desktop`) |
 | `SHA256SUMS` | Hashes of every asset |
 
 The release also carries `piano-installer-<tag>.zip` (flash scripts and guide) and `piano-boot-tools-<tag>.tar.zst` (builds `device-boot/boot_linux.img` locally). `scripts/package-release-bundle.sh` is a local compatibility packer, not the release entry point.
@@ -78,6 +91,7 @@ The release also carries `piano-installer-<tag>.zip` (flash scripts and guide) a
 ## Documentation
 
 - [Architecture](docs/architecture.md): the boundary between Fedora, SunUEFI, and Android
+- [Desktops](docs/desktops.md): login, power, rotation, and acceptance for each profile
 - [Installation and partitioning](docs/installation.md): partition sizing, GPT checks, one-step and manual flashing, first login
 - [Artifacts and pipeline](docs/artifacts.md): how the kernel, RPMs, initramfs, and bundle are assembled
 - [Maintenance and acceptance](docs/internals.md): pipeline entry points, artifact binding, run id plumbing, PR gate

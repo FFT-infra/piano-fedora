@@ -109,5 +109,9 @@ sudo dnf makecache
 ## 边界
 
 - COPR 只覆盖用户态包。ESP、`boot.img`、内核、initramfs 和 F2FS 根镜像仍要走 release bundle 和安装文档。
+- 设备的 `.repo` 只指向项目自己的 COPR。Hyprland 档在构建期另加第三方源
+  `lionheartp/Hyprland`（Fedora 44 官方仓库没有 Hyprland 全家），仓库以
+  `--repofrompath` 临时加入并校验公钥，不写进镜像的持久配置。四档里只有
+  Hyprland 用这个源，其余三档只连官方仓库；细节见[桌面档](desktops.md)。
 - 重建产物和 CI 矩阵产物不是逐字节同一份。版本号相同，构建环境不同。要完全一致的二进制就用 bundle 里的 RPM，不要用 COPR。
 - 设备目前没有默认路由，只有 USB NCM 的 `192.168.77.0/30`。接上 Wi-Fi 之前 `dnf` 连不上 COPR。这是设备侧的网络配置，不是仓库的问题。
