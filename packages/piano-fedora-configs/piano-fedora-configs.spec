@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        6%{?dist}
+Release:        7%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -133,12 +133,14 @@ systemd-tmpfiles --create %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf %{_p
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service
 
 %changelog
+* Wed Oct 21 2026 FFT-infra <dev@piano.invalid> - 0.1.0-7
+- 看门狗黑名单改由本包提供：initramfs 直接写 /etc/modprobe.d 会绕过 rpm 的
+  SELinux 标签事务，留下 unlabeled_t 的无主文件，systemd-modules-load 被拒。
+  已在 COPR 的 0.1.0-6 之后修复，必须升 Release 才能让 dnf upgrade 取到
 * Mon Oct 20 2026 FFT-infra <dev@piano.invalid> - 0.1.0-6
 - 收敛路径归属：收纳 xiaomi-charger-mode 与 logind 落点，交还 piano-boot-request
   给运行时（piano-next-boot-helper 要求的是那份原生实现），不再重复拥有
   SunUEFI 运行时派生的同一批文件
-- 看门狗黑名单改由本包提供：initramfs 直接写 /etc/modprobe.d 会绕过 rpm 的
-  SELinux 标签事务，留下 unlabeled_t 的无主文件，systemd-modules-load 被拒
 * Mon Oct 19 2026 FFT-infra <dev@piano.invalid> - 0.1.0-5
 - Ship the COPR repository definition, with kernel-piano excluded from upgrades
 
