@@ -13,7 +13,11 @@ Patch0:         fedora.patch
 ExclusiveArch:  aarch64
 
 BuildRequires:  cmake
+# CMakeLists.txt:2 的 project() 同时启用 C 与 CXX；只装 gcc 时干净 chroot 里
+# 报 "Could not find the compiler specified in the environment variable CXX:
+# g++"（COPR build 11181697）。本地矩阵容器一直装着 gcc-c++，所以从没暴露。
 BuildRequires:  gcc
+BuildRequires:  gcc-c++
 BuildRequires:  pkgconfig(dbus-1)
 BuildRequires:  pkgconfig(polkit-gobject-1)
 BuildRequires:  systemd-rpm-macros
