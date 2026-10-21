@@ -50,13 +50,19 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 ## 2026-10-21 发布链
 
-当前基线来自 `dev` 上的这一轮，每一阶段都 success：
+SunUEFI pin `065b192` 的完整链在 `feat/upstream-sync` 上，每一阶段都 success：
 
 | 阶段 | run | 关键产物 |
 | --- | --- | --- |
-| host-check（FFmpeg） | 39466090328 | `piano-fedora-ffmpeg` |
-| build-image | 39468564677 | `root-image-8192`，initramfs 带 `fsck.f2fs` |
-| build-bundle | 39470546378 | `deploy-bundle`，含 `pianoroot.f2fs.sparse.img` |
+| build-kernel | 39501234223 | `kernel-release-7.2.9`、`kernel-sdk-7.2.9` |
+| host-check（FFmpeg + RPM） | 39508110172 | `piano-fedora-ffmpeg`、`piano-rpms` |
+| build-device-runtime | 39510540103 | `piano-fedora-runtime` |
+| build-rootfs | 39512640072 | `rootfs-44-gnome` |
+| build-image | 39513701773 | `root-image-8192` |
+| build-bundle | 39514514122 | `deploy-bundle` |
+| prepare-install | 39517714729 | `root-install`、`boot-tools`、`host-boot-tool` |
+
+UEFI 产物取 `build-uefi` 39493739872，Mesa 取 `build-mesa` 39494726711。
 
 这一轮换了 root 的容量约定：封存镜像固定 8192 MiB，与设备无关，首次启动由 initramfs 长满 `sunuefi_root`。首装不再要求先跑 `prepare-install`：bundle 自带的 sparse 就是首装材料。`prepare-install` 仍会跑，因为 `flash-linux.sh` 的更新路径要求 `root-install/`；Release 直接带上这份产物。
 
