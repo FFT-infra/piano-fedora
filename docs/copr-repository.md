@@ -2,14 +2,16 @@
 
 设备装好 Fedora 后，用户态包（配置、固件、相机、触控、传感器、VA-API、调度器）可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
 
-**当前状态：项目已建，9 个自有包里 8 个已发布。** `xinyang26/piano-fedora` 已经在 COPR 上，`fedora-44-aarch64` 仓库开着，仓库 secrets 的 `COPR_LOGIN` 与 `COPR_TOKEN` 也配好了。2026-10-21 的发布 run 39570621565 把 8 个包提交进构建队列并全部成功，设备仓库的 repodata 里现在有这 8 个二进制包：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`libssc`、`piano-camera`、`piano-fedora-configs`、`sm8750-video-accel`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。
+**当前状态：项目已建，9 个自有包全部发布。** `xinyang26/piano-fedora` 已经在 COPR 上，`fedora-44-aarch64` 仓库开着，仓库 secrets 的 `COPR_LOGIN` 与 `COPR_TOKEN` 也配好了。2026-10-21 的发布 run 39573927054 把 10 个包（9 个自有包加 `kernel-piano`）提交进构建队列并全部成功，设备仓库的 repodata 里有全部 9 个二进制包：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`libssc`、`piano-camera`、`piano-fedora-configs`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。
 
-上一次的两个失败都已定位并修掉：
+上一轮的两个失败都已定位并修掉：
 
-- `sm8750-video-accel`（build 11181429）的 `meson.build:12:6` 报 `Dependency "egl" not found`：spec 漏了 `egl`、`glesv2`、`gbm` 三个 BuildRequires。补进 spec 后这次构建成功，包已进仓库。
-- `uperf-linux`（build 11181697）的 `CMakeLists.txt:2` 报 `Could not find the compiler specified in the environment variable CXX: g++`：spec 只声明了 `gcc`，上游 `project()` 同时启用 C 与 CXX。已补 `gcc-c++`，等下一次发布重跑。
+- `sm8750-video-accel`（build 11181429）的 `meson.build:12:6` 报 `Dependency "egl" not found`：spec 漏了 `egl`、`glesv2`、`gbm` 三个 BuildRequires。补进 spec 后构建成功。
+- `uperf-linux`（build 11181697）的 `CMakeLists.txt:2` 报 `Could not find the compiler specified in the environment variable CXX: g++`：spec 只声明了 `gcc`，上游 `project()` 同时启用 C 与 CXX。补 `gcc-c++` 后这一轮成功。
 
-`kernel-piano` 在构建顺序里排最后，两次发布都在前面的失败处中止，它从未被提交过；而且**内核不在升级范围内**。原因在引导路径上：SunUEFI 只读 ESP 的 `/EFI/Piano/stable/boot.img`（`PianoEspBootSource.c` 里的固定路径），`PianoProductCore.c` 也只调 `PianoRawLinuxLoadStable`，没有走 `Image.efi` + `PianoProductOsController` 那条路。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，ESP 上的 `boot.img` 不动，装上 COPR 的内核就是让两者脱钩——一台起不来的机器，而且 SunUEFI 没有 boot counter，新内核失败不会自动回滚。
+`kernel-piano` 这一轮也构建成功并发进了设备仓库，但**内核不在设备侧升级范围内**。原因在引导路径上：SunUEFI 只读 ESP 的 `/EFI/Piano/stable/boot.img`（`PianoEspBootSource.c` 里的固定路径），`PianoProductCore.c` 也只调 `PianoRawLinuxLoadStable`，没有走 `Image.efi` + `PianoProductOsController` 那条路。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，ESP 上的 `boot.img` 不动，装上 COPR 的内核就是让两者脱钩——一台起不来的机器，而且 SunUEFI 没有 boot counter，新内核失败不会自动回滚。
+
+`kernel-piano` 出现在仓库里是为了让版本号可审计；`.repo` 用 `exclude=kernel-piano*` 把它挡在升级之外。
 
 内核更新跟着 release bundle 走。切换条件写在这里，方便日后复查：上游把 `simpleinit.static.uefi.json` 的 `Image.efi` 配置改成 `enabled: true` 且 `PianoProductCore.c` 开始调 `PianoProductOsController` 时，或者引导链引入 boot counter 之后，就能迁移到 `kernel-install` / UKI，把内核纳入设备侧升级。
 
