@@ -14,7 +14,7 @@ from evdev import UInput, ecodes
 
 POLL_SEC = 0.2
 USER_SHELL_DELAY_TICKS = 25
-GREETER_USERS = ("gdm", "sddm", "greetd", "lightdm")
+GREETER_USERS = ("gdm", "sddm", "plasmalogin", "greetd", "lightdm")
 # 会话的类型。wayland 与 x11 都算"桌面已经起来"；tty 是文本登录，不算。
 GRAPHICAL_TYPES = ("wayland", "x11", "mir")
 GRAPHICAL_CLASSES = ("user", "greeter")

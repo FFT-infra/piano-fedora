@@ -208,10 +208,10 @@ def check_no_desktop_literals_outside_the_profile():
     """桌面差异只能出现在 profile、piano_desktop.py 与运行时探测里。
 
     两个后端各写一份 GDM 配置正是这次重构要消除的东西；再写回去
-    （`gdm.service`、`/etc/gdm/custom.conf`、`sddm.service`）就该失败。
+    （`gdm.service`、`/etc/gdm/custom.conf`、`plasmalogin.service`）就该失败。
     """
     forbidden = re.compile(
-        r'gdm\.service|/etc/gdm/|sddm\.service|plasma-workspace|gnome-shell"|'
+        r'gdm\.service|/etc/gdm/|sddm\.service|plasmalogin\.service|plasma-workspace|gnome-shell"|'
         r'org\.gnome\.settings-daemon')
     offenders = []
     for path in sorted((ROOT / "scripts").glob("*.py")):
@@ -282,20 +282,20 @@ def check_validate_against_rootfs_reports_paths():
             message = str(error)
         else:
             raise AssertionError("an empty rootfs passed desktop validation")
-        assert "sddm.service" in message, message
+        assert "plasmalogin.service" in message, message
         assert "plasma.desktop" in message, message
 
         # 补上 KDE 声明过的全部文件后必须通过。
-        for unit in ("usr/lib/systemd/system/sddm.service",):
+        for unit in ("usr/lib/systemd/system/plasmalogin.service",):
             (root / unit).parent.mkdir(parents=True, exist_ok=True)
             (root / unit).write_text("[Unit]\n")
         (root / "usr/bin").mkdir(parents=True, exist_ok=True)
-        for name in ("sddm", "plasmashell", "startplasma-wayland"):
+        for name in ("plasmalogin", "plasmashell", "startplasma-wayland"):
             (root / "usr/bin" / name).write_text("#!/bin/sh\n")
             (root / "usr/bin" / name).chmod(0o755)
         for relative in ("usr/share/wayland-sessions/plasma.desktop",
-                         "etc/sddm.conf.d/10-piano-autologin.conf",
-                         "etc/systemd/system/sddm.service.d/20-piano-display.conf",
+                         "etc/plasmalogin.conf",
+                         "etc/systemd/system/plasmalogin.service.d/20-piano-display.conf",
                          "etc/xdg/powerdevilrc"):
             (root / relative).parent.mkdir(parents=True, exist_ok=True)
             (root / relative).write_text("fixture")
@@ -306,20 +306,20 @@ def check_validate_against_rootfs_reports_paths():
         try:
             piano_desktop.validate_against_rootfs(root, context)
         except piano_desktop.DesktopError as error:
-            assert "unit enabled: sddm.service" in str(error), error
+            assert "unit enabled: plasmalogin.service" in str(error), error
         else:
             raise AssertionError("a display manager that was never enabled passed")
         wants = root / "etc/systemd/system/graphical.target.wants"
         wants.mkdir(parents=True, exist_ok=True)
-        (wants / "sddm.service").symlink_to("/usr/lib/systemd/system/sddm.service")
+        (wants / "plasmalogin.service").symlink_to("/usr/lib/systemd/system/plasmalogin.service")
         piano_desktop.validate_against_rootfs(root, context)
 
         # --desktop 与 rootfs 不符时（DM 单元缺失）仍然拒绝。
-        (root / "usr/lib/systemd/system/sddm.service").unlink()
+        (root / "usr/lib/systemd/system/plasmalogin.service").unlink()
         try:
             piano_desktop.validate_against_rootfs(root, context)
         except piano_desktop.DesktopError as error:
-            assert "sddm.service" in str(error), error
+            assert "plasmalogin.service" in str(error), error
         else:
             raise AssertionError("a rootfs without the display manager unit was accepted")
 

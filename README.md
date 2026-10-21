@@ -39,7 +39,7 @@
 | 档位 | 会话 | 登录 | 自动旋转 | 验收状态 |
 |---|---|---|---|---|
 | `gnome` | GNOME 44 workstation | GDM 自动登录 | Mutter | 真机通过 |
-| `kde` | KDE Plasma | SDDM 自动登录 | KWin，需 `qt6-qtsensors` | 未上真机 |
+| `kde` | KDE Plasma | plasma-login-manager 自动登录 | KWin，需 `qt6-qtsensors` | 未上真机 |
 | `niri` | niri | greetd + tuigreet | 无，手动 `transform` | 未上真机 |
 | `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无，手动 rotate | 未上真机 |
 

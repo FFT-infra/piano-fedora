@@ -228,10 +228,10 @@ def check_collectors_cover_every_display_manager():
         "piano-collect-boot and scripts/collect-boot-evidence.sh must stay "
         "byte-identical; initramfs ships the second copy")
     text = first.decode("utf-8")
-    for unit in ("gdm.service", "sddm.service", "greetd.service"):
+    for unit in ("gdm.service", "sddm.service", "plasmalogin.service", "greetd.service"):
         assert unit in text, f"{unit} missing from the collector"
     assert "display-manager.service" in text
-    assert re.search(r"for unit in gdm\.service sddm\.service greetd\.service; do\n"
+    assert re.search(r"for unit in gdm\.service sddm\.service plasmalogin\.service greetd\.service; do\n"
                      r"\s+\[ ! -e \"/usr/lib/systemd/system/\$unit\" \] \|\|", text), (
         "units must be collected only when present")
     assert "journalctl" in text and "-u $unit" in text
@@ -309,7 +309,7 @@ def check_login_units_match_the_profiles():
 
     collector_text = COLLECTORS[0].read_text(encoding="utf-8")
     tablet_text = TABLET_MODE.read_text(encoding="utf-8")
-    greeter_users = {"gdm": "gdm", "sddm": "sddm", "greetd": "greetd"}
+    greeter_users = {"gdm": "gdm", "sddm": "sddm", "plasmalogin": "plasmalogin", "greetd": "greetd"}
     for desktop in piano_desktop.matrix():
         context = piano_desktop.load(desktop, "44")
         manager = context["profile"]["display_manager"]

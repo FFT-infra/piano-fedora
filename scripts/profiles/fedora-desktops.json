@@ -42,7 +42,7 @@
       "@kde-desktop-environment",
       "plasma-desktop",
       "plasma-workspace",
-      "sddm",
+      "plasma-login-manager",
       "dolphin",
       "konsole",
       "pipewire",
@@ -51,13 +51,13 @@
     ],
     "repos": [],
     "exclude_packages": ["iio-sensor-proxy"],
-    "required_packages": ["sddm", "plasma-workspace"],
+    "required_packages": ["plasma-login-manager", "plasma-workspace"],
     "root_size_mib": 8192,
     "display_manager": {
-      "unit": "sddm.service",
-      "package": "sddm",
-      "autologin": {"kind": "sddm-autologin", "session": "plasma"},
-      "dependency_dropin": {"unit": "sddm.service", "after": "piano-display.service"}
+      "unit": "plasmalogin.service",
+      "package": "plasmalogin",
+      "autologin": {"kind": "plasmalogin-autologin", "session": "plasma"},
+      "dependency_dropin": {"unit": "plasmalogin.service", "after": "piano-display.service"}
     },
     "session": {
       "desktop_names": ["KDE"],

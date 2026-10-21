@@ -41,7 +41,7 @@ REQUIRED_FIELDS = (
 REQUIRED_DISPLAY_MANAGER = ("unit", "package", "autologin", "dependency_dropin")
 REQUIRED_SESSION = ("desktop_names", "process_names", "session_files", "bins")
 # autologin 的落盘机制。每种机制在 login_files() 里有且只有一个实现。
-AUTOLOGIN_KINDS = ("gdm-custom-conf", "sddm-autologin", "greetd-config")
+AUTOLOGIN_KINDS = ("gdm-custom-conf", "sddm-autologin", "plasmalogin-autologin", "greetd-config")
 POWER_KINDS = ("dconf", "kconfig", "logind-only")
 
 
@@ -72,9 +72,9 @@ def _require(profile, desktop):
             raise DesktopError(
                 f"desktop {desktop!r} uses unknown autologin {kind!r}; "
                 f"known: {list(AUTOLOGIN_KINDS)}")
-        if kind == "sddm-autologin" and not manager["autologin"].get("session"):
+        if kind in ("sddm-autologin", "plasmalogin-autologin") and not manager["autologin"].get("session"):
             raise DesktopError(
-                f"desktop {desktop!r} uses sddm-autologin without a session name")
+                f"desktop {desktop!r} uses {kind} without a session name")
         if kind == "greetd-config" and not manager["autologin"].get("command"):
             raise DesktopError(
                 f"desktop {desktop!r} uses greetd-config without a session command")
@@ -190,6 +190,17 @@ def login_files(context, user):
         session = autologin["session"]
         return {
             "etc/sddm.conf.d/10-piano-autologin.conf":
+                "[Autologin]\n"
+                f"User={user}\n"
+                f"Session={session}\n"
+                "Relogin=false\n",
+        }
+    if kind == "plasmalogin-autologin":
+        # plasma-login-manager 是 SDDM 的衍生实现，[Autologin] 的键与
+        # 会话查找规则都沿用 SDDM；配置文件换到 /etc/plasmalogin.conf。
+        session = autologin["session"]
+        return {
+            "etc/plasmalogin.conf":
                 "[Autologin]\n"
                 f"User={user}\n"
                 f"Session={session}\n"
@@ -423,14 +434,15 @@ def validate_against_rootfs(root, context, *, require_enabled=True):
         want(binary is not None,
              f"display manager binary exists: {manager['package']}")
         autologin = manager["autologin"]
-        if autologin["kind"] == "sddm-autologin":
-            # SDDM 按 <session>.desktop 在 SessionDir 里找条目，名字对不上就
-            # 只在日志里留一句 "Unable to find autologin session entry" 然后
-            # 退回登录界面。这个文件必须真的在树里。
+        if autologin["kind"] in ("sddm-autologin", "plasmalogin-autologin"):
+            # SDDM 与 plasma-login-manager 都按 <session>.desktop 在
+            # SessionDir 里找条目，名字对不上就只在日志里留一句
+            # "Unable to find autologin session entry" 然后退回登录界面。
+            # 这个文件必须真的在树里。
             session = autologin["session"]
             found = any((root / d / f"{session}.desktop").is_file()
                         for d in ("usr/share/wayland-sessions", "usr/share/xsessions"))
-            want(found, f"SDDM autologin session exists: {session}.desktop")
+            want(found, f"autologin session exists: {session}.desktop")
         elif autologin["kind"] == "greetd-config":
             command = shlex.split(autologin["command"])[0]
             want((root / "usr/bin" / command).exists()
