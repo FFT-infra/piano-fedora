@@ -71,6 +71,109 @@
       "target": "etc/xdg/powerdevilrc"
     }
   },
+  "niri": {
+    "label": "niri",
+    "buildable": true,
+    "dnf_packages": [
+      "niri",
+      "greetd",
+      "tuigreet",
+      "xwayland-satellite",
+      "xdg-desktop-portal-wlr",
+      "fuzzel",
+      "foot",
+      "mako",
+      "swaybg",
+      "waybar",
+      "brightnessctl",
+      "pipewire",
+      "wireplumber",
+      "iio-sensor-proxy"
+    ],
+    "repos": [],
+    "exclude_packages": ["iio-sensor-proxy"],
+    "required_packages": ["niri", "greetd"],
+    "root_size_mib": 8192,
+    "display_manager": {
+      "unit": "greetd.service",
+      "package": "greetd",
+      "autologin": {"kind": "greetd-config", "command": "niri-session"},
+      "dependency_dropin": {"unit": "greetd.service", "after": "piano-display.service"}
+    },
+    "session": {
+      "desktop_names": ["niri"],
+      "process_names": ["niri"],
+      "session_files": ["/usr/share/wayland-sessions/niri.desktop"],
+      "bins": ["/usr/bin/niri", "/usr/bin/niri-session"]
+    },
+    "power_policy": {"kind": "logind-only"}
+  },
+  "hyprland": {
+    "label": "Hyprland",
+    "buildable": true,
+    "dnf_packages": [
+      "hyprland",
+      "hyprlock",
+      "hypridle",
+      "hyprpaper",
+      "hyprpolkitagent",
+      "hyprland-uwsm",
+      "xdg-desktop-portal-hyprland",
+      "xdg-desktop-portal-gtk",
+      "greetd",
+      "tuigreet",
+      "fuzzel",
+      "foot",
+      "mako",
+      "waybar",
+      "brightnessctl",
+      "pipewire",
+      "wireplumber",
+      "iio-sensor-proxy"
+    ],
+    "repos": [
+      {
+        "id": "copr-hyprland",
+        "baseurl": "https://download.copr.fedorainfracloud.org/results/lionheartp/Hyprland/fedora-$releasever-$basearch/",
+        "gpgkey": "https://download.copr.fedorainfracloud.org/results/lionheartp/Hyprland/pubkey.gpg",
+        "gpgkey_sha256": "9f47c74eec4fea0f5a8cee1c6532bbeb33eee8134f762314bf16815a720dc047",
+        "priority": 5
+      }
+    ],
+    "exclude_packages": ["iio-sensor-proxy"],
+    "required_packages": ["hyprland", "greetd"],
+    "root_size_mib": 8192,
+    "display_manager": {
+      "unit": "greetd.service",
+      "package": "greetd",
+      "autologin": {"kind": "greetd-config", "command": "start-hyprland"},
+      "dependency_dropin": {"unit": "greetd.service", "after": "piano-display.service"}
+    },
+    "session": {
+      "desktop_names": ["Hyprland"],
+      "process_names": ["Hyprland", "hyprland"],
+      "session_files": ["/usr/share/wayland-sessions/hyprland.desktop"],
+      "bins": ["/usr/bin/Hyprland", "/usr/bin/start-hyprland", "/usr/bin/hyprctl"]
+    },
+    "power_policy": {"kind": "logind-only"}
+  },
+  "denial": {
+    "label": "Denial (placeholder)",
+    "buildable": false,
+    "dnf_packages": null,
+    "repos": [],
+    "exclude_packages": [],
+    "required_packages": [],
+    "root_size_mib": 0,
+    "display_manager": null,
+    "session": {
+      "desktop_names": [],
+      "process_names": [],
+      "session_files": [],
+      "bins": []
+    },
+    "power_policy": {"kind": "logind-only"}
+  },
   "server": {
     "label": "Server (no desktop)",
     "buildable": true,

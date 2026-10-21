@@ -1,11 +1,12 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-2.0-only
-"""Piano GNOME power key and real SW_LID, using the existing user service.
+"""Piano power key and real SW_LID, using the existing user service.
 
 Adapted from debian-piano 25babfe3ff5d8ddee98b1e0ea88152d69a0c01b1.
 Short press/closed cover blank only the backlight; opening/restoring wakes it.
-Long press opens the standard GNOME power menu. Lock/suspend are not invoked:
-GNOME Lock currently drives DPMS OFF, whose DSI recovery is still unverified.
+Long press opens the desktop's standard power menu, falling back to logind.
+Lock/suspend are not invoked: GNOME Lock currently drives DPMS OFF, whose DSI
+recovery is still unverified.
 """
 import fcntl
 import glob
@@ -72,9 +73,26 @@ def set_brightness(backlight, value):
 
 
 def power_dialog():
-    call(['gdbus', 'call', '--session', '--dest', 'org.gnome.SessionManager',
-          '--object-path', '/org/gnome/SessionManager',
-          '--method', 'org.gnome.SessionManager.Shutdown'], 'power menu')
+    """长按后的关机入口，按桌面依次回退。
+
+    GNOME 的 `org.gnome.SessionManager.Shutdown` 在只有 GNOME 的镜像里够用；
+    KDE 用 `org.kde.Shutdown.logoutAndShutdown`（plasma-shutdown 的 D-Bus
+    接口，见 plasma-workspace 的 org.kde.Shutdown.service）；niri/Hyprland
+    档没有会话管理器，直接让 logind 关机。每一步失败都记日志再试下一条，
+    不让长按在第二种桌面上变成静默无响应。
+    """
+    for args, operation in (
+            (['gdbus', 'call', '--session', '--dest', 'org.gnome.SessionManager',
+              '--object-path', '/org/gnome/SessionManager',
+              '--method', 'org.gnome.SessionManager.Shutdown'], 'GNOME power menu'),
+            (['gdbus', 'call', '--session', '--dest', 'org.kde.Shutdown',
+              '--object-path', '/org/kde/Shutdown',
+              '--method', 'org.kde.Shutdown.logoutAndShutdown'], 'KDE power menu'),
+            (['systemctl', 'poweroff'], 'systemctl poweroff')):
+        if call(args, operation):
+            return True
+    say('no shutdown path succeeded')
+    return False
 
 
 def lid_closed(fd):

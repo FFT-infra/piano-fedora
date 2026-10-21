@@ -49,6 +49,7 @@ test:
 	python3 tests/check_default_password.py
 	python3 tests/check_clean_rootfs.py
 	python3 tests/check_desktop_profiles.py
+	python3 tests/check_desktop_runtime.py
 	python3 tests/check_package_ownership.py
 	python3 tests/check_flash_script_guard.py
 	python3 tests/check_first_boot_ssh_key.py

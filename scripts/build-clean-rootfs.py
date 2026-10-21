@@ -143,9 +143,23 @@ def plan(releasever, desktop, rpms_dir, output=None):
     except piano_desktop.DesktopError as exc:
         raise RootfsError(str(exc)) from exc
     if not context["profile"]["buildable"]:
-        raise RootfsError(
-            f"desktop {context['desktop']!r} is a placeholder with dnf_packages: null; "
-            "it has no install set and must not produce an image")
+        # denial 坑位：profile 里保留它，plan 明确返回"还缺输入"而不是
+        # 假装能构建。退出码非零是因为它确实产不出镜像。
+        return {
+            "status": "INPUTS_REQUIRED",
+            "desktop": context["desktop"],
+            "releasever": context["releasever"],
+            "reason": (
+                f"desktop {context['desktop']!r} is a placeholder: "
+                "dnf_packages is null because the required inputs (upstream "
+                "package set / repository) are not decided yet"),
+            "inputs_required": [
+                "dnf_packages: the package list this desktop installs",
+                "repos: any third-party repository with a pinned gpgkey_sha256",
+                "required_packages: what must appear in rpm -qa afterwards",
+                "session/display_manager: how it logs in",
+            ],
+        }
     desktop = context["desktop"]
     releasever = context["releasever"]
 
@@ -550,6 +564,12 @@ def execute(plan_data):
     releasever = plan_data["releasever"]
     packages = plan_data.get("all_packages", plan_data["piano_packages"])
 
+    # 第三方仓库的 key 先落到本地并按 profile 里钉住的 sha256 核对。没有
+    # 额外仓库的档位（gnome/kde/niri/server）这里是空的，行为不变。
+    try:
+        gpgkeys = piano_desktop.fetch_gpgkeys(context, out / "gpgkeys")
+    except piano_desktop.DesktopError as exc:
+        raise RootfsError(str(exc)) from exc
     cmd = [
         dnf,
         f"--installroot={root}",
@@ -564,10 +584,13 @@ def execute(plan_data):
         "--setopt=piano-local.priority=1",
         "--setopt=install_weak_deps=False",
         "--setopt=tsflags=nodocs",
-        "--nogpgcheck",
+        # 全局 --nogpgcheck 曾经是因为本地矩阵 RPM 没签名。加了第三方仓库
+        # 之后不能再用它：只给 piano-local 关校验，Fedora 官方与第三方
+        # 仓库都按 key 验签（key 的 sha256 钉在 profile 里）。
+        "--setopt=piano-local.gpgcheck=0",
         # 桌面档需要额外仓库（目前只有 Hyprland 档用到第三方 COPR）。
         # plan JSON 里报的也是同一份列表，两处不会分叉。
-        *piano_desktop.dnf_install_args(context),
+        *piano_desktop.dnf_install_args(context, gpgkeys),
         "install", "-y",
         *packages
     ]
@@ -887,9 +910,12 @@ def main():
         if args.plan:
             p = plan(args.releasever, args.desktop, args.rpms_dir, args.output)
             print(json.dumps(p, indent=2, ensure_ascii=False))
-            return 0
+            return 0 if p["status"] == "PLAN_READY" else 2
         elif args.execute:
             p = plan(args.releasever, args.desktop, args.rpms_dir, args.output)
+            if p["status"] != "PLAN_READY":
+                raise RootfsError(
+                    f"desktop {p['desktop']!r} cannot be built: {p['reason']}")
             if not p["repo_status"]["valid"]:
                 raise RootfsError(f"RPM repository is invalid: {p['repo_status']}")
             p["build_image"] = bool(args.image)

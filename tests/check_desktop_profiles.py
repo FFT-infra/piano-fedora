@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """桌面配方是唯一真源：形状、派生名与"脚本里不许再写桌面字面量"。"""
 
+import contextlib
 import importlib.util
+import io
 import json
 import re
 import sys
@@ -56,6 +58,10 @@ def check_schema_is_enforced():
         (lambda row: row.update(power_policy={"kind": "gnome-shell"}), "unknown power_policy"),
         (lambda row: row.update(dnf_packages=None), "buildable but has dnf_packages=null"),
         (lambda row: row.update(power_policy={"kind": "kconfig"}), "needs a source file"),
+        (lambda row: row["display_manager"]["autologin"].update(kind="greetd-config"),
+         "without a session command"),
+        (lambda row: row["display_manager"]["autologin"].pop("session"),
+         "without a session name"),
     ]
     try:
         for mutate, message in cases:
@@ -87,37 +93,104 @@ def check_schema_is_enforced():
         assert "denial" not in piano_desktop.matrix(), "unbuildable rows must not enter the matrix"
         with tempfile.TemporaryDirectory() as temporary:
             tool = load_module("clean_rootfs", ROOT / "scripts/build-clean-rootfs.py")
+            planned = tool.plan("44", "denial", temporary)
+            assert planned["status"] == "INPUTS_REQUIRED", planned
+            assert "placeholder" in planned["reason"], planned
+            assert planned["inputs_required"], planned
+            # --plan 打印 INPUTS_REQUIRED 并以非零退出；--execute 在 sudo
+            # 重入之前就拒绝。两条都由 main() 统一裁决。
+            argv = sys.argv
+            stdout = io.StringIO()
             try:
-                tool.plan("44", "denial", temporary)
-            except tool.RootfsError as error:
-                assert "placeholder" in str(error), error
-            else:
-                raise AssertionError("an unbuildable desktop produced a plan")
+                with contextlib.redirect_stdout(stdout), \
+                     contextlib.redirect_stderr(io.StringIO()):
+                    for mode in ("--plan", "--execute"):
+                        sys.argv = ["build-clean-rootfs.py", mode, "--releasever", "44",
+                                    "--desktop", "denial", "--rpms-dir", temporary]
+                        assert tool.main() == 2, (
+                            f"{mode} accepted an unbuildable desktop")
+            finally:
+                sys.argv = argv
+            assert "INPUTS_REQUIRED" in stdout.getvalue(), stdout.getvalue()
     finally:
         DESKTOPS.write_text(original, encoding="utf-8")
 
 
 def check_repo_args():
-    """第三方仓库展开成 --repofrompath + priority，变量按 arch / releasever 替换。"""
-    original = DESKTOPS.read_text(encoding="utf-8")
-    data = json.loads(original)
-    data["kde"]["repos"] = [{
-        "id": "copr-hyprland",
-        "baseurl": "https://download.copr.fedorainfracloud.org/results/lionheartp/"
-                   "Hyprland/fedora-$releasever-$basearch/",
-        "gpgkey": "https://download.copr.fedorainfracloud.org/results/lionheartp/"
-                  "Hyprland/pubkey.gpg",
-        "priority": 5,
-    }]
-    try:
-        DESKTOPS.write_text(json.dumps(data), encoding="utf-8")
-        args = piano_desktop.repo_args(piano_desktop.load("kde", "44"))
-    finally:
-        DESKTOPS.write_text(original, encoding="utf-8")
+    """第三方仓库展开成 --repofrompath + priority，变量按 arch / releasever 替换。
+
+    带 key 的仓库必须同时打开 `gpgcheck=1` 并给出 key：全局 `--nogpgcheck`
+    已收窄成只对本地未签名的 `piano-local` 生效。
+    """
+    context = piano_desktop.load("hyprland", "44")
+    repos = context["profile"]["repos"]
+    assert [repo["id"] for repo in repos] == ["copr-hyprland"], repos
+    args = piano_desktop.repo_args(context)
     assert any("copr-hyprland,https://download.copr.fedorainfracloud.org/results/"
                "lionheartp/Hyprland/fedora-44-aarch64/" in arg for arg in args), args
     assert "--setopt=copr-hyprland.priority=5" in args, args
-    assert any(arg.endswith("/pubkey.gpg") for arg in args), args
+    assert "--setopt=copr-hyprland.gpgcheck=1" in args, args
+    assert any(arg.startswith("--setopt=copr-hyprland.gpgkey=") for arg in args), args
+    # 已校验到本地的 key 路径要顶替 URL。
+    swapped = piano_desktop.repo_args(context, {"copr-hyprland": "/tmp/copr-hyprland.gpg"})
+    assert "--setopt=copr-hyprland.gpgkey=/tmp/copr-hyprland.gpg" in swapped, swapped
+
+    # GNOME / KDE / niri 不启用任何第三方仓库。
+    for desktop in ("gnome", "kde", "niri"):
+        plain = piano_desktop.load(desktop, "44")
+        assert piano_desktop.repo_args(plain) == [], (desktop,
+                                                       piano_desktop.repo_args(plain))
+        assert piano_desktop.gpgkey_pins(plain) == [], desktop
+
+
+def check_gpgkeys_are_pinned():
+    """网络取来的 key 必须按 sha256 钉住；不钉或钉错都失败。
+
+    只对真实 URL 做一次下载会把测试绑在网络上，所以这里用 file:// 指向
+    本测试写的临时文件，验证的仍是 `fetch_gpgkeys()` 的哈希分支。
+    """
+    pins = piano_desktop.gpgkey_pins(piano_desktop.load("hyprland", "44"))
+    assert pins and pins[0][0] == "copr-hyprland", pins
+    assert len(pins[0][2]) == 64, pins
+
+    original = DESKTOPS.read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory() as temporary:
+        key = Path(temporary) / "key.gpg"
+        key.write_bytes(b"piano fixture key")
+        digest = __import__("hashlib").sha256(key.read_bytes()).hexdigest()
+        data = json.loads(original)
+        repo = data["hyprland"]["repos"][0]
+        repo["gpgkey"] = key.as_uri()
+        repo["gpgkey_sha256"] = digest
+        try:
+            DESKTOPS.write_text(json.dumps(data), encoding="utf-8")
+            context = piano_desktop.load("hyprland", "44")
+            paths = piano_desktop.fetch_gpgkeys(context, Path(temporary) / "out")
+            assert paths["copr-hyprland"].endswith("copr-hyprland.gpg"), paths
+            assert Path(paths["copr-hyprland"]).read_bytes() == b"piano fixture key"
+
+            # 钉住的值不匹配时必须失败，而不是接受换掉的 key。
+            repo["gpgkey_sha256"] = "0" * 64
+            DESKTOPS.write_text(json.dumps(data), encoding="utf-8")
+            try:
+                piano_desktop.fetch_gpgkeys(
+                    piano_desktop.load("hyprland", "44"), Path(temporary) / "out")
+            except piano_desktop.DesktopError as error:
+                assert "sha256 changed" in str(error), error
+            else:
+                raise AssertionError("a repinned gpg key was accepted silently")
+
+            # 没写 gpgkey_sha256 的仓库不许进入 profile。
+            repo.pop("gpgkey_sha256")
+            DESKTOPS.write_text(json.dumps(data), encoding="utf-8")
+            try:
+                piano_desktop.gpgkey_pins(piano_desktop.load("hyprland", "44"))
+            except piano_desktop.DesktopError as error:
+                assert "needs gpgkey_sha256" in str(error), error
+            else:
+                raise AssertionError("an unpinned gpg key was accepted")
+        finally:
+            DESKTOPS.write_text(original, encoding="utf-8")
 
 
 def check_excluded_packages_leave_the_install_set():
@@ -174,7 +247,8 @@ def check_power_files_match_the_declared_kind():
         else:
             assert files == {} and required == [], (desktop, files, required)
         assert piano_desktop.dconf_profile_required(context) == (kind == "dconf"), desktop
-    assert kinds == {"gnome": "dconf", "kde": "kconfig", "server": "logind-only"}, kinds
+    assert kinds == {"gnome": "dconf", "kde": "kconfig", "niri": "logind-only",
+                     "hyprland": "logind-only", "server": "logind-only"}, kinds
 
 
 def check_kde_power_policy_is_safe():
@@ -250,16 +324,113 @@ def check_validate_against_rootfs_reports_paths():
             raise AssertionError("a rootfs without the display manager unit was accepted")
 
 
+def check_greetd_desktops_stage_a_config_toml():
+    """niri / Hyprland 共用 greetd：config.toml 的 initial_session 指向各自会话。
+
+    greetd 的 `[initial_session]` 是自动登录的唯一入口；命令名写错时
+    greetd 只在日志里报失败，屏幕停在一个没有内容的 VT 上。这里同时断言
+    profile 值与落盘内容，并由 `validate_against_rootfs` 在真实树里核对
+    命令存在。
+    """
+    expected = {"niri": "niri-session", "hyprland": "start-hyprland"}
+    for desktop, command in expected.items():
+        context = piano_desktop.load(desktop, "44")
+        manager = context["profile"]["display_manager"]
+        assert manager["unit"] == "greetd.service", (desktop, manager)
+        assert manager["autologin"]["kind"] == "greetd-config", (desktop, manager)
+        files = piano_desktop.login_files(context, "piano")
+        assert list(files) == ["etc/greetd/config.toml"], (desktop, files)
+        text = files["etc/greetd/config.toml"]
+        assert json.loads(
+            text.split("[initial_session]", 1)[1]
+                .split("command = ", 1)[1].splitlines()[0]
+        ) == command, (desktop, text)
+        assert '[default_session]' in text and 'user = "greeter"' in text, text
+        # 单元启用与依赖 drop-in 都指向 greetd。
+        assert piano_desktop.enable_units(context) == ["greetd.service"], desktop
+        path, body = piano_desktop.display_dependency_dropin(context)
+        assert path == "etc/systemd/system/greetd.service.d/20-piano-display.conf", path
+        assert "piano-display.service" in body, body
+
+
+def check_greetd_validation_checks_the_session_command():
+    """greetd 档的核对必须落到命令是否存在，而不是只查单元。"""
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        context = piano_desktop.load("niri", "44")
+        for unit in ("usr/lib/systemd/system/greetd.service",):
+            (root / unit).parent.mkdir(parents=True, exist_ok=True)
+            (root / unit).write_text("[Unit]\n")
+        for relative in ("usr/share/wayland-sessions/niri.desktop",
+                         "etc/greetd/config.toml",
+                         "etc/systemd/system/greetd.service.d/20-piano-display.conf"):
+            (root / relative).parent.mkdir(parents=True, exist_ok=True)
+            (root / relative).write_text("fixture")
+        (root / "usr/bin").mkdir(parents=True, exist_ok=True)
+        # greetd 自己的二进制也必须在树里（display_manager.package）。
+        (root / "usr" / "bin" / "greetd").write_text("#!/bin/sh\n")
+        (root / "usr" / "bin" / "greetd").chmod(0o755)
+        # inspect 阶段（enable 之前）
+        try:
+            piano_desktop.validate_against_rootfs(root, context, require_enabled=False)
+        except piano_desktop.DesktopError as error:
+            assert "greetd session command exists: niri-session" in str(error), error
+        else:
+            raise AssertionError("a missing greetd session command passed")
+        for name in ("niri", "niri-session"):
+            (root / "usr/bin" / name).write_text("#!/bin/sh\n")
+            (root / "usr/bin" / name).chmod(0o755)
+        piano_desktop.validate_against_rootfs(root, context, require_enabled=False)
+
+
+def check_build_rootfs_expands_the_profile():
+    """build-rootfs.yml 的矩阵由 profile 展开，不在 YAML 里手写桌面名。
+
+    新增一档只改 `fedora-desktops.json`；如果 workflow 里出现第二份桌面列表，
+    两边就会分叉，`desktop=all` 出的产物数量和 profile 对不上。
+    """
+    import subprocess
+    workflow = (ROOT / ".github/workflows/build-rootfs.yml").read_text(encoding="utf-8")
+    assert "scripts/piano_desktop.py expand" in workflow, (
+        "build-rootfs.yml must expand the matrix from the profile")
+    assert "needs.prepare.outputs.matrix" in workflow, (
+        "the rootfs job must consume the prepare job's matrix")
+    assert "fromJSON(needs.prepare.outputs.matrix)" in workflow
+    assert "matrix.desktop" in workflow
+    # 矩阵 job 里的步骤不能再读 inputs.desktop（只有 prepare 可以）。
+    rootfs_section = workflow.split("  rootfs:", 1)[1]
+    assert "inputs.desktop" not in rootfs_section, (
+        "a matrix job must use matrix.desktop, not the dispatch input")
+
+    # 子命令行为：all 展开全部桌面档，server 与占位档都不进矩阵。
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/piano_desktop.py"), "expand",
+         "--desktop", "all", "--releasever", "44"],
+        capture_output=True, text=True, cwd=ROOT)
+    assert completed.returncode == 0, completed.stderr
+    rows = json.loads(completed.stdout)
+    desktops = [row["desktop"] for row in rows]
+    assert desktops == piano_desktop.matrix(desktops_only=True), desktops
+    assert "server" not in desktops and "denial" not in desktops, desktops
+    for row in rows:
+        assert row["rootfs_artifact"] == f"rootfs-44-{row['desktop']}", row
+        assert row["rootfs_tar"] == f"rootfs-44-{row['desktop']}.tar.zst", row
+
+
 def main():
     check_gnome_names_unchanged()
     check_derived_names_follow_the_desktop()
     check_schema_is_enforced()
     check_repo_args()
+    check_gpgkeys_are_pinned()
+    check_greetd_desktops_stage_a_config_toml()
+    check_greetd_validation_checks_the_session_command()
     check_excluded_packages_leave_the_install_set()
     check_no_desktop_literals_outside_the_profile()
     check_power_files_match_the_declared_kind()
     check_kde_power_policy_is_safe()
     check_validate_against_rootfs_reports_paths()
+    check_build_rootfs_expands_the_profile()
     print("OK: desktop profiles are the single source, derived names unchanged")
     return 0
 

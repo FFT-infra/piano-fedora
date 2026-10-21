@@ -18,6 +18,7 @@ custom.conf 并启用 gdm.service，`finalize-fedora-rootfs.py` 再写一遍，�
 """
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
@@ -71,6 +72,12 @@ def _require(profile, desktop):
             raise DesktopError(
                 f"desktop {desktop!r} uses unknown autologin {kind!r}; "
                 f"known: {list(AUTOLOGIN_KINDS)}")
+        if kind == "sddm-autologin" and not manager["autologin"].get("session"):
+            raise DesktopError(
+                f"desktop {desktop!r} uses sddm-autologin without a session name")
+        if kind == "greetd-config" and not manager["autologin"].get("command"):
+            raise DesktopError(
+                f"desktop {desktop!r} uses greetd-config without a session command")
         dropin = manager["dependency_dropin"]
         if not isinstance(dropin, dict) or "unit" not in dropin or "after" not in dropin:
             raise DesktopError(
@@ -127,11 +134,16 @@ def load(desktop=None, releasever=None, product=None):
     }
 
 
-def matrix(only_buildable=True):
-    """`build-rootfs.yml` 的矩阵：文件顺序，只含可构建档位。"""
+def matrix(only_buildable=True, desktops_only=False):
+    """`build-rootfs.yml` 的矩阵：文件顺序，只含可构建档位。
+
+    `desktops_only` 去掉没有桌面会话的档位（server）。发布链只关心带桌面的
+    镜像，server 留在这里是为了能在同一套装配流程里跑无桌面测试。
+    """
     desktops = load_json(DESKTOPS)
     names = [name for name, row in desktops.items()
-             if row.get("buildable") or not only_buildable]
+             if (row.get("buildable") or not only_buildable)
+             and (not desktops_only or row.get("display_manager") is not None)]
     for name in names:
         _require(desktops[name], name)
     return names
@@ -185,6 +197,8 @@ def login_files(context, user):
         }
     if kind == "greetd-config":
         initial = autologin["command"]
+        # tuigreet 是 F44 里的文本 greeter。`--time` 只是显示时钟；没有
+        # 其他参数时它列出会话供选择，输错或会话崩溃后 greetd 会回到这里。
         fallback = autologin.get("fallback", "tuigreet --time")
         return {
             "etc/greetd/config.toml":
@@ -299,23 +313,72 @@ def dconf_profile_required(context):
     return context["profile"]["power_policy"]["kind"] == "dconf"
 
 
-def repo_args(context):
+def repo_args(context, key_paths=None):
     """额外仓库的 dnf 参数（只用 --repofrompath，不写设备侧持久配置）。
 
     具体仓库由 .repo 文件在设备上提供，构建期只是让它能被解析到。
+    `key_paths` 把 gpgkey 换成本地已校验的路径，供 `fetch_gpgkeys()` 使用。
     """
+    key_paths = key_paths or {}
     args = []
     for repo in context["profile"]["repos"]:
         name = repo["id"]
         baseurl = repo["baseurl"].replace("$basearch", _basearch(context["arch"]))
         baseurl = baseurl.replace("$releasever", context["releasever"])
-        args += [f"--repofrompath={name},{baseurl}", f"--setopt={name}.priority=5"]
-        gpgkey = repo.get("gpgkey")
+        args += [f"--repofrompath={name},{baseurl}",
+                 f"--setopt={name}.priority={repo.get('priority', 5)}"]
+        gpgkey = key_paths.get(name) or repo.get("gpgkey")
         if gpgkey:
-            args.append(f"--setopt={name}.gpgkey={gpgkey}")
+            # 第三方仓库必须验签；全局 --nogpgcheck 只留给本地未签名的
+            # piano-local，见 dnf_install_args()。
+            args += [f"--setopt={name}.gpgcheck=1",
+                     f"--setopt={name}.gpgkey={gpgkey}"]
         if repo.get("skip_if_unavailable"):
             args.append(f"--setopt={name}.skip_if_unavailable=True")
     return args
+
+
+def gpgkey_pins(context):
+    """第三方仓库的 key 固定值。
+
+    `--nogpgcheck` 现在只对本地 `piano-local` 生效，第三方仓库必须校验签名。
+    校验的是从 URL 下载到的 key 本身，所以 key 的内容要按 sha256 钉住：
+    `pubkey.gpg` 被换掉时，构建会失败而不是静默接受一把新钥匙。
+    """
+    pins = []
+    for repo in context["profile"]["repos"]:
+        digest = repo.get("gpgkey_sha256")
+        if not digest:
+            raise DesktopError(
+                f"repository {repo['id']!r} needs gpgkey_sha256; a key fetched "
+                "from the network must be pinned")
+        pins.append((repo["id"], repo["gpgkey"], digest))
+    return pins
+
+
+def fetch_gpgkeys(context, directory):
+    """下载并核对第三方仓库的 key，返回 {repo_id: 本地路径}。
+
+    构建机（以及 dnf 的 --releasever/--forcearch 组合）不保证能直接按 URL
+    取 key，所以先落到本地再交给 dnf。sha256 不符直接失败。
+    """
+    import urllib.request
+
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    paths = {}
+    for name, url, expected in gpgkey_pins(context):
+        target = directory / f"{name}.gpg"
+        with urllib.request.urlopen(url, timeout=60) as response:
+            body = response.read()
+        actual = hashlib.sha256(body).hexdigest()
+        if actual != expected:
+            raise DesktopError(
+                f"{name} gpg key sha256 changed: got {actual}, pinned {expected}; "
+                "review the new key before updating the profile")
+        target.write_bytes(body)
+        paths[name] = str(target)
+    return paths
 
 
 def _basearch(arch):
@@ -413,15 +476,15 @@ def _mode_executable(path):
         return False
 
 
-def dnf_install_args(context):
-    """桌面档额外传给 dnf 的命令行参数（额外仓库与优先级）。
+def dnf_install_args(context, gpgkeys=None):
+    """桌面档额外传给 dnf 的命令行参数（额外仓库、优先级与已校验的 key）。
 
     `build-clean-rootfs.py` 的 execute() 直接展开这个列表；base 的
     `dnf_options` 不在这里——它属于已删除的第二套后端
     （`build-fedora-rootfs.py`），而其中的 `--exclude=kernel*` 会把
     `kernel-piano` 一起挡掉。
     """
-    return repo_args(context)
+    return repo_args(context, gpgkeys)
 
 
 def main(argv=None):
@@ -429,6 +492,13 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("matrix", help="打印可构建的桌面档，一行一个")
+
+    # build-rootfs.yml 的 prepare 步骤消费这个子命令：输出一行 JSON，
+    # 直接喂给 strategy.matrix。--desktop all（或不填）展开全部档位。
+    expand = sub.add_parser(
+        "expand", help="把 --desktop 展开成 JSON 矩阵（all 表示全部桌面档）")
+    expand.add_argument("--desktop", default="all")
+    expand.add_argument("--releasever")
 
     show = sub.add_parser("show", help="打印合并后的配方")
     show.add_argument("--desktop")
@@ -447,6 +517,32 @@ def main(argv=None):
     try:
         if args.command == "matrix":
             print("\n".join(matrix()))
+            return 0
+        if args.command == "expand":
+            known = load_json(DESKTOPS)
+            if args.desktop in (None, "", "all"):
+                names = matrix(desktops_only=True)
+            else:
+                if args.desktop not in known:
+                    raise DesktopError(
+                        f"unknown desktop {args.desktop!r}; known: {sorted(known)}")
+                context = load(args.desktop, args.releasever)
+                if not context["profile"]["buildable"]:
+                    raise DesktopError(
+                        f"desktop {args.desktop!r} is a placeholder and cannot "
+                        "enter the matrix")
+                names = [args.desktop]
+            rows = []
+            for name in names:
+                context = load(name, args.releasever)
+                names_for_desktop = artifact_names(context)
+                rows.append({
+                    "desktop": name,
+                    "rootfs_artifact": names_for_desktop["rootfs_artifact"],
+                    "rootfs_dir": names_for_desktop["rootfs_dir"],
+                    "rootfs_tar": names_for_desktop["rootfs_tar"],
+                })
+            print(json.dumps(rows, ensure_ascii=False))
             return 0
         if args.command == "images":
             # shell 脚本的候选列表从这里生成，不手写桌面名。输出相对仓库
@@ -471,6 +567,8 @@ def main(argv=None):
                 "display_dependency_dropin": (display_dependency_dropin(context) or [None])[0],
                 "power_files": sorted(power_required(context)),
                 "repo_args": repo_args(context),
+                "gpgkey_pins": [{"repo": name, "sha256": digest}
+                                for name, _url, digest in gpgkey_pins(context)],
                 "dnf_install_args": dnf_install_args(context),
             }, indent=2, ensure_ascii=False))
             return 0

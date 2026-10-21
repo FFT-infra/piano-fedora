@@ -10,7 +10,7 @@ on:
         required: false
         default: "44"
       desktop:
-        description: "gnome / kde / server"
+        description: "gnome / kde / niri / hyprland / server，或 all（按 profile 自动展开矩阵）"
         required: false
         default: "gnome"
       piano_rpms_run_id:
@@ -35,11 +35,40 @@ permissions:
   actions: read
 
 jobs:
+  prepare:
+    # 桌面矩阵由 profile 展开，不在这里手写桌面名：`piano_desktop.py
+    # matrix` 是唯一真源，新增一档只改 fedora-desktops.json。
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.expand.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Expand the desktop matrix from the profile
+        id: expand
+        env:
+          PIANO_DESKTOP: ${{ inputs.desktop }}
+        run: |
+          set -euo pipefail
+          matrix="$(python3 scripts/piano_desktop.py expand \
+            --desktop "$PIANO_DESKTOP" --releasever "${{ inputs.releasever }}")"
+          python3 -c 'import json,sys; rows=json.load(sys.stdin); assert rows, "empty matrix"' \
+            <<<"$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "desktop matrix: $matrix"
+
   rootfs:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     # 原生 arm64 runner：dnf --installroot 直接产出 aarch64 包，
     # 不需要 --forcearch 或 qemu，和 fedora-sheng 的做法一致。
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
+    name: rootfs-${{ matrix.desktop }}
     steps:
       - uses: actions/checkout@v4
 
@@ -167,7 +196,7 @@ jobs:
           rm -rf build/local-rpms/repodata
           createrepo_c --update build/local-rpms
           test -f build/local-rpms/repodata/repomd.xml
-          path="build/clean-distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
+          path="build/clean-distros/fedora-${{ inputs.releasever }}-${{ matrix.desktop }}"
           sudo rm -rf "$path"
           # dnf only exists inside the Fedora image. The Ubuntu runner has
           # createrepo-c and rpm, but running build-clean-rootfs.py directly
@@ -181,7 +210,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             --env PIANO_RELEASE="${{ inputs.releasever }}" \
-            --env PIANO_DESKTOP="${{ inputs.desktop }}" \
+            --env PIANO_DESKTOP="${{ matrix.desktop }}" \
             --env PIANO_OUTPUT="$path" \
             "registry.fedoraproject.org/fedora:${{ inputs.releasever }}" \
             bash -euo pipefail -c '
@@ -207,7 +236,7 @@ jobs:
           FFMPEG_RUN: ${{ steps.source.outputs.ffmpeg_run }}
         run: |
           set -euo pipefail
-          OUT="build/clean-distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
+          OUT="build/clean-distros/fedora-${{ inputs.releasever }}-${{ matrix.desktop }}"
           export OUT
           test -d "$OUT/rootfs"
           # The container wrote clean-manifest.json as root and the Python step
@@ -277,6 +306,10 @@ jobs:
           releases = sorted(p.name for p in modules.iterdir() if p.is_dir()) if modules.is_dir() else []
           assert releases == [kernel_release], (
               f"kernel-piano module tree {releases} != matrix release {kernel_release}")
+          # Only the GNOME image has a GNOME session bus today; the KDE, niri
+          # and Hyprland images use their own session managers. Keep the
+          # dbus-daemon / pam_systemd checks for every desktop and print the
+          # per-desktop session files below.
           for path in ("usr/bin/dbus-daemon", "usr/bin/dbus-run-session",
                        "usr/lib64/security/pam_systemd.so"):
               assert path not in audit["missing_key_files"]
@@ -308,17 +341,17 @@ jobs:
       - name: Package rootfs
         run: |
           set -euo pipefail
-          OUT="build/clean-distros/fedora-${{ inputs.releasever }}-${{ inputs.desktop }}"
-          sudo tar -I 'zstd -10 -T0' -cf "rootfs-${{ inputs.releasever }}-${{ inputs.desktop }}.tar.zst" \
+          OUT="build/clean-distros/fedora-${{ inputs.releasever }}-${{ matrix.desktop }}"
+          sudo tar -I 'zstd -10 -T0' -cf "rootfs-${{ inputs.releasever }}-${{ matrix.desktop }}.tar.zst" \
             --numeric-owner --xattrs --xattrs-include='*' --acls --selinux \
             -C "$OUT" rootfs clean-manifest.json
-          sudo chown "$(id -u):$(id -g)" "rootfs-${{ inputs.releasever }}-${{ inputs.desktop }}.tar.zst"
+          sudo chown "$(id -u):$(id -g)" "rootfs-${{ inputs.releasever }}-${{ matrix.desktop }}.tar.zst"
           ls -lh rootfs-*.tar.zst
 
       - name: Upload rootfs artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rootfs-${{ inputs.releasever }}-${{ inputs.desktop }}
+          name: rootfs-${{ inputs.releasever }}-${{ matrix.desktop }}
           path: rootfs-*.tar.zst
           if-no-files-found: error
           retention-days: 14
@@ -335,7 +368,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: rootfs-diagnostics
+          name: rootfs-diagnostics-${{ matrix.desktop }}
           path: build/clean-distros/*/assembly.log
           if-no-files-found: warn
           retention-days: 7
