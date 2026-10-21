@@ -27,7 +27,7 @@
 | 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
 | 传感器 | ✅ | `iio-sensor-proxy` 采集加速度计、环境光、接近、罗盘 |
 | 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk 与 virtio-net、单 vCPU 客体启动；SMP、图形与 GUI 操作待验收 |
-| 双系统往返 | 🟡 | Linux→Android 的请求写入可用；Android→Linux 的自动切换尚未验收，Android 侧匹配模块已装上但只接管已有核心，见[已知问题](docs/known-issues.md#双系统切换) |
+| 双系统往返 | 🟡 | Linux→Android 已真机验收（活动槽切到 A，ABL 直接加载原厂 `boot_a`）；Android→Linux 还需要主机执行 `fastboot set_active b`，见[已知问题](docs/known-issues.md#双系统切换) |
 | 手写笔 | 🟡 | 守护服务与 Type 29 协议就绪，等待实物划线终验 |
 | 指纹 / IR / HDR | ❌ | 依赖闭源 TEE 固件，主线不支持 |
 
@@ -56,9 +56,9 @@
 
 ### 双系统切换
 
-- Linux → Android：应用抽屉点「返回 Android」，或执行 `piano-next-boot android --reboot`。
-- Android → Linux：自动切换尚未验收。已装的 `piano-switch-ksu` 匹配模块只接管已有核心，不重写 BOOT，见[已知问题](docs/known-issues.md#android-侧)。
-- 引导菜单：开机 3 秒内按音量键，或桌面点「SunUEFI 启动选择菜单」。
+- Linux → Android：应用抽屉点「返回 Android」，或执行 `piano-next-boot android --reboot`。已真机验收。
+- Android → Linux：还没有不依赖电脑的路径。进 Fastboot 执行 `fastboot set_active b` 再重启，见[已知问题](docs/known-issues.md#双系统切换)。
+- 引导菜单：只在 Linux 槽（B）被引导时出现，开机 3 秒内按音量键；Android 槽（A）由 ABL 直接加载。
 
 ## 发布产物
 

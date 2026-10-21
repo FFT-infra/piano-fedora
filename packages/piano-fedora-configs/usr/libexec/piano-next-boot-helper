@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -I
-"""Privileged, one-shot adapter for the installed SunUEFI request pages."""
+"""Privileged adapter: slot switch for Android, request pages for Linux."""
 import json
 import os
 from pathlib import Path
@@ -10,7 +10,21 @@ import sys
 
 CONFIG = Path('/etc/piano/boot-request.json')
 NATIVE = Path('/usr/local/sbin/piano-boot-request')
+QBOOTCTL = Path('/usr/bin/qbootctl')
 TARGETS = {'android': 0, 'menu': 1, 'linux': 2, 'setup': 3}
+# 安装器把 Linux 写在 boot_b、Android 留在 boot_a。包装器在 B 槽时，ABL 会给
+# Android 内核传 androidboot.slot_suffix=_b，而 super 只有 _a 的逻辑分区，
+# 包装器的 Android 直通会反复重启。回 Android 只能切活动槽，让 ABL 直接加载
+# 原厂 boot_a；写 target=0 的请求页在这条布局里没有可用路径。
+#
+# 切回 Android 用 qbootctl -s a：B 活动时执行它，A 会拿到 specific type GUID、
+# B 回到 generic，ABL 的 ValidateSlotGuids 与 UFS boot LUN 都满足。反过来不行：
+# qbootctl 不交换槽位 GUID，在 A 活动时执行 -s b 会留下“B 活动 + generic GUID”
+# 的状态，ABL 直接拒绝启动。所以这里绝不调用 -s b；需要回 B 时用主机上的
+# fastboot set_active b（ABL 自己会交换 GUID 并切换 boot LUN）。
+LINUX_BOOT_DEVICE = '/dev/disk/by-partlabel/boot_b'
+LINUX_SLOT = 'b'
+ANDROID_SLOT = 'a'
 
 
 def installed_config():
@@ -39,6 +53,46 @@ def installed_config():
     return device, generation.lower()
 
 
+def qbootctl(*args):
+    return subprocess.run([str(QBOOTCTL), *args], text=True, capture_output=True, check=False,
+                          env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'})
+
+
+def active_slot():
+    result = qbootctl('-a')
+    match = re.search(r'Active slot: _([ab])', result.stdout)
+    if result.returncode or not match:
+        raise ValueError(result.stderr.strip() or '无法读取活动槽；没有切换启动槽。')
+    return match.group(1)
+
+
+def set_active_slot(slot):
+    result = qbootctl('-s', slot)
+    if result.returncode:
+        raise ValueError(result.stderr.strip() or f'切换活动槽到 {slot} 失败；没有重启。')
+    if active_slot() != slot:
+        raise ValueError('活动槽读回不同；没有重启。')
+
+
+def require_linux_slot():
+    # Linux 只可能从 boot_b 启动；活动槽已经是 b 时不需要再写 GPT。
+    # 不是 b 时也不能用 qbootctl -s b 补救（它不交换槽位 GUID），
+    # 只报错并给出可用的切回方式。
+    slot = active_slot()
+    if slot != LINUX_SLOT:
+        raise ValueError(f'活动槽是 _{slot}，Linux 只在 boot_b 启动；'
+                         '请用主机上的 fastboot set_active b 切回后再试。')
+
+
+def reboot_now():
+    # A normal systemd reboot stops services and unmounts filesystems.
+    # No forced syscall, reboot -f, PMIC/misc write or reboot target string.
+    result = subprocess.run(['/usr/bin/systemctl', 'reboot'], check=False,
+                            env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'})
+    if result.returncode:
+        raise ValueError('下次启动目标已保存，但正常重启未成功。可检查 status 后再手动重启。')
+
+
 def main(argv):
     if not argv or argv[0] not in {'status', *TARGETS} or argv[1:] not in ([], ['--reboot']):
         raise ValueError('用法：piano-next-boot-helper status|android|menu|linux|setup [--reboot]')
@@ -48,10 +102,27 @@ def main(argv):
     if os.geteuid() != 0:
         raise ValueError('请使用 piano-next-boot；它会通过 polkit 请求本次操作的授权。')
     device, _installed_generation = installed_config()
+    environment = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'}
+    if action == 'android':
+        # 这条布局里 Android 只在原厂 A 槽可启动；包装器把 target=0 按 _b 槽
+        # 直通，super 没有 _b 的逻辑分区，只会反复重启。切活动槽让 ABL 直接
+        # 加载 boot_a，请求页保持 Linux 不变。
+        if device != LINUX_BOOT_DEVICE:
+            raise ValueError('这个安装布局只支持 Linux 在 boot_b、Android 在 boot_a；没有切换启动槽。')
+        set_active_slot(ANDROID_SLOT)
+        record = {'target': TARGETS['android'], 'operation': 'set', 'mode': 'active-slot',
+                  'active_slot': '_' + ANDROID_SLOT, 'request_page_unchanged': True}
+        record.update(boot_device=device, reboot_planned=reboot)
+        print(json.dumps(record, ensure_ascii=False), flush=True)
+        if reboot:
+            reboot_now()
+        return
+    if action != 'status':
+        # 请求页只在 B 槽的包装器里被读到；只读确认活动槽，不写 GPT。
+        require_linux_slot()
     # Android can update the shared BOOT independently of this rootfs. Read
     # the current validated entry; retain the generation pin for the actual
     # write so an intervening BOOT replacement cannot redirect the request.
-    environment = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'}
     current = subprocess.run([str(NATIVE), 'status', '--device', device],
                              text=True, capture_output=True, check=False, env=environment)
     if current.returncode:
@@ -71,15 +142,10 @@ def main(argv):
         raise ValueError('操作期间引导镜像已改变，请重新选择启动目标。')
     if action != 'status' and record.get('target') != TARGETS[action]:
         raise ValueError('原生请求读回的目标不同；没有请求重启。')
-    record.update(boot_device=device, reboot_planned=reboot)
+    record.update(boot_device=device, reboot_planned=reboot, active_slot='_' + active_slot())
     print(json.dumps(record, ensure_ascii=False), flush=True)
     if reboot:
-        # A normal systemd reboot stops services and unmounts filesystems.
-        # No forced syscall, reboot -f, PMIC/misc write or reboot target string.
-        result = subprocess.run(['/usr/bin/systemctl', 'reboot'], check=False,
-                                env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'})
-        if result.returncode:
-            raise ValueError('下次启动目标已保存，但正常重启未成功。可检查 status 后再手动重启。')
+        reboot_now()
 
 
 if __name__ == '__main__':

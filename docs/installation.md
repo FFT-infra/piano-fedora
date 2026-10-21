@@ -603,17 +603,20 @@ ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，�
 
 ## 六、 双系统往返
 
-切换不需要电脑。
+1. **从 Linux 切换回 Android**：点击 GNOME 应用抽屉里的**「返回 Android」**图标，
+   或在终端执行 `piano-next-boot android --reboot`。系统把活动槽切到 A 后正常
+   重启，ABL 直接加载原厂 `boot_a`。这条路径已在真机验收（2026-10-21）。
+2. **从 Android 切换回 Linux**：需要一台带 `adb` 与 `fastboot` 的主机：
 
-1. **从 Linux 切换回 Android**：
-   - 点击 GNOME 应用抽屉里的**「返回 Android」**图标；
-   - 或在终端输入 `piano-next-boot android --reboot`，系统同步数据后重启进入 HyperOS。
-2. **从 Android 切换回 Linux**：
-   - `piano-switch-ksu` (KernelSU / SukiSU) 匹配模块可以装，但只接管已有核心，不重写 BOOT；Android→Linux 的自动切换尚未验收，见[已知问题](known-issues.md#android-侧)；
-   - 现阶段用开机前 3 秒的引导菜单，或从原厂 Fastboot 执行
-     `fastboot set_active b` 后重启。
-3. **开机引导菜单**：
-   - 开机亮屏后的 **前 3 秒内** 按音量上/下键，呼出 SunUEFI 图形引导菜单。
+   ```sh
+   adb reboot bootloader
+   fastboot set_active b
+   fastboot reboot
+   ```
+
+   Android 侧的一键切换还没做，GPT 约束与根因见[已知问题](known-issues.md#双系统切换)。
+3. **开机引导菜单**：只在 Linux 槽（B）被引导时出现。开机亮屏后的**前 3 秒内**
+   按音量上/下键呼出；Android 槽（A）由 ABL 直接加载，没有这个菜单。
 
 ---
 

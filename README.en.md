@@ -27,7 +27,7 @@ Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snap
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
 | Sensors | ✅ | `iio-sensor-proxy` reads accelerometer, ambient light, proximity, compass |
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are still pending |
-| Dual boot | 🟡 | Writing a Linux→Android request works. Automatic Android→Linux switching is not accepted yet, and the Android-side matching module is installed but only adopts the existing core. See [known issues](docs/known-issues.md#双系统切换) |
+| Dual boot | 🟡 | Linux→Android is verified on device: the active slot switches to A and the ABL loads the stock `boot_a` directly. Android→Linux still needs `fastboot set_active b` from a host. See [known issues](docs/known-issues.md#双系统切换) |
 | Stylus | 🟡 | Daemon and Type 29 protocol are ready; a physical drawing test is pending |
 | Fingerprint / IR / HDR | ❌ | Require closed TEE firmware; mainline does not support them |
 
@@ -56,9 +56,9 @@ For step-by-step control, see [Manual flashing](docs/installation.md#三之二-�
 
 ### Switching between systems
 
-- Linux to Android: click "Return to Android" in the app grid, or run `piano-next-boot android --reboot`.
-- Android to Linux: automatic switching is not accepted yet. The installed `piano-switch-ksu` matching module only adopts the existing core and never rewrites the BOOT. See [known issues](docs/known-issues.md#android-侧).
-- Boot menu: press a volume key within 3 seconds of power-on, or click "SunUEFI boot menu" on the desktop.
+- Linux to Android: click "Return to Android" in the app grid, or run `piano-next-boot android --reboot`. Verified on device.
+- Android to Linux: there is no host-free path yet. Enter Fastboot, run `fastboot set_active b`, and reboot. See [known issues](docs/known-issues.md#双系统切换).
+- Boot menu: only appears when the Linux slot (B) is booted; press a volume key within the first 3 seconds. The Android slot (A) is loaded directly by the ABL.
 
 ## Release artifacts
 

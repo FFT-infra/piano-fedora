@@ -135,6 +135,8 @@ ESP 默认 512 MiB。ESP 分区必须和 `deploy-bundle/sunuefi_esp.img` 等大�
 
 选择器读请求页的位置是“正在引导的那份镜像”末尾：ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。首装把 Android 留在 A 槽、Linux 写进 `boot_b`，随后 `set_active b`，所以 Linux 运行时被读到的是 `boot_b` 的页。写成 `boot_a` 也能写成功，但下一次启动读不到，切换会静默失效。
 
+槽位切换有一条 GPT 约束：活动槽的 `boot`、`abl_<槽>`、`vbmeta_<槽>`、`dtbo_<槽>` 带 specific type GUID，非活动槽带 generic `77036CD4-03D5-42BB-8ED1-37E5A88BAA34`。ABL 的 `ValidateSlotGuids` 要求活动槽的 `boot` 与 `abl_<槽>` GUID 不同，并且 UFS boot LUN 与活动槽一致（1 = A，2 = B）。`fastboot set_active` 走 ABL 的 `SetActiveSlot → SwitchPtnSlots`，会交换 GUID 并切 LUN；`qbootctl -s` 只改活动标志，不交换 GUID，所以只能用它从 B 切到 A。手工重建 GPT 时主表和备份表要一起写，两份 CRC 都要重算。
+
 带了 `root-install` 时，镜像里的 `etc/piano/boot-request.json` 就是这条配置，`plan` 会逐字段核对。不带时镜像里没有这个文件，首启的 `piano-boot-request-autoconfig.service` 用 `qbootctl -c` 找到当前槽（首装后是 `_b`）后由 `piano-next-boot-configure` 重建；`plan` 的 `boot_request.source` 记下这次用的是哪一条。首启后不要猜测设备名或改槽，否则 Linux 的“返回 Android”和后续启动请求会失败。
 
 ### 3. 执行破坏性首次分区并初始化 Android userdata

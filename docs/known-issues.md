@@ -50,41 +50,68 @@ userdata。安装脚本目前只做擦除，这一步需要操作者现场处理
 封存镜像固定 8192 MiB，文件系统在首次启动时由 initramfs 里的 `resize.f2fs`
 扩到 `sunuefi_root` 的实际大小。这条路径的离线部分有测试覆盖：归档里有
 `fsck.f2fs` 与 `resize.f2fs` 的符号链接，`blkid -p -o export` 能读出
-`FSSIZE`，`resize.f2fs` 对已满的镜像是 no-op。真机上还没跑过一次真实的
-扩容，第一次装到分区大于 8 GiB 的设备上时要专门核对这一步。
+`FSSIZE`，`resize.f2fs` 对已满的镜像是 no-op。2026-10-21 在 1 TB 设备上
+跑过一次真实扩容：分区 684488392704 字节，首启后 `FSSIZE` 与
+`blockdev --getsize64` 都等于这个值。
 
 扩容失败时引导停在 initramfs，`ROOT_GROW_STARTED` 之后的日志里能看到是
 `fsck`、`resize` 还是复核那一步失败，不会带着旧容量进系统。分区被收缩到
 小于文件系统时报 `The F2FS root is larger than its partition`，`resize.f2fs`
 不支持缩小，只能重刷 root。
 
-扩完之后 `findmnt /` 的可用空间与 `blkid -p /dev/<分区> -o export` 的
-`FSSIZE` 都应该等于 `fastboot getvar partition-size:sunuefi_root` 的字节数。
+核对容量用 `blkid -p /dev/<分区> -o export` 的 `FSSIZE` 或
+`blockdev --getsize64`，两者都应该等于 `fastboot getvar
+partition-size:sunuefi_root` 的字节数。`findmnt -bno SIZE /` 报的是 statfs
+数据块，比分区小 2 MiB（684486295552 对 684488392704），那是 F2FS 扣掉
+保留块后的结果，不能拿它和分区字节数直接比。
 
 ## 双系统切换
 
-Linux → Android 的自动切换尚未通过验收。已定位两个独立原因：
+Linux → Android 已通过真机验收（2026-10-21，OS3.0.309.0 + 7.2.9-piano-gnome）。
+`piano-next-boot android --reboot` 把活动槽切到 A，ABL 直接加载原厂 `boot_a`，
+Android 16 启动完成（`ro.boot.slot_suffix=_a`、`sys.boot_completed=1`），SukiSU
+root 可用。连续两次往返都通过。
 
-1. `/etc/piano/boot-request.json` 的 `app_generation` 曾过期
-   （`6c38318a290175eba5ff2bb5ef106768`），与当前 BOOT 的
-   `2b191f0dd3bca52d20950ec58199f95b` 不符；`piano-next-boot` 会拒绝写入。
-   已用 `piano-next-boot-configure --device /dev/disk/by-partlabel/boot_b`
-   从在线 BOOT 重建。
-2. 产品固件带开机选择画面。`bootselect/BootSelect.c` 在 aarch64 且定义
-   `PIANO_EARLY_CHOOSER` 时进入 `PianoEarlyChoose(Fdt, Target)`；按键会覆盖
-   请求页，不按才在 3 秒后采用请求页里的 DefaultTarget。排查“写入成功但没切
-   过去”时必须先排除这个 3 秒窗口。
+Android → Linux 还缺一条不依赖电脑的路径。现在要从主机执行：
 
-请求页布局已实测：`boot_b` 的 NEXT 页在偏移 `37621760`（0x23E1000），两页
-相隔 4096 字节，滚动写入。`BOOT_a` 没有 SunUEFI 布局。当前请求保持在
-target=2（Linux）；无人现场时不要留下 target=0。
+```sh
+adb reboot bootloader
+fastboot set_active b
+fastboot reboot
+```
 
-完整的 Android→Linux→Android→Linux 往返仍需真机重启，时机由操作者定。
-这条自动往返尚未验收。
+根因在 qbootctl：`boot_ctl_set_active_slot_for_partitions` 只改活动标志，不交换
+槽位的 type GUID。A 活动时执行 `qbootctl -s b` 会留下“B 活动、GUID 仍是
+generic”的表。ABL 的 `ValidateSlotGuids` 比对活动槽 `boot` 与 `abl_<槽>` 的
+type GUID，相等就报 `BootableSlot _b does not have valid guids`，然后掉进
+Fastboot。`qbootctl -s a` 在 B 活动时是安全的：A 拿到当前活动槽的 specific
+GUID，B 回到 generic，UFS boot LUN 同时切到 A。
+
+`fastboot set_active` 走 ABL 自己的 `SetActiveSlot → SwitchPtnSlots`，会交换
+GUID 并切换 UFS boot LUN，两个方向都正确。目标槽已经是活动槽时只修 LUN，
+不交换 GUID。
+
+UFS boot LUN 必须与活动槽一致（1 = A，2 = B）。`ValidateSlotGuids` 同时检查
+这一项，不一致时报 `Boot lun: %x and BootableSlot: %s do not match`。
+
+请求页实测：`boot_b` 的 NEXT 页在偏移 `37490688`（0x23C1000），magic
+`SUNUEFI-NEXTv1`，两页相隔 4096 字节滚动写入。`BOOT_a` 没有 SunUEFI 布局。
+`piano-next-boot linux` 只读确认活动槽是 B 再写请求页；活动槽不是 B 时拒绝，
+不会调用 `qbootctl -s b`。写入后重启（sequence 1 → 2）Linux 正常启动。
+
+`piano-next-boot android` 不带 `--reboot` 时只切槽不重启。切到 A 之后 Linux
+侧没有安全的切回方式，只能用 fastboot；图形入口始终带 `--reboot`。
+
+原厂 Recovery 往返这次没有执行：退出 Recovery 需要现场按键，远程做会把设备
+留在 Recovery。
 
 ## Android 侧
 
-Android 侧现在装的是匹配模块 `piano-matching-core`，由本地打包器复制成 `piano-switch-ksu-<版本>.zip`。`install-state.json` 为 `ADOPTED_READ_ONLY_VERIFIED`、`boot_written=false`，`app_sha256=6c38318a…`，与当前 BOOT 的 generation 不同。这份历史不一致需要随模块一起复核。
+2026-10-21 的 r4 重新分区擦掉了 userdata，`/data/adb/modules/` 不存在，
+`piano-matching-core` 匹配模块没有装回。SukiSU root 还在：它打在 `init_boot_a`
+里，`su -c id` 返回 uid=0、context `u:r:ksu:s0`。要恢复模块，重装 APK 并重新
+授权 su，再刷模块 zip；模块的 `install-state.json` 与当前 BOOT generation 的
+历史不一致要在那时一起复核。
 
 更早的脚手架 `piano_sunuefi_module.zip` 只有模块脚手架及根目录 request 程序，缺少 manager 要求的 bin/ 原生工具和策略/状态。它不能安装，也不要和上面的匹配模块混用。
 

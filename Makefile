@@ -54,6 +54,7 @@ test:
 	python3 tests/check_package_replaces.py
 	python3 tests/check_release_provenance.py
 	python3 tests/check_manual_flash_flow.py
+	python3 tests/check_next_boot_helper.py
 
 # 在平板上执行，MEDIA_OUTPUT 必须是新的证据目录。
 test-device-media:
