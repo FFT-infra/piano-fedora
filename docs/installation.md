@@ -59,7 +59,7 @@
 
   `product.json` 的 `root_size_mib` 是封存镜像的容量（8192 MiB），与设备无关。`sunuefi_root` 的实际容量从实时 GPT 算，文件系统在首启时长满该分区。
 
-  **Android 侧需要 root 才能读写块设备。** 获取 root 是本节的前提，本仓库不提供方法。没有 root 就只能用执行器在 Fastboot 侧完成分区。
+  **Android 侧需要 root 才能读写块设备。** 获取 root 是本指南的前提，本仓库不提供方法。首次分区只有两条路：用 `install-f2fs.py apply` 在已 root 的 Android 上写 GPT，或者按本节的手动步骤在 Android 上执行 `adb shell su -c`。两者都离不开 root；原厂 Fastboot 只能读分区容量、擦除和刷写，不能改分区表。
 
 ---
 
@@ -360,7 +360,7 @@ ls /usr/lib/modules/
 
 能进所选桌面就是刷写成功最直接的证据。
 
-上面的读回与启动后检查要在从原始 GPT/UFS 重新分区的设备上执行；构建成功、热修复启动、历史资产启动都不能当作 PR 验收证据。
+这些检查要在从原始 GPT/UFS 重新分区的设备上做一次才有意义。在旧的 root 分区上热替换文件，或者用历史资产启动的机器，都不能说明这份镜像能装。
 
 ### 6. 回滚到 Android
 
@@ -385,7 +385,26 @@ fastboot reboot
 
 已经有 `sunuefi_root` 与 `sunuefi_esp` 时走下面的更新入口。`install-f2fs.py apply` 会清空 userdata，不能用它做更新。
 
-自动化的首装走 `install-f2fs.py plan` 与 `apply`，完成同一套分区、擦除与传输。命令、run id 记录、产物契约与 PR 验收门槛见[维护与验收](internals.md)。
+自动化的首装走 `install-f2fs.py plan` 与 `apply`，完成同一套分区、擦除与传输。先在已 root 的 Android 上生成只读计划：
+
+```sh
+python3 boot-tools/installer/scripts/install-f2fs.py plan \
+  --sunuefi boot-tools/installer/sunuefi --serial <序列号> \
+  --bundle deploy-bundle --root-install root-install --device-boot device-boot \
+  --stock-boot stock-recovery/boot.img --plan first-install-plan.json
+```
+
+逐项复核计划后才执行。`apply` 会清空 userdata，必须同时给 `--execute`、`--accept-data-loss` 和一个尚不存在的 session 目录：
+
+```sh
+python3 boot-tools/installer/scripts/install-f2fs.py apply \
+  --sunuefi boot-tools/installer/sunuefi --serial <序列号> \
+  --bundle deploy-bundle --root-install root-install --device-boot device-boot \
+  --stock-boot stock-recovery/boot.img --plan first-install-plan.json \
+  --session sessions/first-install --execute --accept-data-loss
+```
+
+每步的输入契约、run id 记录与验收门槛见[维护与验收](internals.md)。
 
 `device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_a`。`app_generation` 要与 `deploy-bundle/PianoUEFI-product.img` 里的 APPv1 载荷一致。
 

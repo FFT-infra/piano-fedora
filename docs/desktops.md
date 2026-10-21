@@ -66,7 +66,7 @@
 
 - GNOME（Mutter）订阅 `iio-sensor-proxy` 的 `AccelerometerOrientation`，平板模式
   打开时自动旋转。
-- KDE（KWin）依赖 `qt6-sensors`。F44 的 `kwin` 包声明了 `iio-sensor-proxy`，
+- KDE（KWin）依赖 `qt6-qtsensors`。F44 的 `kwin` 包声明了 `iio-sensor-proxy`，
   没有声明 `qt6-qtsensors`，所以 Plasma 6 上自动旋转要这个包在位才出现
   「自动」选项。
 - niri 与 Hyprland 的合成器不读传感器。niri 要在 `output` 段里手动写

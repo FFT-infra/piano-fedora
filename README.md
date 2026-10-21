@@ -54,7 +54,7 @@
 3. 从 [Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh`。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle` 与该 run 派生的 `prepare-install` 的 `root-install`，不要混用不同 run 的资产。
 4. 按[安装指南第三节](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本)整理暂存目录：Release 的 `piano-installer-<tag>.zip` 里有刷写脚本；从源码构建时把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat` 放进同一层。
 
-   脚本把当前目录当作暂存目录，不会从仓库里找镜像。
+   刷写前还要用 Release 的 `piano-boot-tools-<tag>.tar.zst` 在本机生成一次 `device-boot/boot_linux.img`。它由这台平板自己的原厂 BOOT 重打包而成，通用产物的 `boot_sunuefi.img` 不能顶替。脚本把当前目录当作暂存目录，不会从仓库里找镜像。
 
 5. 关机后长按 `电源键 + 音量减键` 进入 Fastboot，确认 `fastboot getvar current-slot` 返回 `a`，在暂存目录里执行：
 
@@ -106,7 +106,6 @@ Release 另带 `piano-installer-<tag>.zip`（刷写脚本与说明）和 `piano-
 - [参与贡献](CONTRIBUTING.md)：本地检查、提交格式与 PR 门槛
 - [安全策略](SECURITY.md)：漏洞报告渠道与处理范围
 
-本地调试记录、事故复盘和交接笔记不入库。
 
 ## 构建与检查
 

@@ -21,16 +21,14 @@ SunUEFI 提供启动链。本仓库增加四项：Fedora 后端、F2FS 全链路
 1. Fedora 后端。给上游增加 dnf5 路径，产出 Fedora rootfs 树。参考 [fedora-sheng](https://github.com/mumuxiao722/fedora-sheng) 的 RPM spec 与 Actions 参数化。不迁移其中的 SM8550 硬件内容与 mkbootimg 启动链。
 2. F2FS 全链路。处理六处 ext4 硬编码：内核配置策略、`release-disk-bootstrap`、fstab、udev 放行、`package_release.py` 的镜像制作、安装器 magic 与 SSH 注入。
 
-   制作镜像不用 `sload -P`。上游 f2fs-tools 的 sload 只保留 owner/mode，不枚举源树的 xattr/ACL/capability，导入阶段会静默丢元数据。改用挂载真实 F2FS，用 `tar --xattrs --acls --numeric-owner` 写入。写入完成后再挂载读回，逐项比对。
+   制作镜像不用 `sload -P`。上游 f2fs-tools 的 sload 只保留 owner/mode/setuid，不枚举源树的 xattr/ACL/capability，导入阶段会静默丢元数据。改用挂载真实 F2FS，用 `tar --xattrs --acls --numeric-owner` 写入，写完再挂载读回逐项比对。
 
-   制镜像需要挂载 F2FS。GitHub runner 的内核默认不带 f2fs。装上 `linux-modules-extra` 之后，`modprobe f2fs` 才可用。挂载式往返验证已在 CI 上跑通（`IMAGE_VERIFIED`，xattr 核对通过，fsck 退出码 0）。
-
-   离线导入 `sload.f2fs -P` 不需要挂载，但它只保留 owner 与 setuid，**不保留 user xattr**（已在桥接机上实测确认）。所以制作镜像用挂载 + `tar --xattrs --acls`，不用 sload。
+   制镜像需要挂载 F2FS。GitHub runner 的内核默认不带 f2fs，装上 `linux-modules-extra` 之后 `modprobe f2fs` 才可用。挂载式往返验证已在 CI 上跑通（`IMAGE_VERIFIED`，xattr 核对通过，fsck 退出码 0）。
 
 3. 首次分区。只读探测本机并生成计划。使用模拟 GPT 在主机上验证计划。
 4. 安装与验收。实际写入，启动验证，双向切换。
 
-F2FS 排在分区之前。F2FS 是技术风险，可能走不通。分区是工程风险，设计对了就能做。分区方案还依赖 root 镜像容量。
+F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用实测的 root 镜像容量定分区方案。镜像容量与设备容量已经脱钩，封存镜像固定 8192 MiB，首次启动时由 initramfs 长满分区。
 
 ## CI 分工
 
@@ -80,13 +78,13 @@ F2FS 排在分区之前。F2FS 是技术风险，可能走不通。分区是工�
 
 ## 前提
 
-整套方案假设 SunUEFI 的启动交接在目标设备上成立。上游验证机是 16 GB / CSOT / OS3.0.309。目标设备是 24 GB / 1 TB，原厂系统已升到 OS3.0.309。若假设不成立，阶段 3 的只读探测会先行暴露。项目届时转向容器路线，不继续投入分区工作。
+整套方案假设 SunUEFI 的启动交接在目标设备上成立。上游在 16 GB 机型和 OS3.0.309 上验证过；本项目在 24 GB / 1 TB 的同一机型上实测。首次分区前的只读探测会核对 GPT、槽位与原厂 BOOT，任何一项与预期不符就停在计划阶段，不写设备。
 
 ## 设备约束
 
-1. 设备为扩容机，规格高于官方。分区与校准可能被第三方改过。
-2. 全盘无空位。`userdata` 占满盘尾。
-3. `/data` 是加密 dm 映射。上游无损缩容的前提不成立。
+1. 存储扩容过的机器，分区边界与校准数据可能被第三方改过。分区一律按自己设备的实时 GPT 计算，不套用固定数值。
+2. 全盘无空位。`userdata` 占满盘尾，新分区只能从 `userdata` 尾部让出。
+3. `/data` 是加密 dm 映射。上游的无损缩容前提不成立，首次分区必须清空 `userdata`。
 4. 无 `/dev/kvm`。内核参数是 `kvm-arm.mode=protected`。虚拟化只能走 AVF/crosvm + Gunyah。
 
 ## 许可

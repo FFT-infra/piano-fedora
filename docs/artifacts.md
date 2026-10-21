@@ -50,29 +50,27 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 `docs/upstreams.json` 登记研究与对照仓库，只用来限定实现范围。源码直接依赖以 `sources.lock.json` 为准，参考文档不会自动进入生产依赖。下载和生成的文件放在被忽略的 `build/`、`out/`。固件、校准和密钥不进代码仓库。
 
-## 2026-10-21 发布链
+## 发布链基线
 
-SunUEFI pin `065b192` 的完整链在 `feat/upstream-sync` 上，每一阶段都 success：
+当前基线是 SunUEFI pin `065b192` 的一次完整链，每一阶段都 success：
 
-| 阶段 | run | 关键产物 |
-| --- | --- | --- |
-| build-kernel | 39501234223 | `kernel-release-7.2.9`、`kernel-sdk-7.2.9` |
-| host-check（FFmpeg + RPM） | 39508110172 | `piano-fedora-ffmpeg`、`piano-rpms` |
-| build-device-runtime | 39510540103 | `piano-fedora-runtime` |
-| build-rootfs | 39512640072 | `rootfs-44-gnome` |
-| build-image | 39513701773 | `root-image-8192`（旧名；现在按 profile 派生为 `root-image-<releasever>-<desktop>`） |
-| build-bundle | 39514514122 | `deploy-bundle` |
-| prepare-install | 39517714729 | `root-install`、`boot-tools`、`host-boot-tool` |
+| 阶段 | 关键产物 |
+| --- | --- |
+| build-kernel | `kernel-release-7.2.9`、`kernel-sdk-7.2.9` |
+| host-check（FFmpeg + RPM） | `piano-fedora-ffmpeg`、`piano-rpms` |
+| build-device-runtime | `piano-fedora-runtime` |
+| build-rootfs | `rootfs-<rel>-<desktop>` |
+| build-image | `root-image-<releasever>-<desktop>` |
+| build-bundle | `deploy-bundle` |
+| prepare-install | `root-install`、`boot-tools`、`host-boot-tool` |
 
-UEFI 产物取 `build-uefi` 39493739872，Mesa 取 `build-mesa` 39494726711。
+每一轮的 run id、产物摘要与验收结论记在对应 Release 的说明和会话记录里，文档不逐轮记录。
 
-这一轮换了 root 的容量约定：封存镜像固定 8192 MiB，与设备无关，首次启动由 initramfs 长满 `sunuefi_root`。首装不再要求先跑 `prepare-install`：bundle 自带的 sparse 就是首装材料。`prepare-install` 仍会跑，因为 `flash-linux.sh` 的更新路径要求 `root-install/`；Release 直接带上这份产物。
+这一轮定下的容量约定：封存镜像固定 8192 MiB，与设备无关，首次启动由 initramfs 长满 `sunuefi_root`。首装不再要求先跑 `prepare-install`：bundle 自带的 sparse 就是首装材料。`prepare-install` 仍会跑，因为 `flash-linux.sh` 的更新路径要求 `root-install/`；Release 直接带上这份产物。
 
-`verify-bundle.py` 在这一轮解码 `pianoroot.f2fs.sparse.img`，与 `pianoroot.f2fs.img.zst` 展开后的字节和摘要比对；initramfs manifest 的 `f2fs_tools_verified` 为 `true`，归档里有 `usr/sbin/fsck.f2fs` 与指向它的 `resize.f2fs`。ABL 诊断链的 manifest 是 `false`，那条链不做扩容。
+`verify-bundle.py` 解码 `pianoroot.f2fs.sparse.img`，与 `pianoroot.f2fs.img.zst` 展开后的字节和摘要比对；initramfs manifest 的 `f2fs_tools_verified` 为 `true`，归档里有 `usr/sbin/fsck.f2fs` 与指向它的 `resize.f2fs`。ABL 诊断链的 manifest 是 `false`，那条链不做扩容。
 
-上一轮（39350753680 → 39353803394）的产物不再是基线：那一轮把 root 离线扩到 `size_mib=479990`，与设备容量绑死，同一份镜像装不到别的容量上。
-
-这一轮修掉的两处真实故障。手动分区文档把 `/sys/block/sda/size` 当 LBA 总数，它其实是 512 字节扇区数，与 4096 字节 LBA 差 8 倍，`dd` 会落在盘中间；现在从主表头的 `alternate_lba` 取。`build-f2fs-image.py` 的 loop 探针只看 `losetup -f` 的退出码，而它不碰设备、容器里照样返回 0，CI 装上 `f2fs-tools` 后走到真实挂载才暴露；现在真挂一个 4 KiB 临时文件。
+root 镜像与设备容量脱钩。早期方案把 root 离线扩到目标容量，产物与某台设备绑死，同一份镜像装不到别的容量上；现在封存镜像是通用件。
 
 ## Release 发布
 

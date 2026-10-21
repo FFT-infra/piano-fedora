@@ -51,7 +51,7 @@ Pick a profile at download time with `bash unpack-release.sh --desktop <profile>
 3. Download the latest release from [Releases](https://github.com/FFT-infra/piano-fedora/releases), run `sha256sum -c RELEASE-SHA256SUMS`, then `bash unpack-release.sh`. When building from source, use the `deploy-bundle` from one successful `build-bundle` run and the `root-install` that `prepare-install` produced from that same bundle run. Do not mix assets from different runs.
 4. Prepare the staging directory as described in [section 3 of the installation guide](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本). The release's `piano-installer-<tag>.zip` carries the flash scripts; when building from source, copy `flash-linux.sh` and `flash-linux.bat` from `scripts/installer/` into it.
 
-   The installer treats its working directory as the staging directory and never looks for images inside the repository.
+   Before flashing, use the release's `piano-boot-tools-<tag>.tar.zst` to build `device-boot/boot_linux.img` on the host once. It is repacked from this tablet's own stock BOOT; the shared `boot_sunuefi.img` cannot replace it. The installer treats its working directory as the staging directory and never looks for images inside the repository.
 
 5. Power off the device. Hold `Power + Volume Down` until Fastboot appears. Verify that `fastboot getvar current-slot` returns `a`, then run this from the staging directory:
 
@@ -103,7 +103,6 @@ The release also carries `piano-installer-<tag>.zip` (flash scripts and guide) a
 - [Contributing](CONTRIBUTING.md): local checks, commit format, and the PR gate
 - [Security policy](SECURITY.md): how to report a vulnerability and what is in scope
 
-Debug logs, incident write-ups, and handoff notes stay out of the repository.
 
 ## Build and check
 
