@@ -2,7 +2,7 @@
 
 设备装好 Fedora 后，用户态包（配置、固件、相机、触控、传感器、VA-API、调度器）可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
 
-**当前状态：9 个自有包已发布，用户态可以 `dnf upgrade` 升级。** 项目是 `xinyang26/piano-fedora`，`fedora-44-aarch64` 仓库开着，仓库里现在有全部 9 个二进制包：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`libssc`、`piano-camera`、`piano-fedora-configs`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。核对方法见下面的启用仓库一节，或在设备上跑 `python3 scripts/verify-copr-device.py`。
+**当前状态：10 个包已发布，用户态可以 `dnf upgrade` 升级。** 项目是 `xinyang26/piano-fedora`，`fedora-44-aarch64` 仓库开着，仓库里现在有全部 10 个包名：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-camera`、`piano-fedora-configs`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。其中 `kernel-piano` 只供审计，仓库文件用 `exclude` 排除，见下一段。核对方法见下面的启用仓库一节，或在设备上跑 `python3 scripts/verify-copr-device.py`。
 
 **内核不在升级范围内。** `kernel-piano` 会发布进仓库供审计，但仓库文件用 `exclude=kernel-piano*` 排除它。原因在引导路径上：SunUEFI 只读 ESP 的 `/EFI/Piano/stable/boot.img`（`PianoEspBootSource.c` 里的固定路径），`PianoProductCore.c` 也只调 `PianoRawLinuxLoadStable`，没有走 `Image.efi` + `PianoProductOsController` 那条路。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，ESP 上的 `boot.img` 不动，装上 COPR 的内核就是让两者脱钩——一台起不来的机器，而且 SunUEFI 没有 boot counter，新内核失败不会自动回滚。
 
@@ -80,3 +80,9 @@ sudo dnf makecache
   Hyprland 用这个源，其余三档只连官方仓库；细节见[桌面档](desktops.md)。
 - 重建产物和 CI 矩阵产物不是逐字节同一份。版本号相同，构建环境不同。要完全一致的二进制就用 bundle 里的 RPM，不要用 COPR。
 - 设备目前没有默认路由，只有 USB NCM 的 `192.168.77.0/30`。接上 Wi-Fi 之前 `dnf` 连不上 COPR。这是设备侧的网络配置，不是仓库的问题。
+
+## 设备侧验证
+
+`verify-copr-device.py` 已在平板上跑通，只读模式与 `--install-test` 都通过：仓库里的 10 个包名齐全，公钥可下载，`exclude=kernel-piano*` 生效，`dnf upgrade --assumeno` 不涉及内核。
+
+这一步同时修掉了脚本自身的三处缺陷：repodata 的 `.xml.gz` 被当文本解码、公钥地址被拼到 `fedora-<rel>-<arch>/` 子目录、`--setopt` 被拼成单个 argv 导致 `exclude` 从未生效。三处都补了离线断言。

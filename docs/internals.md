@@ -241,7 +241,7 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
 
 `fastboot erase userdata` 是首次安装的必经写入，不能省略。`plan` 会检查 `/data` 的 formattable 合同，但 AOSP `fs_mgr` 只在 `wiped`、或元数据加密关闭且 `!is_fs_valid` 时自动格式化。缩短 GPT 本身不会清掉旧的 F2FS 超级块。
 
-2026-10-21 在 OS3.0.309.0 上两次实装，擦除后 Android 都停在 Recovery，底部显示 `Couldn't initialize user 0`；在 Recovery 里再选一次“清除数据”后才重建加密 userdata 并完成首次开机。`fastboot erase userdata` 没有写 BCB 的 `wiped` 标志，这一步目前要人工处理，执行器只负责擦除。
+在 OS3.0.309.0 上两次实装，擦除后 Android 都停在 Recovery，底部显示 `Couldn't initialize user 0`；在 Recovery 里再选一次“清除数据”后才重建加密 userdata 并完成首次开机。`fastboot erase userdata` 没有写 BCB 的 `wiped` 标志，这一步目前要人工处理，执行器只负责擦除。
 
 所以执行器必须显式擦除，再让 Android 第一次启动，重建加密 userdata 并完成首次开机。不要直接在宿主上格式化 Android 的加密映射。
 

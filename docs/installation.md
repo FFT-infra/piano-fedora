@@ -263,7 +263,7 @@ fastboot getvar is-userspace   # 必须是 no
 `boot_a` 要写的是 `prepare-device-boot.py` 用本机原厂 BOOT 重打包出的 `device-boot/boot_linux.img`，不是 `deploy-bundle` 里的 `boot_sunuefi.img`。后者是 ESP 内部的 Linux 载荷（Header v2 容器，没有 `SUNUEFI-NEXTv1` 请求页），只有 SunUEFI 固件从 ESP 里加载。把它刷进 `boot_a`，ABL 会拒绝整条链，平板停在 Fastboot。
 
 合体 BOOT 保持上游的 unsigned AVB NONE 元数据，`prepare-device-boot.py` 不补
-`os_version`，也不重新签名。槽 A 的 ABL 直接加载这份镜像；2026-10-21 用同一
+`os_version`，也不重新签名。槽 A 的 ABL 直接加载这份镜像；已用同一
 份未签名镜像在真机上完成 Android→Linux→Android 往返。不要自行补 `os_version`
 或 RSA4096 footer：`piano-boot-repack` 的 probe/request/adopt 会把首块与包装器
 里保存的原厂头逐字节比较，改了偏移 16，Android 侧的引导助手就认不出当前
@@ -552,7 +552,7 @@ fastboot erase userdata
 fastboot reboot
 ```
 
-实机上擦除不一定能让 Android 自动格式化：2026-10-21 的两次安装都停在
+实机上擦除不一定能让 Android 自动格式化：两次安装都停在
 Recovery，屏幕底部显示 `Couldn't initialize user 0`，需要在 Recovery 里再选
 一次“清除数据”，Android 才会重建加密分区并完成首次开机。看到这一行就按
 Recovery 的提示清除数据，不要反复切槽或重写分区表。
@@ -647,7 +647,7 @@ ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，�
 
 1. **从 Linux 切换回 Android**：点击应用抽屉里的**「返回 Android」**图标，
    或在终端执行 `piano-next-boot android --reboot`。helper 把持久请求写成
-   Android 后正常重启，选择器在下次开机时进入 Android。已在真机验收（2026-10-21）。
+   Android 后正常重启，选择器在下次开机时进入 Android。已在真机验收。
 2. **从 Android 切换回 Linux**：安装 Android 的「SunUEFI 引导助手」模块，在模块
    页面选择 Linux 并重启。没有模块时，开机前 3 秒按音量键，在 SunUEFI 菜单里
    选 Linux，选择会被保存。两条路径都不需要电脑，也不切活动槽。

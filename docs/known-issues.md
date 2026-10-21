@@ -38,7 +38,7 @@
 
 ## 首次安装的 userdata
 
-`fastboot erase userdata` 只清分区，不写 BCB 的 `wiped` 标志。2026-10-21 在
+`fastboot erase userdata` 只清分区，不写 BCB 的 `wiped` 标志。在
 OS3.0.309.0 上两次安装，重启后 Android 都停在 Recovery，底部显示
 `Couldn't initialize user 0`；在 Recovery 里选一次“清除数据”才重建加密
 userdata。安装脚本目前只做擦除，这一步需要操作者现场处理，步骤见
@@ -49,9 +49,9 @@ userdata。安装脚本目前只做擦除，这一步需要操作者现场处理
 封存镜像固定 8192 MiB，文件系统在首次启动时由 initramfs 里的 `resize.f2fs`
 扩到 `sunuefi_root` 的实际大小。这条路径的离线部分有测试覆盖：归档里有
 `fsck.f2fs` 与 `resize.f2fs` 的符号链接，`blkid -p -o export` 能读出
-`FSSIZE`，`resize.f2fs` 对已满的镜像是 no-op。2026-10-21 在 1 TB 设备上
-跑过一次真实扩容：分区 684488392704 字节，首启后 `FSSIZE` 与
-`blockdev --getsize64` 都等于这个值。
+`FSSIZE`，`resize.f2fs` 对已满的镜像是 no-op。真机扩容验证通过：首启后
+`FSSIZE` 与 `blockdev --getsize64` 都等于分区大小，`findmnt /` 看到的是
+扩容后的容量。
 
 扩容失败时引导停在 initramfs，`ROOT_GROW_STARTED` 之后的日志里能看到是
 `fsck`、`resize` 还是复核那一步失败，不会带着旧容量进系统。分区被收缩到
@@ -61,12 +61,12 @@ userdata。安装脚本目前只做擦除，这一步需要操作者现场处理
 核对容量用 `blkid -p /dev/<分区> -o export` 的 `FSSIZE` 或
 `blockdev --getsize64`，两者都应该等于 `fastboot getvar
 partition-size:sunuefi_root` 的字节数。`findmnt -bno SIZE /` 报的是 statfs
-数据块，比分区小 2 MiB（684486295552 对 684488392704），那是 F2FS 扣掉
-保留块后的结果，不能拿它和分区字节数直接比。
+数据块，比分区小约 2 MiB，那是 F2FS 扣掉保留块后的结果，不能拿它和分区
+字节数直接比。
 
 ## 双系统切换
 
-2026-10-21 起按上游 SunUEFI 的合体 BOOT 模型工作：`boot_a` 里是原厂 Android
+按上游 SunUEFI 的合体 BOOT 模型工作：`boot_a` 里是原厂 Android
 内核、3 秒选择器与 UEFI 核心，请求页在这份镜像末尾。Android 与 Linux 都从
 A 槽启动，不切活动槽，也不改 GPT。
 
@@ -74,7 +74,7 @@ A 槽启动，不切活动槽，也不改 GPT。
   正常重启后选择器进入 Android。
 - Android → Linux：安装「SunUEFI 引导助手」模块（KernelSU/SukiSU），在模块页面
   选 Linux；没有模块时，开机前 3 秒按音量键选 Linux，选择会被保存。
-- 2026-10-21 两次独立实测：`boot_android.img` 从请求页 target 0→2→0→2→0、
+- 两次独立实测：`boot_android.img` 从请求页 target 0→2→0→2→0、
   sequence 0→4；随后 `flash boot_a device-boot/boot_linux.img`（未签名，
   SHA256 `8fc67dc4…`）直接进 Linux（target=2、sequence=1，40 秒），helper 回
   Android（target=0、sequence=2，45 秒），模块重新采纳后再切 Linux
@@ -101,8 +101,8 @@ helper 优先读 Android 安装器维护的 ESP 记录
 
 ## Android 侧
 
-2026-10-21 已装回与当前 BOOT generation `bcd89b66…` 匹配的「SunUEFI 引导助手」
-模块（`/data/adb/modules/piano_sunuefi`）。安装走 `adopt` 只读识别现有合体
+已装回与当前 BOOT generation 匹配的「SunUEFI 引导助手」模块
+（`/data/adb/modules/piano_sunuefi`）。安装走 `adopt` 只读识别现有合体
 BOOT，不重写内核；模块页面用它写请求页与重装引导。SukiSU root 仍在
 `init_boot_a`：`su -c id` 返回 uid=0、context `u:r:ksu:s0`。
 
@@ -149,7 +149,7 @@ charge_current、mipps_auth、charge_policy 都开启。这不等于实际达到
 输入、浏览器实际硬解、音频长时间录放、前摄与后摄在正常光线下取帧。全部项目
 验收前，设备整体状态记为未验证。验收项见[安装指南的真机验收](installation.md#真机验收清单)。
 
-编解码本身已复验通过（2026-10-20）。`make test-device-media` 跑完四项：
+编解码本身已复验通过。`make test-device-media` 跑完四项：
 H.264 与 HEVC 各 300 帧的 GOP60 硬件编码与解码，以及各 300 帧带 B 帧的硬件
 解码，逐帧摘要与软件解码一致，Iris 中断在每段都有增长。两项前置依赖在目标
 镜像上不满足，脚本已相应放宽或改用外部素材，细节留在验收记录。浏览器里
@@ -157,11 +157,11 @@ H.264 与 HEVC 各 300 帧的 GOP60 硬件编码与解码，以及各 300 帧带
 
 相机另有一条容易误判的路径：`piano-camerad` 在没有上游产帧方时会给
 v4l2loopback 写黑帧，所以“节点能取到帧”不等于传感器在出图。判定要看 camerad
-日志里有没有对应相机的 CAMSS 媒体设备，以及帧内容是不是全黑。2026-10-17
-在设备上取的两张样张就分属两种情况：前摄那张是正常灰阶画面，另一张只有
+日志里有没有对应相机的 CAMSS 媒体设备，以及帧内容是不是全黑。设备上取的两张
+样张就分属两种情况：前摄那张是正常灰阶画面，另一张只有
 一小块亮区、其余全黑。只统计“两个节点各取到 3 帧”会把后者算成通过。
 
-2026-10-20 复测时两颗传感器都走上了 CAMSS 产帧路径。用 `gst-launch` 从两个
+复测时两颗传感器都走上了 CAMSS 产帧路径。用 `gst-launch` 从两个
 loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255），画面是正常
 室内成像；后摄末帧均值 24、最大值 113，是低照度噪声，当时设备平放在桌面上。
 后摄要举起来对着亮处再看一次，才算画面验收。
