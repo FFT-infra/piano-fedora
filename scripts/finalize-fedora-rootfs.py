@@ -635,8 +635,8 @@ def verify_kernel_install(root, kernel):
     artifact is downloaded separately, so matching release strings alone are
     insufficient: two runs can share a release while carrying different
     modules. Compare every kernel-owned module and index byte. The ABI-matched
-    v4l2loopback module from piano-runtime lives under updates/ and is checked
-    separately below against the runtime manifest.
+    v4l2loopback module now ships inside kernel-piano under updates/ and is
+    checked below by its vermagic against this release.
     """
     record, _ = inspect_kernel(kernel)
     release = record["kernel_release"]
@@ -718,10 +718,15 @@ def main():
         path = root / "usr" / row["path"]
         if sha256(path) != row["sha256"]:
             raise ValueError("installed core kernel module changed: " + row["path"])
-    proof = json.loads((runtime / "kernel-abi.json").read_text())
+    # v4l2loopback 由 kernel-piano 拥有，路径里的 release 就是本内核的 release。
+    # 摘要不在这里钉死：它随模块源码与编译器变化，而这里能验的是它与这个内核
+    # 的 ABI 一致——vermagic 必须以本 release 开头。
     loop = root / f"usr/lib/modules/{m['kernel_release']}/updates/v4l2loopback.ko"
-    if proof["kernel_manifest_sha256"] != kernel_hash or sha256(loop) != proof["module_sha256"]:
-        raise ValueError("installed camera module ABI or content differs")
+    if not loop.is_file():
+        raise ValueError("kernel-piano did not install updates/v4l2loopback.ko")
+    vermagic = subprocess.check_output(["modinfo", "-F", "vermagic", str(loop)], text=True).split()
+    if not vermagic or vermagic[0] != m["kernel_release"]:
+        raise ValueError("installed v4l2loopback has a different kernel ABI: " + " ".join(vermagic))
     chroot(root, "/usr/sbin/depmod", "-a", m["kernel_release"])
     # 正式 root 的服务及账号在目标树中配置，绝不启动构建机上的设备服务。
     if subprocess.run(["chroot", str(root), "id", "piano"], capture_output=True).returncode:

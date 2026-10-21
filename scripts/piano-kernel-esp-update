@@ -1,0 +1,211 @@
+#!/usr/bin/python3
+"""把刚装上的内核重建成 ESP 上固件实际读取的 boot.img。
+
+SunUEFI 只读 `\\EFI\\Piano\\stable\\boot.img`，而 `PianoRawLinuxLoadStable()`
+把文件自身的 sha256 存进 `AcceptedSha`——固件不要求这份文件由谁签发，只要求
+它是能解析的 Android boot v2 容器。所以内核升级不需要重编固件，只需要在
+设备上把新内核、新 initramfs 和 ESP 上原有的 board.dtb 重新打成同一个容器。
+
+顺序是固定的，任何一步失败都不落盘：
+
+1. 用封存 manifest 校验已安装的内核（`inspect_installed_kernel`）；
+2. 在临时目录重建 initramfs；
+3. 读 ESP 上的 board.dtb——**不是** `/boot/dtb/qcom/` 那份，两者不是同一个
+   文件（ESP 上那份叠加过板级 dtbo）；
+4. 打包 boot.img，再逐段解包比对；
+5. 先写 `.boot.img.new` 并 fsync，把旧文件复制成 `boot.img.bak`，最后
+   `os.replace` 换上去；
+6. 同步 ESP 上的 Image 与 initramfs，写审计记录。
+
+失败模式与 nabu 的 `%posttrans` 相同：写失败时旧 `boot.img` 原样留着，设备
+继续用上一个内核启动。已经装好但起不来的内核没有自动回滚（上游没有 boot
+counter），回滚靠 `boot.img.bak` 与 installonly 保留下来的旧模块树。
+
+由 kernel-piano 的 `%posttrans` 调用；镜像构建（`dnf --installroot`）里没有
+ESP 载荷，那种环境直接跳过。
+"""
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+
+import piano_boot_container as container  # noqa: E402
+from piano_artifacts import inspect_installed_kernel, sha256  # noqa: E402
+
+# ESP 在系统里的挂载点由 rootfs 策略固定（LABEL=SUNUEFI_ESP /boot/efi）。
+# 测试与救援环境可以覆盖。
+DEFAULT_ESP = Path(os.environ.get("PIANO_ESP_DIR", "/boot/efi"))
+ESP_PAYLOAD = "EFI/Piano/stable"
+AUDIT_DIR = Path(os.environ.get("PIANO_KERNEL_ESP_STATE", "/var/lib/piano/kernel-esp"))
+BUILD_INITRAMFS = HERE / "build-initramfs.py"
+
+
+class EspUpdateError(Exception):
+    """可预期的失败：输入不满足或写入无法安全完成。"""
+
+
+def free_bytes(path):
+    stat = os.statvfs(path)
+    return stat.f_bavail * stat.f_frsize
+
+
+def fsync_path(path):
+    with Path(path).open("rb") as stream:
+        os.fsync(stream.fileno())
+
+
+def fsync_directory(path):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        # vfat 上目录 fsync 不保证受支持；文件本身已经 fsync 过，这里只
+        # 尽力而为，失败不能把一次成功的替换报成失败。
+        pass
+    finally:
+        os.close(fd)
+
+
+def replace_atomically(source, target, backup):
+    """把 source 换到 target 上，旧 target 先复制成 backup。
+
+    FAT32 没有硬链接，复制是唯一能留下旧文件的方式。峰值占用是
+    target + backup + source 三份，所以调用前先算过剩余空间。
+    """
+    target, backup = Path(target), Path(backup)
+    fsync_path(source)
+    if target.exists():
+        shutil.copyfile(target, backup)
+        fsync_path(backup)
+    os.replace(source, target)
+    fsync_directory(target.parent)
+
+
+def write_if_changed(data, target, backup):
+    """内容相同就不动文件，避免每次升级都重写 43 MB 的 Image。"""
+    target, backup = Path(target), Path(backup)
+    if target.is_file() and target.read_bytes() == data:
+        return False
+    staging = target.with_name("." + target.name + ".new")
+    staging.write_bytes(data)
+    replace_atomically(staging, target, backup)
+    return True
+
+
+def build_initramfs(root, output):
+    if not BUILD_INITRAMFS.is_file():
+        raise EspUpdateError(f"missing {BUILD_INITRAMFS}")
+    result = subprocess.run(
+        [sys.executable, str(BUILD_INITRAMFS), "--installed", "--rootfs", str(root),
+         "--output", str(output)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise EspUpdateError("initramfs rebuild failed: " + (result.stderr.strip() or result.stdout.strip()))
+    return json.loads((output / "manifest.json").read_text())
+
+
+def update(root, esp, release_expected=None, dry_run=False):
+    root, esp = Path(root), Path(esp)
+    payload = esp / ESP_PAYLOAD
+    board_dtb = payload / "board.dtb"
+    if not board_dtb.is_file():
+        raise EspUpdateError(
+            f"no ESP payload at {payload}; this is not a bootable piano install")
+    manifest, manifest_sha, image = inspect_installed_kernel(root)
+    release = manifest["kernel_release"]
+    if release_expected is not None and release != release_expected:
+        raise EspUpdateError(
+            f"installed kernel release {release} differs from the requested {release_expected}")
+
+    record = {
+        "release": release,
+        "kernel_manifest_sha256": manifest_sha,
+        "image": {"source": str(image), "sha256": sha256(image), "bytes": image.stat().st_size},
+        "esp": str(payload),
+        "changed": {},
+    }
+    if dry_run:
+        record["dry_run"] = True
+        return record
+
+    with tempfile.TemporaryDirectory(prefix="piano-esp-") as scratch:
+        scratch = Path(scratch)
+        initramfs_dir = scratch / "initramfs"
+        built = build_initramfs(root, initramfs_dir)
+        if built["kernel_manifest_sha256"] != manifest_sha:
+            raise EspUpdateError("rebuilt initramfs names a different kernel manifest")
+        initramfs = initramfs_dir / "initramfs.cpio.gz"
+
+        # 三份新载荷同时在手，先确认 ESP 放得下再动任何一个字节。
+        needed = image.stat().st_size + initramfs.stat().st_size + image.stat().st_size
+        if free_bytes(payload) < needed:
+            raise EspUpdateError(
+                f"ESP has {free_bytes(payload)} bytes free, the update needs {needed}")
+
+        image_bytes = image.read_bytes()
+        # boot.img 的 kernel 段必须与 /boot 下那份逐字节相同；固件从容器里
+        # 取内核，不是从 /boot。
+        record["changed"]["Image"] = write_if_changed(
+            image_bytes, payload / "Image", payload / "Image.bak")
+        record["changed"]["initramfs"] = write_if_changed(
+            initramfs.read_bytes(), payload / "initramfs", payload / "initramfs.bak")
+
+        staged = payload / ".boot.img.new"
+        packed = container.pack(image, initramfs, board_dtb, staged)
+        container.verify(staged, image, initramfs, board_dtb)
+        # gzip 的 mtime 固定为 0，所以同样的输入会产出同样的容器。内容没变
+        # 就不动 boot.img，`%posttrans` 重复触发时不重写 40+ MB。
+        target = payload / "boot.img"
+        if target.is_file() and sha256(target) == packed["sha256"]:
+            staged.unlink()
+            record["changed"]["boot.img"] = False
+        else:
+            # 校验通过之后才碰 boot.img：此前的任何失败都只留下 .new 与 .bak。
+            replace_atomically(staged, target, payload / "boot.img.bak")
+            record["changed"]["boot.img"] = True
+        record["boot_img"] = packed
+
+    record["initramfs"] = {
+        "sha256": built["initramfs_sha256"],
+        "bytes": built["initramfs_bytes"],
+        "modules": built["modules"],
+    }
+    return record
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--root", default="/", help="已安装系统根（默认 /）")
+    parser.add_argument("--esp", default=str(DEFAULT_ESP), help="ESP 挂载点（默认 /boot/efi）")
+    parser.add_argument("--release", help="断言刚装上的内核 release")
+    parser.add_argument("--dry-run", action="store_true", help="只校验与重建，不写 ESP")
+    args = parser.parse_args(argv)
+
+    try:
+        record = update(args.root, args.esp, args.release, args.dry_run)
+    except (EspUpdateError, ValueError, OSError, KeyError) as exc:
+        print(f"piano: kernel ESP update failed: {exc}", file=sys.stderr)
+        return 2
+
+    if not record.get("dry_run"):
+        AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+        (AUDIT_DIR / f"{record['release']}.json").write_text(
+            json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(record, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

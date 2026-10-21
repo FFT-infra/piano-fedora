@@ -14,6 +14,7 @@
 
 用法：
     scripts/build-initramfs.py --rootfs DIR --kernel DIR --output DIR
+    scripts/build-initramfs.py --installed --rootfs / --output DIR
 """
 
 import argparse
@@ -29,11 +30,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-from piano_artifacts import artifact_output, inspect_kernel
+from piano_artifacts import artifact_output, inspect_installed_kernel, inspect_kernel
 
 ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = ROOT / "initramfs" / "f2fs-disk-bootstrap"
 COLLECTOR = ROOT / "scripts" / "collect-boot-evidence.sh"
+
+# rpm 的 brp-mangle-shebangs 会把打包文件里的 `#!/bin/sh` 改写成
+# `#!/usr/bin/sh`。initramfs 只有 `bin/sh`（BusyBox applet），那个路径不存在，
+# 引导脚本、救援助手与取证脚本在归档里会直接执行失败。这几份都从 rootfs 取，
+# 所以装配时把首行归一回来；不是这两种写法就说明换了一份不认识的脚本，直接
+# 失败。
+SHEBANG = b"#!/bin/sh\n"
+MANGLED_SHEBANG = b"#!/usr/bin/sh\n"
+SHEBANG_MEMBERS = ("init", "pianoinit", "usr/local/sbin/piano-debug-bootstrap",
+                   "usr/bin/piano-collect-boot")
 
 MIB = 1024 * 1024
 
@@ -192,6 +203,71 @@ def runtime_files(root, programs):
 
 def module_name(path):
     return Path(path).name.removesuffix(".ko").replace("-", "_")
+
+
+class SealedKernel:
+    """构建机上的封存内核目录，也就是 build-kernel 的产物。"""
+
+    source = "sealed"
+
+    def __init__(self, path):
+        self.path = Path(path).resolve()
+        manifest_path = self.path / "manifest.json"
+        if not manifest_path.is_file():
+            raise InitramfsError(f"kernel manifest missing: {manifest_path}")
+        self.manifest, self.manifest_sha256 = inspect_kernel(self.path)
+        self.release = self.manifest["kernel_release"]
+        self.module_dir = self.path / "modules" / "lib" / "modules" / self.release
+
+    def config(self):
+        return (self.path / "config").read_text()
+
+
+class InstalledKernel:
+    """已安装系统里的内核，供设备侧重建 initramfs。
+
+    与封存目录的差别只有判据：`depmod` 重写过索引、`updates/` 里多了外部
+    模块，所以走 `inspect_installed_kernel()`。装配与校验的其余部分完全
+    共用一条路径。
+    """
+
+    source = "installed"
+
+    def __init__(self, root):
+        root = Path(root)
+        self.manifest, self.manifest_sha256, self.image = inspect_installed_kernel(root)
+        self.release = self.manifest["kernel_release"]
+        self.module_dir = guest_resolve(root, f"/lib/modules/{self.release}")
+        if not self.module_dir.is_dir():
+            raise InitramfsError(f"missing kernel modules: {self.module_dir}")
+
+    def config(self):
+        # 设备上不留 /boot/config；只有 ABL 探测读它，那条链不从设备侧构建。
+        raise InitramfsError("an installed system carries no kernel config")
+
+
+def bootstrap_file(installed):
+    """引导脚本在仓库里是 `initramfs/`，装到设备上是 `/usr/lib/piano/`。
+
+    设备侧没有仓库，脚本必须和自己的引导脚本放在同一目录。仓库里布局不同，
+    所以只有同目录那份确实存在时才用它；否则用仓库的 `initramfs/`。
+    """
+    if installed:
+        sibling = Path(__file__).resolve().parent / "f2fs-disk-bootstrap"
+        if sibling.is_file():
+            return sibling
+    return BOOTSTRAP
+
+
+def member_bytes(name, path):
+    """读取一个归档成员，顺手把被 rpm 改写的解释器行归一回来。"""
+    data = Path(path).read_bytes()
+    if name in SHEBANG_MEMBERS:
+        if data.startswith(MANGLED_SHEBANG):
+            data = SHEBANG + data[len(MANGLED_SHEBANG):]
+        elif not data.startswith(SHEBANG):
+            raise InitramfsError(f"unexpected interpreter line in {name}")
+    return data
 
 
 def module_closure(directory, seeds=SEEDS):
@@ -436,32 +512,46 @@ def verify_archive(archive, kernel_manifest=None, expected_chain=None):
 
 
 def build(rootfs, kernel, output, root_label, root_partname, release_override=None,
-          boot_chain="sunuefi", abl_source=None):
-    rootfs, kernel, output = Path(rootfs).resolve(), Path(kernel).resolve(), Path(output).resolve()
+          boot_chain="sunuefi", abl_source=None, installed=False):
+    rootfs, output = Path(rootfs).resolve(), Path(output).resolve()
     if output.exists():
         raise InitramfsError(f"output already exists: {output}")
     if not rootfs.is_dir():
         raise InitramfsError(f"rootfs is not a directory: {rootfs}")
-    if not BOOTSTRAP.is_file():
-        raise InitramfsError(f"missing bootstrap: {BOOTSTRAP}")
     if boot_chain not in BOOT_CHAINS:
         raise InitramfsError("unsupported boot chain")
     if boot_chain == "sunuefi" and abl_source is not None:
         raise InitramfsError("ABL hardware preparation cannot enter a SunUEFI image")
 
-    manifest_path = kernel / "manifest.json"
-    if not manifest_path.is_file():
-        raise InitramfsError(f"kernel manifest missing: {manifest_path}")
-    kernel_manifest, kernel_hash = inspect_kernel(kernel)
+    if installed:
+        if kernel is not None:
+            raise InitramfsError("the installed mode takes the kernel from the running system")
+        if boot_chain != "sunuefi":
+            raise InitramfsError("an installed system only rebuilds the SunUEFI chain")
+        kernel_source = InstalledKernel(rootfs)
+        # 设备上两份脚本都在系统里：引导脚本与本脚本同目录（kernel-piano 装到
+        # /usr/lib/piano），取证脚本由 piano-fedora-configs 提供在 /usr/bin。
+        bootstrap = bootstrap_file(installed=True)
+        collector = guest_resolve(rootfs, "/usr/bin/piano-collect-boot")
+        if not collector.is_file():
+            raise InitramfsError("installed system has no /usr/bin/piano-collect-boot")
+    else:
+        kernel_source = SealedKernel(kernel)
+        bootstrap, collector = bootstrap_file(installed=False), COLLECTOR
+    if not bootstrap.is_file():
+        raise InitramfsError(f"missing bootstrap: {bootstrap}")
+
+    kernel_manifest = kernel_source.manifest
+    kernel_hash = kernel_source.manifest_sha256
     if boot_chain == "abl-storage":
-        config = dict(line.split("=", 1) for line in (kernel / "config").read_text().splitlines()
+        config = dict(line.split("=", 1) for line in kernel_source.config().splitlines()
                       if line.startswith("CONFIG_") and "=" in line)
         for symbol in ("CONFIG_SCSI_UFSHCD", "CONFIG_SCSI_UFS_QCOM", "CONFIG_PHY_QCOM_QMP_UFS"):
             if config.get(symbol) != "m":
                 raise InitramfsError("ABL storage preparation requires modular " + symbol)
-    release = release_override or kernel_manifest["kernel_release"]
-    if release != kernel_manifest["kernel_release"]:
-        raise InitramfsError("release override differs from sealed kernel")
+    release = release_override or kernel_source.release
+    if release != kernel_source.release:
+        raise InitramfsError("release override differs from the sealed kernel")
     if (root_label, root_partname) != ("PIANOROOT", "sunuefi_root"):
         raise InitramfsError("only the dedicated piano root identity is supported")
     if not re.fullmatch(r"[A-Za-z0-9_.+-]{1,128}", release):
@@ -492,7 +582,7 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
     programs = ["/usr/bin/blkid"] + (["/usr/sbin/fsck.f2fs"] if boot_chain == "sunuefi" else [])
     files = runtime_files(rootfs, programs)
 
-    module_dir = kernel / "modules" / "lib" / "modules" / release
+    module_dir = kernel_source.module_dir
     if not module_dir.is_dir():
         raise InitramfsError(f"missing kernel modules: {module_dir}")
     ordered, builtin = module_closure(module_dir, ABL_SEEDS if boot_chain == "abl-storage" else SEEDS)
@@ -507,9 +597,9 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
     for path in ordered:
         rows[f"lib/modules/{release}/{path}"] = module_dir / path
     rows["bin/busybox"] = busybox
-    rows["pianoinit"] = BOOTSTRAP
-    rows["init"] = BOOTSTRAP
-    rows["usr/bin/piano-collect-boot"] = COLLECTOR
+    rows["pianoinit"] = bootstrap
+    rows["init"] = bootstrap
+    rows["usr/bin/piano-collect-boot"] = collector
     source_record = None
     if boot_chain == "abl-storage":
         if abl_source is None:
@@ -560,10 +650,13 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
     ]
 
     sources = {name: path for name, path in rows.items()}
-    digests = {name: sha256(path) for name, path in sources.items()}
+    # 归档内容在这里定型：解释器行归一之后才是真正写进 cpio 的字节。
+    payloads = {name: member_bytes(name, path) for name, path in sources.items()}
+    digests = {name: hashlib.sha256(data).hexdigest() for name, data in payloads.items()}
+    raw_digests = {name: sha256(path) for name, path in sources.items()}
     entries += [
-        {"name": name, "mode": stat.S_IFREG | 0o755, "data": path.read_bytes()}
-        for name, path in sorted(sources.items())
+        {"name": name, "mode": stat.S_IFREG | 0o755, "data": payloads[name]}
+        for name in sorted(payloads)
     ]
     entries += [
         {"name": name, "mode": stat.S_IFREG | 0o644, "data": data.encode()}
@@ -586,9 +679,10 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
     for row in parsed:
         if row["name"] in digests and hashlib.sha256(row["data"]).hexdigest() != digests[row["name"]]:
             raise InitramfsError(f"archive round-trip changed {row['name']}")
-    # 打包期间源文件不能变。
+    # 打包期间源文件不能变。比的是源文件本身的摘要：归档里的解释器行已经
+    # 归一过，跟磁盘上的字节本来就不一样。
     for name, path in sources.items():
-        if sha256(path) != digests[name]:
+        if sha256(path) != raw_digests[name]:
             raise InitramfsError(f"source changed while packing: {name}")
 
     target = output / "initramfs.cpio.gz"
@@ -599,6 +693,7 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
         "kernel_release": release,
         "kernel_commit": kernel_manifest.get("source_commit"),
         "kernel_manifest_sha256": kernel_hash,
+        "kernel_source": kernel_source.source,
         "root_policy": f"LABEL={root_label}",
         "root_partname": root_partname,
         "root_fstype": "f2fs",
@@ -613,7 +708,7 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
         "modules": [module_name(path) for path in ordered],
         "modules_builtin_used": builtin,
         "busybox": {"path": "/usr/bin/busybox", "sha256": sha256(busybox), "static": True},
-        "bootstrap": {"path": str(BOOTSTRAP.relative_to(ROOT)), "sha256": sha256(BOOTSTRAP)},
+        "bootstrap": {"path": str(bootstrap), "sha256": sha256(bootstrap)},
         "runtime_libraries": {
             name: digests[name] for name in sorted(files)
         },
@@ -629,19 +724,23 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--rootfs", required=True, help="已组装的 Fedora rootfs 目录")
-    parser.add_argument("--kernel", required=True, help="内核 artifact 目录（含 manifest.json 与 modules/）")
+    parser.add_argument("--kernel", help="内核 artifact 目录（含 manifest.json 与 modules/）")
     parser.add_argument("--output", required=True, help="输出目录")
     parser.add_argument("--root-label", default="PIANOROOT")
     parser.add_argument("--root-partname", default="sunuefi_root")
     parser.add_argument("--release", help="覆盖内核 release（默认取 kernel manifest）")
     parser.add_argument("--boot-chain", choices=BOOT_CHAINS, default="sunuefi")
     parser.add_argument("--abl-source", help="锁定的 debian-piano checkout，仅用于 ABL 只读诊断")
+    parser.add_argument("--installed", action="store_true",
+                        help="内核取自已安装系统（设备侧重建，--rootfs 传 /）")
     args = parser.parse_args(argv)
+    if not args.installed and not args.kernel:
+        parser.error("--kernel is required unless --installed is given")
 
     try:
         result = build(args.rootfs, args.kernel, args.output,
                        args.root_label, args.root_partname, args.release,
-                       args.boot_chain, args.abl_source)
+                       args.boot_chain, args.abl_source, args.installed)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
     except (InitramfsError, ValueError, OSError, KeyError) as exc:

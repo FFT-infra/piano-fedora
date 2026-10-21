@@ -43,6 +43,7 @@ test:
 	python3 tests/check_ffmpeg_port.py
 	python3 tests/check_ffmpeg_install.py
 	python3 tests/check_initramfs.py
+	python3 tests/check_boot_container.py
 	python3 tests/check_bootstrap_contract.py
 	python3 tests/check_boot_evidence.py
 	python3 tests/check_boot_log_rotation.py

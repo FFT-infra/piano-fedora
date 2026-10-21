@@ -134,6 +134,28 @@ def main():
                 found |= packages
         return found
 
+    # v4l2loopback 由 kernel-piano 单独拥有：它按内核 ABI 编译，模块树的名字
+    # 就是内核 release。piano-runtime 再产一份（历史上确实产过）会让 DNF 因为
+    # 双所有者中止整个 rootfs 事务。这里的路径是合成的——release 字符串只有
+    # 内核 manifest 知道，测试关心的是谁认领这棵树。
+    loopback = "/usr/lib/modules/7.2.9-piano/updates/v4l2loopback.ko"
+    loop_owners = claimed(loopback)
+    if loop_owners != {"kernel-piano"}:
+        failures.append(
+            f"{loopback} is claimed by {sorted(loop_owners) or 'nobody'}; "
+            "kernel-piano must be its only owner")
+    stray = sorted(p for p in owners
+                   if "v4l2loopback" in p and owners[p] != {"kernel-piano"})
+    if stray:
+        failures.append(f"v4l2loopback is also shipped by {stray}")
+
+    # 运行时侧同样不能再产一份：它不在 packages/ 里，上面的 %files 检查看不见。
+    runtime = (ROOT / "scripts" / "build-device-runtime.py").read_text(encoding="utf-8")
+    if "usr/lib/modules" in runtime or "--loopback" in runtime:
+        failures.append(
+            "build-device-runtime.py still stages a kernel module; "
+            "v4l2loopback belongs to kernel-piano")
+
     prune = []
     for number, line in enumerate(PRUNE_LIST.read_text().splitlines(), 1):
         entry = line.strip()

@@ -65,6 +65,42 @@ def check_spec(failures):
         failures.append("kernel-piano.spec does not disable strip; modules would "
                         "differ from the sealed kernel artifact")
 
+    # 设备侧内核升级：%posttrans 重建 initramfs 并重打 ESP 的 boot.img。镜像
+    # 构建（dnf --installroot）里没有 ESP 载荷，必须先跳过再动手，否则
+    # build-rootfs 会在 chroot 里失败。
+    posttrans = body.split("%posttrans", 1)
+    if len(posttrans) != 2:
+        failures.append("kernel-piano.spec has no %posttrans; a dnf kernel upgrade "
+                        "would leave the ESP booting the old Image")
+    else:
+        script = posttrans[1].split("%changelog", 1)[0]
+        if "EFI/Piano/stable" not in script:
+            failures.append("%posttrans does not name the ESP payload path")
+        if "board.dtb" not in script or "exit 0" not in script:
+            failures.append("%posttrans does not skip a rootfs with no ESP payload")
+        skip = script.split("exit 0", 1)[0]
+        if "depmod" in skip or "piano-kernel-esp-update" in skip:
+            failures.append("%posttrans must skip before depmod/repack when the ESP is absent")
+        for token in ("depmod", "piano-kernel-esp-update"):
+            if token not in script:
+                failures.append(f"%posttrans never runs {token}")
+
+    # 内核升级所需的那套工具必须随本包发布，且路径与 %posttrans 里的一致。
+    for name in ("f2fs-disk-bootstrap", "piano-kernel-esp-update",
+                 "build-initramfs.py", "piano_artifacts.py", "piano_boot_container.py"):
+        if f"%{{_prefix}}/lib/piano/{name}" not in body:
+            failures.append(f"kernel-piano.spec does not ship /usr/lib/piano/{name}")
+    if "/usr/lib/piano/piano-kernel-esp-update" not in body:
+        failures.append("%posttrans calls a path the package does not own")
+
+    # v4l2loopback 由本包拥有：它给这一版内核编，落在该内核的模块树里。
+    # 运行时不再产出第二份，否则 DNF 会因为双所有者中止事务。
+    if not re.search(r"^%\{_prefix\}/lib/modules/\*$", body, re.MULTILINE):
+        failures.append("kernel-piano.spec must own the whole module tree, "
+                        "including updates/v4l2loopback.ko")
+    if "Requires:       python3" not in body or "Requires:       kmod" not in body:
+        failures.append("%posttrans needs python3 and kmod at runtime")
+
 
 def check_build_script(failures):
     if not BUILD_SH.is_file():
@@ -82,6 +118,18 @@ def check_build_script(failures):
     # Failing to find the payload must abort, not fall through to a stub build.
     if not re.search(r"resolve_kernel_payload\)\s*\|\|\s*\{", body):
         failures.append("build-rpms.sh does not fail when no kernel payload is found")
+
+    # v4l2loopback 同理：它由本包拥有，缺了就是一个没有相机模块的内核包。
+    # 早先这里用 `if [ -n "$LOOPBACK_MODULE" ]` 静默跳过，正是空壳 RPM 的同一
+    # 种失败形态，只是换了个文件。
+    if "resolve_loopback_module" not in body:
+        failures.append("build-rpms.sh does not resolve v4l2loopback for kernel-piano")
+    if not re.search(r"resolve_loopback_module\)\s*\|\|\s*\{", body):
+        failures.append("build-rpms.sh does not fail when v4l2loopback is missing")
+    if re.search(r"if\s*\[\s*-n\s+\"?\$\{LOOPBACK_MODULE:-\}\"?\s*\]", body):
+        failures.append("build-rpms.sh still silently skips a missing v4l2loopback")
+    if "updates/v4l2loopback.ko" not in body:
+        failures.append("build-rpms.sh does not stage updates/v4l2loopback.ko")
 
 
 def check_built_rpm(failures):

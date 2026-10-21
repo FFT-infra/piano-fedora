@@ -223,8 +223,6 @@ def build(args):
     topology = build / "firmware/qcom/sm8750/Xiaomi Pad 8 Pro-tplg.bin"
     run(["alsatplg", "-d", topology, "-o", build / "topology-decoded.conf"])
     put(topology, payload / "usr/lib/firmware/qcom/sm8750/Xiaomi Pad 8 Pro-tplg.bin")
-    if args.loopback:
-        put(args.loopback, payload / f"usr/lib/modules/{record['kernel_release']}/updates/v4l2loopback.ko")
     request = build_boot_request.build(build / "boot-request", "aarch64", "gcc")
     put(build / "boot-request/piano-boot-request", payload / "usr/local/sbin/piano-boot-request", True)
     mipps = sun.parent / "piano-mipps-auth"
@@ -296,7 +294,6 @@ def main():
                     help="私有完整原厂 piano_nova_{csot,boe}_thp_config.ini 目录；精简笔配置不能替代")
     for name in ("sunuefi", "kernel", "uapi", "output"):
         ap.add_argument("--" + name, type=Path, required=True)
-    ap.add_argument("--loopback", type=Path, required=True)
     build(ap.parse_args())
 
 
