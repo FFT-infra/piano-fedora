@@ -472,13 +472,32 @@ def validate_against_rootfs(root, context, *, require_enabled=True):
 
     if require_enabled:
         for unit in enable_units(context):
-            want(bool(list(root.glob(f"etc/systemd/system/*.wants/{unit}"))),
+            want(_unit_enabled(root, unit),
                  f"display manager unit enabled: {unit}")
 
     if problems:
         raise DesktopError(
             "rootfs does not match the desktop profile: " + "; ".join(problems))
     return checks
+
+
+def _unit_enabled(root, unit):
+    """`systemctl enable` 对这个单元留下的痕迹存在吗。
+
+    大多数单元带 `WantedBy=`，启用后落一个 `*.wants/<unit>` 链接。GDM 只有
+    `Alias=display-manager.service`，启用后落的是
+    `etc/systemd/system/display-manager.service` 这个指向它的别名链接，
+    `*.wants/` 下什么都不会有。只看 wants 目录会把正常装好的 GDM 判成未启用。
+    """
+    root = Path(root)
+    if list(root.glob(f"etc/systemd/system/*.wants/{unit}")):
+        return True
+    alias = root / "etc/systemd/system/display-manager.service"
+    if not alias.is_symlink():
+        return False
+    target = os.readlink(alias)
+    name = Path(target).name
+    return name == unit
 
 
 def _mode_executable(path):

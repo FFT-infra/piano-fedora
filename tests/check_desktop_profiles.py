@@ -324,6 +324,49 @@ def check_validate_against_rootfs_reports_paths():
             raise AssertionError("a rootfs without the display manager unit was accepted")
 
 
+def check_gdm_enable_is_the_display_manager_alias():
+    """GDM 只有 `Alias=display-manager.service`，启用后没有 `*.wants/gdm.service`。
+
+    真实 Fedora 的 `gdm.service` 的 `[Install]` 段只有这一条别名，`systemctl
+    enable gdm.service` 落的是 `etc/systemd/system/display-manager.service`
+    指向它的链接。只查 `*.wants/` 会把装好的 GDM 判成未启用，四档镜像全部
+    在 finalize 阶段被拒。
+    """
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        context = piano_desktop.load("gnome", "44")
+        unit = "usr/lib/systemd/system/gdm.service"
+        (root / unit).parent.mkdir(parents=True, exist_ok=True)
+        (root / unit).write_text("[Unit]\n")
+        (root / "usr/bin").mkdir(parents=True, exist_ok=True)
+        for name in ("gdm", "gnome-shell"):
+            (root / "usr/bin" / name).write_text("#!/bin/sh\n")
+            (root / "usr/bin" / name).chmod(0o755)
+        for relative in ("etc/gdm/custom.conf",
+                         "usr/share/wayland-sessions/gnome.desktop",
+                         "etc/systemd/system/gdm.service.d/20-piano-display.conf",
+                         "etc/dconf/db/local.d/00-power"):
+            (root / relative).parent.mkdir(parents=True, exist_ok=True)
+            (root / relative).write_text("fixture")
+        # 未启用时仍然拒绝，报的必须是启用这一项。
+        try:
+            piano_desktop.validate_against_rootfs(root, context)
+        except piano_desktop.DesktopError as error:
+            assert "unit enabled: gdm.service" in str(error), error
+        else:
+            raise AssertionError("an unenabled gdm.service passed")
+
+        # systemctl enable 对 gdm.service 的实际产物：display-manager 别名。
+        enabled = root / "etc/systemd/system/display-manager.service"
+        enabled.parent.mkdir(parents=True, exist_ok=True)
+        enabled.symlink_to("/usr/lib/systemd/system/gdm.service")
+        assert piano_desktop._unit_enabled(root, "gdm.service")
+        # 别名指向别家时不能把 gdm 判成已启用。
+        enabled.unlink()
+        enabled.symlink_to("/usr/lib/systemd/system/plasmalogin.service")
+        assert not piano_desktop._unit_enabled(root, "gdm.service")
+
+
 def check_greetd_desktops_stage_a_config_toml():
     """niri / Hyprland 共用 greetd：config.toml 的 initial_session 指向各自会话。
 
@@ -430,6 +473,7 @@ def main():
     check_power_files_match_the_declared_kind()
     check_kde_power_policy_is_safe()
     check_validate_against_rootfs_reports_paths()
+    check_gdm_enable_is_the_display_manager_alias()
     check_build_rootfs_expands_the_profile()
     print("OK: desktop profiles are the single source, derived names unchanged")
     return 0
