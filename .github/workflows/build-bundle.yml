@@ -270,4 +270,7 @@ jobs:
           path: bundle/
           if-no-files-found: error
           retention-days: 14
-          compression-level: 0
+          # bundle 里有一份 8 GiB 的 sparse 根镜像，未压缩时 artifact 本身就有
+          # 11.5 GiB。下载端（prepare-install / release）要在同一块盘上同时放下
+          # 压缩包和解压结果，压缩后两者才都留得下。
+          compression-level: 6

@@ -35,6 +35,15 @@ jobs:
           sudo apt-get install -y -qq f2fs-tools zstd attr
           sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" || sudo apt-get install -y -qq linux-modules-extra-azure
           sudo modprobe f2fs
+      - name: Free runner disk before the 11 GiB bundle
+        run: |
+          set -euo pipefail
+          # deploy-bundle 解压后约 11.5 GiB，而下载动作会先把 zip 落盘再展开。
+          # arm 运行器预装的工具链把这份余量吃掉了，解压就会在中途被截断——
+          # 而且是静默的：动作报成功，文件少了一半。
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: Validate the exact deploy-bundle run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -54,6 +63,10 @@ jobs:
           path: build/in/bundle
           run-id: ${{ inputs.bundle_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      # 下载动作不保证解压完整，实测会在中途静默停下。这一档必须紧跟在下载
+      # 之后：否则要等容量验证跑完二十分钟才看到缺文件。
+      - name: Verify the downloaded bundle immediately
+        run: (cd build/in/bundle && sha256sum -c SHA256SUMS)
       - name: Verify a real filesystem expansion and sparse roundtrip
         env:
           TMPDIR: ${{ github.workspace }}/build/tmp
@@ -68,7 +81,6 @@ jobs:
           TMPDIR: ${{ github.workspace }}/build/tmp
         run: |
           set -euo pipefail
-          (cd build/in/bundle && sha256sum -c SHA256SUMS)
           sudo env TMPDIR="$TMPDIR" python3 scripts/prepare-root-capacity.py \
             --bundle build/in/bundle ${ROOT_SIZE_MIB:+--size-mib "$ROOT_SIZE_MIB"} \
             --output build/root-install --android-slot "$ANDROID_SLOT"
@@ -80,7 +92,8 @@ jobs:
           path: build/root-install/
           if-no-files-found: error
           retention-days: 14
-          compression-level: 0
+          # 与 deploy-bundle 同理：这里是一份 8 GiB 的 sparse 根镜像。
+          compression-level: 6
 
   boot-tools:
     runs-on: ubuntu-24.04-arm
@@ -92,6 +105,12 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential clang lld llvm git zstd python3
+      - name: Free runner disk before the 11 GiB bundle
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: Fetch exact boot source dependencies
         run: python3 scripts/checkout-sources.py --output build/installer-sources --mode installer
 
