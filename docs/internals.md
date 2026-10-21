@@ -13,7 +13,8 @@ host-check (build_piano_rpms=true, kernel_run_id=...)
   └─ build-piano-rpms.yml (workflow_call)
        └─ piano-rpms
 
-build-rootfs (piano_rpms_run_id=host-check run)
+build-rootfs (desktop=all, piano_rpms_run_id=host-check run)
+  └─ 按 profile 展开矩阵，每档一棵 rootfs
   └─ /usr/lib/modules/<release> 由 kernel-piano RPM 安装
 
 build-image
