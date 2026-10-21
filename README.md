@@ -21,7 +21,7 @@
 | 视频编解码 | ✅ | Iris V4L2 M2M 已通：H.264 与 HEVC 各 300 帧的硬件编码与解码、带 B 帧素材的解码，逐帧摘要与软件解码一致，Iris 中断计数同步增长（1080p）。浏览器硬解已验收：Chrome 与 Firefox 默认走硬件解码，Fedora 的 Chromium 不能，原因见[已知问题](docs/known-issues.md#触屏网络音频与相机)。VP9、10-bit 与 4K60 未实测 |
 | 电源与电池 | ✅ | 双电芯电量监控，支持深度挂起 |
 | 引导稳定性 | ✅ | `qbootctl.service` 写入 `Successful: 1`，避免 ABL 计数归零掉进 Fastboot |
-| 相机 | 🟡 | `piano-camerad` 常驻，ISP 直出 NV12；前摄画面正常，后摄也在产帧但当前取帧环境偏暗，需在亮处复看。注意刚起流的前几帧是黑的，自动曝光要几帧才收敛，见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
+| 相机 | ✅ | `piano-camerad` 常驻，ISP 直出 NV12，前摄与后摄都能正常成像。注意刚起流的前几帧是黑的，自动曝光要几帧才收敛，见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
 | 音频 | ✅ | 功放上限 215（-15 dB）防炸音圈，麦克风增益 +40 dB；120 秒播放无 xrun，130 秒录音全程有信号 |
 | 性能调度 | ✅ | `uperf-linux` 触控提频 |
 | 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
