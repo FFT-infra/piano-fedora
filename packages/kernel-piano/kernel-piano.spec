@@ -26,7 +26,7 @@
 
 Name:           kernel-piano
 Version:        7.2.9
-Release:        1.%{DEVICE_NAME}%{?dist}
+Release:        2.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
 URL:            https://github.com/blu-sharky/linux-piano
@@ -146,9 +146,9 @@ depmod -a "$RELEASE" || exit 1
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" || exit 1
 
 %changelog
-* Wed Oct 22 2026 FFT-infra <dev@piano.invalid> - 7.2.9-1.piano
+* Wed Oct 22 2026 FFT-infra <dev@piano.invalid> - 7.2.9-2.piano
 - 内核纳入设备侧 dnf 升级：%posttrans 重建 initramfs 并重打 ESP 的 boot.img，
   失败时旧文件保持不动；v4l2loopback 改由本包拥有，外部模块跟着内核走
 
-* Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 7.2.9-1.piano
+* Wed Oct 22 2026 FFT-infra <dev@piano.invalid> - 7.2.9-1.piano
 - Standalone kernel packaging spec with F2FS, DPU, Iris, and FS19xx hardware limit patches
