@@ -195,7 +195,10 @@ jobs:
           export LD_LIBRARY_PATH="$PWD/build/sources/dtc/libfdt"
           PIANO_TEST_SUNUEFI=build/sources/sunuefi python3 tests/check_bundle_overlays.py
           # stock Android BOOT 包装仍要求本机当前 BOOT，通用包不冒充已部署合体 BOOT。
+          # sudo 会清掉环境，SOURCE_DATE_EPOCH 必须显式传进去，否则 mtools
+          # 拿不到它，FAT 目录项又回到当前时间。
           sudo env "PATH=$PATH" "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+            "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" \
             python3 build/sources/sunuefi/tools/package_release.py \
             --uefi build/uefi/PianoUEFI-product.img --kernel build/kernel \
             --dtb build/sources/sunuefi/vendor/piano-linux/board.dtb \

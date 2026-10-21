@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -551,6 +552,11 @@ def check_esp_reproducible(tmp):
     assert 'SOURCE_DATE_EPOCH: "0"' in body, (
         "the ESP packaging step does not pin SOURCE_DATE_EPOCH; each desktop "
         "would build a FAT image with its own directory timestamps")
+    # 打包在 sudo 下跑，而 sudo 会清环境。只设 step 的 env 不够——第一次
+    # 修复就栽在这里：step 里写了 SOURCE_DATE_EPOCH，mtools 仍然取当前时间。
+    assert re.search(r'sudo env[^\n]*\n?[^\n]*SOURCE_DATE_EPOCH=\$SOURCE_DATE_EPOCH'
+                     r'|sudo env[^\\]*"SOURCE_DATE_EPOCH=\$SOURCE_DATE_EPOCH"', body), (
+        "the packaging step does not forward SOURCE_DATE_EPOCH through sudo")
 
     if not all(subprocess.run(["sh", "-c", "command -v " + tool],
                               capture_output=True).returncode == 0
