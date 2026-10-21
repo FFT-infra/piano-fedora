@@ -213,7 +213,9 @@ jobs:
               "$(python3 scripts/release-assets.py name pianoroot.f2fs.img.zst "$desktop")"
 
             # bundle 的 sparse 与封存镜像同源；压缩后再切片，避免每次下载 6 GB。
-            zstd -10 -T0 --no-progress build/in/bundle/pianoroot.f2fs.sparse.img \
+            # -f：这个暂存名四档共用，上一档传完还留在盘上。没有 -f 时 zstd 在
+            # 第二档就问要不要覆盖，非交互环境下直接以 1 退出。
+            zstd -10 -f -T0 --no-progress build/in/bundle/pianoroot.f2fs.sparse.img \
               -o "$STAGE/pianoroot.f2fs.sparse.img.zst"
             original=$(sha256sum build/in/bundle/pianoroot.f2fs.sparse.img | awk '{print $1}')
             decoded=$(zstd -dc "$STAGE/pianoroot.f2fs.sparse.img.zst" | sha256sum | awk '{print $1}')
@@ -293,7 +295,7 @@ jobs:
             release_upload build/in/root-install/SHA256SUMS \
               "$(python3 scripts/release-assets.py name root-install-SHA256SUMS "$desktop")"
             rm -f build/in/root-install/SHA256SUMS
-            zstd -10 -T0 --no-progress build/in/root-install/pianoroot.f2fs.sparse.img \
+            zstd -10 -f -T0 --no-progress build/in/root-install/pianoroot.f2fs.sparse.img \
               -o "$STAGE/root-install-pianoroot.f2fs.sparse.img.zst"
             original=$(sha256sum build/in/root-install/pianoroot.f2fs.sparse.img | awk '{print $1}')
             decoded=$(zstd -dc "$STAGE/root-install-pianoroot.f2fs.sparse.img.zst" | sha256sum | awk '{print $1}')
