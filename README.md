@@ -25,7 +25,7 @@
 | 音频 | ✅ | 功放上限 215（-15 dB）防炸音圈，麦克风增益 +40 dB |
 | 性能调度 | ✅ | `uperf-linux` 触控提频 |
 | 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
-| 传感器 | ✅ | `iio-sensor-proxy` 采集加速度计、环境光、接近、罗盘 |
+| 传感器 | 🟡 | `iio-sensor-proxy` 已装并常驻，但 IIO 子系统里没有绑定到任何设备，加速度计、环境光、接近与罗盘都没有数据；自动旋转因此不工作 |
 | 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk 与 virtio-net、单 vCPU 客体启动；SMP、图形与 GUI 操作待验收 |
 | 双系统往返 | ✅ | 合体 BOOT 装在 `boot_a`：Linux→Android 用 `piano-next-boot android --reboot`，Android→Linux 用「SunUEFI 引导助手」模块或开机 3 秒菜单；两次往返实测，见[已知问题](docs/known-issues.md#双系统切换) |
 | 手写笔 | 🟡 | 守护服务与 Type 29 协议就绪，等待实物划线终验 |

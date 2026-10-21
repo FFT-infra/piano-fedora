@@ -25,7 +25,7 @@ Fedora 44 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 
 | Audio | ✅ | Speaker amp capped at 215 (-15 dB), microphone gain +40 dB |
 | Scheduling | ✅ | `uperf-linux` raises frequency on touch |
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
-| Sensors | ✅ | `iio-sensor-proxy` reads accelerometer, ambient light, proximity, compass |
+| Sensors | 🟡 | `iio-sensor-proxy` is installed and running, but no device is bound in the IIO subsystem, so accelerometer, ambient light, proximity and compass report nothing; auto-rotate does not work |
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are still pending |
 | Dual boot | ✅ | The combined BOOT lives in `boot_a`: Linux→Android uses `piano-next-boot android --reboot`, Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two round trips verified; see [known issues](docs/known-issues.md#双系统切换) |
 | Stylus | 🟡 | Daemon and Type 29 protocol are ready; a physical drawing test is pending |

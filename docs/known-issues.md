@@ -143,6 +143,20 @@ charge_current、mipps_auth、charge_policy 都开启。这不等于实际达到
 场确认，完整 SELinux 流程待测。SMP、UEFI、图形和 Incus 需要分别实现与验收，
 不由单 vCPU 结果推定。门槛见[虚拟化](virtualization.md)。
 
+## 传感器与自动旋转
+
+`iio-sensor-proxy` 装好了也在跑，但 `/sys/bus/iio/devices` 是空的，
+`/proc/device-tree` 下没有对应的传感器节点，也没有 SSC 设备节点，
+`libssc` 没有可用的单元。代理拿不到任何设备，加速度计、环境光、接近与
+罗盘都不出数据。
+
+直接后果是自动旋转不工作：Mutter 订阅的是 `iio-sensor-proxy` 的
+`AccelerometerOrientation`，没有传感器就没有这个属性。这是驱动没绑定，
+不是桌面配置问题。
+
+还缺什么：确认传感器走的是 SSC（`libssc`）还是独立的 IIO 驱动，以及
+`iio-sensor-proxy-ssc` 这个包在设备上是否真的装上了、有没有被 SELinux 拦住。
+
 ## 触屏、网络、音频与相机
 
 这些模块已有实机行为记录，持续负载下的表现还要单独取证：负载下的持续触控

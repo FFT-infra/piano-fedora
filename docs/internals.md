@@ -263,5 +263,6 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
    - 只检查 `boot_a`、`sunuefi_esp`、`sunuefi_root` 是否存在及容量下限，不核对
      GPT 的 CRC、类型 GUID 或整表布局；
    - 分区不存在时直接拒绝，首次分区仍走 `install-f2fs.py`。
-5. **真机终验**：九类 RPM 已上机，硬解、音频、触控滤波与传感器代理可用；
-   冷启动、五门硬件验收与双系统往返仍待完整记录。
+5. **真机终验**：九类 RPM 已上机，触控滤波与音频可用；传感器代理在跑但
+   IIO 子系统里没有绑定设备，自动旋转未通。冷启动、五门硬件验收与双系统
+   往返仍待完整记录。
