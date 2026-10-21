@@ -5,6 +5,7 @@ test:
 	python3 tests/check_upstreams.py
 	python3 tests/check_upstream_watch.py
 	python3 tests/check_artifact_run.py
+	python3 tests/check_release_workflow.py
 	python3 tests/check_copr_release.py
 	python3 tests/check_product.py
 	python3 tests/check_links.py

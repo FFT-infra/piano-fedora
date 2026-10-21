@@ -19,6 +19,16 @@ Requirements:
    Fedora "sudo dnf install mtools", Ubuntu/Debian "sudo apt install mtools",
    macOS "brew install mtools".
 
+Using a GitHub Release:
+Download every asset of the release into one empty folder, then:
+   sha256sum -c RELEASE-SHA256SUMS
+   bash unpack-release.sh
+   unzip piano-installer-<tag>.zip
+unpack-release.sh merges the >2 GiB pieces, decompresses the zstd root
+transports, and leaves the folder in the layout below. The boot tools asset
+(piano-boot-tools-<tag>.tar.zst) generates device-boot/boot_linux.img for this
+tablet; that image itself is never shipped in the release.
+
 Required Files in this Folder:
 - flash-linux.sh / flash-linux.bat (installer scripts)
 - README-INSTALL.txt               (this guide)
@@ -36,8 +46,10 @@ Required Files in this Folder:
 The deploy-bundle's pianoroot.f2fs.img.zst is the sealed 8 GiB build image.
 Do NOT decompress and flash it directly: it has not been expanded to the
 tablet's sunuefi_root capacity or provisioned with this device's settings.
-Run prepare-install.yml with the exact deploy-bundle run, download its
-root-install artifact, and keep the complete root-install directory here.
+Release users already have root-install/ after unpack-release.sh. If you are
+assembling from Actions instead, run prepare-install.yml with the exact
+deploy-bundle run, download its root-install artifact, and keep the complete
+root-install directory here.
 Do not copy only the sparse image and do not merge the two SHA256SUMS files.
 
 Flashing Instructions:

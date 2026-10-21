@@ -1,0 +1,368 @@
+name: release
+
+# 发布只接受已完成的构建，不重新编译任何东西：
+#   build-bundle 的 deploy-bundle + prepare-install 的 root-install / boot-tools /
+#   host-boot-tool，全部绑定到 tag 指向的同一个 commit。
+# 大文件按 GitHub 的 2 GiB 单文件上限切片，root transport 额外用 zstd 压缩。
+# 先上传 bundle 再下载 root-install，避免标准 runner 同时放下两份 6-8 GiB 镜像。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "已存在的发布 tag"
+        required: true
+      bundle_run:
+        description: "build-bundle 成功 run；留空则按 tag commit 解析"
+        required: false
+        default: ""
+      prepare_run:
+        description: "prepare-install 成功 run；留空则按 tag commit 解析"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  actions: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install packaging tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq zstd zip coreutils
+
+      - name: Resolve the tag and its completed runs
+        id: src
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_BUNDLE_RUN: ${{ inputs.bundle_run }}
+          INPUT_PREPARE_RUN: ${{ inputs.prepare_run }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-${GITHUB_REF_NAME}}"
+          git rev-parse --verify "refs/tags/${tag}^{commit}" >/dev/null
+          sha=$(git rev-parse "refs/tags/${tag}^{commit}")
+          test "$sha" = "$(git rev-parse HEAD)" || {
+            echo "tag ${tag} points at ${sha}, but this run checked out $(git rev-parse HEAD)" >&2
+            echo "dispatch this workflow at the tag commit" >&2
+            exit 2
+          }
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "commit=${sha}" >> "$GITHUB_OUTPUT"
+          echo "TAG=${tag}" >> "$GITHUB_ENV"
+          echo "STAGE=${GITHUB_WORKSPACE}/build/stage" >> "$GITHUB_ENV"
+          mkdir -p build/stage
+
+          bundle_args=()
+          if [ -n "$INPUT_BUNDLE_RUN" ]; then bundle_args+=(--run-id "$INPUT_BUNDLE_RUN"); fi
+          if ! python3 scripts/resolve-artifact-run.py --workflow build-bundle.yml \
+              --artifact deploy-bundle --commit "$sha" "${bundle_args[@]}" --output-key bundle_run; then
+            echo "no successful build-bundle run at ${sha} has a nonexpired deploy-bundle artifact" >&2
+            exit 1
+          fi
+
+          prepare_args=()
+          if [ -n "$INPUT_PREPARE_RUN" ]; then prepare_args+=(--run-id "$INPUT_PREPARE_RUN"); fi
+          if ! python3 scripts/resolve-artifact-run.py --workflow prepare-install.yml \
+              --artifact root-install --artifact boot-tools --artifact host-boot-tool \
+              --commit "$sha" "${prepare_args[@]}" --output-key prepare_run; then
+            echo "no successful prepare-install run at ${sha} has root-install, boot-tools and host-boot-tool" >&2
+            echo "dispatch prepare-install.yml with the bundle run, then retry this release" >&2
+            exit 1
+          fi
+
+      - name: Download the deploy bundle from its own run
+        uses: actions/download-artifact@v4
+        with:
+          name: deploy-bundle
+          path: build/in/bundle
+          run-id: ${{ steps.src.outputs.bundle_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify the deploy bundle before touching it
+        run: |
+          set -euo pipefail
+          (cd build/in/bundle && sha256sum -c SHA256SUMS)
+          python3 scripts/verify-bundle.py --bundle build/in/bundle
+
+      - name: Refuse to overwrite an existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release ${TAG} already exists; delete the draft or release before retrying" >&2
+            exit 2
+          fi
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > build/stage/notes.md <<EOF
+          ## piano Fedora 44 ${TAG}
+
+          - 源码提交: [${GITHUB_SHA}](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})
+          - 构建记录: [build-bundle #${{ steps.src.outputs.bundle_run }}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${{ steps.src.outputs.bundle_run }}) · [prepare-install #${{ steps.src.outputs.prepare_run }}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${{ steps.src.outputs.prepare_run }})
+          - 生成时间: $(date -u +%Y-%m-%dT%H:%MZ)
+          - 产物状态: Actions 内完整校验通过；真机验证记录见 [docs/known-issues.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/known-issues.md)
+
+          ### 下载后
+
+          1. 把本 Release 的全部资产下载到同一个空目录。
+          2. \`sha256sum -c RELEASE-SHA256SUMS\`
+          3. \`bash unpack-release.sh\` 还原 bundle 文件并解出 \`root-install/\`。
+          4. 按 \`README-INSTALL.txt\` 操作；全新平板先读 docs/installation.md 第四节。
+
+          大于 2 GiB 的镜像以 \`.part-*\` 分片发布，\`unpack-release.sh\` 会自动合并。
+          \`boot_linux.img\` 不随 Release 发布：它必须用本机原厂 BOOT 生成，
+          工具在 \`piano-boot-tools-${TAG}.tar.zst\` 里。
+
+          校验构建来源: \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`
+          EOF
+          gh release create "$TAG" --draft --title "piano Fedora 44 ${TAG}" \
+            --notes-file build/stage/notes.md
+
+      - name: Upload the deploy bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          stage="$STAGE"
+          # GitHub 的单文件上限是 2 GiB；留出余量后按 1,900 MiB 切片。
+          max_asset=2147000000
+          printf '' > "$stage/RELEASE-SHA256SUMS"
+          record() {
+            printf '%s  %s\n' "$(sha256sum "$1" | awk '{print $1}')" "$2" >> "$stage/RELEASE-SHA256SUMS"
+          }
+          upload() {
+            local path=$1 name=${2:-$(basename "$1")} source
+            source=$path
+            if [ "$(basename "$1")" != "$name" ]; then
+              cp "$path" "$stage/$name"
+              source="$stage/$name"
+            fi
+            record "$source" "$name"
+            gh release upload "$TAG" "$source"
+            rm -f "$source"
+          }
+          upload_split() {
+            local path=$1 base name part
+            name=$(basename "$path")
+            if [ "$(stat -c %s "$path")" -lt "$max_asset" ]; then
+              upload "$path"
+              return
+            fi
+            base="$stage/$name"
+            split -b 1900M -d -a 2 "$path" "$base.part-"
+            rm -f "$path"
+            for part in "$base".part-*; do
+              upload "$part"
+            done
+          }
+
+          cd build/in/bundle
+          for name in *; do
+            case "$name" in
+              # 留到 root-install 绑定校验之后再上传：product 要给 cmp 用，
+              # 两份 manifest 要给摘要绑定用。
+              pianoroot.f2fs.img.zst|pianoroot.f2fs.sparse.img|PianoUEFI-product.img|bundle-manifest.json|root-image-manifest.json) continue ;;
+            esac
+            upload "$name"
+          done
+
+          upload_split pianoroot.f2fs.img.zst
+
+          # bundle 的 sparse 与封存镜像同源；压缩后再切片，避免每次下载 6 GB。
+          zstd -10 -T0 --no-progress pianoroot.f2fs.sparse.img -o "$stage/pianoroot.f2fs.sparse.img.zst"
+          original=$(sha256sum pianoroot.f2fs.sparse.img | awk '{print $1}')
+          decoded=$(zstd -dc "$stage/pianoroot.f2fs.sparse.img.zst" | sha256sum | awk '{print $1}')
+          test "$original" = "$decoded" || {
+            echo "compressed root transport does not round-trip" >&2
+            exit 2
+          }
+          rm -f pianoroot.f2fs.sparse.img
+          upload_split "$stage/pianoroot.f2fs.sparse.img.zst"
+
+      - name: Download the prepared root and boot tools
+        uses: actions/download-artifact@v4
+        with:
+          name: root-install
+          path: build/in/root-install
+          run-id: ${{ steps.src.outputs.prepare_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download the boot tools
+        uses: actions/download-artifact@v4
+        with:
+          name: boot-tools
+          path: build/in/boot-tools
+          run-id: ${{ steps.src.outputs.prepare_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download the host boot tool
+        uses: actions/download-artifact@v4
+        with:
+          name: host-boot-tool
+          path: build/in/host-boot-tool
+          run-id: ${{ steps.src.outputs.prepare_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify the prepared root and boot tools
+        run: |
+          set -euo pipefail
+          (cd build/in/root-install && sha256sum -c SHA256SUMS)
+          (cd build/in/boot-tools/installer && sha256sum -c SHA256SUMS)
+          cmp build/in/boot-tools/product/PianoUEFI-product.img build/in/bundle/PianoUEFI-product.img
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          bundle = Path("build/in/bundle")
+          root = Path("build/in/root-install")
+          sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+          record = json.loads((root / "root-install-manifest.json").read_text())
+          assert record["source_bundle_manifest_sha256"] == sha(bundle / "bundle-manifest.json"), (
+              "root-install was prepared from another deploy-bundle")
+          assert record["source_root_manifest_sha256"] == sha(bundle / "root-image-manifest.json"), (
+              "root-install was prepared from another root image")
+          assert record["android_slot"] == "_a", (
+              f"root-install targets Android slot {record['android_slot']}; the public release ships _a")
+          host = json.loads(Path("build/in/host-boot-tool/manifest.json").read_text())
+          native = json.loads(Path("build/in/boot-tools/native/manifest.json").read_text())
+          assert host["sources"] == native["sources"] and host.get("arch") == "host", (
+              "host and Android repackers were built from different sources")
+          print("OK: root-install and boot tools bind to this bundle")
+          PY
+
+      - name: Upload the prepared root, boot tools, installer, and checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          stage="$STAGE"
+          max_asset=2147000000
+          record() {
+            printf '%s  %s\n' "$(sha256sum "$1" | awk '{print $1}')" "$2" >> "$stage/RELEASE-SHA256SUMS"
+          }
+          upload() {
+            local path=$1 name=${2:-$(basename "$1")} source
+            source=$path
+            if [ "$(basename "$1")" != "$name" ]; then
+              cp "$path" "$stage/$name"
+              source="$stage/$name"
+            fi
+            record "$source" "$name"
+            gh release upload "$TAG" "$source"
+            rm -f "$source"
+          }
+          upload_split() {
+            local path=$1 base name part
+            name=$(basename "$path")
+            if [ "$(stat -c %s "$path")" -lt "$max_asset" ]; then
+              upload "$path"
+              return
+            fi
+            base="$stage/$name"
+            split -b 1900M -d -a 2 "$path" "$base.part-"
+            rm -f "$path"
+            for part in "$base".part-*; do
+              upload "$part"
+            done
+          }
+
+          # 保留到绑定校验通过的文件。
+          upload build/in/bundle/PianoUEFI-product.img
+          upload build/in/bundle/bundle-manifest.json
+          upload build/in/bundle/root-image-manifest.json
+
+          cd build/in/root-install
+          upload root-install-manifest.json
+          upload SHA256SUMS root-install-SHA256SUMS
+          rm -f SHA256SUMS
+          zstd -10 -T0 --no-progress pianoroot.f2fs.sparse.img \
+            -o "$stage/root-install-pianoroot.f2fs.sparse.img.zst"
+          original=$(sha256sum pianoroot.f2fs.sparse.img | awk '{print $1}')
+          decoded=$(zstd -dc "$stage/root-install-pianoroot.f2fs.sparse.img.zst" | sha256sum | awk '{print $1}')
+          test "$original" = "$decoded" || {
+            echo "compressed prepared root does not round-trip" >&2
+            exit 2
+          }
+          rm -f pianoroot.f2fs.sparse.img
+          upload_split "$stage/root-install-pianoroot.f2fs.sparse.img.zst"
+
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p build/stage/tools/scripts
+          cp -a build/in/boot-tools build/stage/tools/boot-tools
+          cp -a build/in/host-boot-tool build/stage/tools/host-boot-tool
+          cp scripts/prepare-device-boot.py scripts/piano_artifacts.py scripts/piano_sparse.py \
+            build/stage/tools/scripts/
+          cat > build/stage/tools/README.txt <<'EOF'
+          piano boot tools
+
+          boot-tools/      Android-side selector module and native repacker (aarch64)
+          host-boot-tool/  x86-64 Linux host repacker
+          scripts/         prepare-device-boot.py and its helper modules
+
+          Generate this tablet's boot_a image on an x86-64 Linux PC:
+
+            1. fastboot fetch boot_a stock-boot.img
+            2. sha256sum stock-boot.img
+            3. python3 scripts/prepare-device-boot.py \
+                 --stock-boot stock-boot.img --source-sha256 <digest from step 2> \
+                 --boot-tools boot-tools --host-tool host-boot-tool \
+                 --bundle <directory unpacked by unpack-release.sh> \
+                 --slot _a --output device-boot
+            4. flash device-boot/boot_linux.img to boot_a (see README-INSTALL.txt)
+
+          The combined BOOT keeps the upstream unsigned AVB NONE metadata.
+          Do not add os_version or re-sign it; see README-INSTALL.txt.
+          EOF
+          tar -C build/stage/tools -I 'zstd -10 -T0' -cf "$stage/piano-boot-tools-${TAG}.tar.zst" .
+          rm -rf build/stage/tools
+          upload "$stage/piano-boot-tools-${TAG}.tar.zst"
+
+          mkdir -p build/stage/installer
+          cp scripts/installer/flash-linux.sh scripts/installer/flash-linux.bat \
+            scripts/installer/README-INSTALL.txt scripts/unpack-release.sh build/stage/installer/
+          chmod +x build/stage/installer/flash-linux.sh build/stage/installer/unpack-release.sh
+          (cd build/stage/installer && zip -9 -r "$stage/piano-installer-${TAG}.zip" .)
+          rm -rf build/stage/installer
+          upload "$stage/piano-installer-${TAG}.zip"
+
+          cp scripts/unpack-release.sh "$stage/unpack-release.sh"
+          upload "$stage/unpack-release.sh"
+
+          sort -k2 "$stage/RELEASE-SHA256SUMS" -o "$stage/RELEASE-SHA256SUMS"
+          gh release upload "$TAG" "$stage/RELEASE-SHA256SUMS"
+
+      - name: Attest the published assets
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: build/stage/RELEASE-SHA256SUMS
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --draft=false
+          gh release view "$TAG" --json url,assets \
+            --jq '{url: .url, assets: [.assets[] | {name, size}]}'

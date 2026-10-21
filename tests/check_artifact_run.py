@@ -11,6 +11,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import parse_qs
 
 ROOT = Path(__file__).resolve().parents[1]
 _SPEC = importlib.util.spec_from_file_location(
@@ -32,10 +33,14 @@ class FakeGitHub:
         self.calls.append(path)
         if "/actions/workflows/" in path and "/runs" not in path:
             return self.workflows[path.rsplit("/actions/workflows/", 1)[1]]
-        if path.endswith("/runs?status=success&per_page=50"):
-            workflow = path.split("/actions/workflows/", 1)[1].split("/runs", 1)[0]
+        if "/actions/workflows/" in path and "/runs?" in path:
+            workflow = path.split("/actions/workflows/", 1)[1].split("/runs?", 1)[0]
+            query = parse_qs(path.split("/runs?", 1)[1])
             wanted = self.workflows[workflow]["id"]
-            return {"workflow_runs": [r for r in self.runs.values() if r["workflow_id"] == wanted]}
+            runs = [r for r in self.runs.values() if r["workflow_id"] == wanted]
+            if "head_sha" in query:
+                runs = [r for r in runs if r.get("head_sha") == query["head_sha"][0]]
+            return {"workflow_runs": runs}
         if "/actions/runs/" in path and path.endswith("/artifacts?per_page=100"):
             run = int(path.split("/actions/runs/", 1)[1].split("/artifacts", 1)[0])
             return {"artifacts": self.artifacts.get(run, [])}
@@ -46,6 +51,7 @@ class FakeGitHub:
 
 def run(**kwargs):
     return {"id": kwargs["id"], "workflow_id": kwargs["workflow_id"],
+            "head_sha": kwargs.get("head_sha"),
             "status": kwargs.get("status", "completed"),
             "conclusion": kwargs.get("conclusion", "success")}
 
@@ -54,10 +60,10 @@ def artifact(name, expired=False):
     return {"name": name, "expired": expired}
 
 
-def expect_raises(backend, workflow, names, run_id, fragment):
+def expect_raises(backend, workflow, names, run_id, fragment, commit=None):
     resolve_artifact_run.api = backend
     try:
-        resolve_artifact_run.resolve("o/r", workflow, names, run_id)
+        resolve_artifact_run.resolve("o/r", workflow, names, run_id, commit)
     except ValueError as error:
         assert fragment in str(error), f"unexpected error text: {error}"
     else:
@@ -125,6 +131,29 @@ def test_dynamic_selection_without_match_raises():
         runs={201: run(id=201, workflow_id=100, conclusion="failure")},
         artifacts={201: [artifact("root-image-8192")]})
     expect_raises(backend, "build-image.yml", ["root-image-8192"], None, "nonexpired")
+
+
+def test_commit_scoped_selection_skips_other_commits():
+    """tag 发布只接受 tag 指向提交上的 run；别的提交有同名 artifact 也不能用。"""
+    backend = FakeGitHub(
+        workflows={"build-bundle.yml": {"id": 100}},
+        runs={200: run(id=200, workflow_id=100, head_sha="a" * 40),
+              201: run(id=201, workflow_id=100, head_sha="b" * 40)},
+        artifacts={200: [artifact("deploy-bundle")],
+                   201: [artifact("deploy-bundle")]})
+    resolve_artifact_run.api = backend
+    value = resolve_artifact_run.resolve(
+        "o/r", "build-bundle.yml", ["deploy-bundle"], commit="b" * 40)
+    assert value == "201", value
+
+
+def test_explicit_run_id_rejects_commit_mismatch():
+    backend = FakeGitHub(
+        workflows={"build-bundle.yml": {"id": 100}},
+        runs={200: run(id=200, workflow_id=100, head_sha="a" * 40)},
+        artifacts={200: [artifact("deploy-bundle")]})
+    expect_raises(backend, "build-bundle.yml", ["deploy-bundle"], "200",
+                  "belongs to commit", commit="b" * 40)
 
 
 def test_cli_writes_output_key_and_prints_run_id():
@@ -218,6 +247,8 @@ def main():
                   test_explicit_run_id_rejects_failed_run,
                   test_dynamic_selection_skips_wrong_workflow_failed_and_expired,
                   test_dynamic_selection_without_match_raises,
+                  test_commit_scoped_selection_skips_other_commits,
+                  test_explicit_run_id_rejects_commit_mismatch,
                   test_cli_writes_output_key_and_prints_run_id,
                   test_every_resolved_workflow_is_registered_on_default_branch):
         check()

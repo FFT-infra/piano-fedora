@@ -35,8 +35,8 @@ Fedora 44 and GNOME run natively on the Xiaomi Pad 8 Pro (codename `piano`, Snap
 
 1. Unlock the bootloader and set up `fastboot`.
 2. On a device with the stock GPT, follow [First install from the stock GPT/UFS](docs/installation.md#四-从原始-gptufs-开始的首次安装) to create the partitions, erase `userdata`, and let Android boot once. **The one-step script does not work without this step.**
-3. Use the `deploy-bundle` from one successful `build-bundle` run, and the `root-install` that `prepare-install` produced from that same bundle run. Do not mix assets from different runs.
-4. Prepare a staging directory as described in [section 3 of the installation guide](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本). Copy `flash-linux.sh` and `flash-linux.bat` from `scripts/installer/` into it alongside the deploy-bundle files, and put `root-install/` inside it.
+3. Download the latest release from [Releases](https://github.com/FFT-infra/piano-fedora/releases), run `sha256sum -c RELEASE-SHA256SUMS`, then `bash unpack-release.sh`. When building from source, use the `deploy-bundle` from one successful `build-bundle` run and the `root-install` that `prepare-install` produced from that same bundle run. Do not mix assets from different runs.
+4. Prepare the staging directory as described in [section 3 of the installation guide](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本). The release's `piano-installer-<tag>.zip` carries the flash scripts; when building from source, copy `flash-linux.sh` and `flash-linux.bat` from `scripts/installer/` into it.
 
    The installer treats its working directory as the staging directory and never looks for images inside the repository.
 
@@ -62,18 +62,18 @@ For step-by-step control, see [Manual flashing](docs/installation.md#三之二-�
 
 ## Release artifacts
 
-A release comes from the `deploy-bundle` artifact of `build-bundle`. The `root-install` directory comes from `prepare-install` running on the same bundle run:
+A release is triggered by a tag and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Large images are split automatically, with `RELEASE-SHA256SUMS` and `unpack-release.sh`:
 
 | File | Contents |
 |---|---|
 | `boot_sunuefi.img` | Linux payload inside the ESP; never flash it to `boot_a` |
 | `sunuefi_esp.img` | SunUEFI EDK2, DTB, Linux 7.2.9 kernel, initramfs |
 | `PianoUEFI-product.img` | SunUEFI product firmware; the payload inside `sunuefi_esp.img` |
-| `pianoroot.f2fs.img.zst` | Sealed Fedora 44 GNOME root filesystem; `prepare-install` expands it for a first install |
-| `root-install/` | Expanded sparse root image and its manifest |
+| `pianoroot.f2fs.img.zst` | Sealed Fedora 44 GNOME root filesystem; never flash it directly |
+| `root-install/` | Sparse root transport with device configuration written (restored by `unpack-release.sh`) |
 | `SHA256SUMS` | Hashes of every asset |
 
-The repository has no release and no tag yet. The assets exist only as workflow artifacts. `scripts/package-release-bundle.sh` is a local compatibility packer, not the release entry point.
+The release also carries `piano-installer-<tag>.zip` (flash scripts and guide) and `piano-boot-tools-<tag>.tar.zst` (builds `device-boot/boot_linux.img` locally). `scripts/package-release-bundle.sh` is a local compatibility packer, not the release entry point.
 
 ## Documentation
 

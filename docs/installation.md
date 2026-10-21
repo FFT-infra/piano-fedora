@@ -68,30 +68,37 @@
 适用于已解锁 BL、`install-f2fs.py apply` 已建好 GPT 分区并擦除 userdata、`sunuefi_esp` 与 `sunuefi_root` 都在的设备。全新盘不能直接跳到一键刷机。首次安装的主流程在第四节，这一节的分区前提不能跳过。
 
 ### 1. 获取 Release 资产
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包。仓库目前还没有 Release 与 tag，链接目前是空的。发布前用 `build-bundle` 下载的完整 deploy-bundle，不要在本地重新打包历史 `out/` 目录充当发布资产。
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包。Release 由 tag 触发，内容是同一次 `build-bundle` 与它派生的 `prepare-install` 产物；失败后可以用同一个 workflow 手动重跑。不要在本地重新打包历史 `out/` 目录充当发布资产。
 
-- `piano-installer-*.zip`：只剩本地打包器会生成它，流水线不产出。没有 Release 时用仓库里的 `scripts/installer/`；
-- `boot_sunuefi.img`：ESP 内部的 Linux 载荷，不刷任何分区；
+Release 资产是扁平的，全部下载到同一个空目录后：
+
+1. `sha256sum -c RELEASE-SHA256SUMS`
+2. `bash unpack-release.sh`
+
+`unpack-release.sh` 会合并大于 2 GiB 的分片、解压 zstd 传输镜像，并把 `root-install/` 放回脚本要求的布局。完成后这个目录就是下面的暂存目录。
+
+- `piano-installer-<tag>.zip`：`flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` 与 `unpack-release.sh`；
+- `piano-boot-tools-<tag>.tar.zst`：生成设备专用 `device-boot/boot_linux.img` 的脚本与 x86-64 工具；
 - `sunuefi_esp.img`：SunUEFI ESP 分区镜像；
+- `boot_sunuefi.img`：ESP 内部的 Linux 载荷，不刷任何分区；
 - `pianoroot.f2fs.img.zst`：封存的基础盘，不能直接首装；
-- `root-install/pianoroot.f2fs.sparse.img`：`prepare-install` 按本机容量扩容后的传输镜像；
-- `SHA256SUMS`：deploy-bundle 内 ESP/BOOT 等资产的摘要；
-- `root-install/SHA256SUMS`：root-install 内 sparse 镜像和清单的摘要。
+- `pianoroot.f2fs.sparse.img`：deploy-bundle 自带的可刷传输镜像；
+- `root-install/pianoroot.f2fs.sparse.img`：`prepare-install` 写入设备配置后的传输镜像；
+- `SHA256SUMS`：deploy-bundle 内资产的摘要；
+- `root-install/SHA256SUMS`：root-install 内 sparse 镜像与清单的摘要。
 
-首装必须先用同一个 deploy-bundle run 跑 `prepare-install.yml`，Android 槽位固定为 `_a`，得到 `root-install`。`root-install` 里的 sparse 镜像已扩到真实 `sunuefi_root` 容量，写入设备配置并恢复 SELinux 标签。
+`root-install` 里的 sparse 镜像已写入设备配置并恢复 SELinux 标签。没有指定 `root_size_mib` 时它保持封存容量，首次启动再扩满 `sunuefi_root`。Release 固定使用 Android Slot A（`_a`）；B 槽设备要用同一次 bundle run 自己跑 `prepare-install.yml` 的 `_b`，不能直接用 Release 的 root-install。
 
 镜像里没有 `authorized_keys`。管理公钥在刷写时用 `--ssh-key` 注入，见下一节。
 
-刷写脚本取自 `scripts/installer/`，随仓库检出：`flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt`。`piano-installer-*.zip` 目前只由本地打包器 `scripts/package-release-bundle.sh` 生成，流水线不产出它。
+没有 Release 时，用同一次成功 `build-bundle` run 的完整 deploy-bundle，以及这个 run 派生的 `prepare-install` 的 `root-install`：
 
-没有 Release 时直接从仓库取这三个文件。
-
-准备一个空的暂存目录（下面记作 `piano-install/`），把材料完整复制进去。不要从不同 run 各取一部分：
-
-1. 把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` 复制到这个目录；
+1. 把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` 复制到暂存目录；
 2. 完整解压同一 run 的 `deploy-bundle/` 到同一层，保留其中全部普通文件；
 3. 完整解压同一 deploy-bundle run 派生的 `root-install/` 到这个目录下；
 4. 不要把两个 artifact 的 `SHA256SUMS` 合并、改名或重新生成。
+
+用一个空目录（下面记作 `piano-install/`），把材料完整放在一起。用 Release 时，`unpack-release.sh` 已经把 bundle 文件放在这一层并解出 `root-install/`；再从 `piano-installer-<tag>.zip` 里取出三个刷写脚本放到同一层。不要从不同 run 各取一部分。
 
 最终目录必须长这样：
 
@@ -190,7 +197,7 @@ Windows 脚本不自动注入；需要时按 `flash-linux.bat` 的提示手工�
 
 ### 1. 从 Release 取哪些文件
 
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及这个 run 派生的 `prepare-install` 的 `root-install`。不要拿历史 `out/` 目录拼装。
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。资产是扁平的，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh`；手动刷机只认解包后的文件名。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及这个 run 派生的 `prepare-install` 的 `root-install`。不要拿历史 `out/` 目录拼装。
 
 手动刷机至少需要这些资产：
 
@@ -198,12 +205,12 @@ Windows 脚本不自动注入；需要时按 `flash-linux.bat` 的提示手工�
 | --- | --- | --- | --- |
 | `device-boot/boot_linux.img` | 本地生成：`prepare-device-boot.py` 用本机原厂 BOOT 重打包 | 合体 BOOT | `boot_a` |
 | `sunuefi_esp.img` | Release / deploy-bundle | ESP 分区镜像（固件核心、DTB、内核、initramfs） | `sunuefi_esp` |
-| `root-install/pianoroot.f2fs.sparse.img` | Release / `prepare-install` 派生 | 扩容并配置后的根文件系统稀疏镜像 | `sunuefi_root` |
+| `root-install/pianoroot.f2fs.sparse.img` | Release / `prepare-install` 派生 | 已写入设备配置的根文件系统稀疏镜像 | `sunuefi_root` |
 | `boot_sunuefi.img` | Release / deploy-bundle | ESP 内部的 Linux 载荷，不刷任何分区 | 不刷入 |
 | `SHA256SUMS` | Release / deploy-bundle | deploy-bundle 内资产的 SHA256 清单 | 不刷入，只用于校验 |
 | `root-install/SHA256SUMS` | Release / `prepare-install` 派生 | root-install 内 sparse 镜像与 manifest 的 SHA256 清单 | 不刷入，只用于校验 |
 
-`piano-installer-*.zip` 和 `piano-switch-ksu-*.zip` 只有本地打包器 `scripts/package-release-bundle.sh` 会生成，流水线与 deploy-bundle 都不含它们；手动刷机不需要。不要把 deploy-bundle 里的
+Release 里的 `piano-installer-<tag>.zip` 只含脚本与说明，不含镜像；`piano-boot-tools-<tag>.tar.zst` 用来在本机生成 `device-boot/boot_linux.img`。`piano-switch-ksu-*.zip`（Android 引导助手模块）由 SunUEFI 的模块工具单独构建，不在 Release 里。不要把 deploy-bundle 里的
 `pianoroot.f2fs.img.zst` 解压后直接刷；它不是按本机 `sunuefi_root` 容量派生的。
 
 ### 2. 校验下载到的文件

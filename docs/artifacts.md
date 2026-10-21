@@ -58,13 +58,23 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 | build-image | 39468564677 | `root-image-8192`，initramfs 带 `fsck.f2fs` |
 | build-bundle | 39470546378 | `deploy-bundle`，含 `pianoroot.f2fs.sparse.img` |
 
-这一轮换了 root 的容量约定：封存镜像固定 8192 MiB，与设备无关，首次启动由 initramfs 长满 `sunuefi_root`。因此 `prepare-install` 不再是发布链的一环，bundle 自带的 sparse 就是装机材料。`prepare-install` 仍然可用，只在想预先扩到某个容量时才跑。
+这一轮换了 root 的容量约定：封存镜像固定 8192 MiB，与设备无关，首次启动由 initramfs 长满 `sunuefi_root`。首装不再要求先跑 `prepare-install`：bundle 自带的 sparse 就是首装材料。`prepare-install` 仍会跑，因为 `flash-linux.sh` 的更新路径要求 `root-install/`；Release 直接带上这份产物。
 
 `verify-bundle.py` 在这一轮解码 `pianoroot.f2fs.sparse.img`，与 `pianoroot.f2fs.img.zst` 展开后的字节和摘要比对；initramfs manifest 的 `f2fs_tools_verified` 为 `true`，归档里有 `usr/sbin/fsck.f2fs` 与指向它的 `resize.f2fs`。ABL 诊断链的 manifest 是 `false`，那条链不做扩容。
 
 上一轮（39350753680 → 39353803394）的产物不再是基线：那一轮把 root 离线扩到 `size_mib=479990`，与设备容量绑死，同一份镜像装不到别的容量上。
 
 这一轮修掉的两处真实故障。手动分区文档把 `/sys/block/sda/size` 当 LBA 总数，它其实是 512 字节扇区数，与 4096 字节 LBA 差 8 倍，`dd` 会落在盘中间；现在从主表头的 `alternate_lba` 取。`build-f2fs-image.py` 的 loop 探针只看 `losetup -f` 的退出码，而它不碰设备、容器里照样返回 0，CI 装上 `f2fs-tools` 后走到真实挂载才暴露；现在真挂一个 4 KiB 临时文件。
+
+## Release 发布
+
+`.github/workflows/release.yml` 只搬运已验证的构建，不重新编译。tag 指向的 commit 必须同时有成功的 `build-bundle` 与 `prepare-install` run；缺一个就在写入任何发布资产之前失败。手动触发可以显式传 `bundle_run`、`prepare_run`，两者仍要绑定同一个 tag commit。
+
+发布前按顺序校验：bundle 的 `SHA256SUMS`、`verify-bundle.py`、root-install 的 `SHA256SUMS`、boot-tools 的 `installer/SHA256SUMS`，以及 root-install manifest 里 `source_bundle_manifest_sha256` 与 `source_root_manifest_sha256` 确实指当前 bundle。Release 只收 `android_slot == "_a"`；`_b` 的 root-install 留给 B 槽设备自己生成。
+
+GitHub 的单个 release asset 必须小于 2 GiB，所以大镜像按 1,900 MiB 切片，两个 root transport 先流式 zstd 压缩。`RELEASE-SHA256SUMS` 覆盖实际发布的扁平资产；`unpack-release.sh` 先校验它，再合并分片、解压并还原 `root-install/`。发布前用 `actions/attest-build-provenance` 对 `RELEASE-SHA256SUMS` 生成 provenance。
+
+`boot_linux.img` 不进 Release：它由 `prepare-device-boot.py` 用每台平板自己的 96 MiB stock BOOT 生成。Release 附带 `piano-boot-tools-<tag>.tar.zst`，里面是同一 bundle 的 `boot-tools`、x86-64 `host-boot-tool` 和脚本。
 
 ## 尚需验证
 

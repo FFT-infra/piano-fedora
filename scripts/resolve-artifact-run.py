@@ -11,18 +11,27 @@ def api(path):
     return json.loads(subprocess.check_output(["gh", "api", path], text=True))
 
 
-def resolve(repository, workflow, names, run_id=None):
+def resolve(repository, workflow, names, run_id=None, commit=None):
     # 用官方 workflow_id 比对，display name 可被改名或撞名，不作为身份。
     workflow_id = api(f"repos/{repository}/actions/workflows/{workflow}")["id"]
     if run_id:
         candidates = [api(f"repos/{repository}/actions/runs/{int(run_id)}")]
     else:
-        candidates = api(f"repos/{repository}/actions/workflows/{workflow}/runs?status=success&per_page=50")["workflow_runs"]
+        query = "status=success&per_page=50"
+        if commit:
+            # 发布必须绑定 tag 指向的 commit；同名 artifact 属于别的提交时不能拿来充数。
+            query += "&head_sha=" + commit
+        candidates = api(f"repos/{repository}/actions/workflows/{workflow}/runs?{query}")["workflow_runs"]
     for run in candidates:
         if run.get("workflow_id") != workflow_id:
             if run_id:
                 raise ValueError(
                     f"run {run.get('id')} belongs to workflow {run.get('workflow_id')}, not {workflow}")
+            continue
+        if commit and run.get("head_sha") != commit:
+            if run_id:
+                raise ValueError(
+                    f"run {run.get('id')} belongs to commit {run.get('head_sha')}, not {commit}")
             continue
         if run["status"] != "completed" or run["conclusion"] != "success":
             continue
@@ -39,11 +48,12 @@ def main():
     ap.add_argument("--workflow", required=True)
     ap.add_argument("--artifact", action="append", required=True)
     ap.add_argument("--run-id")
+    ap.add_argument("--commit", help="只接受该 commit 上的 run（tag 发布用）")
     ap.add_argument("--output-key", default="run_id")
     args = ap.parse_args()
     if not args.repository:
         raise ValueError("repository is required")
-    value = resolve(args.repository, args.workflow, args.artifact, args.run_id)
+    value = resolve(args.repository, args.workflow, args.artifact, args.run_id, args.commit)
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
             f.write(args.output_key + "=" + value + "\n")
