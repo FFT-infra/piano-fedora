@@ -438,6 +438,9 @@ def check_clean_rootfs_release_entry():
         "build-rootfs.yml still invokes the unaudited base-tree generator")
     assert "scripts/build-fedora-rootfs.py" not in rootfs, (
         "the release workflow must not use the legacy base-tree backend")
+    assert not (ROOT / "scripts" / "build-fedora-rootfs.py").exists(), (
+        "the legacy base-tree backend was deleted; a second Fedora backend must "
+        "not come back")
     assert "--rpms-dir build/local-rpms" in rootfs
     assert "piano-rpms" in rootfs
     assert "piano_rpms_run_id" in rootfs

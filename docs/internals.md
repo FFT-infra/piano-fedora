@@ -244,8 +244,9 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
 2. **守护进程规范化**：`xiaomi-piano-thp`、`piano-camera`、`uperf-linux`、`libssc`
    的打包定义入库，`scripts/build-rpms.sh` 能在本机或容器里跑完整的 rpmbuild。
 3. **纯净 DNF 装配链**：`scripts/build-clean-rootfs.py` 从本地 RPM 源直接装配 F2FS
-   镜像，替掉旧的 finalize 注入路径。`tests/check_clean_rootfs.py` 与 `make plan-clean`
-   校验镜像里的文件全部归属 RPM 数据库。
+   镜像，替掉旧的 finalize 注入路径。`tests/check_clean_rootfs.py` 与 `make plan`
+   校验镜像里的文件全部归属 RPM 数据库；`make plan-desktop DESKTOP=kde` 打印
+   另一档的装配计划。
 4. **安装链**：`flash-linux.sh` 与 `flash-linux.bat` 带设备身份、分区容量、
    摘要校验；安装文档同时保留不用脚本的手动路径。以下能力尚未具备：
    - 脚本只接受 Android 当前槽为 `a`，不能装到任意槽；

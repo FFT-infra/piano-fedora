@@ -28,6 +28,9 @@ POWER_FILES = {
     "etc/dconf/db/local.d/00-power",
 }
 
+# finalizer 的桌面相关函数都按桌面档分派，GNOME 是默认档。
+GNOME = finalizer.piano_desktop.load("gnome", "44")
+
 
 def check_power_overlay_owner():
     """电源 overlay 由矩阵包拥有，运行时不再产出第二份同路径文件。
@@ -69,7 +72,8 @@ def check_power_overlay_owner():
         return base
 
     with tempfile.TemporaryDirectory() as temporary:
-        finalizer.verify_power_overlay(policy_root(Path(temporary) / "matrix", package))
+        finalizer.verify_power_overlay(
+            policy_root(Path(temporary) / "matrix", package), GNOME)
 
     configured = os.environ.get("PIANO_TEST_SUNUEFI")
     sun = Path(configured) if configured else ROOT / "build/sources/sunuefi"
@@ -78,7 +82,7 @@ def check_power_overlay_owner():
         with tempfile.TemporaryDirectory() as temporary:
             upstream = policy_root(Path(temporary) / "upstream", overlay)
             try:
-                finalizer.verify_power_overlay(upstream)
+                finalizer.verify_power_overlay(upstream, GNOME)
             except ValueError:
                 print("note: SunUEFI still auto-suspends; the matrix policy is the "
                       "reviewed divergence")
@@ -287,7 +291,8 @@ def check_service_staging_order(root):
                 assert unit.is_file(), "enable called before the unit was staged: " + name
             enabled.extend(command[2:])
 
-    def verify_power(root):
+    def verify_power(root, context):
+        assert context["desktop"] == "gnome", "this fixture is the GNOME power contract"
         for name in finalizer.POWER_OVERLAY_FILES:
             target = root / name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -296,6 +301,7 @@ def check_service_staging_order(root):
         profile.parent.mkdir(parents=True, exist_ok=True)
         profile.write_text("user-db:user\nsystem-db:local\n")
         dconf = root / "etc/dconf/db/local.d/00-power"
+        dconf.parent.mkdir(parents=True, exist_ok=True)
         policy = ("[org/gnome/settings-daemon/plugins/media-keys]\npower-static=['']\n"
                   "[org/gnome/settings-daemon/plugins/power]\npower-button-action='nothing'\n"
                   "sleep-inactive-ac-type='nothing'\nsleep-inactive-battery-type='nothing'\n"
@@ -304,13 +310,13 @@ def check_service_staging_order(root):
         dconf.write_text(policy)
         profile.write_text("user-db:user\n")
         try:
-            finalizer.verify_power_overlay(root)
+            finalizer.verify_power_overlay(root, GNOME)
         except ValueError as error:
             assert "does not include system-db:local" in str(error), error
         else:
             raise AssertionError("dconf profile without system-db:local was accepted")
         profile.write_text("user-db:user\nsystem-db:local\n")
-        finalizer.verify_power_overlay(root)
+        finalizer.verify_power_overlay(root, GNOME)
         for unsafe in (
                 policy.replace("sleep-inactive-ac-type='nothing'", "sleep-inactive-ac-type='suspend'"),
                 policy.replace("sleep-inactive-ac-type='nothing'", "# sleep-inactive-ac-type='nothing'"),
@@ -318,14 +324,15 @@ def check_service_staging_order(root):
                 policy + "lock-enabled=false\n"):
             dconf.write_text(unsafe)
             try:
-                finalizer.verify_power_overlay(root)
+                finalizer.verify_power_overlay(root, GNOME)
             except ValueError:
                 pass
             else:
                 raise AssertionError("unsafe or inactive GNOME policy was accepted: " + unsafe)
         dconf.write_text(policy)
 
-    namespace = {"root": root, "chroot": enable,
+    namespace = {"root": root, "chroot": enable, "context": GNOME,
+                 "piano_desktop": finalizer.piano_desktop,
                  "stage_piano_hardware_fixes": finalizer.stage_piano_hardware_fixes,
                  "stage_boot_diagnostics": finalizer.stage_boot_diagnostics,
                  "verify_power_overlay": verify_power}
@@ -382,12 +389,12 @@ def check_first_boot_ssh_key(root):
 
     # Running the hardware staging on an empty tree must not create one either.
     root.mkdir()
-    finalizer.stage_piano_hardware_fixes(root)
+    finalizer.stage_piano_hardware_fixes(root, GNOME)
     collector = root / "usr/bin/piano-collect-boot"
     collector.parent.mkdir(parents=True, exist_ok=True)
     collector.write_text("#!/bin/sh\n# packaged by piano-fedora-configs\n")
     collector.chmod(0o755)
-    finalizer.stage_boot_diagnostics(root)
+    finalizer.stage_boot_diagnostics(root, GNOME)
     seeded = [path for path in root.rglob("authorized_keys")]
     assert not seeded, "the finalized image carries pre-provisioned SSH keys: " + str(seeded)
     assert not (root / "root/.ssh").exists() and not (root / "home/piano/.ssh").exists()
@@ -425,7 +432,7 @@ def main():
         # write a second copy over the RPM-owned path, so it refuses a rootfs
         # that lacks it.
         try:
-            finalizer.stage_boot_diagnostics(root)
+            finalizer.stage_boot_diagnostics(root, GNOME)
         except ValueError:
             pass
         else:
@@ -434,7 +441,7 @@ def main():
         collector.write_text("#!/bin/sh\n# packaged by piano-fedora-configs\n")
         collector.chmod(0o755)
         packaged = collector.read_bytes()
-        staged = finalizer.stage_boot_diagnostics(root)
+        staged = finalizer.stage_boot_diagnostics(root, GNOME)
         assert "usr/bin/piano-collect-boot" in staged
         assert collector.read_bytes() == packaged, "the finalizer overwrote the packaged collector"
         gdm = root / "etc/systemd/system/gdm.service.d/20-piano-display.conf"
@@ -539,7 +546,7 @@ def check_piano_hardware_fixes(root):
     old_logind.write_text("[Login]\nHandlePowerKey=ignore\n")
     old_dconf.write_text("[org/gnome/desktop/session]\nidle-delay=uint32 0\n"
                          "[org/gnome/desktop/screensaver]\nlock-enabled=false\n")
-    staged = finalizer.stage_piano_hardware_fixes(root)
+    staged = finalizer.stage_piano_hardware_fixes(root, GNOME)
     clock_stamp = root / "var/lib/piano-clock/last"
     assert clock_stamp.is_file(), "fresh image has no usable offline clock floor"
     seed = int(clock_stamp.read_text().strip())
@@ -611,7 +618,7 @@ def check_modified_legacy_power_override_is_preserved(root):
     custom.write_text("[Login]\nHandlePowerKey=ignore\n# local admin note\n")
     generated.write_bytes(finalizer.LEGACY_POWER_OVERRIDES[generated.relative_to(root).as_posix()])
     try:
-        finalizer.stage_piano_hardware_fixes(root)
+        finalizer.stage_piano_hardware_fixes(root, GNOME)
     except ValueError as error:
         assert "was modified; preserve it for review" in str(error), error
     else:

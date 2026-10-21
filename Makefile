@@ -1,4 +1,4 @@
-.PHONY: test test-device-media plan plan-clean clean build-rpms release-bundle
+.PHONY: test test-device-media plan plan-desktop clean build-rpms release-bundle
 
 test:
 	python3 tests/check_sources.py
@@ -11,7 +11,6 @@ test:
 	python3 tests/check_links.py
 	python3 tests/check_readme_parity.py
 	python3 tests/check_document_scope.py
-	python3 tests/check_rootfs_plan.py
 	python3 tests/check_f2fs_image.py
 	python3 tests/check_f2fs_metadata.py
 	python3 tests/check_first_partition.py
@@ -49,6 +48,7 @@ test:
 	python3 tests/check_rootfs_finalize.py
 	python3 tests/check_default_password.py
 	python3 tests/check_clean_rootfs.py
+	python3 tests/check_desktop_profiles.py
 	python3 tests/check_package_ownership.py
 	python3 tests/check_flash_script_guard.py
 	python3 tests/check_first_boot_ssh_key.py
@@ -63,11 +63,12 @@ test-device-media:
 	python3 scripts/verify-device-media.py --output "$(MEDIA_OUTPUT)"
 
 RELEASEVER ?= 44
+DESKTOP ?= gnome
 plan:
-	python3 scripts/build-fedora-rootfs.py --plan --releasever $(RELEASEVER)
-
-plan-clean:
 	python3 scripts/build-clean-rootfs.py --plan --releasever $(RELEASEVER)
+
+plan-desktop:
+	python3 scripts/build-clean-rootfs.py --plan --releasever $(RELEASEVER) --desktop $(DESKTOP)
 
 clean:
 	rm -rf build

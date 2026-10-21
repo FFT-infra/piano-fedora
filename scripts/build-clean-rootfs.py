@@ -31,6 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from piano_artifacts import guest_resolve, safe_destination
+import piano_desktop
 RPMS_DEFAULT = ROOT / "out" / "rpms"
 PROFILES = ROOT / "scripts" / "profiles"
 DISTROS = ROOT / "build" / "clean-distros"
@@ -133,50 +134,66 @@ def inspect_rpm_repo(rpms_dir):
 
 
 def plan(releasever, desktop, rpms_dir, output=None):
-    if not releasever or not str(releasever).isdigit():
-        raise RootfsError(f"releasever must be numeric Fedora release, got {releasever!r}")
+    # 桌面差异（包集合、登录、服务、电源）全在 piano_desktop 里，这里只读
+    # 一份合并后的上下文。desktop 未知、字段缺失或不可构建的档位在这里就
+    # 报错，不会走到 dnf。releasever 与 desktop 缺省时由 product.json 给出；
+    # 显式传空值仍然拒绝，不猜一个版本号。
+    try:
+        context = piano_desktop.load(desktop, releasever)
+    except piano_desktop.DesktopError as exc:
+        raise RootfsError(str(exc)) from exc
+    if not context["profile"]["buildable"]:
+        raise RootfsError(
+            f"desktop {context['desktop']!r} is a placeholder with dnf_packages: null; "
+            "it has no install set and must not produce an image")
+    desktop = context["desktop"]
+    releasever = context["releasever"]
 
-    profile = load_json(PROFILES / "fedora.json")
-    desktops = load_json(PROFILES / "fedora-desktops.json")
-    if desktop not in desktops:
-        raise RootfsError(f"unknown desktop environment: {desktop}")
-
+    profile = context["base"]
     repo_info = inspect_rpm_repo(rpms_dir)
     base_pkgs = list(profile["base_packages"])
-    desktop_pkgs = list(desktops[desktop]["dnf_packages"])
-
-    # 移除被替换的原装包（如原版 iio-sensor-proxy 由 iio-sensor-proxy-ssc 替代）
-    filtered_desktop_pkgs = [p for p in desktop_pkgs if p != "iio-sensor-proxy"]
+    desktop_pkgs = piano_desktop.desktop_packages(context)
 
     # kernel-piano first: everything the device needs hangs off its modules.
-    all_packages = ([KERNEL_PACKAGE] + base_pkgs + filtered_desktop_pkgs
+    all_packages = ([KERNEL_PACKAGE] + base_pkgs + desktop_pkgs
                     + PIANO_PACKAGES + RUNTIME_PACKAGES)
     out_dir = Path(output or DISTROS / f"fedora-{releasever}-{desktop}").resolve()
-
-    # 镜像容量与 label 取自 product.json，和 ESP/首次分区规划共用同一份记录。
-    # 通用交付镜像用 8192 MiB 测试容量；本机目标容量由 prepare-install 扩容。
-    product = load_json(ROOT / "product.json") if (ROOT / "product.json").is_file() else {}
-    target = product.get("target", {})
+    artifacts = piano_desktop.artifact_names(context)
 
     return {
         "status": "PLAN_READY",
         "distro": "fedora",
         "releasever": str(releasever),
         "desktop": desktop,
-        "arch": profile.get("arch", "aarch64"),
-        "root_label": target.get("root_label", "PIANOROOT"),
-        "root_size_mib": 8192,
+        "arch": context["arch"],
+        "root_label": context["root_label"],
+        "root_size_mib": artifacts["root_size_mib"],
         "rpms_dir": str(Path(rpms_dir).resolve()),
         "repo_status": repo_info,
         "output": str(out_dir),
         "base_packages_count": len(base_pkgs),
-        "desktop_packages_count": len(filtered_desktop_pkgs),
+        "desktop_packages_count": len(desktop_pkgs),
         "piano_packages": PIANO_PACKAGES + RUNTIME_PACKAGES + [KERNEL_PACKAGE],
         "all_packages": all_packages,
         "total_packages_count": len(all_packages),
-        "display_manager": desktops[desktop].get("display_manager", "gdm"),
+        "artifact_names": artifacts,
+        "display_manager": _display_manager_summary(context),
+        "dnf_install_args": piano_desktop.dnf_install_args(context),
         "dnf_binary": dnf_binary(),
         "build_image": False,
+    }
+
+
+def _display_manager_summary(context):
+    """plan JSON 里的显示管理器摘要（不再是一个裸字符串）。"""
+    manager = context["profile"]["display_manager"]
+    if manager is None:
+        return None
+    return {
+        "unit": manager["unit"],
+        "package": manager["package"],
+        "autologin": manager["autologin"]["kind"],
+        "label": context["profile"]["label"],
     }
 
 
@@ -496,6 +513,11 @@ def require_local_installroot(out):
 def execute(plan_data):
     out = Path(plan_data["output"])
     root = out / "rootfs"
+    # 桌面上下文在 execute 里重新取一份：登录、服务、电源都由它派生。
+    try:
+        context = piano_desktop.load(plan_data["desktop"], plan_data["releasever"])
+    except piano_desktop.DesktopError as exc:
+        raise RootfsError(str(exc)) from exc
     out.mkdir(parents=True, exist_ok=True)
     require_local_installroot(out)
 
@@ -543,6 +565,9 @@ def execute(plan_data):
         "--setopt=install_weak_deps=False",
         "--setopt=tsflags=nodocs",
         "--nogpgcheck",
+        # 桌面档需要额外仓库（目前只有 Hyprland 档用到第三方 COPR）。
+        # plan JSON 里报的也是同一份列表，两处不会分叉。
+        *piano_desktop.dnf_install_args(context),
         "install", "-y",
         *packages
     ]
@@ -591,15 +616,11 @@ def execute(plan_data):
     # 2. 设置用户密码
     run_chroot(["/usr/sbin/chpasswd"], stdin_text=f"{DEFAULT_USER}:{DEFAULT_PASS}\n")
 
-    # 3. GDM 自动登录配置
-    gdm_conf = root / "etc" / "gdm" / "custom.conf"
-    gdm_text = f"[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin={DEFAULT_USER}\n"
-    if os.geteuid() != 0 and shutil.which("sudo"):
-        subprocess.run(["sudo", "mkdir", "-p", str(gdm_conf.parent)], check=True)
-        subprocess.run(["sudo", "tee", str(gdm_conf)], input=gdm_text, text=True, check=True, stdout=subprocess.DEVNULL)
-    else:
-        gdm_conf.parent.mkdir(parents=True, exist_ok=True)
-        gdm_conf.write_text(gdm_text, encoding="utf-8")
+    # 3. 自动登录：文件位置与内容由桌面档决定（GDM custom.conf / SDDM
+    #    autologin / greetd config.toml）。原来这里硬编码 GDM，加第二个桌面
+    #    就得在两个后端各改一处。
+    print(f"--> Staging {context['desktop']} autologin configuration...")
+    staged_login = piano_desktop.stage_login(root, context, DEFAULT_USER, sudo_aware=False)
 
     # 4. 屏蔽未适配的磁盘休眠目标，锁定为 deep 挂起
     for unit in ("hibernate.target", "hybrid-sleep.target", "suspend-then-hibernate.target"):
@@ -613,9 +634,10 @@ def execute(plan_data):
                 target_unit.unlink()
             target_unit.symlink_to("/dev/null")
 
-    # 5. 启用关键系统服务
+    # 5. 启用关键系统服务。显示管理器由桌面档提供，不在这个固定列表里。
     services_to_enable = [
-        "NetworkManager.service", "sshd.service", "gdm.service", "bluetooth.service",
+        "NetworkManager.service", "sshd.service", "bluetooth.service",
+        *piano_desktop.enable_units(context),
         "piano-touch.service", "piano-camerad.service", "uperf-linux.service",
         "piano-clock-restore.service", "piano-clock-save.timer",
         "piano-physical-platform.service", "piano-boot-request-autoconfig.service",
@@ -625,7 +647,36 @@ def execute(plan_data):
         try:
             run_chroot(["systemctl", "enable", service])
         except subprocess.CalledProcessError:
+            # 显示管理器没有单元就是一台起不来的机器，不能和其它单元一样
+            # 静默吞掉；其余单元缺了由 finalize 的必装包与本次审计兜底。
+            if service in piano_desktop.enable_units(context):
+                raise RootfsError(
+                    f"cannot enable the {context['desktop']} display manager: {service}")
             pass
+
+    # 显示依赖：显示管理器必须等面板真正就绪之后再起。
+    dropin = piano_desktop.display_dependency_dropin(context)
+    if dropin is not None:
+        dropin_path, dropin_text = dropin
+        target = root / dropin_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(dropin_text, encoding="utf-8")
+
+    # 电源策略：KDE 的 powerdevilrc 由这里落盘；GNOME 的 dconf 文件由
+    # piano-fedora-configs 这个 RPM 安装，构建器不写第二个写者；
+    # /etc/dconf/profile/user 同样由 dconf 包自带（已含 system-db:local）。
+    power = piano_desktop.power_files(context)
+    for relative, text in power.items():
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    if piano_desktop.dconf_profile_required(context):
+        profile_path = root / "etc" / "dconf" / "profile" / "user"
+        if not profile_path.is_file() or "system-db:local" not in {
+                line.strip() for line in profile_path.read_text().splitlines()}:
+            raise RootfsError(
+                "the installed dconf profile does not include system-db:local; "
+                "the GNOME power overlay would be ignored")
 
     # 根分区策略：/etc/fstab、/etc/piano/root-policy.json 与 udev 只读保护规则。
     # 旧流水线（build-image.yml）在 stage-rootfs-payload 之后调
@@ -681,6 +732,16 @@ def execute(plan_data):
     else:
         print("--> NOTE: no file_contexts found; skipping SELinux labeling")
 
+    # 桌面配方核对：登录单元、会话 .desktop、会话二进制、电源文件、显示依赖
+    # 都要真的在树里。这一步是"待核实项"的落地处——SDDM 的 Session= 值不靠
+    # 猜，树里没有 plasma.desktop 就在这里带路径报错。
+    print(f"--> Validating the {context['desktop']} profile against the assembled rootfs...")
+    try:
+        desktop_checks = piano_desktop.validate_against_rootfs(
+            root, context, require_enabled=False)
+    except piano_desktop.DesktopError as exc:
+        raise RootfsError(str(exc)) from exc
+
     # 执行审计
     print("--> Running post-assembly RPM provenance audit...")
     audit_res = audit_rootfs(root)
@@ -697,11 +758,12 @@ def execute(plan_data):
     # 于是“纯净装配链”从未真正出现在任何 release 里。
     image_res = None
     if plan_data.get("build_image"):
-        image_res = build_image(out, root, plan_data)
+        image_res = build_image(out, root, plan_data, context)
 
     manifest_data = {
         **plan_data,
         "audit": audit_res,
+        "desktop_validation": desktop_checks,
         "image": image_res,
         "status": "AUDIT_FAILED" if not audit_res["audit_passed"] else (
             "BUILT_IMAGED_AND_AUDITED" if image_res else "BUILT_AND_AUDITED")
@@ -710,7 +772,7 @@ def execute(plan_data):
     return manifest_data
 
 
-def build_image(out, root, plan_data):
+def build_image(out, root, plan_data, context):
     """把审计过的 rootfs 目录打成 F2FS raw 镜像与 .zst 压缩包。
 
     复用 scripts/build-f2fs-image.py，它已经实现“挂载真实 F2FS + tar 保属性
@@ -718,7 +780,8 @@ def build_image(out, root, plan_data):
     这里只负责选容量、调用与压缩，不重复实现导入逻辑。
     """
     size_mib = int(plan_data.get("root_size_mib") or 8192)
-    img = out / "pianoroot-fedora44-gnome-f2fs.img"
+    artifacts = piano_desktop.artifact_names(context)
+    img = out / artifacts["image"]
     # The name matters: package-release-bundle.sh reads root-image-manifest.json
     # from the image's directory to cross-check that the ESP kernel and the
     # rootfs modules are the same build. Writing only image-manifest.json left
@@ -756,7 +819,17 @@ def build_image(out, root, plan_data):
     kernel_release = installed_kernel_release(root)
     if kernel_release:
         record["kernel_release"] = kernel_release
-        manifest.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    # 桌面维度从这一层就要进记录：build-image 与 release 都靠它核对
+    # root 镜像和它声明的桌面档是不是同一份。
+    record["desktop"] = context["desktop"]
+    record["releasever"] = context["releasever"]
+    record["desktop_profile"] = {
+        "label": context["profile"]["label"],
+        "display_manager": _display_manager_summary(context),
+        "session_files": context["profile"]["session"]["session_files"],
+        "power_policy": context["profile"]["power_policy"]["kind"],
+    }
+    manifest.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     # Keep the historical filename as a copy so existing readers still work.
     (out / "image-manifest.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     return {
@@ -768,6 +841,7 @@ def build_image(out, root, plan_data):
         "zst_sha256": sha256(zst),
         "size_mib": size_mib,
         "kernel_release": kernel_release,
+        "desktop": context["desktop"],
         "verify": record.get("verify"),
         "status": record.get("status"),
     }
@@ -792,8 +866,8 @@ def installed_kernel_release(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--releasever", default="44", help="Fedora 发行版本号 (默认: 44)")
-    parser.add_argument("--desktop", default="gnome", help="桌面环境 (默认: gnome)")
+    parser.add_argument("--releasever", help="Fedora 发行版本号（默认读 product.json）")
+    parser.add_argument("--desktop", help="桌面档（默认读 product.json 的 target.desktop）")
     parser.add_argument("--rpms-dir", default=str(RPMS_DEFAULT), help="本地 RPM 仓库目录")
     parser.add_argument("--output", help="产物输出路径")
     parser.add_argument("--rootfs", help="用于 audit-only 的已安装 rootfs 路径")

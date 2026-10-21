@@ -1,5 +1,7 @@
 {
   "gnome": {
+    "label": "GNOME",
+    "buildable": true,
     "dnf_packages": [
       "@workstation-product-environment",
       "gnome-shell",
@@ -12,9 +14,30 @@
       "wireplumber",
       "iio-sensor-proxy"
     ],
-    "display_manager": "gdm"
+    "repos": [],
+    "exclude_packages": ["iio-sensor-proxy"],
+    "required_packages": ["gdm", "gnome-shell"],
+    "root_size_mib": 8192,
+    "display_manager": {
+      "unit": "gdm.service",
+      "package": "gdm",
+      "autologin": {"kind": "gdm-custom-conf"},
+      "dependency_dropin": {"unit": "gdm.service", "after": "piano-display.service"}
+    },
+    "session": {
+      "desktop_names": ["GNOME"],
+      "process_names": ["gnome-shell"],
+      "session_files": ["/usr/share/wayland-sessions/gnome.desktop"],
+      "bins": ["/usr/bin/gnome-shell"]
+    },
+    "power_policy": {
+      "kind": "dconf",
+      "source": "packages/piano-fedora-configs/etc/dconf/db/local.d/00-power"
+    }
   },
   "kde": {
+    "label": "KDE Plasma",
+    "buildable": true,
     "dnf_packages": [
       "@kde-desktop-environment",
       "plasma-desktop",
@@ -26,10 +49,43 @@
       "wireplumber",
       "iio-sensor-proxy"
     ],
-    "display_manager": "sddm"
+    "repos": [],
+    "exclude_packages": ["iio-sensor-proxy"],
+    "required_packages": ["sddm", "plasma-workspace"],
+    "root_size_mib": 8192,
+    "display_manager": {
+      "unit": "sddm.service",
+      "package": "sddm",
+      "autologin": {"kind": "sddm-autologin", "session": "plasma"},
+      "dependency_dropin": {"unit": "sddm.service", "after": "piano-display.service"}
+    },
+    "session": {
+      "desktop_names": ["KDE"],
+      "process_names": ["plasmashell", "kwin_wayland"],
+      "session_files": ["/usr/share/wayland-sessions/plasma.desktop"],
+      "bins": ["/usr/bin/plasmashell", "/usr/bin/startplasma-wayland"]
+    },
+    "power_policy": {
+      "kind": "kconfig",
+      "source": "scripts/profiles/desktops/kde/powerdevilrc",
+      "target": "etc/xdg/powerdevilrc"
+    }
   },
   "server": {
+    "label": "Server (no desktop)",
+    "buildable": true,
     "dnf_packages": [],
-    "display_manager": null
+    "repos": [],
+    "exclude_packages": [],
+    "required_packages": ["systemd"],
+    "root_size_mib": 4096,
+    "display_manager": null,
+    "session": {
+      "desktop_names": [],
+      "process_names": [],
+      "session_files": [],
+      "bins": []
+    },
+    "power_policy": {"kind": "logind-only"}
   }
 }

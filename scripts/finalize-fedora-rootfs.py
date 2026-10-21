@@ -8,12 +8,15 @@ import os
 import posixpath
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 from piano_artifacts import guest_resolve, inspect_kernel, safe_destination, safe_relative, sha256
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import piano_desktop
 
 # 上游 1b3c538 的默认登录策略：piano 用文档化默认口令，root 保持锁定、不加
 # NOPASSWD。口令只在 finalizer 定义一次，测试与 manifest proof 都引用它。
@@ -173,11 +176,9 @@ def prune_missing_manpage_links(root):
     return removed
 
 
-def stage_boot_diagnostics(root):
-    """Fedora 的 GDM 单元名不同于 Debian；复用上游相同的显示依赖。"""
+def stage_boot_diagnostics(root, context):
+    """显示、相机与电源诊断文件；显示依赖由桌面档给出，不写死 GDM。"""
     files = {
-        "etc/systemd/system/gdm.service.d/20-piano-display.conf":
-            "[Unit]\nRequires=piano-display.service\nAfter=piano-display.service\n",
         "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf":
             "[Unit]\nWants=piano-camera.service\nAfter=piano-camera.service\n"
             "StartLimitIntervalSec=60\nStartLimitBurst=3\n",
@@ -241,12 +242,22 @@ def stage_boot_diagnostics(root):
         target = safe_destination(root, name)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text)
+    # 显示依赖 drop-in：GDM 的 gdm.service.d 是 Debian 沿用的写法，KDE 的
+    # sddm.service 同理。单元名取自桌面档，不加第二个硬编码。
+    dropin = piano_desktop.display_dependency_dropin(context)
+    staged = list(files)
+    if dropin is not None:
+        dropin_path, dropin_text = dropin
+        target = safe_destination(root, dropin_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(dropin_text)
+        staged.append(dropin_path)
     # piano-collect-boot 由 piano-fedora-configs RPM 拥有，这里只核对在位，
     # 不再覆盖一份同路径的副本，否则 rpm 的文件归属与镜像内容会分叉。
     target = safe_destination(root, "usr/bin/piano-collect-boot")
     if not target.is_file() or not target.stat().st_mode & 0o111:
         raise ValueError("rootfs lacks the packaged collector: usr/bin/piano-collect-boot")
-    return sorted([*files, "usr/bin/piano-collect-boot", *stage_linux_debug_handoff(root)])
+    return sorted([*staged, "usr/bin/piano-collect-boot", *stage_linux_debug_handoff(root)])
 
 
 # 真机上逐条验过的平台修复。每一条都对应一个已经发生的故障，不是预防性配置。
@@ -342,12 +353,13 @@ ExecStart=/bin/sh -c 'semodule -l | grep -q "^piano_hardware" || semodule -i /us
 WantedBy=sysinit.target
 """
 
+# 所有桌面共用：电源键抓取、logind 默认动作。桌面专属的电源文件由
+# piano_desktop.power_required() 提供（GNOME dconf / KDE powerdevilrc / 无）。
 POWER_OVERLAY_FILES = (
     "usr/lib/piano/power-button",
     "usr/lib/systemd/user/piano-power-button.service",
     "etc/udev/rules.d/70-piano-power-button.rules",
     "etc/systemd/logind.conf.d/piano.conf",
-    "etc/dconf/db/local.d/00-power",
 )
 LEGACY_POWER_OVERRIDES = {
     "etc/systemd/logind.conf.d/10-piano-powerkey.conf":
@@ -393,8 +405,8 @@ def seed_clock_floor(root):
     return name
 
 
-def stage_piano_hardware_fixes(root):
-    """真机验证过的平台修复：时钟兜底与 SELinux 策略。"""
+def stage_piano_hardware_fixes(root, context):
+    """真机验证过的平台修复：时钟兜底、SELinux 策略与桌面电源策略。"""
     remove_legacy_power_overrides(root)
     scripts = {
         "usr/libexec/piano-clock-restore": PIANO_CLOCK_RESTORE,
@@ -411,12 +423,10 @@ def stage_piano_hardware_fixes(root):
         # 所以在 multi-user 阶段再校正一次：两条路都走，任一条生效即可。
         "etc/systemd/system/piano-clock-save.service.d/restore-first.conf":
             "[Service]\nExecStartPre=/usr/libexec/piano-clock-restore\n",
-        "etc/dconf/db/local.d/00-power":
-            "[org/gnome/settings-daemon/plugins/media-keys]\npower-static=['']\n"
-            "[org/gnome/settings-daemon/plugins/power]\npower-button-action='nothing'\n"
-            "sleep-inactive-ac-type='nothing'\nsleep-inactive-battery-type='nothing'\n"
-            "[org/gnome/desktop/session]\nidle-delay=uint32 300\n"
-            "[org/gnome/desktop/screensaver]\nlock-enabled=true\nlock-delay=uint32 0\n",
+        # 电源策略来自桌面档：KDE 的 powerdevilrc 由构建器落盘；GNOME 的
+        # dconf 文件由 piano-fedora-configs 这个 RPM 安装，这里不写第二份。
+        # 纯 logind 档位没有文件。原来这里写死一份 org.gnome.* 契约。
+        **piano_desktop.power_files(context),
     }
     for name, text in files.items():
         target = safe_destination(root, name)
@@ -430,32 +440,80 @@ def stage_piano_hardware_fixes(root):
     return sorted([*files, "usr/share/piano/selinux/piano_hardware.pp", seed_clock_floor(root)])
 
 
-def verify_power_overlay(root):
-    """Require the installed power/session payload and safe suspend defaults."""
+def verify_power_overlay(root, context):
+    """核对电源策略，按桌面档分派。
+
+    dconf 档逐键比对 GNOME 的键值（原来的严格契约原样保留）；kconfig 档
+    比对 powerdevilrc 的段落与动作值；logind-only 档没有桌面文件，只要求
+    共用那几份在位。
+    """
     for name in POWER_OVERLAY_FILES:
         if not guest_resolve(root, "/" + name).is_file():
             raise ValueError("installed power overlay is missing: " + name)
-    profile = guest_resolve(root, "/etc/dconf/profile/user")
-    if not profile.is_file() or "system-db:local" not in {
-            line.strip() for line in profile.read_text().splitlines()}:
-        raise ValueError("dconf user profile does not include system-db:local")
-    dconf = configparser.ConfigParser(interpolation=None)
-    required = {
-        "org/gnome/settings-daemon/plugins/media-keys": {"power-static": "['']"},
-        "org/gnome/settings-daemon/plugins/power": {
-            "power-button-action": "'nothing'", "sleep-inactive-ac-type": "'nothing'",
-            "sleep-inactive-battery-type": "'nothing'"},
-        "org/gnome/desktop/session": {"idle-delay": "uint32 300"},
-        "org/gnome/desktop/screensaver": {"lock-enabled": "true", "lock-delay": "uint32 0"},
-    }
-    try:
-        dconf.read_string(guest_resolve(root, "/etc/dconf/db/local.d/00-power").read_text())
-        if dconf.defaults() or any(
-                dconf.get(group, key, fallback=None) != value
-                for group, keys in required.items() for key, value in keys.items()):
-            raise ValueError("installed power overlay has unsafe or incomplete GNOME defaults")
-    except configparser.Error as error:
-        raise ValueError("installed power overlay has invalid GNOME defaults") from error
+    for name in piano_desktop.power_required(context):
+        if not guest_resolve(root, "/" + name).is_file():
+            raise ValueError("installed desktop power policy is missing: " + name)
+
+    kind = context["profile"]["power_policy"]["kind"]
+    if kind == "dconf":
+        profile = guest_resolve(root, "/etc/dconf/profile/user")
+        if not profile.is_file() or "system-db:local" not in {
+                line.strip() for line in profile.read_text().splitlines()}:
+            raise ValueError("dconf user profile does not include system-db:local")
+        dconf = configparser.ConfigParser(interpolation=None)
+        required = {
+            "org/gnome/settings-daemon/plugins/media-keys": {"power-static": "['']"},
+            "org/gnome/settings-daemon/plugins/power": {
+                "power-button-action": "'nothing'", "sleep-inactive-ac-type": "'nothing'",
+                "sleep-inactive-battery-type": "'nothing'"},
+            "org/gnome/desktop/session": {"idle-delay": "uint32 300"},
+            "org/gnome/desktop/screensaver": {"lock-enabled": "true", "lock-delay": "uint32 0"},
+        }
+        try:
+            dconf.read_string(guest_resolve(root, "/etc/dconf/db/local.d/00-power").read_text())
+            if dconf.defaults() or any(
+                    dconf.get(group, key, fallback=None) != value
+                    for group, keys in required.items() for key, value in keys.items()):
+                raise ValueError(
+                    "installed power overlay has unsafe or incomplete GNOME defaults")
+        except configparser.Error as error:
+            raise ValueError("installed power overlay has invalid GNOME defaults") from error
+        return
+
+    if kind == "kconfig":
+        # KDE 的分组写法是 [Profile][Group]，configparser 读进来是一整段
+        # section 名。逐段比对挂在 idle 上的动作：任何一段允许自动挂起或
+        # 把电源键交给桌面，都会在没有可靠唤醒的硬件上把机器睡过去。
+        # 读的是镜像里那份文件，不是仓库源文件——两者分叉正是要抓的东西。
+        powerdevil = configparser.ConfigParser(interpolation=None, strict=False)
+        for name in piano_desktop.power_required(context):
+            try:
+                powerdevil.read_string(guest_resolve(root, "/" + name).read_text())
+            except configparser.Error as error:
+                raise ValueError(
+                    f"installed desktop power policy is not valid INI: {name}") from error
+        required = {
+            "AutoSuspendAction": "0",
+            "PowerButtonAction": "0",
+            "LidAction": "0",
+        }
+        for profile_id in ("AC", "Battery", "LowBattery"):
+            section = f"{profile_id}][SuspendAndShutdown"
+            if not powerdevil.has_section(section):
+                raise ValueError(
+                    f"desktop power policy lacks [{profile_id}][SuspendAndShutdown]")
+            for key, value in required.items():
+                if powerdevil.get(section, key, fallback=None) != value:
+                    raise ValueError(
+                        f"desktop power policy leaves {key} unsafe in {profile_id}")
+        return
+
+    if kind == "logind-only":
+        # logind 的默认动作由 /etc/systemd/logind.conf.d/piano.conf 决定；
+        # 它已在共用清单里核对过存在。这里只确认没有桌面私有文件被漏掉。
+        return
+
+    raise ValueError(f"unknown power policy kind {kind!r}")
 
 
 def verify_fastrpc_daemon(root, runtime_meta):
@@ -625,10 +683,15 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     for name in ("rootfs", "kernel", "runtime", "mesa", "ffmpeg", "output"):
         ap.add_argument("--" + name, required=True, type=Path)
+    ap.add_argument("--desktop", help="桌面档；缺省读 product.json 的 target.desktop")
     args = ap.parse_args()
     root, kernel, runtime, output = [getattr(args, name).resolve() for name in ("rootfs", "kernel", "runtime", "output")]
     if not root.is_relative_to(ROOT / "build") or not root.is_dir() or os.geteuid() != 0:
         raise ValueError("finalize only a fresh build rootfs as root")
+    try:
+        context = piano_desktop.load(args.desktop)
+    except piano_desktop.DesktopError as error:
+        raise ValueError(str(error)) from error
     m, kernel_hash = inspect_kernel(kernel)
     runtime_meta = json.loads((runtime / "manifest.json").read_text())
     if runtime_meta["kernel_manifest_sha256"] != kernel_hash:
@@ -672,9 +735,9 @@ def main():
         raise ValueError("default piano login password was not applied")
     if not password_locked(shadow_password(root, "root")):
         raise ValueError("root account must stay locked")
-    gdm = root / "etc/gdm/custom.conf"
-    gdm.parent.mkdir(parents=True, exist_ok=True)
-    gdm.write_text("[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=piano\n")
+    # 自动登录的落盘文件由桌面档决定（GDM custom.conf / SDDM autologin /
+    # greetd config.toml），这里不再写死 GDM 那一种。
+    login_files = piano_desktop.stage_login(root, context, DEFAULT_PIANO_LOGIN, sudo_aware=False)
     # 解除早期对 qbootctl 的屏蔽，开机自动执行向 ABL 标记成功槽位，彻底根治 fastboot 掉入
     qboot_mask = root / "etc/systemd/system/qbootctl.service"
     if qboot_mask.is_symlink() and qboot_mask.readlink() == Path("/dev/null"):
@@ -685,10 +748,10 @@ def main():
         if not p.exists() and not p.is_symlink():
             p.symlink_to("/dev/null")
     # 先写入自建时钟/策略单元及依赖配置，再让 systemctl 查找并启用它们。
-    hardware_files = stage_piano_hardware_fixes(root)
-    diagnostic_files = stage_boot_diagnostics(root)
-    verify_power_overlay(root)
-    services = ["NetworkManager.service", "sshd.service", "gdm.service", "bluetooth.service",
+    hardware_files = stage_piano_hardware_fixes(root, context)
+    diagnostic_files = stage_boot_diagnostics(root, context)
+    verify_power_overlay(root, context)
+    services = ["NetworkManager.service", "sshd.service", "bluetooth.service",
                 "piano-display.service", "piano-touch.service", "piano-radio.service",
                 "piano-adsp.service", "piano-audio.service", "piano-keyboard.service",
                 "piano-cpufreq.service", "piano-video.service", "piano-camera.service",
@@ -698,11 +761,15 @@ def main():
                 "piano-clock-restore.service", "piano-clock-save.service",
                 "piano-clock-save.timer", "piano-selinux-policy.service",
                 "piano-first-boot-ssh-key.service",
-                "piano-pstore-save.service", "qbootctl.service"]
+                "piano-pstore-save.service", "qbootctl.service",
+                *piano_desktop.enable_units(context)]
     chroot(root, "systemctl", "enable", *services)
     chroot(root, "systemctl", "--global", "enable", "piano-power-button.service")
-    if shutil.which("dconf") or (root / "usr/bin/dconf").exists():
-        chroot(root, "dconf", "update")
+    # dconf 编译只有 dconf 档需要：KDE 与无桌面档没有这个库，跑它会把一份
+    # 空的系统库写进镜像。
+    if piano_desktop.dconf_profile_required(context):
+        if shutil.which("dconf") or (root / "usr/bin/dconf").exists():
+            chroot(root, "dconf", "update")
     # FastRPC 的默认 root/audio PD 自动启动与 piano 的顺序服务冲突。
     for unit in ("adsprpcd.service", "adsprpcd_audiopd.service", "adsprpcd-audiopd.service"):
         p = root / "etc/systemd/system" / unit
@@ -736,20 +803,31 @@ def main():
     packages = chroot(root, "rpm", "-qa", "--qf", "%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{ARCH}\n")
     output.mkdir(parents=True, exist_ok=True)
     (output / "packages.tsv").write_text("".join(sorted(packages.splitlines(keepends=True))))
-    # The clean matrix names the hardware packages explicitly. The aggregate
-    # runtime still provides librevm/crosvm/VA-API for older bundles, but it is
-    # no longer the only accepted owner of those payloads.
+    # clean 矩阵显式列出硬件包。聚合 runtime 仍为旧 bundle 提供
+    # librevm/crosvm/VA-API，但它不再是这些载荷的唯一来源。
     required = {"piano-fedora-configs", "alsa-xiaomi-piano", "piano-camera",
                 "xiaomi-piano-thp", "sm8750-video-accel", "uperf-linux",
                 "libssc", "iio-sensor-proxy-ssc", "xiaomi-piano-firmware",
-                "kernel-piano", "systemd", "gdm", "gnome-shell"}
+                "kernel-piano", "systemd", *piano_desktop.required_packages(context)}
     installed = {line.split("\t")[0] for line in packages.splitlines()}
     missing = required - installed
     if missing:
         raise ValueError("missing required installed packages: " + str(missing))
     if any(name.startswith("kernel-core") for name in installed):
         raise ValueError("stock Fedora kernel entered the device rootfs")
+    # 服务启用之后再核对一遍：登录单元、会话文件、会话二进制与电源策略
+    # 必须真的在最终树里，缺一样就带路径拒绝出镜像。
+    desktop_checks = piano_desktop.validate_against_rootfs(root, context)
     result = {"status": "FEDORA_DEVICE_ROOT_STAGED_NOT_BOOT_VERIFIED",
+              "desktop": context["desktop"], "releasever": context["releasever"],
+              "desktop_profile": {
+                  "label": context["profile"]["label"],
+                  "display_manager": context["profile"]["display_manager"],
+                  "session_files": context["profile"]["session"]["session_files"],
+                  "power_policy": context["profile"]["power_policy"]["kind"],
+                  "login_files": login_files,
+              },
+              "desktop_validation": desktop_checks,
               "kernel_release": m["kernel_release"], "kernel_commit": m["source_commit"],
               "kernel_manifest_sha256": kernel_hash, "root_policy": "LABEL=PIANOROOT",
               "root_fstype": "f2fs", "runtime_manifest_sha256": sha256(runtime / "manifest.json"),
