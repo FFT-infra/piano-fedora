@@ -42,6 +42,28 @@ boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。
 
 只读排查用的两个脚本不进流水线，直接在本机跑。`scripts/probe-device.sh` 取设备身份、槽位与 GPT。`scripts/verify-new-image.sh` 挂载镜像核对交接前提。两者都只读。
 
+## 真机取证脚本
+
+以下脚本连着平板跑，只在维护者机器上用，不进 Release 也不进 root 文件系统。
+`make test` 是离线契约测试，和这些分开。
+
+编解码验收：
+
+```sh
+make test-device-media MEDIA_HOST=<ssh 目标> MEDIA_OUTPUT=<新的证据目录> \
+  FIXTURE_DIR=<已有的 B 帧素材目录>   # 可选
+```
+
+脚本本体必须在设备上跑，它读 `/proc/interrupts` 判断 Iris 是否真的在干活。
+但目标镜像没有 `make`，`ffmpeg-free` 也没编译 `libx264`/`libx265`，所以
+`scripts/run-device-media.sh` 在主机侧准备素材、推进 `/tmp`、执行、再拉回证据。
+主机有 `libx264`/`libx265` 时素材当场生成，没有就用 `FIXTURE_DIR` 指向已有的一份。
+设备上的 `ffprobe` 把开源码流的 `pict_type` 报成 `?`，帧类型清单由主机算好一起带过去。
+`vainfo` 在目标镜像里不存在，那一步记为 skipped。
+
+COPR 仓库验收：`scripts/verify-copr-device.py`，在设备上跑，只读模式与
+`--install-test` 两种，见 [COPR 软件源](copr-repository.md#设备侧验证)。
+
 ## 本机 BOOT
 
 先确认当前原 BOOT 的完整摘要、槽位和系统版本。`prepare-device-boot.py` 用这些输入和同核心的 Actions 工具生成 `boot_android.img`、`boot_linux.img` 与 `boot-request.json`。默认目标是普通 Android。

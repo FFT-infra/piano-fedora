@@ -63,9 +63,11 @@ test:
 	python3 tests/check_manual_flash_flow.py
 	python3 tests/check_next_boot_helper.py
 
-# 在平板上执行，MEDIA_OUTPUT 必须是新的证据目录。
+# 从主机驱动平板上的编解码验收：素材在主机生成，脚本推到设备上执行，
+# 证据拉回 MEDIA_OUTPUT。MEDIA_HOST 是 ssh 目标。只在维护者机器上跑。
 test-device-media:
-	python3 scripts/verify-device-media.py --output "$(MEDIA_OUTPUT)"
+	test -n "$(MEDIA_OUTPUT)" && test -n "$(MEDIA_HOST)"
+	bash scripts/run-device-media.sh "$(MEDIA_HOST)" "$(MEDIA_OUTPUT)" $(FIXTURE_DIR)
 
 RELEASEVER ?= 44
 DESKTOP ?= gnome
