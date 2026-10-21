@@ -1,0 +1,57 @@
+# System-wide PowerDevil defaults for the piano KDE image.
+#
+# Mirrors the GNOME contract in
+# packages/piano-fedora-configs/etc/dconf/db/local.d/00-power, and for the same
+# reason: suspend/resume on this device is still unreliable, so nothing here
+# may put the machine to sleep on its own.
+#
+# Group layout and key names come from powerdevil 6.8.1's
+# PowerDevilProfileSettings.kcfg (groups are [$ProfileId][$Group], profile ids
+# are AC / Battery / LowBattery). Action values are PowerButtonAction from
+# daemon/powerdevilenums.h: NoAction=0, Sleep=1, Hibernate=2, Shutdown=8,
+# PromptLogoutDialog=16, LockScreen=32, TurnOffScreen=64.
+#
+# Power button and lid: the piano-power-button user service grabs the power key
+# and reads the hall lid switch itself, so both stay NoAction here (0), exactly
+# like power-button-action='nothing' on the GNOME side.
+# Idle: blank and lock after 300 s, matching idle-delay=uint32 300 and
+# lock-enabled=true.
+
+[AC][SuspendAndShutdown]
+AutoSuspendAction=0
+PowerButtonAction=0
+PowerDownAction=0
+LidAction=0
+SleepMode=1
+
+[AC][Display]
+DimDisplayWhenIdle=false
+TurnOffDisplayWhenIdle=true
+TurnOffDisplayIdleTimeoutSec=300
+LockBeforeTurnOffDisplay=true
+
+[Battery][SuspendAndShutdown]
+AutoSuspendAction=0
+PowerButtonAction=0
+PowerDownAction=0
+LidAction=0
+SleepMode=1
+
+[Battery][Display]
+DimDisplayWhenIdle=false
+TurnOffDisplayWhenIdle=true
+TurnOffDisplayIdleTimeoutSec=300
+LockBeforeTurnOffDisplay=true
+
+[LowBattery][SuspendAndShutdown]
+AutoSuspendAction=0
+PowerButtonAction=0
+PowerDownAction=0
+LidAction=0
+SleepMode=1
+
+[LowBattery][Display]
+DimDisplayWhenIdle=false
+TurnOffDisplayWhenIdle=true
+TurnOffDisplayIdleTimeoutSec=300
+LockBeforeTurnOffDisplay=true

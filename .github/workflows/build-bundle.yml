@@ -4,10 +4,14 @@ name: build-bundle
 on:
   workflow_dispatch:
     inputs:
-      root_image_artifact:
-        description: "完整集成镜像 artifact"
+      desktop:
+        description: "桌面档；root_image_artifact 留空时由它推导 root-image-<releasever>-<desktop>"
         required: false
-        default: "root-image-8192"
+        default: "gnome"
+      root_image_artifact:
+        description: "完整集成镜像 artifact；留空则按桌面档推导"
+        required: false
+        default: ""
       uefi_artifact:
         description: "UEFI artifact"
         required: false
@@ -42,12 +46,30 @@ jobs:
         id: src
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DESKTOP: ${{ inputs.desktop }}
           ROOT_IMAGE: ${{ inputs.root_image_artifact }}
           UEFI_ARTIFACT: ${{ inputs.uefi_artifact }}
           ROOT_RUN: ${{ inputs.root_image_run_id }}
           UEFI_RUN: ${{ inputs.uefi_run_id }}
         run: |
           set -euo pipefail
+          # 镜像 artifact 名由桌面档派生；显式给了名字也必须是这一档的派生命，
+          # 防止把 KDE 的树包进 GNOME 的 bundle。
+          releasever=$(python3 -c 'import json;print(json.load(open("product.json"))["target"]["releasever"])')
+          derived=$(python3 scripts/piano_desktop.py expand --desktop "$DESKTOP" --releasever "$releasever")
+          # 这三个 workflow 一次只做一个桌面档；`all` 属于 build-rootfs 的矩阵，
+          # 在这里会让派生名悄悄取第一行，所以直接拒绝。
+          test "$(python3 -c 'import json,sys;print(len(json.loads(sys.argv[1])))' "$derived")" -eq 1 || {
+            echo "desktop '$DESKTOP' expands to more than one entry; name a single desktop" >&2
+            exit 2
+          }
+          expected_image=$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])[0]["image_artifact"])' "$derived")
+          ROOT_IMAGE=${ROOT_IMAGE:-$expected_image}
+          test "$ROOT_IMAGE" = "$expected_image" || {
+            echo "root_image_artifact $ROOT_IMAGE is not the $DESKTOP image ($expected_image)" >&2
+            exit 2
+          }
+          echo "root_image_artifact=$ROOT_IMAGE" >> "$GITHUB_OUTPUT"
           args=()
           if [ -n "$ROOT_RUN" ]; then args+=(--run-id "$ROOT_RUN"); fi
           python3 scripts/resolve-artifact-run.py --workflow build-image.yml --artifact "$ROOT_IMAGE" --output-key root_run "${args[@]}"
@@ -57,7 +79,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: ${{ inputs.root_image_artifact }}
+          name: ${{ steps.src.outputs.root_image_artifact }}
           path: build/in/image
           run-id: ${{ steps.src.outputs.root_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -65,6 +87,7 @@ jobs:
       - name: Require one integrated image source record
         env:
           ROOT_RUN: ${{ steps.src.outputs.root_run }}
+          DESKTOP: ${{ inputs.desktop }}
         run: |
           set -euo pipefail
           test "$(find build/in/image -maxdepth 1 -type f -name 'source-runs.json' | wc -l)" -eq 1
@@ -78,6 +101,11 @@ jobs:
           assert not missing, f"integrated image record lacks source runs: {missing}"
           assert record["image_run"] == os.environ["ROOT_RUN"], (
               f"image_run {record['image_run']} != resolved build-image run {os.environ['ROOT_RUN']}")
+          # 镜像里的桌面档必须与这次 bundle 的输入一致：拿错档位的镜像
+          # （例如 KDE 的 root 配 GNOME 的输入）在这里就停下。
+          assert record.get("desktop") == os.environ["DESKTOP"], (
+              f"image was assembled for desktop {record.get('desktop')!r}, "
+              f"not {os.environ['DESKTOP']!r}")
           print("OK: integrated image source runs:", {name: record[name] for name in required})
           PY
 
@@ -184,6 +212,7 @@ jobs:
         env:
           UEFI_RUN: ${{ steps.src.outputs.uefi_run }}
           ROOT_RUN: ${{ steps.src.outputs.root_run }}
+          DESKTOP: ${{ inputs.desktop }}
         run: |
           set -euo pipefail
           mkdir -p bundle
@@ -216,6 +245,7 @@ jobs:
           path = Path('bundle/source-runs.json')
           record = json.loads(path.read_text())
           record.update(uefi_run=os.environ['UEFI_RUN'], image_run=os.environ['ROOT_RUN'],
+                        desktop=os.environ['DESKTOP'],
                         bundle_source_commit=os.environ['GITHUB_SHA'])
           pins = json.loads(Path('sources.lock.json').read_text())['sources']
           record['dtc_commit'] = pins['dtc']['commit']

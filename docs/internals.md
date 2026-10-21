@@ -13,7 +13,8 @@ host-check (build_piano_rpms=true, kernel_run_id=...)
   └─ build-piano-rpms.yml (workflow_call)
        └─ piano-rpms
 
-build-rootfs (piano_rpms_run_id=host-check run)
+build-rootfs (desktop=all, piano_rpms_run_id=host-check run)
+  └─ 按 profile 展开矩阵，每档一棵 rootfs
   └─ /usr/lib/modules/<release> 由 kernel-piano RPM 安装
 
 build-image
@@ -51,7 +52,7 @@ boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。
 
 ## 实际首次安装
 
-以下命令是 PR 真机验收的唯一主流程。所有材料必须来自同一条新流水线。当前已经启动的 GNOME、历史镜像和热修复都不算通过。
+以下命令是 PR 真机验收的唯一主流程。所有材料必须来自同一条新流水线。已经跑着的系统、历史镜像和热修复都不算通过。
 
 自动化的破坏性步骤（`install-f2fs.py apply`）与手动分区做同一件事。手动分区、刷写与回滚的逐条命令在[安装指南](installation.md)第四节和三之二节。
 
@@ -62,11 +63,20 @@ boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。
 ```text
 build-kernel run
 host-check / build-piano-rpms run
-build-rootfs run
-build-image run
+build-rootfs run（rootfs-<rel>-<desktop>）
+build-image run（root-image-<rel>-<desktop>）
 build-bundle run（deploy-bundle）
 prepare-install run（root-install，bundle_run 必须等于上面的 build-bundle run）
 ```
+
+多档桌面时每档各有一对 build-bundle 与 prepare-install run，`release.yml` 的 `desktop_runs` 逐档登记：
+
+```sh
+gh workflow run release.yml -f tag=<tag> \
+  -f desktop_runs="gnome=<bundle>:<prepare>,kde=<bundle>:<prepare>,niri=<bundle>:<prepare>,hyprland=<bundle>:<prepare>"
+```
+
+每档独立走身份、状态与提交绑定校验，平台资产四份逐字节比对后只发一份。不带 `desktop_runs` 时按 `desktop` 单档发布，行为与多桌面之前一致。单档验收也要确认 rootfs、镜像、bundle 与 root-install 四处的 desktop 字段一致，混档会在写设备之前被拒。
 
 平板先完整启动到 Android，开启 USB 调试并确认 `sys.boot_completed=1`：
 
@@ -220,14 +230,14 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
 
 1. 同一次新流水线产出的 `deploy-bundle` 和 `root-install` 已记录 run ID 与摘要。
 2. 从原始 GPT/UFS 开始完成首次分区、显式擦除 userdata、Android 首次开机。
-3. Slot A 冷启动进入 GNOME 桌面，不是热修复或历史镜像启动。
-4. 完整重启一次后仍能进入 GNOME，且 `systemctl --failed` 为空。
+3. Slot A 冷启动进入所选桌面档（`gnome`、`kde`、`niri` 或 `hyprland`），不是热修复或历史镜像启动。
+4. 完整重启一次后仍能进入同一档，且 `systemctl --failed` 为空。
 5. Android→Linux、Linux→Android 和原厂 Recovery 都完成，保存屏幕、命令输出、
    `uname -r`、`/usr/lib/modules/`、F2FS 挂载与分区容量证据。
 
 任一项失败都不能写成“设备验收通过”。构建或离线测试通过只记为 CI 证据。证据格式见[安装指南的真机验收](installation.md#真机验收清单)。
 
-设备热修复替代不了发布资产测试。PR 最终必须从原始 GPT/UFS 布局开始，用流水线重新生成的 rootfs 与 ESP 完成冷启动、GNOME 桌面和重启复现。
+设备热修复替代不了发布资产测试。PR 最终必须从原始 GPT/UFS 布局开始，用流水线重新生成的 rootfs 与 ESP 完成冷启动、进入所选桌面和重启复现。
 
 `fastboot erase userdata` 是首次安装的必经写入，不能省略。`plan` 会检查 `/data` 的 formattable 合同，但 AOSP `fs_mgr` 只在 `wiped`、或元数据加密关闭且 `!is_fs_valid` 时自动格式化。缩短 GPT 本身不会清掉旧的 F2FS 超级块。
 
@@ -244,8 +254,9 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
 2. **守护进程规范化**：`xiaomi-piano-thp`、`piano-camera`、`uperf-linux`、`libssc`
    的打包定义入库，`scripts/build-rpms.sh` 能在本机或容器里跑完整的 rpmbuild。
 3. **纯净 DNF 装配链**：`scripts/build-clean-rootfs.py` 从本地 RPM 源直接装配 F2FS
-   镜像，替掉旧的 finalize 注入路径。`tests/check_clean_rootfs.py` 与 `make plan-clean`
-   校验镜像里的文件全部归属 RPM 数据库。
+   镜像，替掉旧的 finalize 注入路径。`tests/check_clean_rootfs.py` 与 `make plan`
+   校验镜像里的文件全部归属 RPM 数据库；`make plan-desktop DESKTOP=kde` 打印
+   另一档的装配计划。
 4. **安装链**：`flash-linux.sh` 与 `flash-linux.bat` 带设备身份、分区容量、
    摘要校验；安装文档同时保留不用脚本的手动路径。以下能力尚未具备：
    - 脚本只接受 Android 当前槽为 `a`，不能装到任意槽；

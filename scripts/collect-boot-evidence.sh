@@ -33,13 +33,24 @@ if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     run systemctl is-system-running
     run systemctl --failed --no-pager
     run systemctl list-jobs --no-pager
-    for unit in graphical.target display-manager.service gdm.service piano-display.service piano-touch.service piano-camera.service piano-camerad.service; do
+    # 显示管理器按镜像里实际启用的那个收集。镜像现在有五档桌面
+    # （GNOME/KDE/niri/Hyprland/server），写死 gdm.service 在其余档位上
+    # 只会得到 "could not be found"，真正的会话问题反而看不到。
+    units='graphical.target display-manager.service piano-display.service piano-touch.service piano-camera.service piano-camerad.service'
+    for unit in gdm.service sddm.service greetd.service; do
+        [ ! -e "/usr/lib/systemd/system/$unit" ] || units="$units $unit"
+    done
+    for unit in $units; do
         run systemctl show "$unit" -p ActiveState -p SubState -p Result -p ExecMainStatus -p FragmentPath -p DropInPaths
     done
     if command -v journalctl >/dev/null 2>&1; then
         section journal
-        run journalctl -b --no-pager -n 160 -u gdm.service -u piano-display.service -u piano-camerad.service
+        journal_args=
+        for unit in gdm.service sddm.service greetd.service; do
+            [ ! -e "/usr/lib/systemd/system/$unit" ] || journal_args="$journal_args -u $unit"
+        done
+        run journalctl -b --no-pager -n 160 $journal_args -u piano-display.service -u piano-camerad.service
     fi
 fi
 section evidence_boundary
-printf 'Read-only report. Backlight, cursor, Fastboot OKAY and active services alone do not prove GPU acceleration or a GNOME session.\n'
+printf 'Read-only report. Backlight, cursor, Fastboot OKAY and active services alone do not prove GPU acceleration or a working desktop session.\n'

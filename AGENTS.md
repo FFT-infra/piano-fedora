@@ -16,8 +16,10 @@
 | --- | --- | --- |
 | `sources.lock.json` | 上游是谁、锁定在哪个 commit | 只列实际消费的上游 |
 | `product.json` | 要构建什么 | 发行版、文件系统、尺寸、分区标签 |
-| `scripts/build-fedora-rootfs.py` | Fedora 后端 | plan 与 execute 两条路径 |
-| `scripts/profiles/` | 发行版与桌面配方 | base 包、dnf 选项、桌面包组 |
+| `scripts/build-clean-rootfs.py` | Fedora 装配后端 | plan / execute / audit 三条路径 |
+| `scripts/piano_desktop.py` | 桌面差异解释器 | 登录、服务、包集合、电源策略与产物名 |
+| `scripts/release-assets.py` | Release 资产名 | 哪些四档共用、哪些按桌面加 `-<desktop>` |
+| `scripts/profiles/` | 发行版与桌面配方 | base 包、dnf 选项、桌面包组与电源文件 |
 | `tests/` | 离线检查 | `make test` 跑全部 |
 | `docs/architecture.md` | 组件边界与阶段计划 | 分工、前提、本机约束 |
 | `.github/workflows/` | 主机侧 CI | 不接触设备 |
@@ -25,6 +27,7 @@
 ## 硬规则
 
 - 上游不 fork。SunUEFI 按 `sources.lock.json` 的 commit 取用；本仓库的改动走自有脚本或补丁。
+- 桌面差异只出现在 `scripts/profiles/`、`scripts/piano_desktop.py` 与桌面运行时探测里。其他层（workflow、发布、安装器）只消费派生出来的名字与字段，不手写桌面列表。
 - 固件、校准数据、密钥不入库。
 - 证据分层。作者记录、构建通过、设备可用是三件事，不互相代替。
 - 未定的值留 null 并让工具报错，不猜。`product.json` 里的 null 就是待定项。
@@ -35,7 +38,8 @@
 
 ```sh
 make test                  # 全部离线检查
-make plan RELEASEVER=44    # 打印 Fedora rootfs 构建计划
+make plan RELEASEVER=44    # 打印 Fedora rootfs 构建计划（默认桌面档）
+make plan-desktop DESKTOP=kde RELEASEVER=44   # 另一档的装配计划
 ```
 
 ## 长构建

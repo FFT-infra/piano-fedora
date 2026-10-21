@@ -31,7 +31,7 @@
 回 `Device does not support fetch command`，宿主上留下一个 0 字节读回文件。
 `sunuefi_esp` 分区也比镜像大（537899008 对 536870912 字节），即使换了支持
 `fetch` 的引导器，整份哈希也不会等于镜像摘要。读回只能作辅助证据，刷写正确
-与否最终以启动后的 `uname -r`、`findmnt /` 和 GNOME 桌面为准。
+与否最终以启动后的 `uname -r`、`findmnt /` 和进入所选桌面为准。
 
 `boot_a` 的读回可以直接读分区前 4 KiB 与镜像内的 `SUNUEFI-NEXTv1` 请求页判断：
 首块是 `ANDROID!` 包装头，请求页的目标与 generation 和 `device-boot` 清单一致。

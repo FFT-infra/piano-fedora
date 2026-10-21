@@ -5,7 +5,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-DEFAULT_IMG="$REPO_ROOT/build/clean-distros/fedora-44-gnome/pianoroot-fedora44-gnome-f2fs.img"
+# 默认镜像由桌面档生成，不手写桌面名。PIANO_DESKTOP 缺省 gnome，
+# PIANO_RELEASEVER 缺省读 product.json。
+PIANO_DESKTOP="${PIANO_DESKTOP:-gnome}"
+PIANO_RELEASEVER="${PIANO_RELEASEVER:-$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["target"]["releasever"])' "$REPO_ROOT/product.json")}"
+DEFAULT_IMG="$REPO_ROOT/$(python3 "$SCRIPT_DIR/piano_desktop.py" images \
+    --desktop "$PIANO_DESKTOP" --releasever "$PIANO_RELEASEVER" | cut -f2)"
 
 IMG="${1:-$DEFAULT_IMG}"
 MNT="${2:-/mnt/piano-verify-new}"

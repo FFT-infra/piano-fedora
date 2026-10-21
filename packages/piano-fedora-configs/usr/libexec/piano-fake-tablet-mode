@@ -1,12 +1,12 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-2.0-only
-# Expose SW_TABLET_MODE to GNOME Mutter for auto-rotation and tablet gestures
+# Expose SW_TABLET_MODE to the running desktop (Mutter/KWin) for auto-rotation
+# and tablet gestures.
 
 import os
 import signal
 import subprocess
 import sys
-import threading
 import time
 
 import evdev
@@ -14,10 +14,10 @@ from evdev import UInput, ecodes
 
 POLL_SEC = 0.2
 USER_SHELL_DELAY_TICKS = 25
-UINPUT_MIN_UID = 1000
-NOBODY_UID = 65534
-GDM_CMD_ARG = b"--mode=gdm"
-SHELL_COMM = b"gnome-shell"
+GREETER_USERS = ("gdm", "sddm", "greetd", "lightdm")
+# 会话的类型。wayland 与 x11 都算"桌面已经起来"；tty 是文本登录，不算。
+GRAPHICAL_TYPES = ("wayland", "x11", "mir")
+GRAPHICAL_CLASSES = ("user", "greeter")
 
 _ui = None
 _stopping = False
@@ -46,33 +46,49 @@ def set_tablet_mode(enabled):
         _ui.syn()
 
 
-def graphical_user_shell_running():
+def graphical_user_session_running():
+    """是否有非 greeter 用户的图形会话处于活动状态。
+
+    原来只扫 `gnome-shell` 进程，换上 KDE / niri / Hyprland 后这条判断永远
+    为假，SW_TABLET_MODE 就再也不会打开。改成问 logind：`ListSessions` 给出
+    每个会话的 Id / User / Class / Type，`ShowSession` 给出 Active。只看
+    user 类、Type 为 wayland/x11 且 Active=yes 的会话，greeter 用户排除。
+    没有 logind（或没起来）时返回 False，不抛异常。
+    """
     try:
-        iterator = os.scandir("/proc")
-    except OSError:
+        listing = subprocess.run(
+            ["loginctl", "list-sessions", "--no-legend", "--no-pager"],
+            capture_output=True, text=True, timeout=4)
+    except (OSError, subprocess.TimeoutExpired):
         return False
-    with iterator:
-        for entry in iterator:
-            if not entry.name.isdigit():
-                continue
-            try:
-                st = entry.stat()
-                with open(f"/proc/{entry.name}/comm", "rb") as f:
-                    comm = f.read().strip()
-            except (FileNotFoundError, PermissionError):
-                continue
-            if st.st_uid < UINPUT_MIN_UID or st.st_uid == NOBODY_UID:
-                continue
-            if comm != SHELL_COMM:
-                continue
-            try:
-                with open(f"/proc/{entry.name}/cmdline", "rb") as f:
-                    cmdline = f.read()
-            except (FileNotFoundError, PermissionError):
-                continue
-            if GDM_CMD_ARG in cmdline:
-                continue
-            return True
+    if listing.returncode != 0:
+        return False
+    for line in listing.stdout.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        session_id = fields[0]
+        try:
+            shown = subprocess.run(
+                ["loginctl", "show-session", session_id,
+                 "-p", "Name", "-p", "User", "-p", "Class", "-p", "Type",
+                 "-p", "Active"],
+                capture_output=True, text=True, timeout=4)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if shown.returncode != 0:
+            continue
+        values = dict(
+            line.split("=", 1) for line in shown.stdout.splitlines() if "=" in line)
+        if values.get("Active") != "yes":
+            continue
+        if values.get("Class") not in GRAPHICAL_CLASSES:
+            continue
+        if values.get("Type") not in GRAPHICAL_TYPES:
+            continue
+        if values.get("Name") in GREETER_USERS:
+            continue
+        return True
     return False
 
 
@@ -109,13 +125,13 @@ def main():
         log("no physical SW_LID found, managing virtual SW_TABLET_MODE")
 
     set_tablet_mode(False)
-    log("SW_TABLET_MODE=OFF; waiting for graphical user shell")
+    log("SW_TABLET_MODE=OFF; waiting for a graphical user session")
 
     shell_ticks = 0
     enabled = False
     try:
         while not _stopping:
-            if graphical_user_shell_running():
+            if graphical_user_session_running():
                 if shell_ticks < USER_SHELL_DELAY_TICKS:
                     shell_ticks += 1
                 if not enabled and shell_ticks == USER_SHELL_DELAY_TICKS:
@@ -127,7 +143,7 @@ def main():
                 if enabled:
                     set_tablet_mode(False)
                     enabled = False
-                    log("SW_TABLET_MODE=OFF; graphical user shell exited")
+                    log("SW_TABLET_MODE=OFF; graphical user session exited")
             time.sleep(POLL_SEC)
     finally:
         if enabled:
