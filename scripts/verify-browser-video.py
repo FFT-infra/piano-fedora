@@ -22,6 +22,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import time
@@ -143,9 +144,20 @@ def probe(command, source, seconds, user_data):
         time.sleep(0.5)
     after = iris_interrupts()
     holders = video_holders()
-    subprocess.run(['pkill', '-f', f'user-data-dir={user_data}'], check=False)
-    subprocess.run(['pkill', '-f', f'profile={user_data}'], check=False)
-    process.wait(timeout=10)
+    # 按进程组终止。用 pkill -f <profile 路径> 会连检查脚本自己一起匹配上，
+    # 因为脚本的命令行里也有同一个路径。
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait(timeout=5)
     return {
         'command': argv,
         'iris_interrupts': after - before,
