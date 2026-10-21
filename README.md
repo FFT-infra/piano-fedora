@@ -51,7 +51,7 @@
 
 1. 解锁 Bootloader，准备好 `fastboot`。
 2. 原始 GPT 的设备先按[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)分区、擦除 `userdata`、让 Android 首次开机。**没有这一步，一键脚本不能运行。**
-3. 从 [Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh`。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle` 与该 run 派生的 `prepare-install` 的 `root-install`，不要混用不同 run 的资产。
+3. 从 [Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh --desktop <档位>`（Release 只有一档时可省略）。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle` 与该 run 派生的 `prepare-install` 的 `root-install`，不要混用不同 run 的资产。
 4. 按[安装指南第三节](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本)整理暂存目录：Release 的 `piano-installer-<tag>.zip` 里有刷写脚本；从源码构建时把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat` 放进同一层。
 
    刷写前还要用 Release 的 `piano-boot-tools-<tag>.tar.zst` 在本机生成一次 `device-boot/boot_linux.img`。它由这台平板自己的原厂 BOOT 重打包而成，通用产物的 `boot_sunuefi.img` 不能顶替。脚本把当前目录当作暂存目录，不会从仓库里找镜像。
