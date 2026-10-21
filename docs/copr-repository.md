@@ -2,7 +2,7 @@
 
 设备装好 Fedora 后，用户态包（配置、固件、相机、触控、传感器、VA-API、调度器）可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
 
-**当前状态：源还没建起来。** 发布链的 dry-run 已通过，真实发布从未执行。仓库 secrets 里没有 `COPR_LOGIN` 与 `COPR_TOKEN`，COPR 上的 `fft-infra` 账号和 `piano-fedora` 项目都不存在（`api_3/user` 与 `api_3/project` 都返回 404）。`piano-fedora-configs` 随包带出的 `.repo` 因此指向一个 404 地址，设备上 `dnf upgrade` 只会得到 `skip_if_unavailable=True` 下的静默跳过。
+**当前状态：项目还没建起来。** 发布链的 dry-run 已通过，真实发布从未执行。COPR 账号是 `xinyang26`，`xinyang26/piano-fedora` 项目尚未创建（`api_3/project` 返回 does not exist）。仓库 secrets 里没有 `COPR_LOGIN` 与 `COPR_TOKEN`。`piano-fedora-configs` 随包带出的 `.repo` 已经指向这个地址，项目建好前设备上 `dnf upgrade` 只会得到 `skip_if_unavailable=True` 下的静默跳过。
 
 下面写的是建成之后的流程，不是现在可用的能力。在设备上核对现状用 `scripts/verify-copr-device.py`，脚本的判定与本节写的一致。
 
@@ -50,16 +50,16 @@ Fedora 官方 COPR 实例没有启用二进制 RPM 上传。运行中实例的 A
      -f execute=true
    ```
 
-   需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`。脚本幂等创建项目 `fft-infra/piano-fedora`，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。任一 `failed` 或 `canceled` 都让整个步骤失败。
+   需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`。脚本幂等创建项目 `xinyang26/piano-fedora`，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。任一 `failed` 或 `canceled` 都让整个步骤失败。
 
-   这两项 secrets 尚未配置，因此这一步在仓库里从未执行过。唯一一次 `publish-copr` run（39248465786）只跑了第 2 步的校验，`publish` job 是 skipped。要启用这条源，先申请 COPR 账号并创建项目，再把凭据加进仓库 secrets。
+   这两项 secrets 尚未配置，因此这一步在仓库里从未执行过。最近一次 dry-run（39537510967）通过了第 2 步的全部校验，`publish` job 是 skipped。要启用这条源，先在 COPR 上创建 `xinyang26/piano-fedora` 项目，再把 `https://copr.fedorainfracloud.org/api/` 生成的 `login` 与 `token` 加进仓库 secrets。API token 有效 180 天，过期后重新生成并更新 secret。
 
 ## 启用仓库
 
 `piano-fedora-configs` 已经带上 `/etc/yum.repos.d/piano-fedora-copr.repo`：
 
 ```
-[copr:copr.fedorainfracloud.org:fft-infra:piano-fedora]
+[copr:copr.fedorainfracloud.org:xinyang26:piano-fedora]
 gpgcheck=1
 repo_gpgcheck=0
 exclude=kernel-piano*
@@ -85,7 +85,7 @@ rpm -q gpg-pubkey --qf '%{SUMMARY}\n' | grep -i copr
 dnf list --showduplicates kernel-piano
 
 # 停用仓库
-sudo dnf config-manager setopt copr:copr.fedorainfracloud.org:fft-infra:piano-fedora.enabled=0
+sudo dnf config-manager setopt copr:copr.fedorainfracloud.org:xinyang26:piano-fedora.enabled=0
 
 # 回滚单个包到发行版版本
 sudo dnf downgrade --repo fedora piano-fedora-configs

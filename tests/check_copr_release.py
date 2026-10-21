@@ -141,12 +141,14 @@ def test_failed_run_rejected(module, monkeypatch):
 
 
 def test_copr_config_is_private_and_removed(module, tmp, monkeypatch):
-    monkeypatch.setenv("COPR_LOGIN", "fft-infra")
+    monkeypatch.setenv("COPR_LOGIN", "api-login-hash")
     monkeypatch.setenv("COPR_TOKEN", "secret-token-value")
     path = tmp / "copr.conf"
-    module.write_copr_config(path)
+    module.write_copr_config(path, "xinyang26")
     assert path.stat().st_mode & 0o777 == 0o600
     text = path.read_text()
+    assert "login = api-login-hash" in text
+    assert "username = xinyang26" in text
     assert "secret-token-value" in text
     path.unlink()
     assert not path.exists()
@@ -155,7 +157,7 @@ def test_copr_config_is_private_and_removed(module, tmp, monkeypatch):
 def test_missing_credentials(module, monkeypatch):
     monkeypatch.delenv("COPR_LOGIN", raising=False)
     monkeypatch.delenv("COPR_TOKEN", raising=False)
-    expect_error(module, lambda: module.write_copr_config("/tmp/never-written.conf"),
+    expect_error(module, lambda: module.write_copr_config("/tmp/never-written.conf", "xinyang26"),
                  "COPR_LOGIN and COPR_TOKEN")
 
 
@@ -175,7 +177,7 @@ def test_project_create_is_idempotent(module, tmp):
     original = module.run_cli
     module.run_cli = run_cli
     try:
-        state = module.ensure_project("copr-cli", tmp / "conf", "fft-infra/piano-fedora")
+        state = module.ensure_project("copr-cli", tmp / "conf", "xinyang26/piano-fedora")
     finally:
         module.run_cli = original
     assert state == "exists"
@@ -210,7 +212,7 @@ def test_repo_file_contract():
     assert "gpgcheck=1" in text
     assert "repo_gpgcheck=0" in text
     assert "exclude=kernel-piano*" in text
-    assert "download.copr.fedorainfracloud.org/results/fft-infra/piano-fedora/" in text
+    assert "download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/" in text
     assert "gpgkey=" in text and "pubkey.gpg" in text
     # The file must actually be packaged, otherwise the repo never reaches a
     # system built from these RPMs.
@@ -248,7 +250,7 @@ def test_device_verifier_contract():
     assert "kernel-piano" in text
     # It reads the same repo id the shipped .repo defines.
     repo = REPO_FILE.read_text()
-    assert "fft-infra/piano-fedora" in text and "fft-infra/piano-fedora" in repo
+    assert "xinyang26/piano-fedora" in text and "xinyang26/piano-fedora" in repo
     # exclusions and signature policy must be asserted, not assumed.
     for token in ("exclude=kernel-piano*", "gpgcheck=1", "repo_gpgcheck=0"):
         assert token in repo

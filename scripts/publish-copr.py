@@ -167,8 +167,13 @@ def copr_cli():
     return binary
 
 
-def write_copr_config(path):
-    """从 secrets 写一份临时 copr 配置，权限 0600，退出时删除。"""
+def write_copr_config(path, username):
+    """从 secrets 写一份临时 copr 配置，权限 0600，退出时删除。
+
+    `login` 是 API 登录名（哈希），`username` 是 FAS 用户名。copr-cli
+    不带参数执行 `list` 时按 `username` 查项目，两者混用会让已经建好的
+    项目在下一次发布时看起来不存在。
+    """
     login = os.environ.get("COPR_LOGIN")
     token = os.environ.get("COPR_TOKEN")
     if not login or not token:
@@ -177,7 +182,7 @@ def write_copr_config(path):
     path.write_text(
         "[copr-cli]\n"
         f"login = {login}\n"
-        f"username = {login}\n"
+        f"username = {username}\n"
         f"token = {token}\n"
         "copr_url = https://copr.fedorainfracloud.org\n"
     )
@@ -258,7 +263,7 @@ def main():
                         help="成功的 host-check run，必须带 piano-rpms artifact")
     parser.add_argument("--rpms", default="build/in/piano-rpms",
                         help="下载后的 piano-rpms artifact 目录")
-    parser.add_argument("--project", default="fft-infra/piano-fedora")
+    parser.add_argument("--project", default="xinyang26/piano-fedora")
     parser.add_argument("--kernel-run-id", default="",
                         help="可选：要求 manifest 的内核 run 与此值一致")
     parser.add_argument("--record", default="build/copr-publication.json")
@@ -266,6 +271,9 @@ def main():
                         help="真正上传并等待构建；默认只校验")
     parser.add_argument("--timeout", type=int, default=7200)
     args = parser.parse_args()
+    owner, separator, name = args.project.partition("/")
+    if not separator or not owner or not name:
+        raise PublishError("--project must be owner/name")
 
     run = verify_run(args.run_id)
     manifest = load_manifest(args.rpms)
@@ -295,7 +303,7 @@ def main():
         return 0
 
     binary = copr_cli()
-    config = write_copr_config(Path(args.record).with_suffix(".copr.conf"))
+    config = write_copr_config(Path(args.record).with_suffix(".copr.conf"), owner)
     try:
         record["project_state"] = ensure_project(binary, config, args.project)
         outputs, ids = {}, []
