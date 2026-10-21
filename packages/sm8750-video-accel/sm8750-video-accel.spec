@@ -16,7 +16,7 @@ BuildRequires:  gcc-c++
 BuildRequires:  pkgconfig(libva) >= 1.1.0
 BuildRequires:  pkgconfig(libdrm) >= 2.4.52
 # meson.build 的依赖列表共五项。本地矩阵容器一直是整包装的，只有 COPR
-# 的干净 chroot 才暴露了后三项没写：build 11181429 报
+# 的干净 chroot 才暴露了后三项没写，报
 # `meson.build:12:6: ERROR: Dependency "egl" not found`。
 BuildRequires:  pkgconfig(egl)
 BuildRequires:  pkgconfig(glesv2) >= 3.2

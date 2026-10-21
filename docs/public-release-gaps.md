@@ -12,7 +12,7 @@
 | 真机序列号 | `docs/installation.md`、`tests/check_manual_flash_flow.py` | 已改为 `<serial>` 与 `SN-TEST-1` | 已解决，历史提交里仍有 | 完成（历史未重写） |
 | 个人绝对路径 | `scripts/verify-new-image.sh` | 默认镜像路径从脚本位置推导，内核 release 读 `root-image-manifest.json` | 已解决 | 完成 |
 | 内网拓扑 | `docs/architecture.md`、`docs/virtualization.md`、`scripts/probe-device.sh` | 公开文档用“桥接机”这类角色名，`probe-device.sh` 的示例地址用 `192.0.2.10`；`192.168.77.0/30` 是设备固定网段，保留 | 已解决 | 完成 |
-| 旧的公钥历史 | 历史 dispatch 事件（例如 run 38724829866 的 `ssh_public_key`） | 之前的公钥已经出现在公开事件里 | 公钥不是秘密，但它把一个人的身份和这台设备的管理权限挂在公开记录上 | 已换用安装期注入；旧公钥在设备侧作废 |
+| 旧的公钥历史 | 切换前的 dispatch 事件里带的 `ssh_public_key` 输入 | 旧公钥仍然留在历史事件里 | 公钥不是秘密，但它把一个人的身份和这台设备的管理权限挂在公开记录上 | 已换用安装期注入；旧公钥在设备侧作废 |
 
 不需要处理：COPR 的 owner/project 来自仓库密钥 `COPR_LOGIN`/`COPR_TOKEN`，没有写死个人命名空间；镜像里没有 Wi-Fi 凭据；上游地址都是公开仓库。
 
