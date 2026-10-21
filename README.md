@@ -86,7 +86,7 @@
 | `sunuefi_esp.img` | SunUEFI EDK2、DTB、Linux 7.2.9 内核与 initramfs |
 | `PianoUEFI-product.img` | SunUEFI 产品固件本体，`sunuefi_esp.img` 的载荷来源 |
 | `pianoroot.f2fs.img.zst` / `pianoroot-<desktop>.f2fs.img.zst` | 封存的根文件系统，不能直接刷；单档时不带后缀 |
-| `root-install/` | 写入设备配置后的 sparse 根镜像与清单（由 `unpack-release.sh --desktop` 还原） |
+| `root-install/` | 写入设备配置后的 sparse 根镜像与清单（由 `unpack-release.sh --desktop <档位>` 还原） |
 | `SHA256SUMS` | 各资产哈希 |
 
 Release 另带 `piano-installer-<tag>.zip`（刷写脚本与说明）和 `piano-boot-tools-<tag>.tar.zst`（本机生成 `device-boot/boot_linux.img`）。`scripts/package-release-bundle.sh` 是本地兼容打包器，不是发布主入口。

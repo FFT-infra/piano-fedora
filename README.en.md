@@ -83,7 +83,7 @@ A release is triggered by a tag and only ships verified artifacts from the same 
 | `sunuefi_esp.img` | SunUEFI EDK2, DTB, Linux 7.2.9 kernel, initramfs |
 | `PianoUEFI-product.img` | SunUEFI product firmware; the payload inside `sunuefi_esp.img` |
 | `pianoroot.f2fs.img.zst` / `pianoroot-<desktop>.f2fs.img.zst` | Sealed root filesystem; never flash it directly. No suffix when the release carries one profile |
-| `root-install/` | Sparse root transport with device configuration written (restored by `unpack-release.sh --desktop`) |
+| `root-install/` | Sparse root transport with device configuration written (restored by `unpack-release.sh --desktop <profile>`) |
 | `SHA256SUMS` | Hashes of every asset |
 
 The release also carries `piano-installer-<tag>.zip` (flash scripts and guide) and `piano-boot-tools-<tag>.tar.zst` (builds `device-boot/boot_linux.img` locally). `scripts/package-release-bundle.sh` is a local compatibility packer, not the release entry point.
