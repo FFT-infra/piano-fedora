@@ -306,10 +306,9 @@ jobs:
           releases = sorted(p.name for p in modules.iterdir() if p.is_dir()) if modules.is_dir() else []
           assert releases == [kernel_release], (
               f"kernel-piano module tree {releases} != matrix release {kernel_release}")
-          # Only the GNOME image has a GNOME session bus today; the KDE, niri
-          # and Hyprland images use their own session managers. Keep the
-          # dbus-daemon / pam_systemd checks for every desktop and print the
-          # per-desktop session files below.
+          # Every desktop needs the same session bus and pam_systemd; the
+          # desktop-specific session manager is checked by
+          # validate_against_rootfs() during assembly, not here.
           for path in ("usr/bin/dbus-daemon", "usr/bin/dbus-run-session",
                        "usr/lib64/security/pam_systemd.so"):
               assert path not in audit["missing_key_files"]
@@ -334,7 +333,7 @@ jobs:
           with open(sys.argv[1], "w") as stream:
               json.dump(record, stream, indent=2)
               stream.write("\n")
-          print("OK: audited clean rootfs includes the GNOME session bus")
+          print("OK: audited clean rootfs includes the session bus")
           PY
           sudo du -sh "$OUT/rootfs"/* | sort -rh | head -10
 

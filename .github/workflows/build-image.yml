@@ -284,7 +284,7 @@ jobs:
                 "kernel-piano owns the module tree")
           PY
 
-      - name: Reject a base rootfs without the GNOME session bus
+      - name: Reject a base rootfs without the session bus
         run: |
           set -euo pipefail
           root=build/device-root/rootfs
@@ -320,7 +320,7 @@ jobs:
           for path in ("usr/bin/dbus-daemon", "usr/bin/dbus-run-session",
                        "usr/lib64/security/pam_systemd.so"):
               assert (root / path).exists(), path
-          print("OK: base rootfs carries the GNOME session bus")
+          print("OK: base rootfs carries the session bus")
           PY
 
       - name: Validate and stage the sealed kernel payload

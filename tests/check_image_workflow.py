@@ -487,7 +487,7 @@ def check_clean_rootfs_release_entry():
     assert 'os.environ["FFMPEG_RUN"]' in rootfs
 
     image = (ROOT / ".github/workflows/build-image.yml").read_text()
-    assert "Reject a base rootfs without the GNOME session bus" in image, (
+    assert "Reject a base rootfs without the session bus" in image, (
         "build-image must reject any rootfs that did not pass the clean audit")
     assert 'record["status"] == "BUILT_AND_AUDITED"' in image
     assert 'for package in ("dbus-daemon", "systemd-pam")' in image
