@@ -12,6 +12,7 @@
 """
 
 import argparse
+import gzip
 import json
 import re
 import subprocess
@@ -24,11 +25,15 @@ DEFAULT_BASEURL = "https://download.copr.fedorainfracloud.org/results/xinyang26/
 EXCLUDED = "kernel-piano"
 
 
-def run(args, *, check=True, sudo=False):
+def run(args, *, check=True, sudo=False, binary=False):
     command = ["sudo", "-n", *args] if sudo else list(args)
-    result = subprocess.run(command, capture_output=True, text=True)
+    # binary=True 时保留原始字节：repodata 的 primary 是 gzip，先解码会在 0x8b 上炸。
+    result = subprocess.run(command, capture_output=True, text=not binary)
     if check and result.returncode:
-        raise RuntimeError(f"{' '.join(command)} failed: {result.stderr.strip()}")
+        stderr = result.stderr if binary else result.stderr.strip()
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", "replace").strip()
+        raise RuntimeError(f"{' '.join(command)} failed: {stderr}")
     return result
 
 
@@ -45,8 +50,17 @@ def repo_url(releasever, arch="aarch64"):
 
 
 def fetch(url):
-    result = run(["curl", "-fsSL", "--max-time", "30", url])
-    return result.stdout
+    """取文本元数据。
+
+    repodata 里的 primary 是 `.xml.gz` 文件本身，不是 HTTP 的 Content-Encoding，
+    `curl --compressed` 不会解它；直接按文本解码会在 0x8b 上抛 UnicodeDecodeError。
+    按 URL 后缀显式解压。
+    """
+    result = run(["curl", "-fsSL", "--max-time", "30", url], binary=True)
+    data = result.stdout
+    if url.endswith(".gz"):
+        return gzip.decompress(data).decode("utf-8")
+    return data.decode("utf-8")
 
 
 def parse_repomd(xml):
@@ -68,8 +82,12 @@ def list_packages(baseurl):
 
 
 def key_available(baseurl):
+    """公钥在仓库根目录，不在 fedora-<rel>-<arch>/ 子目录里。
+
+    随包的 .repo 里 gpgkey 写的就是根路径；这里跟它保持一致，别用 baseurl 拼。
+    """
     result = run(["curl", "-fsSL", "--max-time", "30", "-o", "/dev/null",
-                  "-w", "%{http_code}", baseurl + "pubkey.gpg"])
+                  "-w", "%{http_code}", baseurl + "../pubkey.gpg"])
     return result.stdout.strip() == "200"
 
 
@@ -90,14 +108,15 @@ def repo_file_state():
 def repoquery_kernel(baseurl):
     """确认排除规则对 kernel-piano 生效。"""
     with tempfile.TemporaryDirectory() as tmp:
-        options = " ".join([
+        # 每个 --setopt 必须是独立 argv 项：拼成一个字符串会被 dnf 当成单个参数。
+        options = [
             f"--repofrompath=coprcheck,{baseurl}",
             "--setopt=coprcheck.gpgcheck=1",
             "--setopt=coprcheck.repo_gpgcheck=0",
             f"--setopt=coprcheck.exclude={EXCLUDED}*",
             "--setopt=coprcheck.skip_if_unavailable=True",
-        ])
-        visible = run(["dnf", "repoquery", options, "--qf", "%{name}", EXCLUDED], check=False)
+        ]
+        visible = run(["dnf", "repoquery", *options, "--qf", "%{name}", EXCLUDED], check=False)
         without_exclude = run([
             "dnf", "repoquery", f"--repofrompath=coprcheck,{baseurl}",
             "--setopt=coprcheck.skip_if_unavailable=True",

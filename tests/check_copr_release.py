@@ -308,6 +308,41 @@ def test_device_verifier_contract():
         assert token in repo
 
 
+def test_device_verifier_fetches_compressed_repodata():
+    """repodata 的 primary 是 .xml.gz，按文本解码会在 0x8b 上抛异常。
+
+    2026-10-21 首次在设备上跑时才发现：脚本一直只做过文本断言，没人真跑过。
+    """
+    text = DEVICE_VERIFIER.read_text()
+    assert "import gzip" in text, "fetch() 必须能解 gzip 的 repodata"
+    assert "gzip.decompress" in text
+    # subprocess 必须以二进制取回 curl 输出，否则解码发生在解压之前。
+    assert "binary=True" in text, "run() 需要二进制模式，text=True 会在解压前解码"
+    assert "text=not binary" in text
+
+
+def test_device_verifier_pubkey_is_at_repo_root():
+    """公钥在 results/<owner>/<project>/pubkey.gpg，不在 fedora-<rel>-<arch>/ 下。
+
+    baseurl 以 `fedora-<rel>-<arch>/` 结尾，直接拼 `pubkey.gpg` 会 404。
+    """
+    text = DEVICE_VERIFIER.read_text()
+    assert 'baseurl + "../pubkey.gpg"' in text, (
+        "公钥必须从仓库根目录取；baseurl 已经带 arch 子目录")
+    # 随包的 .repo 里 gpgkey 指向根目录，两处必须一致。
+    repo = REPO_FILE.read_text()
+    assert "/results/xinyang26/piano-fedora/pubkey.gpg" in repo
+    assert "fedora-$releasever-$basearch/pubkey.gpg" not in repo
+
+
+def test_device_verifier_passes_setopt_as_separate_argv():
+    """每个 --setopt 必须是独立 argv 项，拼成一个字符串 dnf 只看到第一个。"""
+    text = DEVICE_VERIFIER.read_text()
+    assert '" ".join([' not in text.split("def repoquery_kernel")[1].split("def ")[0], (
+        "repoquery 的选项不能拼成单个字符串再传给 dnf")
+    assert "*options" in text, "选项列表必须用 *options 展开成独立参数"
+
+
 def main():
     module = load_module()
     with tempfile.TemporaryDirectory() as tmp:
@@ -328,8 +363,11 @@ def main():
     test_build_failure_is_not_success(module)
     test_repo_file_contract()
     test_workflow_contract()
-    test_script_has_no_hardcoded_token()
     test_device_verifier_contract()
+    test_device_verifier_fetches_compressed_repodata()
+    test_device_verifier_pubkey_is_at_repo_root()
+    test_device_verifier_passes_setopt_as_separate_argv()
+    test_script_has_no_hardcoded_token()
     print("OK: COPR publish validates the exact matrix and refuses unsafe publishes")
 
 
