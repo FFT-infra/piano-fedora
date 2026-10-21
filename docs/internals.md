@@ -68,7 +68,14 @@ build-bundle run（deploy-bundle）
 prepare-install run（root-install，bundle_run 必须等于上面的 build-bundle run）
 ```
 
-多档桌面时每档各有一对 build-bundle 与 prepare-install run，`release.yml` 的 `desktop_runs` 逐档登记。单档验收也要确认这四处的 desktop 字段一致，混档会在写设备之前被拒。
+多档桌面时每档各有一对 build-bundle 与 prepare-install run，`release.yml` 的 `desktop_runs` 逐档登记：
+
+```sh
+gh workflow run release.yml -f tag=<tag> \
+  -f desktop_runs="gnome=<bundle>:<prepare>,kde=<bundle>:<prepare>,niri=<bundle>:<prepare>,hyprland=<bundle>:<prepare>"
+```
+
+每档独立走身份、状态与提交绑定校验，平台资产四份逐字节比对后只发一份。不带 `desktop_runs` 时按 `desktop` 单档发布，行为与多桌面之前一致。单档验收也要确认 rootfs、镜像、bundle 与 root-install 四处的 desktop 字段一致，混档会在写设备之前被拒。
 
 平板先完整启动到 Android，开启 USB 调试并确认 `sys.boot_completed=1`：
 
