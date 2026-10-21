@@ -35,15 +35,6 @@ jobs:
           sudo apt-get install -y -qq f2fs-tools zstd attr
           sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" || sudo apt-get install -y -qq linux-modules-extra-azure
           sudo modprobe f2fs
-      - name: Free runner disk before the 11 GiB bundle
-        run: |
-          set -euo pipefail
-          # deploy-bundle 解压后约 11.5 GiB，而下载动作会先把 zip 落盘再展开。
-          # arm 运行器预装的工具链把这份余量吃掉了，解压就会在中途被截断——
-          # 而且是静默的：动作报成功，文件少了一半。
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
-                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL
-          df -h /
       - name: Validate the exact deploy-bundle run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,12 +96,6 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential clang lld llvm git zstd python3
-      - name: Free runner disk before the 11 GiB bundle
-        run: |
-          set -euo pipefail
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
-                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL
-          df -h /
       - name: Fetch exact boot source dependencies
         run: python3 scripts/checkout-sources.py --output build/installer-sources --mode installer
 

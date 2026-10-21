@@ -71,15 +71,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq zstd zip coreutils
 
-      - name: Free runner disk before the desktop bundles
-        run: |
-          set -euo pipefail
-          # 每档要落一对 8 GiB 级镜像（deploy-bundle 与 root-install），还要在
-          # 同一块盘上 zstd -10 出一份压缩副本。预装工具链先还回去。
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
-                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL
-          df -h /
-
       - name: Resolve the tag and its desktop runs
         id: src
         env:
