@@ -180,6 +180,11 @@ jobs:
         env:
           # ESP 容量只在 product.json 定义，这里不写第二份。
           ESP_SIZE_MIB: ${{ steps.product.outputs.esp_size_mib }}
+          # 四档必须交出逐字节相同的 ESP，release 的上传前比对靠这一条。
+          # 载荷文件的时间戳由 package_release.py 归一，但 mkfs.vfat/mmd/mcopy
+          # 建的 FAT 目录项取的是当前时间，不钉住 epoch，每档的 esp.img 都会
+          # 差在这几个目录项上。mtools 认 SOURCE_DATE_EPOCH。
+          SOURCE_DATE_EPOCH: "0"
         run: |
           set -euo pipefail
           test -n "$ESP_SIZE_MIB"

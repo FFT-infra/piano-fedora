@@ -11,6 +11,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -533,6 +534,60 @@ def check_bundle_asset_names():
     assert 'bundle / "boot.img"' not in updater
 
 
+def check_esp_reproducible(tmp):
+    """四档的 esp.img 必须逐字节相同，否则 release 的上传前比对会拒绝发布。
+
+    实机教训（2026-10-22）：v44.1 的第一次发布在 sunuefi_esp.img 上停下，
+    gnome 与 kde 的 ESP 不同。载荷本身一致——package_release.py 会把四个
+    文件的 mtime 归一，并在写入后逐个读回比对——差的是 FAT 目录项：
+    mkfs.vfat/mmd/mcopy 取当前时间，两个 job 跑在不同分钟就得到两份镜像。
+    mtools 认 SOURCE_DATE_EPOCH，所以 workflow 必须钉住它。
+    """
+    bundle = (ROOT / ".github/workflows/build-bundle.yml").read_text()
+    step = bundle.split("Create the upstream-compatible ESP and Linux boot payload", 1)
+    assert len(step) == 2, "build-bundle no longer packages the ESP"
+    body = step[1].split("- name:", 1)[0]
+    assert "package_release.py" in body
+    assert 'SOURCE_DATE_EPOCH: "0"' in body, (
+        "the ESP packaging step does not pin SOURCE_DATE_EPOCH; each desktop "
+        "would build a FAT image with its own directory timestamps")
+
+    if not all(subprocess.run(["sh", "-c", "command -v " + tool],
+                              capture_output=True).returncode == 0
+               for tool in ("mkfs.vfat", "mmd", "mcopy")):
+        print("SKIP: mtools not provided; ESP reproducibility probe not run")
+        return
+    tmp.mkdir()
+    payload = tmp / "Image"
+    payload.write_bytes(b"piano payload\n" * 4096)
+    os.utime(payload, (315532800, 315532800))
+
+    def build(name, epoch):
+        image = tmp / name
+        with image.open("xb") as stream:
+            stream.truncate(16 * 1024**2)
+        env = dict(os.environ)
+        env.pop("SOURCE_DATE_EPOCH", None)
+        if epoch is not None:
+            env["SOURCE_DATE_EPOCH"] = str(epoch)
+        for command in (["mkfs.vfat", "--invariant", "-S", "4096", "-F", "32",
+                         "-n", "SUNUEFI_ESP", str(image)],
+                        ["mmd", "-i", str(image), "::/EFI", "::/EFI/Piano",
+                         "::/EFI/Piano/stable"],
+                        ["mcopy", "-m", "-i", str(image), str(payload),
+                         "::/EFI/Piano/stable/Image"]):
+            subprocess.run(command, check=True, capture_output=True, env=env)
+        return image.read_bytes()
+
+    first = build("first.img", 0)
+    # FAT 的时间戳分辨率是 2 秒；不隔开就测不出“时间漏进镜像”这种回归。
+    time.sleep(2.1)
+    second = build("second.img", 0)
+    assert first == second, (
+        "two ESP builds with the same SOURCE_DATE_EPOCH differ; the FAT "
+        "directory timestamps are leaking the build time again")
+
+
 def check_uefi_sealer(root):
     sealer = module("uefi_sealer", ROOT / "scripts/seal-uefi-source.py")
     image = root / "uefi.img"
@@ -633,6 +688,7 @@ def main():
         check_kernel_unpack(root / "unpack")
         check_clean_rootfs_release_entry()
         check_bundle_asset_names()
+        check_esp_reproducible(root / "esp")
     print("OK: audited rootfs entry, A830v1 device tables and sealed bundle identity checks")
 
 
