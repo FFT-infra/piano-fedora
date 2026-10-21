@@ -4,7 +4,7 @@
 
 **当前状态：9 个自有包已发布，用户态可以 `dnf upgrade` 升级。** 项目是 `xinyang26/piano-fedora`，`fedora-44-aarch64` 仓库开着，仓库里现在有全部 9 个二进制包：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`libssc`、`piano-camera`、`piano-fedora-configs`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。核对方法见下面的启用仓库一节，或在设备上跑 `python3 scripts/verify-copr-device.py`。
 
-`kernel-piano` 出现在仓库里是为了让版本号可审计；`.repo` 用 `exclude=kernel-piano*` 把它挡在升级之外。
+**内核不在升级范围内。** `kernel-piano` 会发布进仓库供审计，但仓库文件用 `exclude=kernel-piano*` 排除它。原因在引导路径上：SunUEFI 只读 ESP 的 `/EFI/Piano/stable/boot.img`（`PianoEspBootSource.c` 里的固定路径），`PianoProductCore.c` 也只调 `PianoRawLinuxLoadStable`，没有走 `Image.efi` + `PianoProductOsController` 那条路。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，ESP 上的 `boot.img` 不动，装上 COPR 的内核就是让两者脱钩——一台起不来的机器，而且 SunUEFI 没有 boot counter，新内核失败不会自动回滚。
 
 内核更新跟着 release bundle 走。切换条件写在这里，方便日后复查：上游把 `simpleinit.static.uefi.json` 的 `Image.efi` 配置改成 `enabled: true` 且 `PianoProductCore.c` 开始调 `PianoProductOsController` 时，或者引导链引入 boot counter 之后，就能迁移到 `kernel-install` / UKI，把内核纳入设备侧升级。
 
