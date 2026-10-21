@@ -69,7 +69,14 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %config(noreplace) %{_sysconfdir}/systemd/logind.conf.d/piano.conf
 %config(noreplace) %{_sysconfdir}/modules-load.d/piano-bwmon.conf
 %config(noreplace) %{_sysconfdir}/modules-load.d/piano-stats.conf
-%config(noreplace) %{_sysconfdir}/modprobe.d/piano-blacklist-watchdog.conf
+# 不加 noreplace，跟上面几份不同，这是有意的。早先的 initramfs 用 printf
+# 直接写这个文件，绕过 rpm 的 SELinux 事务，留下的副本标签是 unlabeled_t，
+# systemd-modules-load 每次启动都被拒。`%config(noreplace)` 遇到已存在的文件
+# 会把新版本落成 .rpmnew 并保留旧文件，那份 unlabeled_t 永远换不掉——实测
+# 从故障态升级到 0.1.0-7 后 rpm -qf 认了主，ls -Z 仍是 unlabeled_t。
+# 改成 %config（无 noreplace），升级时把旧文件存成 .rpmorig、装上带正确
+# 标签的新文件，实测标签变回 modules_conf_t。
+%config %{_sysconfdir}/modprobe.d/piano-blacklist-watchdog.conf
 %config(noreplace) %{_sysconfdir}/udev/rules.d/70-piano-power-button.rules
 %config(noreplace) %{_sysconfdir}/dconf/db/local.d/00-power
 
@@ -136,8 +143,10 @@ systemd-tmpfiles --create %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf %{_p
 * Wed Oct 21 2026 FFT-infra <dev@piano.invalid> - 0.1.0-7
 - 看门狗黑名单改由本包提供：initramfs 直接写 /etc/modprobe.d 会绕过 rpm 的
   SELinux 标签事务，留下 unlabeled_t 的无主文件，systemd-modules-load 被拒。
-  已在 COPR 的 0.1.0-6 之后修复，必须升 Release 才能让 dnf upgrade 取到
-* Mon Oct 20 2026 FFT-infra <dev@piano.invalid> - 0.1.0-6
+  已在 COPR 的 0.1.0-6 之后修复，必须升 Release 才能让 dnf upgrade 取到。
+  这份文件不带 noreplace：已经处在故障态的设备升级时，noreplace 会把新版
+  落成 .rpmnew、把 unlabeled_t 的旧文件留在原位，标签修不回来
+* Tue Oct 20 2026 FFT-infra <dev@piano.invalid> - 0.1.0-6
 - 收敛路径归属：收纳 xiaomi-charger-mode 与 logind 落点，交还 piano-boot-request
   给运行时（piano-next-boot-helper 要求的是那份原生实现），不再重复拥有
   SunUEFI 运行时派生的同一批文件
