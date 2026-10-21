@@ -58,7 +58,7 @@ SunUEFI pin `065b192` 的完整链在 `feat/upstream-sync` 上，每一阶段都
 | host-check（FFmpeg + RPM） | 39508110172 | `piano-fedora-ffmpeg`、`piano-rpms` |
 | build-device-runtime | 39510540103 | `piano-fedora-runtime` |
 | build-rootfs | 39512640072 | `rootfs-44-gnome` |
-| build-image | 39513701773 | `root-image-8192` |
+| build-image | 39513701773 | `root-image-8192`（旧名；现在按 profile 派生为 `root-image-<releasever>-<desktop>`） |
 | build-bundle | 39514514122 | `deploy-bundle` |
 | prepare-install | 39517714729 | `root-install`、`boot-tools`、`host-boot-tool` |
 

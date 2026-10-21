@@ -541,6 +541,8 @@ def main(argv=None):
                     "rootfs_artifact": names_for_desktop["rootfs_artifact"],
                     "rootfs_dir": names_for_desktop["rootfs_dir"],
                     "rootfs_tar": names_for_desktop["rootfs_tar"],
+                    "image_artifact": names_for_desktop["image_artifact"],
+                    "root_size_mib": names_for_desktop["root_size_mib"],
                 })
             print(json.dumps(rows, ensure_ascii=False))
             return 0

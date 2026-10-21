@@ -9,10 +9,14 @@ name: build-initramfs
 on:
   workflow_dispatch:
     inputs:
+      desktop:
+        description: "桌面档；rootfs_artifact 留空时由它推导 root-image-<releasever>-<desktop>"
+        required: false
+        default: "gnome"
       rootfs_artifact:
-        description: "完整设备根文件系统 artifact（含 device-root.tar.zst）"
-        required: true
-        default: "root-image-8192"
+        description: "完整设备根文件系统 artifact（含 device-root.tar.zst）；留空则按桌面档推导"
+        required: false
+        default: ""
       kernel_artifact:
         description: "内核 artifact 名"
         required: true
@@ -43,10 +47,27 @@ jobs:
         id: src
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DESKTOP: ${{ inputs.desktop }}
           ROOT_ARTIFACT: ${{ inputs.rootfs_artifact }}
           ROOT_RUN: ${{ inputs.root_image_run_id }}
         run: |
           set -euo pipefail
+          # 镜像 artifact 名由桌面档派生；显式给了名字也必须是这一档的派生命。
+          releasever=$(python3 -c 'import json;print(json.load(open("product.json"))["target"]["releasever"])')
+          derived=$(python3 scripts/piano_desktop.py expand --desktop "$DESKTOP" --releasever "$releasever")
+          # 这三个 workflow 一次只做一个桌面档；`all` 属于 build-rootfs 的矩阵，
+          # 在这里会让派生名悄悄取第一行，所以直接拒绝。
+          test "$(python3 -c 'import json,sys;print(len(json.loads(sys.argv[1])))' "$derived")" -eq 1 || {
+            echo "desktop '$DESKTOP' expands to more than one entry; name a single desktop" >&2
+            exit 2
+          }
+          expected_image=$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])[0]["image_artifact"])' "$derived")
+          ROOT_ARTIFACT=${ROOT_ARTIFACT:-$expected_image}
+          test "$ROOT_ARTIFACT" = "$expected_image" || {
+            echo "rootfs_artifact $ROOT_ARTIFACT is not the $DESKTOP image ($expected_image)" >&2
+            exit 2
+          }
+          echo "rootfs_artifact=$ROOT_ARTIFACT" >> "$GITHUB_OUTPUT"
           args=()
           if [ -n "$ROOT_RUN" ]; then args+=(--run-id "$ROOT_RUN"); fi
           python3 scripts/resolve-artifact-run.py --workflow build-image.yml \
@@ -55,7 +76,7 @@ jobs:
       - name: Download rootfs
         uses: actions/download-artifact@v4
         with:
-          name: ${{ inputs.rootfs_artifact }}
+          name: ${{ steps.src.outputs.rootfs_artifact }}
           path: in/rootfs
           run-id: ${{ steps.src.outputs.rootfs_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

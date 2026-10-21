@@ -5,6 +5,12 @@ name: release
 #   host-boot-tool，全部绑定到 tag 指向的同一个 commit。
 # 大文件按 GitHub 的 2 GiB 单文件上限切片，root transport 额外用 zstd 压缩。
 # 先上传 bundle 再下载 root-install，避免标准 runner 同时放下两份 6-8 GiB 镜像。
+#
+# 一个 Release 可以带多档桌面：`desktop_runs` 给每档一对 build-bundle 与
+# prepare-install 的成功 run。四档共用同一个 ESP、内核与 initramfs，所以
+# 平台资产逐字节比对后只上传一份；root 镜像、root-install 与随附 manifest
+# 按 `scripts/release-assets.py` 的规则加 `-<desktop>` 后缀。
+# 不带 `desktop_runs` 时退化为单档（默认 GNOME），行为与多桌面之前一致。
 on:
   push:
     tags: ["v*"]
@@ -13,12 +19,20 @@ on:
       tag:
         description: "已存在的发布 tag"
         required: true
+      desktop_runs:
+        description: "多档：gnome=<bundle_run>:<prepare_run>,kde=...；留空则按 desktop 单档"
+        required: false
+        default: ""
+      desktop:
+        description: "单档发布时的桌面档"
+        required: false
+        default: "gnome"
       bundle_run:
-        description: "build-bundle 成功 run；留空则按 tag commit 解析"
+        description: "单档：build-bundle 成功 run；留空则按 tag commit 解析"
         required: false
         default: ""
       prepare_run:
-        description: "prepare-install 成功 run；留空则按 tag commit 解析"
+        description: "单档：prepare-install 成功 run；留空则按 tag commit 解析"
         required: false
         default: ""
 
@@ -35,7 +49,9 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 240
+    # 四档时每档都要下载、逐字节校验、zstd -10 重新压缩一份 6-8 GiB 的 root，
+    # 单档原来 240 分钟；240 分钟不够四档，GitHub 的单 job 上限是 360。
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,11 +63,13 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq zstd zip coreutils
 
-      - name: Resolve the tag and its completed runs
+      - name: Resolve the tag and its desktop runs
         id: src
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_TAG: ${{ inputs.tag }}
+          INPUT_DESKTOP_RUNS: ${{ inputs.desktop_runs }}
+          INPUT_DESKTOP: ${{ inputs.desktop }}
           INPUT_BUNDLE_RUN: ${{ inputs.bundle_run }}
           INPUT_PREPARE_RUN: ${{ inputs.prepare_run }}
         run: |
@@ -69,38 +87,22 @@ jobs:
           echo "TAG=${tag}" >> "$GITHUB_ENV"
           echo "STAGE=${GITHUB_WORKSPACE}/build/stage" >> "$GITHUB_ENV"
           mkdir -p build/stage
-
-          bundle_args=()
-          if [ -n "$INPUT_BUNDLE_RUN" ]; then bundle_args+=(--run-id "$INPUT_BUNDLE_RUN"); fi
-          if ! python3 scripts/resolve-artifact-run.py --workflow build-bundle.yml \
-              --artifact deploy-bundle --commit "$sha" "${bundle_args[@]}" --output-key bundle_run; then
-            echo "no successful build-bundle run at ${sha} has a nonexpired deploy-bundle artifact" >&2
+          # 每档的 run 都重新走一遍 artifact 身份、成功状态与提交绑定校验；
+          # 桌面名、重复项与占位档的拒绝在 release-desktops.py 里，有离线测试。
+          if ! python3 scripts/release-desktops.py \
+              --desktop-runs "$INPUT_DESKTOP_RUNS" \
+              --desktop "${INPUT_DESKTOP:-gnome}" \
+              --bundle-run "$INPUT_BUNDLE_RUN" \
+              --prepare-run "$INPUT_PREPARE_RUN" \
+              --commit "$sha" --output build/release-plan.json; then
+            echo "no usable desktop run set: every desktop needs a successful" >&2
+            echo "build-bundle and prepare-install run at ${sha}" >&2
             exit 1
           fi
-
-          prepare_args=()
-          if [ -n "$INPUT_PREPARE_RUN" ]; then prepare_args+=(--run-id "$INPUT_PREPARE_RUN"); fi
-          if ! python3 scripts/resolve-artifact-run.py --workflow prepare-install.yml \
-              --artifact root-install --artifact boot-tools --artifact host-boot-tool \
-              --commit "$sha" "${prepare_args[@]}" --output-key prepare_run; then
-            echo "no successful prepare-install run at ${sha} has root-install, boot-tools and host-boot-tool" >&2
-            echo "dispatch prepare-install.yml with the bundle run, then retry this release" >&2
-            exit 1
-          fi
-
-      - name: Download the deploy bundle from its own run
-        uses: actions/download-artifact@v4
-        with:
-          name: deploy-bundle
-          path: build/in/bundle
-          run-id: ${{ steps.src.outputs.bundle_run }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify the deploy bundle before touching it
-        run: |
-          set -euo pipefail
-          (cd build/in/bundle && sha256sum -c SHA256SUMS)
-          python3 scripts/verify-bundle.py --bundle build/in/bundle
+          desktops=$(python3 -c 'import json; print(" ".join(row["desktop"] for row in json.load(open("build/release-plan.json"))))')
+          test -n "$desktops"
+          echo "desktops=${desktops}" >> "$GITHUB_OUTPUT"
+          echo "DESKTOPS=${desktops}" >> "$GITHUB_ENV"
 
       - name: Refuse to overwrite an existing release
         env:
@@ -121,192 +123,189 @@ jobs:
           ## piano Fedora 44 ${TAG}
 
           - 源码提交: [${GITHUB_SHA}](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})
-          - 构建记录: [build-bundle #${{ steps.src.outputs.bundle_run }}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${{ steps.src.outputs.bundle_run }}) · [prepare-install #${{ steps.src.outputs.prepare_run }}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${{ steps.src.outputs.prepare_run }})
-          - 生成时间: $(date -u +%Y-%m-%dT%H:%MZ)
+          - 桌面档: ${DESKTOPS}
           - 产物状态: Actions 内完整校验通过；真机验证记录见 [docs/known-issues.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/known-issues.md)
 
           ### 下载后
 
           1. 把本 Release 的全部资产下载到同一个空目录。
           2. \`sha256sum -c RELEASE-SHA256SUMS\`
-          3. \`bash unpack-release.sh\` 还原 bundle 文件并解出 \`root-install/\`。
+          3. \`bash unpack-release.sh --desktop <桌面>\` 还原 bundle 文件并解出 \`root-install/\`。
+             只有一档时参数可省略。
           4. 按 \`README-INSTALL.txt\` 操作；全新平板先读 docs/installation.md 第四节。
 
-          大于 2 GiB 的镜像以 \`.part-*\` 分片发布，\`unpack-release.sh\` 会自动合并。
+          平台资产（ESP、内核、initramfs、UEFI）在所有桌面档之间完全相同，只发布一份。
+          桌面与安装资产带 \`-<desktop>\` 后缀，\`unpack-release.sh\` 会还原成文档里的规范名。
+          大于 2 GiB 的镜像以 \`.part-*\` 分片发布，脚本会自动合并。
           \`boot_linux.img\` 不随 Release 发布：它必须用本机原厂 BOOT 生成，
           工具在 \`piano-boot-tools-${TAG}.tar.zst\` 里。
 
           校验构建来源: \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`
           EOF
+          # 默认 draft，等电极校准数据的再分发许可确认后再 --draft=false。
+          # 见 docs/public-release-gaps.md。
           gh release create "$TAG" --draft --title "piano Fedora 44 ${TAG}" \
             --notes-file build/stage/notes.md
 
-      - name: Upload the deploy bundle
+      - name: Verify every deploy bundle and upload the platform assets once
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          stage="$STAGE"
-          # GitHub 的单文件上限是 2 GiB；留出余量后按 1,900 MiB 切片。
-          max_asset=2147000000
-          printf '' > "$stage/RELEASE-SHA256SUMS"
-          record() {
-            printf '%s  %s\n' "$(sha256sum "$1" | awk '{print $1}')" "$2" >> "$stage/RELEASE-SHA256SUMS"
-          }
-          upload() {
-            local path=$1 name=${2:-$(basename "$1")} source
-            source=$path
-            if [ "$(basename "$1")" != "$name" ]; then
-              cp "$path" "$stage/$name"
-              source="$stage/$name"
-            fi
-            record "$source" "$name"
-            gh release upload "$TAG" "$source"
-            rm -f "$source"
-          }
-          upload_split() {
-            local path=$1 base name part
-            name=$(basename "$path")
-            if [ "$(stat -c %s "$path")" -lt "$max_asset" ]; then
-              upload "$path"
-              return
-            fi
-            base="$stage/$name"
-            split -b 1900M -d -a 2 "$path" "$base.part-"
-            rm -f "$path"
-            for part in "$base".part-*; do
-              upload "$part"
-            done
-          }
+          . scripts/release-upload.sh
+          printf '' > "$STAGE/RELEASE-SHA256SUMS"
+          mapfile -t platform_files < <(python3 scripts/release-assets.py platform)
 
-          cd build/in/bundle
-          for name in *; do
-            case "$name" in
-              # 留到 root-install 绑定校验之后再上传：product 要给 cmp 用，
-              # 两份 manifest 要给摘要绑定用。
-              pianoroot.f2fs.img.zst|pianoroot.f2fs.sparse.img|PianoUEFI-product.img|bundle-manifest.json|root-image-manifest.json) continue ;;
-            esac
-            upload "$name"
+          for desktop in $DESKTOPS; do
+            bundle_run=$(release_plan_value "$desktop" bundle_run)
+            rm -rf build/in/bundle
+            gh run download "$bundle_run" -R "$GITHUB_REPOSITORY" --name deploy-bundle --dir build/in/bundle
+            (cd build/in/bundle && sha256sum -c SHA256SUMS)
+            python3 scripts/verify-bundle.py --bundle build/in/bundle
+
+            # 平台资产：四档共用同一份 ESP、内核与 initramfs。第一档留下参考
+            # 副本并上传；后续各档只做逐字节比对，不一致就停下，不能悄悄
+            # 挑一份发布。
+            if [ ! -d build/reference/platform ]; then
+              mkdir -p build/reference/platform
+              for name in "${platform_files[@]}"; do
+                test -f "build/in/bundle/$name" || {
+                  echo "deploy-bundle $desktop lacks platform asset $name" >&2; exit 2;
+                }
+                cp -p "build/in/bundle/$name" build/reference/platform/
+              done
+              for name in "${platform_files[@]}"; do
+                release_upload "build/in/bundle/$name"
+              done
+            else
+              for name in "${platform_files[@]}"; do
+                test -f "build/in/bundle/$name" || {
+                  echo "deploy-bundle $desktop lacks platform asset $name" >&2; exit 2;
+                }
+                cmp -s "build/reference/platform/$name" "build/in/bundle/$name" || {
+                  echo "platform asset $name differs between desktops;" >&2
+                  echo "the $desktop bundle does not share the reference ESP/kernel/initramfs" >&2
+                  exit 2;
+                }
+              done
+            fi
+
+            (cd build/in/bundle
+             for name in *; do
+               case "$name" in
+                 pianoroot.f2fs.img.zst|pianoroot.f2fs.sparse.img) continue ;;
+               esac
+               if [ "$(python3 ../../../scripts/release-assets.py classify "$name")" = platform ]; then
+                 continue
+               fi
+               published=$(python3 ../../../scripts/release-assets.py name "$name" "$desktop")
+               release_upload "$name" "$published"
+             done)
+
+            release_upload_split build/in/bundle/pianoroot.f2fs.img.zst \
+              "$(python3 scripts/release-assets.py name pianoroot.f2fs.img.zst "$desktop")"
+
+            # bundle 的 sparse 与封存镜像同源；压缩后再切片，避免每次下载 6 GB。
+            zstd -10 -T0 --no-progress build/in/bundle/pianoroot.f2fs.sparse.img \
+              -o "$STAGE/pianoroot.f2fs.sparse.img.zst"
+            original=$(sha256sum build/in/bundle/pianoroot.f2fs.sparse.img | awk '{print $1}')
+            decoded=$(zstd -dc "$STAGE/pianoroot.f2fs.sparse.img.zst" | sha256sum | awk '{print $1}')
+            test "$original" = "$decoded" || {
+              echo "compressed root transport does not round-trip" >&2
+              exit 2
+            }
+            release_upload_split "$STAGE/pianoroot.f2fs.sparse.img.zst" \
+              "$(python3 scripts/release-assets.py name pianoroot.f2fs.sparse.img.zst "$desktop")"
+
+            # root-install 的绑定校验要按档核对 bundle manifest，但两份镜像
+            # 不能同时留在盘上，所以只留下这两个小文件。
+            mkdir -p "build/reference/$desktop"
+            cp build/in/bundle/bundle-manifest.json build/in/bundle/root-image-manifest.json \
+              "build/reference/$desktop/"
+            rm -rf build/in/bundle
           done
 
-          upload_split pianoroot.f2fs.img.zst
-
-          # bundle 的 sparse 与封存镜像同源；压缩后再切片，避免每次下载 6 GB。
-          zstd -10 -T0 --no-progress pianoroot.f2fs.sparse.img -o "$stage/pianoroot.f2fs.sparse.img.zst"
-          original=$(sha256sum pianoroot.f2fs.sparse.img | awk '{print $1}')
-          decoded=$(zstd -dc "$stage/pianoroot.f2fs.sparse.img.zst" | sha256sum | awk '{print $1}')
-          test "$original" = "$decoded" || {
-            echo "compressed root transport does not round-trip" >&2
-            exit 2
-          }
-          rm -f pianoroot.f2fs.sparse.img
-          upload_split "$stage/pianoroot.f2fs.sparse.img.zst"
-
-      - name: Download the prepared root and boot tools
-        uses: actions/download-artifact@v4
-        with:
-          name: root-install
-          path: build/in/root-install
-          run-id: ${{ steps.src.outputs.prepare_run }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download the boot tools
-        uses: actions/download-artifact@v4
-        with:
-          name: boot-tools
-          path: build/in/boot-tools
-          run-id: ${{ steps.src.outputs.prepare_run }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download the host boot tool
-        uses: actions/download-artifact@v4
-        with:
-          name: host-boot-tool
-          path: build/in/host-boot-tool
-          run-id: ${{ steps.src.outputs.prepare_run }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify the prepared root and boot tools
+      - name: Verify each prepared root and upload it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          (cd build/in/root-install && sha256sum -c SHA256SUMS)
-          (cd build/in/boot-tools/installer && sha256sum -c SHA256SUMS)
-          cmp build/in/boot-tools/product/PianoUEFI-product.img build/in/bundle/PianoUEFI-product.img
-          python3 - <<'PY'
-          import hashlib, json
+          . scripts/release-upload.sh
+
+          first=1
+
+          for desktop in $DESKTOPS; do
+            prepare_run=$(release_plan_value "$desktop" prepare_run)
+            rm -rf build/in/root-install
+            gh run download "$prepare_run" -R "$GITHUB_REPOSITORY" --name root-install --dir build/in/root-install
+            (cd build/in/root-install && sha256sum -c SHA256SUMS)
+
+            if [ "$first" -eq 1 ]; then
+              # 引导工具按 pin 的源码构建，四档共用；产品镜像必须与参考平台
+              # 资产逐字节相同，否则这档的 boot-tools 不能给别的桌面用。
+              rm -rf build/in/boot-tools build/in/host-boot-tool
+              gh run download "$prepare_run" -R "$GITHUB_REPOSITORY" --name boot-tools --dir build/in/boot-tools
+              gh run download "$prepare_run" -R "$GITHUB_REPOSITORY" --name host-boot-tool --dir build/in/host-boot-tool
+              (cd build/in/boot-tools/installer && sha256sum -c SHA256SUMS)
+              cmp build/in/boot-tools/product/PianoUEFI-product.img \
+                build/reference/platform/PianoUEFI-product.img
+              python3 - <<'PY'
+          import json
           from pathlib import Path
-          bundle = Path("build/in/bundle")
-          root = Path("build/in/root-install")
-          sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
-          record = json.loads((root / "root-install-manifest.json").read_text())
-          assert record["source_bundle_manifest_sha256"] == sha(bundle / "bundle-manifest.json"), (
-              "root-install was prepared from another deploy-bundle")
-          assert record["source_root_manifest_sha256"] == sha(bundle / "root-image-manifest.json"), (
-              "root-install was prepared from another root image")
-          assert record["android_slot"] == "_a", (
-              f"root-install targets Android slot {record['android_slot']}; the public release ships _a")
           host = json.loads(Path("build/in/host-boot-tool/manifest.json").read_text())
           native = json.loads(Path("build/in/boot-tools/native/manifest.json").read_text())
           assert host["sources"] == native["sources"] and host.get("arch") == "host", (
               "host and Android repackers were built from different sources")
-          print("OK: root-install and boot tools bind to this bundle")
+          print("OK: host and Android boot tools share one source pin")
+          PY
+            fi
+
+            # 这一档的 root-install 必须来自它自己的 bundle 与 root 镜像。
+            python3 - "$desktop" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          desktop = sys.argv[1]
+          reference = Path("build/reference") / desktop
+          root = Path("build/in/root-install")
+          sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+          record = json.loads((root / "root-install-manifest.json").read_text())
+          assert record.get("desktop") == desktop, (
+              f"root-install was prepared for desktop {record.get('desktop')!r}, not {desktop!r}")
+          assert record["source_bundle_manifest_sha256"] == sha(reference / "bundle-manifest.json"), (
+              f"{desktop}: root-install was prepared from another deploy-bundle")
+          assert record["source_root_manifest_sha256"] == sha(reference / "root-image-manifest.json"), (
+              f"{desktop}: root-install was prepared from another root image")
+          assert record["android_slot"] == "_a", (
+              f"{desktop}: root-install targets Android slot {record['android_slot']}; "
+              "the public release ships _a")
+          print(f"OK: {desktop} root-install binds to its own bundle")
           PY
 
-      - name: Upload the prepared root, boot tools, installer, and checksums
+            release_upload build/in/root-install/root-install-manifest.json \
+              "$(python3 scripts/release-assets.py name root-install-manifest.json "$desktop")"
+            release_upload build/in/root-install/SHA256SUMS \
+              "$(python3 scripts/release-assets.py name root-install-SHA256SUMS "$desktop")"
+            rm -f build/in/root-install/SHA256SUMS
+            zstd -10 -T0 --no-progress build/in/root-install/pianoroot.f2fs.sparse.img \
+              -o "$STAGE/root-install-pianoroot.f2fs.sparse.img.zst"
+            original=$(sha256sum build/in/root-install/pianoroot.f2fs.sparse.img | awk '{print $1}')
+            decoded=$(zstd -dc "$STAGE/root-install-pianoroot.f2fs.sparse.img.zst" | sha256sum | awk '{print $1}')
+            test "$original" = "$decoded" || {
+              echo "compressed prepared root does not round-trip" >&2
+              exit 2
+            }
+            release_upload_split "$STAGE/root-install-pianoroot.f2fs.sparse.img.zst" \
+              "$(python3 scripts/release-assets.py name root-install-pianoroot.f2fs.sparse.img.zst "$desktop")"
+            rm -rf build/in/root-install
+            first=0
+          done
+
+      - name: Upload the boot tools, installer, and checksums
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          stage="$STAGE"
-          max_asset=2147000000
-          record() {
-            printf '%s  %s\n' "$(sha256sum "$1" | awk '{print $1}')" "$2" >> "$stage/RELEASE-SHA256SUMS"
-          }
-          upload() {
-            local path=$1 name=${2:-$(basename "$1")} source
-            source=$path
-            if [ "$(basename "$1")" != "$name" ]; then
-              cp "$path" "$stage/$name"
-              source="$stage/$name"
-            fi
-            record "$source" "$name"
-            gh release upload "$TAG" "$source"
-            rm -f "$source"
-          }
-          upload_split() {
-            local path=$1 base name part
-            name=$(basename "$path")
-            if [ "$(stat -c %s "$path")" -lt "$max_asset" ]; then
-              upload "$path"
-              return
-            fi
-            base="$stage/$name"
-            split -b 1900M -d -a 2 "$path" "$base.part-"
-            rm -f "$path"
-            for part in "$base".part-*; do
-              upload "$part"
-            done
-          }
-
-          # 保留到绑定校验通过的文件。
-          upload build/in/bundle/PianoUEFI-product.img
-          upload build/in/bundle/bundle-manifest.json
-          upload build/in/bundle/root-image-manifest.json
-
-          cd build/in/root-install
-          upload root-install-manifest.json
-          upload SHA256SUMS root-install-SHA256SUMS
-          rm -f SHA256SUMS
-          zstd -10 -T0 --no-progress pianoroot.f2fs.sparse.img \
-            -o "$stage/root-install-pianoroot.f2fs.sparse.img.zst"
-          original=$(sha256sum pianoroot.f2fs.sparse.img | awk '{print $1}')
-          decoded=$(zstd -dc "$stage/root-install-pianoroot.f2fs.sparse.img.zst" | sha256sum | awk '{print $1}')
-          test "$original" = "$decoded" || {
-            echo "compressed prepared root does not round-trip" >&2
-            exit 2
-          }
-          rm -f pianoroot.f2fs.sparse.img
-          upload_split "$stage/root-install-pianoroot.f2fs.sparse.img.zst"
+          . scripts/release-upload.sh
 
           cd "$GITHUB_WORKSPACE"
           mkdir -p build/stage/tools/scripts
@@ -335,23 +334,23 @@ jobs:
           The combined BOOT keeps the upstream unsigned AVB NONE metadata.
           Do not add os_version or re-sign it; see README-INSTALL.txt.
           EOF
-          tar -C build/stage/tools -I 'zstd -10 -T0' -cf "$stage/piano-boot-tools-${TAG}.tar.zst" .
+          tar -C build/stage/tools -I 'zstd -10 -T0' -cf "$STAGE/piano-boot-tools-${TAG}.tar.zst" .
           rm -rf build/stage/tools
-          upload "$stage/piano-boot-tools-${TAG}.tar.zst"
+          release_upload "$STAGE/piano-boot-tools-${TAG}.tar.zst"
 
           mkdir -p build/stage/installer
           cp scripts/installer/flash-linux.sh scripts/installer/flash-linux.bat \
             scripts/installer/README-INSTALL.txt scripts/unpack-release.sh build/stage/installer/
           chmod +x build/stage/installer/flash-linux.sh build/stage/installer/unpack-release.sh
-          (cd build/stage/installer && zip -9 -r "$stage/piano-installer-${TAG}.zip" .)
+          (cd build/stage/installer && zip -9 -r "$STAGE/piano-installer-${TAG}.zip" .)
           rm -rf build/stage/installer
-          upload "$stage/piano-installer-${TAG}.zip"
+          release_upload "$STAGE/piano-installer-${TAG}.zip"
 
-          cp scripts/unpack-release.sh "$stage/unpack-release.sh"
-          upload "$stage/unpack-release.sh"
+          cp scripts/unpack-release.sh "$STAGE/unpack-release.sh"
+          release_upload "$STAGE/unpack-release.sh"
 
-          sort -k2 "$stage/RELEASE-SHA256SUMS" -o "$stage/RELEASE-SHA256SUMS"
-          gh release upload "$TAG" "$stage/RELEASE-SHA256SUMS"
+          sort -k2 "$STAGE/RELEASE-SHA256SUMS" -o "$STAGE/RELEASE-SHA256SUMS"
+          gh release upload "$TAG" "$STAGE/RELEASE-SHA256SUMS"
 
       - name: Attest the published assets
         uses: actions/attest-build-provenance@v4

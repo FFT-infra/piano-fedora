@@ -22,8 +22,16 @@ Requirements:
 Using a GitHub Release:
 Download every asset of the release into one empty folder, then:
    sha256sum -c RELEASE-SHA256SUMS
-   bash unpack-release.sh
+   bash unpack-release.sh --desktop <name>
    unzip piano-installer-<tag>.zip
+A release can carry several desktops (gnome, kde, niri, hyprland). The ESP,
+kernel and initramfs are identical across them and are published once; the root
+image and root-install assets are published per desktop as
+pianoroot-<desktop>.f2fs.img.zst, root-install-manifest-<desktop>.json and so
+on. --desktop picks which desktop's root goes into root-install/. It can be
+omitted when the release carries only one desktop; with several desktops the
+script lists them and stops. See docs/desktops.md for what each desktop
+provides.
 unpack-release.sh merges the >2 GiB pieces, decompresses the zstd root
 transports, and leaves the folder in the layout below. The boot tools asset
 (piano-boot-tools-<tag>.tar.zst) generates device-boot/boot_linux.img for this

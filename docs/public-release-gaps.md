@@ -16,4 +16,4 @@
 
 不需要处理：COPR 的 owner/project 来自仓库密钥 `COPR_LOGIN`/`COPR_TOKEN`，没有写死个人命名空间；镜像里没有 Wi-Fi 凭据；上游地址都是公开仓库。
 
-SSH 公钥已改成安装期注入，“别人装了进不去”的问题解决了。电极校准的许可确定之前，不要把带校准表的 bundle 挂成公开 Release。
+SSH 公钥已改成安装期注入，“别人装了进不去”的问题解决了。电极校准的许可确定之前，不要把带校准表的 bundle 挂成公开 Release。`release.yml` 的“Create the draft release”步骤因此固定 `gh release create --draft`，最后一步的 `--draft=false` 是许可结论出来之后才该有的动作；在那之前直接停在工作流的这一步，只留 draft。
