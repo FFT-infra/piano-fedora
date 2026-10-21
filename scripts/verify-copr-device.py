@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""在设备上核对 COPR 仓库可启用、可签名、且不会升级内核。
+"""在设备上核对 COPR 仓库可启用、可签名、且内核在其中。
 
 在平板上执行，不是 CI 的一部分：
 
@@ -7,6 +7,10 @@
 
 脚本只读仓库元数据和包集合，不安装、不升级。只有显式 `--install-test`
 才会真的启用仓库并试跑一次 `dnf upgrade --assumeno`。
+
+内核升级由 kernel-piano 自己的 %posttrans 收尾：它重建 initramfs 并重打
+ESP 上固件读取的 boot.img，所以这里断言 kernel-piano 可见、且 dry-run 的
+升级计划里带着它，而不是像以前那样断言它被排除。
 
 默认值对应 packages/piano-fedora-configs 里随包发布的 .repo。
 """
@@ -17,12 +21,11 @@ import json
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 DEFAULT_REPO_ID = "copr:copr.fedorainfracloud.org:xinyang26:piano-fedora"
 DEFAULT_BASEURL = "https://download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/"
-EXCLUDED = "kernel-piano"
+KERNEL_PACKAGE = "kernel-piano"
 
 
 def run(args, *, check=True, sudo=False, binary=False):
@@ -101,31 +104,19 @@ def repo_file_state():
         "path": str(path),
         "gpgcheck": "gpgcheck=1" in text,
         "repo_gpgcheck_off": "repo_gpgcheck=0" in text,
-        "excludes_kernel": f"exclude={EXCLUDED}*" in text or f"exclude={EXCLUDED}" in text,
+        "excludes_kernel": f"exclude={KERNEL_PACKAGE}" in text,
     }
 
 
 def repoquery_kernel(baseurl):
-    """确认排除规则对 kernel-piano 生效。"""
-    with tempfile.TemporaryDirectory() as tmp:
-        # 每个 --setopt 必须是独立 argv 项：拼成一个字符串会被 dnf 当成单个参数。
-        options = [
-            f"--repofrompath=coprcheck,{baseurl}",
-            "--setopt=coprcheck.gpgcheck=1",
-            "--setopt=coprcheck.repo_gpgcheck=0",
-            f"--setopt=coprcheck.exclude={EXCLUDED}*",
-            "--setopt=coprcheck.skip_if_unavailable=True",
-        ]
-        visible = run(["dnf", "repoquery", *options, "--qf", "%{name}", EXCLUDED], check=False)
-        without_exclude = run([
-            "dnf", "repoquery", f"--repofrompath=coprcheck,{baseurl}",
-            "--setopt=coprcheck.skip_if_unavailable=True",
-            "--qf", "%{name}", EXCLUDED,
-        ], check=False)
-    return {
-        "listed_with_exclude": EXCLUDED in visible.stdout.split(),
-        "listed_without_exclude": EXCLUDED in without_exclude.stdout.split(),
-    }
+    """确认 kernel-piano 在仓库里，且不会被排除规则挡掉。"""
+    result = run([
+        "dnf", "repoquery", f"--repofrompath=coprcheck,{baseurl}",
+        "--setopt=coprcheck.gpgcheck=1", "--setopt=coprcheck.repo_gpgcheck=0",
+        "--setopt=coprcheck.skip_if_unavailable=True",
+        "--qf", "%{name}", KERNEL_PACKAGE,
+    ], check=False)
+    return {"listed": KERNEL_PACKAGE in result.stdout.split()}
 
 
 def upgrade_dry_run():
@@ -179,24 +170,24 @@ def main():
 
     record["repo_file"] = repo_file_state()
     if record["repo_file"]["installed"]:
-        for key in ("gpgcheck", "repo_gpgcheck_off", "excludes_kernel"):
+        for key in ("gpgcheck", "repo_gpgcheck_off"):
             if not record["repo_file"].get(key):
                 problems.append(f"installed .repo fails {key}")
+        if record["repo_file"]["excludes_kernel"]:
+            problems.append("installed .repo still excludes kernel-piano")
 
     try:
-        record["kernel_exclusion"] = repoquery_kernel(baseurl)
-        if record["kernel_exclusion"]["listed_with_exclude"]:
-            problems.append("kernel-piano is visible despite the exclude rule")
-        if not record["kernel_exclusion"]["listed_without_exclude"]:
-            problems.append("kernel-piano is not in the repository at all")
+        record["kernel_visibility"] = repoquery_kernel(baseurl)
+        if not record["kernel_visibility"]["listed"]:
+            problems.append("kernel-piano is not visible in the repository")
     except (RuntimeError, OSError) as error:
         problems.append(f"repoquery failed: {error}")
 
     if args.install_test:
         try:
             record["upgrade_dry_run"] = upgrade_dry_run()
-            if record["upgrade_dry_run"]["mentions_kernel"]:
-                problems.append("upgrade would touch kernel-piano")
+            if not record["upgrade_dry_run"]["mentions_kernel"]:
+                problems.append("upgrade plan does not carry kernel-piano")
             if record["upgrade_dry_run"]["accepted_without_confirm"]:
                 problems.append("dnf upgrade did not require confirmation")
         except (RuntimeError, OSError) as error:

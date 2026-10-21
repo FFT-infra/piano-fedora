@@ -46,6 +46,8 @@ clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel r
 
 Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合体 BOOT 必须用本机当前 stock BOOT、槽位和 generation 另行包装；通用构建产物不包含这些个人设备输入。
 
+已装系统升级内核不需要 bundle。`kernel-piano` 提供 `kernel-core`，走 `dnf upgrade` 装上之后由包自己的 `%posttrans` 重建 initramfs 并重打 ESP 上的 `boot.img`；语义与回滚见 [COPR 软件源](copr-repository.md)。
+
 ## 参考来源
 
 `docs/upstreams.json` 登记研究与对照仓库，只用来限定实现范围。源码直接依赖以 `sources.lock.json` 为准，参考文档不会自动进入生产依赖。下载和生成的文件放在被忽略的 `build/`、`out/`。固件、校准和密钥不进代码仓库。

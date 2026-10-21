@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        7%{?dist}
+Release:        8%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -63,7 +63,10 @@ chmod 0755 %{buildroot}%{_bindir}/* %{buildroot}%{_libexecdir}/*
 chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || true
 
 %files
-%config(noreplace) %{_sysconfdir}/yum.repos.d/piano-fedora-copr.repo
+# 这份 .repo 不带 noreplace：内核升级放开之后，已装设备上那份还带着
+# exclude=kernel-piano，noreplace 会把它留成旧文件，升级永远拿不到内核。
+# 与下面看门狗那条是同一个理由：要换掉的是文件内容，不是保护本地改动。
+%config %{_sysconfdir}/yum.repos.d/piano-fedora-copr.repo
 %config(noreplace) %{_sysconfdir}/systemd/system/qbootctl.service.d/piano.conf
 %config(noreplace) %{_sysconfdir}/systemd/sleep.conf.d/piano.conf
 %config(noreplace) %{_sysconfdir}/systemd/logind.conf.d/piano.conf
@@ -140,6 +143,11 @@ systemd-tmpfiles --create %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf %{_p
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service
 
 %changelog
+* Wed Oct 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-8
+- 放开内核在线升级：.repo 去掉 exclude=kernel-piano，改由 kernel-piano 的
+  %posttrans 重建 initramfs 并重打 ESP 的 boot.img。这份 .repo 去掉 noreplace，
+  否则已装设备上的旧文件会被留成 .rpmnew，排除规则永远消不掉
+
 * Wed Oct 21 2026 FFT-infra <dev@piano.invalid> - 0.1.0-7
 - 看门狗黑名单改由本包提供：initramfs 直接写 /etc/modprobe.d 会绕过 rpm 的
   SELinux 标签事务，留下 unlabeled_t 的无主文件，systemd-modules-load 被拒。

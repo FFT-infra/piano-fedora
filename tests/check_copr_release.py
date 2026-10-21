@@ -263,13 +263,20 @@ def test_repo_file_contract():
     text = REPO_FILE.read_text()
     assert "gpgcheck=1" in text
     assert "repo_gpgcheck=0" in text
-    assert "exclude=kernel-piano*" in text
+    # 内核在线升级已放开：仓库不能再排除 kernel-piano，否则设备永远拿不到内核。
+    assert "exclude=kernel-piano" not in text, "the COPR repo must not exclude kernel-piano"
     assert "download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/" in text
     assert "gpgkey=" in text and "pubkey.gpg" in text
     # The file must actually be packaged, otherwise the repo never reaches a
-    # system built from these RPMs.
+    # system built from these RPMs. It must not be %config(noreplace): an
+    # installed device keeps the old file with the exclude rule, and the
+    # upgrade never sees kernel-piano.
     spec = SPEC.read_text()
-    assert "%{_sysconfdir}/yum.repos.d/piano-fedora-copr.repo" in spec
+    entry = next(line for line in spec.splitlines()
+                 if "piano-fedora-copr.repo" in line and "%{_sysconfdir}" in line)
+    assert "%config(noreplace)" not in entry, (
+        "the shipped .repo must not be noreplace; an old copy keeps exclude=kernel-piano")
+    assert "%config " in entry
     assert (CONFIGS / "etc" / "yum.repos.d" / "piano-fedora-copr.repo").is_file()
 
 
@@ -303,9 +310,14 @@ def test_device_verifier_contract():
     # It reads the same repo id the shipped .repo defines.
     repo = REPO_FILE.read_text()
     assert "xinyang26/piano-fedora" in text and "xinyang26/piano-fedora" in repo
-    # exclusions and signature policy must be asserted, not assumed.
-    for token in ("exclude=kernel-piano*", "gpgcheck=1", "repo_gpgcheck=0"):
+    # signature policy must be asserted, not assumed.
+    for token in ("gpgcheck=1", "repo_gpgcheck=0"):
         assert token in repo
+    # The verifier now asserts the opposite of the old contract: kernel-piano
+    # must be visible and the upgrade plan must carry it.
+    assert "kernel_visibility" in text
+    assert "does not carry kernel-piano" in text
+    assert "still excludes kernel-piano" in text
 
 
 def test_device_verifier_fetches_compressed_repodata():
@@ -338,9 +350,10 @@ def test_device_verifier_pubkey_is_at_repo_root():
 def test_device_verifier_passes_setopt_as_separate_argv():
     """每个 --setopt 必须是独立 argv 项，拼成一个字符串 dnf 只看到第一个。"""
     text = DEVICE_VERIFIER.read_text()
-    assert '" ".join([' not in text.split("def repoquery_kernel")[1].split("def ")[0], (
-        "repoquery 的选项不能拼成单个字符串再传给 dnf")
-    assert "*options" in text, "选项列表必须用 *options 展开成独立参数"
+    body = text.split("def repoquery_kernel")[1].split("\ndef ")[0]
+    assert '" ".join([' not in body, "repoquery 的选项不能拼成单个字符串再传给 dnf"
+    assert "--setopt=coprcheck.gpgcheck=1" in body
+    assert "--setopt=coprcheck.repo_gpgcheck=0" in body
 
 
 def main():

@@ -129,5 +129,6 @@ make plan-desktop DESKTOP=niri RELEASEVER=44
   是自己打包，本轮评估后没有采用。
 - **`denial` 是占位档位**，`buildable: false`。`build-clean-rootfs.py --plan`
   对它返回 `INPUTS_REQUIRED` 并以非零退出，不会产出镜像。
-- **内核不在 COPR 里。** 四档都用 release bundle 里的 `kernel-piano`，原因见
-  [COPR 软件源](copr-repository.md)。
+- **内核在 COPR 里，四档共用。** 装机用 release bundle 里的 `kernel-piano`；
+  装好之后由 `dnf upgrade` 升级，包自己的 `%posttrans` 重建 initramfs 并重打
+  ESP 的 `boot.img`。失败与回滚边界见 [COPR 软件源](copr-repository.md)。

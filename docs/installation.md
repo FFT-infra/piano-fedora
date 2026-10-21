@@ -611,6 +611,28 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 
 中途中断时先读 session 的 result.json 和实际设备状态，不要自动重试或回滚 GPT。
 
+### 只升级内核（已装系统）
+
+装好之后内核跟着 `dnf upgrade` 走，不需要重跑刷写，也不需要 bundle。`kernel-piano` 提供 `kernel-core`，是 installonly 包：新内核与旧内核并存，旧模块树保留。
+
+```sh
+sudo dnf upgrade --refresh
+```
+
+升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再把新内核、新 initramfs 与 ESP 上原有的 `board.dtb` 重新打成 Android boot v2 容器，原子替换 `/boot/efi/EFI/Piano/stable/boot.img`。重启后固件读到的是新内核。
+
+失败边界：任何一步失败，`boot.img` 保持原样，设备继续用上一个内核启动。审计记录写在 `/var/lib/piano/kernel-esp/<release>.json`。
+
+已经装好但起不来的内核没有自动回滚，回滚靠 `boot.img.bak`：
+
+```sh
+sudo cp /boot/efi/EFI/Piano/stable/boot.img.bak /boot/efi/EFI/Piano/stable/boot.img
+sudo cp /boot/efi/EFI/Piano/stable/Image.bak /boot/efi/EFI/Piano/stable/Image
+sudo cp /boot/efi/EFI/Piano/stable/initramfs.bak /boot/efi/EFI/Piano/stable/initramfs
+```
+
+`dnf history undo` 只回滚 RPM，不动 ESP。完整语义见 [COPR 软件源](copr-repository.md)。
+
 ## 登录与诊断
 
 桌面用户是 `piano`，默认密码 `piano123456`，与上游登录策略一致。桌面自动登录，首次使用后执行 `passwd` 改密。root 密码保持锁定。镜像里没有 `authorized_keys`。要密钥登录就在刷写时用 `flash-linux.sh --ssh-key` 注入，首启后由 `piano-first-boot-ssh-key.service` 导入。

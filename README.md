@@ -100,7 +100,7 @@ Release 另带 `piano-installer-<tag>.zip`（刷写脚本与说明）和 `piano-
 - [安装与分区](docs/installation.md)：分区计算、GPT 检查、一键与手动刷写、首次登录
 - [交付物与流水线](docs/artifacts.md)：内核、RPM、initramfs 与 bundle 的组装标准
 - [维护与验收](docs/internals.md)：流水线入口、产物绑定、run id 传递、PR 门槛
-- [COPR 软件源](docs/copr-repository.md)：用户态包在线升级与回滚边界（内核不在内）
+- [COPR 软件源](docs/copr-repository.md)：全部 10 个包的在线升级，包括内核；回滚边界与失败模式
 - [上游跟踪](docs/upstream.md)：当前 pin、漂移看板、跟进规则
 - [已知问题](docs/known-issues.md)：未解决与观察中的问题
 - [Gunyah 虚拟化](docs/virtualization.md)：SM8750 上的虚拟机生命周期与网络

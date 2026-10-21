@@ -97,7 +97,7 @@ The release also carries `piano-installer-<tag>.zip` (flash scripts and guide) a
 - [Installation and partitioning](docs/installation.md): partition sizing, GPT checks, one-step and manual flashing, first login
 - [Artifacts and pipeline](docs/artifacts.md): how the kernel, RPMs, initramfs, and bundle are assembled
 - [Maintenance and acceptance](docs/internals.md): pipeline entry points, artifact binding, run id plumbing, PR gate
-- [COPR repository](docs/copr-repository.md): online upgrades for userspace packages, and the rollback boundary (the kernel is not included)
+- [COPR repository](docs/copr-repository.md): online upgrades for all ten packages, kernel included, plus the rollback boundary and failure modes
 - [Upstream tracking](docs/upstream.md): current pin, drift dashboard, follow-up rules
 - [Known issues](docs/known-issues.md): open problems and items under observation
 - [Gunyah virtualization](docs/virtualization.md): VM lifecycle and networking on SM8750
