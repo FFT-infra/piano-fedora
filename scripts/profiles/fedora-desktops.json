@@ -86,6 +86,7 @@
       "swaybg",
       "waybar",
       "brightnessctl",
+      "mesa-vulkan-drivers",
       "pipewire",
       "wireplumber",
       "iio-sensor-proxy"
@@ -127,6 +128,7 @@
       "mako",
       "waybar",
       "brightnessctl",
+      "mesa-vulkan-drivers",
       "pipewire",
       "wireplumber",
       "iio-sensor-proxy"

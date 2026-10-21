@@ -116,6 +116,21 @@ def check_schema_is_enforced():
         DESKTOPS.write_text(original, encoding="utf-8")
 
 
+def check_vulkan_desktops_install_the_driver():
+    """非 GNOME/KDE 的档位必须自己声明 `mesa-vulkan-drivers`。
+
+    GNOME 与 KDE 靠 `@workstation-product-environment` /
+    `@kde-desktop-environment` 传递依赖拿到 Mesa 的 Vulkan 驱动。niri 与
+    Hyprland 没有元包，只有显式写进 `dnf_packages` 才会进树。少了它，
+    finalize 阶段逐一核对 Mesa 清单里的 6 个包时会失败。
+    """
+    for desktop in ("niri", "hyprland"):
+        context = piano_desktop.load(desktop, "44")
+        packages = context["profile"]["dnf_packages"]
+        assert "mesa-vulkan-drivers" in packages, (
+            f"{desktop} needs mesa-vulkan-drivers; no metapackage pulls it in")
+
+
 def check_repo_args():
     """第三方仓库展开成 --repofrompath + priority，变量按 arch / releasever 替换。
 
@@ -464,6 +479,7 @@ def main():
     check_gnome_names_unchanged()
     check_derived_names_follow_the_desktop()
     check_schema_is_enforced()
+    check_vulkan_desktops_install_the_driver()
     check_repo_args()
     check_gpgkeys_are_pinned()
     check_greetd_desktops_stage_a_config_toml()
