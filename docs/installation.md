@@ -607,7 +607,7 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 
 执行前重新比较设备、完整 GPT 基线、内存描述、槽位与材料，保存 GPT 双副本和原 BOOT。进入原厂 bootloader 后，第一笔传输之前核对两个目标的实时容量；fastbootd、序列号不对或槽位不对都拒绝。只传输 `sunuefi_esp` 与 `sunuefi_root`，完成后停在 Fastboot，状态是 `UPDATE_TRANSFERRED_FIRST_BOOT_AND_READBACK_PENDING`。
 
-传输成功不等于读回或启动通过。下一步依次是临时 `boot_linux.img` 启动与设备读回、GNOME 与硬件验收、临时 Android 旁路。全部通过后才单独安装持久 BOOT。
+传输成功不等于读回或启动通过。下一步依次是临时 `boot_linux.img` 启动与设备读回、桌面与硬件验收、临时 Android 旁路。全部通过后才单独安装持久 BOOT。
 
 中途中断时先读 session 的 result.json 和实际设备状态，不要自动重试或回滚 GPT。
 
@@ -638,14 +638,14 @@ ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，�
 ### 默认状态
 * **120 Hz 与触控**：Mesa 硬件加速默认开启；触控服务加载 5 阶自适应卡尔曼滤波与 24 像素死区防抖。
 * **声学保护**：内核与 ALSA UCM2 把 FS19xx 四功放截断在 -15 dB；麦克风有 +40 dB 硬件增益。
-* **电池与电源**：`/hypervisor` 节点已软隔离，GNOME 显示原生双电芯电量，支持合盖与深度挂起。休眠（hibernate）与混合睡眠默认关闭：`sleep.conf.d/piano.conf` 由 `scripts/finalize-fedora-rootfs.py` 写入，`logind.conf.d/piano.conf` 由 `piano-fedora-configs` 包提供。
+* **电池与电源**：`/hypervisor` 节点已软隔离，桌面显示原生双电芯电量，支持合盖与深度挂起。休眠（hibernate）与混合睡眠默认关闭：`sleep.conf.d/piano.conf` 由 `scripts/finalize-fedora-rootfs.py` 写入，`logind.conf.d/piano.conf` 由 `piano-fedora-configs` 包提供。
 * **触控提频**：`uperf-linux` 监听触控输入，触点按下后 1 ms 内拉高全大核频率。
 
 ---
 
 ## 六、 双系统往返
 
-1. **从 Linux 切换回 Android**：点击 GNOME 应用抽屉里的**「返回 Android」**图标，
+1. **从 Linux 切换回 Android**：点击应用抽屉里的**「返回 Android」**图标，
    或在终端执行 `piano-next-boot android --reboot`。helper 把持久请求写成
    Android 后正常重启，选择器在下次开机时进入 Android。已在真机验收（2026-10-21）。
 2. **从 Android 切换回 Linux**：安装 Android 的「SunUEFI 引导助手」模块，在模块
