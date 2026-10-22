@@ -84,6 +84,21 @@ def check_spec(failures):
         for token in ("depmod", "piano-kernel-esp-update"):
             if token not in script:
                 failures.append(f"%posttrans never runs {token}")
+        # installonly 升级后新旧内核共存，旧 manifest 仍在盘上；%posttrans 必须
+        # 点名刚装上的那一份，否则工具会拒绝在多份之间猜。
+        if "--manifest" not in script:
+            failures.append("%posttrans does not name the manifest it just installed")
+
+    # 实机教训（2026-10-22）：manifest 曾是固定路径 /usr/share/piano/
+    # kernel-manifest.json。kernel-piano 是 installonly，升级时两个版本同时
+    # 安装，rpm 报 "file ... conflicts with file from package" 并中止整个事务，
+    # 设备上的内核因此永远升不上去。名字必须带 NVRA。
+    named = "%{_datadir}/piano/kernel-manifest-%{version}-%{release}.json"
+    if named not in body:
+        failures.append("kernel-piano.spec does not ship an NVRA-named kernel manifest; "
+                        "installonly upgrades would collide on a fixed path")
+    if re.search(r"^\s*%\{_datadir\}/piano/kernel-manifest\.json\s*$", body, re.MULTILINE):
+        failures.append("kernel-piano.spec still owns the fixed kernel-manifest.json path")
 
     # 内核升级所需的那套工具必须随本包发布，且路径与 %posttrans 里的一致。
     for name in ("f2fs-disk-bootstrap", "piano-kernel-esp-update",
@@ -100,6 +115,32 @@ def check_spec(failures):
                         "including updates/v4l2loopback.ko")
     if "Requires:       python3" not in body or "Requires:       kmod" not in body:
         failures.append("%posttrans needs python3 and kmod at runtime")
+
+
+def check_tools(failures):
+    """spec 里点名的那两个工具必须真的接受 manifest 参数。
+
+    %posttrans 传 --manifest 而工具不认，升级会在事务收尾时报 2，并且是装完
+    才失败——比升级本身失败更难收拾。
+    """
+    esp_update = ROOT / "scripts" / "piano-kernel-esp-update"
+    initramfs = ROOT / "scripts" / "build-initramfs.py"
+    for path in (esp_update, initramfs):
+        if not path.is_file():
+            failures.append(f"missing {path.relative_to(ROOT)}")
+            return
+    updater = esp_update.read_text(encoding="utf-8")
+    if '"--manifest"' not in updater:
+        failures.append("piano-kernel-esp-update does not accept --manifest")
+    if updater.count("manifest_name") < 2:
+        failures.append("piano-kernel-esp-update does not forward the named manifest "
+                        "to inspect_installed_kernel and build-initramfs")
+    builder = initramfs.read_text(encoding="utf-8")
+    if '"--manifest"' not in builder:
+        failures.append("build-initramfs.py does not accept --manifest")
+    if "installed_manifest" not in builder:
+        failures.append("build-initramfs.py does not forward the named manifest "
+                        "to InstalledKernel")
 
 
 def check_build_script(failures):
@@ -208,6 +249,7 @@ def check_built_rpm(failures):
 def main():
     failures = []
     check_spec(failures)
+    check_tools(failures)
     check_build_script(failures)
     check_built_rpm(failures)
     if failures:

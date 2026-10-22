@@ -197,7 +197,7 @@ def build_installed_fixture(tmp, busybox):
     image = b"TEST-FIXTURE-NOT-A-BOOTABLE-KERNEL"
     (installed / "boot" / "vmlinuz-7.2.9-1.piano.fc44").write_bytes(image)
     (installed / "boot" / "vmlinuz-6.0-old").write_bytes(b"an older kernel")
-    (installed / "usr/share/piano/kernel-manifest.json").write_text(json.dumps({
+    (installed / "usr/share/piano/kernel-manifest-7.2.9-1.piano.fc44.json").write_text(json.dumps({
         "status": "HOST_BUILT_FULL_CANDIDATE_NOT_HARDWARE_VERIFIED",
         "source_clean": True,
         "kernel_release": RELEASE,
@@ -421,6 +421,28 @@ def main():
              "--output", str(tmp / "reject-chain")],
             capture_output=True, text=True, cwd=package).returncode == 2,
             "installed mode must reject the ABL chain")
+
+        # installonly 升级后盘上同时有两份 manifest。工具不能挑，必须点名。
+        old_manifest = installed / "usr/share/piano/kernel-manifest-7.2.9-0.piano.fc44.json"
+        shutil.copy2(installed / "usr/share/piano/kernel-manifest-7.2.9-1.piano.fc44.json",
+                     old_manifest)
+        check(subprocess.run(
+            [sys.executable, str(package / "build-initramfs.py"), "--installed",
+             "--rootfs", str(installed), "--output", str(tmp / "ambiguous-out")],
+            capture_output=True, text=True, cwd=package).returncode == 2,
+            "installed mode must refuse to guess between several kernel manifests")
+        named_output = tmp / "named-out"
+        named = subprocess.run(
+            [sys.executable, str(package / "build-initramfs.py"), "--installed",
+             "--rootfs", str(installed), "--output", str(named_output),
+             "--manifest", old_manifest.name],
+            capture_output=True, text=True, cwd=package)
+        check(named.returncode == 0,
+              f"installed mode must accept a named manifest: {named.stderr.strip()}")
+        if named.returncode == 0:
+            check(json.loads((named_output / "manifest.json").read_text())["kernel_release"]
+                  == RELEASE, "named-manifest build picked a different kernel")
+        old_manifest.unlink()
 
     if failures:
         for item in failures:

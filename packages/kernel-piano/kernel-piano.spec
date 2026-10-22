@@ -26,7 +26,7 @@
 
 Name:           kernel-piano
 Version:        7.2.9
-Release:        2.%{DEVICE_NAME}%{?dist}
+Release:        3.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
 URL:            https://github.com/blu-sharky/linux-piano
@@ -103,9 +103,15 @@ test -s "$(find %{buildroot}%{_prefix}/lib/modules -name 'modules.dep' | head -n
 
 # Record which upstream commit this kernel came from, so a shipped image can be
 # traced back without unpacking the RPM.
+#
+# The name carries the package NVRA: kernel-piano is installonly, so an upgrade
+# leaves the old package installed. A fixed /usr/share/piano/kernel-manifest.json
+# made the two versions collide and rpm refused the transaction ("file ...
+# conflicts with file from package kernel-piano-7.2.9-1"), which blocked every
+# kernel upgrade on a device.
 if [ -f manifest.json ]; then
     install -D -m 0644 manifest.json \
-        %{buildroot}%{_datadir}/piano/kernel-manifest.json
+        %{buildroot}%{_datadir}/piano/kernel-manifest-%{version}-%{release}.json
 fi
 
 # 设备侧重建 initramfs 与重打 ESP 容器的那套工具。它们必须和内核同版本发布：
@@ -125,7 +131,7 @@ install -m 0644 piano-tools/build-initramfs.py \
 # 整个模块树归本包所有，包括 updates/ 里的 v4l2loopback：它按本内核的 ABI
 # 编译，模块树的名字就是本内核的 release。piano-runtime 不再提供第二份。
 %{_prefix}/lib/modules/*
-%{_datadir}/piano/kernel-manifest.json
+%{_datadir}/piano/kernel-manifest-%{version}-%{release}.json
 %{_prefix}/lib/piano/f2fs-disk-bootstrap
 %{_prefix}/lib/piano/piano-kernel-esp-update
 %{_prefix}/lib/piano/build-initramfs.py
@@ -141,11 +147,21 @@ if [ ! -f "$ESP/board.dtb" ]; then
     echo "piano: no ESP payload at $ESP; skipping the boot.img rebuild"
     exit 0
 fi
-RELEASE=$(python3 -c 'import json;print(json.load(open("/usr/share/piano/kernel-manifest.json"))["kernel_release"])') || exit 1
+# installonly 让新旧内核共存，manifest 也按 NVRA 各存一份。这里读刚装上的
+# 那份：%{version}-%{release} 在构建时就已展开成这一版的字符串。
+MANIFEST=%{_datadir}/piano/kernel-manifest-%{version}-%{release}.json
+[ -f "$MANIFEST" ] || exit 1
+RELEASE=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["kernel_release"])' "$MANIFEST") || exit 1
+[ -d "/usr/lib/modules/$RELEASE" ] || exit 1
 depmod -a "$RELEASE" || exit 1
-/usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" || exit 1
+# 旧内核的 manifest 还在盘上，必须点名这一份，否则工具拒绝在多份之间猜。
+/usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
+* Wed Oct 22 2026 FFT-infra <dev@piano.invalid> - 7.2.9-3.piano
+- manifest 按 NVRA 命名：installonly 升级时新旧内核不再争同一个
+  /usr/share/piano/kernel-manifest.json，rpm 事务得以完成
+
 * Wed Oct 22 2026 FFT-infra <dev@piano.invalid> - 7.2.9-2.piano
 - 内核纳入设备侧 dnf 升级：%posttrans 重建 initramfs 并重打 ESP 的 boot.img，
   失败时旧文件保持不动；v4l2loopback 改由本包拥有，外部模块跟着内核走

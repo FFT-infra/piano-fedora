@@ -233,9 +233,10 @@ class InstalledKernel:
 
     source = "installed"
 
-    def __init__(self, root):
+    def __init__(self, root, manifest=None):
         root = Path(root)
-        self.manifest, self.manifest_sha256, self.image = inspect_installed_kernel(root)
+        self.manifest, self.manifest_sha256, self.image = inspect_installed_kernel(
+            root, manifest=manifest)
         self.release = self.manifest["kernel_release"]
         self.module_dir = guest_resolve(root, f"/lib/modules/{self.release}")
         if not self.module_dir.is_dir():
@@ -512,7 +513,7 @@ def verify_archive(archive, kernel_manifest=None, expected_chain=None):
 
 
 def build(rootfs, kernel, output, root_label, root_partname, release_override=None,
-          boot_chain="sunuefi", abl_source=None, installed=False):
+          boot_chain="sunuefi", abl_source=None, installed=False, installed_manifest=None):
     rootfs, output = Path(rootfs).resolve(), Path(output).resolve()
     if output.exists():
         raise InitramfsError(f"output already exists: {output}")
@@ -528,7 +529,7 @@ def build(rootfs, kernel, output, root_label, root_partname, release_override=No
             raise InitramfsError("the installed mode takes the kernel from the running system")
         if boot_chain != "sunuefi":
             raise InitramfsError("an installed system only rebuilds the SunUEFI chain")
-        kernel_source = InstalledKernel(rootfs)
+        kernel_source = InstalledKernel(rootfs, manifest=installed_manifest)
         # 设备上两份脚本都在系统里：引导脚本与本脚本同目录（kernel-piano 装到
         # /usr/lib/piano），取证脚本由 piano-fedora-configs 提供在 /usr/bin。
         bootstrap = bootstrap_file(installed=True)
@@ -733,14 +734,18 @@ def main(argv=None):
     parser.add_argument("--abl-source", help="锁定的 debian-piano checkout，仅用于 ABL 只读诊断")
     parser.add_argument("--installed", action="store_true",
                         help="内核取自已安装系统（设备侧重建，--rootfs 传 /）")
+    parser.add_argument("--manifest",
+                        help="已安装内核的 manifest 文件名（installonly 下多版本共存时必填）")
     args = parser.parse_args(argv)
     if not args.installed and not args.kernel:
         parser.error("--kernel is required unless --installed is given")
+    if args.manifest and not args.installed:
+        parser.error("--manifest only applies to --installed")
 
     try:
         result = build(args.rootfs, args.kernel, args.output,
                        args.root_label, args.root_partname, args.release,
-                       args.boot_chain, args.abl_source, args.installed)
+                       args.boot_chain, args.abl_source, args.installed, args.manifest)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
     except (InitramfsError, ValueError, OSError, KeyError) as exc:

@@ -103,27 +103,29 @@ def write_if_changed(data, target, backup):
     return True
 
 
-def build_initramfs(root, output):
+def build_initramfs(root, output, manifest=None):
     if not BUILD_INITRAMFS.is_file():
         raise EspUpdateError(f"missing {BUILD_INITRAMFS}")
-    result = subprocess.run(
-        [sys.executable, str(BUILD_INITRAMFS), "--installed", "--rootfs", str(root),
-         "--output", str(output)],
-        capture_output=True, text=True,
-    )
+    command = [sys.executable, str(BUILD_INITRAMFS), "--installed", "--rootfs", str(root),
+               "--output", str(output)]
+    # installonly 下新旧内核并存，每份 manifest 名字都不同；不点名的话
+    # build-initramfs 会拒绝在多份之间挑一份。
+    if manifest is not None:
+        command += ["--manifest", str(manifest)]
+    result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         raise EspUpdateError("initramfs rebuild failed: " + (result.stderr.strip() or result.stdout.strip()))
     return json.loads((output / "manifest.json").read_text())
 
 
-def update(root, esp, release_expected=None, dry_run=False):
+def update(root, esp, release_expected=None, dry_run=False, manifest_name=None):
     root, esp = Path(root), Path(esp)
     payload = esp / ESP_PAYLOAD
     board_dtb = payload / "board.dtb"
     if not board_dtb.is_file():
         raise EspUpdateError(
             f"no ESP payload at {payload}; this is not a bootable piano install")
-    manifest, manifest_sha, image = inspect_installed_kernel(root)
+    manifest, manifest_sha, image = inspect_installed_kernel(root, manifest=manifest_name)
     release = manifest["kernel_release"]
     if release_expected is not None and release != release_expected:
         raise EspUpdateError(
@@ -143,7 +145,7 @@ def update(root, esp, release_expected=None, dry_run=False):
     with tempfile.TemporaryDirectory(prefix="piano-esp-") as scratch:
         scratch = Path(scratch)
         initramfs_dir = scratch / "initramfs"
-        built = build_initramfs(root, initramfs_dir)
+        built = build_initramfs(root, initramfs_dir, manifest_name)
         if built["kernel_manifest_sha256"] != manifest_sha:
             raise EspUpdateError("rebuilt initramfs names a different kernel manifest")
         initramfs = initramfs_dir / "initramfs.cpio.gz"
@@ -190,11 +192,13 @@ def main(argv=None):
     parser.add_argument("--root", default="/", help="已安装系统根（默认 /）")
     parser.add_argument("--esp", default=str(DEFAULT_ESP), help="ESP 挂载点（默认 /boot/efi）")
     parser.add_argument("--release", help="断言刚装上的内核 release")
+    parser.add_argument("--manifest", help="已安装内核的 manifest 文件名"
+                                          "（installonly 下多版本共存时必填）")
     parser.add_argument("--dry-run", action="store_true", help="只校验与重建，不写 ESP")
     args = parser.parse_args(argv)
 
     try:
-        record = update(args.root, args.esp, args.release, args.dry_run)
+        record = update(args.root, args.esp, args.release, args.dry_run, args.manifest)
     except (EspUpdateError, ValueError, OSError, KeyError) as exc:
         print(f"piano: kernel ESP update failed: {exc}", file=sys.stderr)
         return 2

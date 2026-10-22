@@ -159,7 +159,7 @@ def inspect_kernel(kernel, require_f2fs=True):
     return m, sha256(kernel / "manifest.json")
 
 
-def inspect_installed_kernel(root, boot_dir="boot"):
+def inspect_installed_kernel(root, boot_dir="boot", manifest=None):
     """验证已安装系统里的内核就是封存 manifest 描述的那一份。
 
     `inspect_kernel()` 只在构建机上成立：它要求 `modules.*` 索引逐字节等于
@@ -167,18 +167,35 @@ def inspect_installed_kernel(root, boot_dir="boot"):
     `depmod` 会重写索引，外部模块会落进 `updates/`。设备侧因此换一组判据，
     验的是包管理器不会改写的部分：
 
-    - `/usr/share/piano/kernel-manifest.json` 必须是完整的封存记录；
+    - `/usr/share/piano/kernel-manifest-<NVRA>.json` 必须是完整的封存记录；
     - `/boot/vmlinuz-*` 里必须有一份的 sha256 与字节数等于 manifest 的 Image；
     - manifest 列出的每个模块在 `/lib/modules/<release>/` 下存在且摘要相符。
 
     `updates/` 与 `modules.*` 索引一律不看。installonly 让新旧内核共存，
     所以 Image 按内容匹配，不按文件名匹配。返回 `(manifest, manifest_sha256,
     image_path)`。
+
+    manifest 的文件名带 NVRA：installonly 会同时留下多个版本，固定名字会让
+    两个包争同一个路径，rpm 直接拒绝升级。`manifest` 参数可以显式指定一份；
+    不指定时按 `kernel_release` 与文件里记录的值对上号再采用，对不上就报错，
+    不猜。
     """
     root = Path(root)
-    manifest_path = root / "usr/share/piano/kernel-manifest.json"
-    if manifest_path.is_symlink() or not manifest_path.is_file():
-        raise ValueError("installed kernel manifest missing: /usr/share/piano/kernel-manifest.json")
+    candidates = sorted(p for p in (root / "usr/share/piano").glob("kernel-manifest-*.json")
+                        if p.is_file() and not p.is_symlink())
+    if not candidates:
+        raise ValueError("installed kernel manifest missing: "
+                         "/usr/share/piano/kernel-manifest-<NVRA>.json")
+    if manifest is not None:
+        wanted = Path(manifest)
+        candidates = [p for p in candidates if p.name == wanted.name]
+        if not candidates:
+            raise ValueError(f"requested kernel manifest not installed: {manifest}")
+    elif len(candidates) > 1:
+        # 多个内核并存时不能随手挑一份：调用方（%posttrans）知道刚装的是哪一版。
+        raise ValueError("several installed kernel manifests; name the one to verify: "
+                         + ", ".join(p.name for p in candidates))
+    manifest_path = candidates[0]
     m = json.loads(manifest_path.read_text())
     if m.get("status") != "HOST_BUILT_FULL_CANDIDATE_NOT_HARDWARE_VERIFIED" or not m.get("source_clean"):
         raise ValueError("installed kernel is not a completed clean full build")
