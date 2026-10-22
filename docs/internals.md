@@ -24,6 +24,17 @@ build-bundle
   └─ deploy-bundle/sunuefi_esp.img + boot_sunuefi.img
 ```
 
+四步之间要显式传 run id，链路不会自己去找"最新的那个"：
+
+| 步骤 | 必填输入 |
+| --- | --- |
+| build-rootfs | `piano_rpms_run_id`、`runtime_run_id`、`mesa_run_id`、`ffmpeg_run_id` |
+| build-image | `kernel_run_id`、`runtime_run_id`、`rootfs_run_id`、`mesa_run_id`、`ffmpeg_run_id` |
+| build-bundle | `root_image_run_id` |
+| prepare-install | `bundle_run` |
+
+每次 dispatch 都用 tag 或分支钉住 commit，不要用会移动的分支名。四档产物必须落在同一个 commit 上，`release.yml` 会逐档核对 run 的 `head_sha`，混进一个别的提交就拒绝发布。中途往分支上推任何 commit 都会让后续步骤落到新提交上，所以发布期间停在 tag 上跑。
+
 发布验收必须用这一整条链的新产物，并从原始 GPT/UFS 布局重新分区。手工补进会话 RPM 的 rootfs 不算通过。
 
 ## Actions 材料
