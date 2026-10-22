@@ -14,6 +14,10 @@
 
 **实机记录。** `7.2.9-1` → `7.2.9-3` 在平板上走过一次：事务收尾时 initramfs 重建（6 个早期模块）、ESP 的 `Image`、`initramfs`、`boot.img` 三份都换掉并各留一份 `.bak`，审计记录写到 `/var/lib/piano/kernel-esp/<release>.json`。重启后 `uname -r` 是 `7.2.9-piano-gnome-g80eebb86d621`，`graphical.target` 与 GDM 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载，`/dev/video40`、`/dev/video41` 在。
 
+同一条路径也从 COPR 走过一次 `dnf reinstall kernel-piano`（版本不变，等于把下载、校验、`%posttrans` 整条重跑）：事务成功，审计记录里 `changed` 三项全为 `false`，`boot.img` 摘要没变——同样的输入重打出的容器逐字节相同，所以重复触发不会重写 43 MB。
+
+挂起与唤醒各测了两轮，都能回到桌面，`systemctl --failed` 保持为空。挂起路径上每次会打 4 条 `qdss already disabled/unprepared` 的 clk 警告（`amba_pm_runtime_suspend` 对 coresight qdss 重复 disable），不影响唤醒，没有对应的故障现象。
+
 manifest 的名字带 NVRA：`kernel-piano` 是 installonly，升级时新旧版本同时安装，固定的 `/usr/share/piano/kernel-manifest.json` 会让两个包争同一路径，rpm 报 `file ... conflicts with file from package` 并中止整个事务。`%posttrans` 读的是自己那一版，并把文件名传给 `piano-kernel-esp-update`，盘上有多份 manifest 时工具不猜。
 
 已经装好但起不来的内核没有自动回滚。上游没有 boot counter（`PianoNvJournal` 是现成的双槽 NV journal，只是没有人往里写尝试计数），回滚是手工的：

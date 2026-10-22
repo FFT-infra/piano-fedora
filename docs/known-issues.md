@@ -277,6 +277,12 @@ initramfs 并重打 ESP 上的 `boot.img`。这条路径在平板上跑过一次
 失败边界是写盘失败时旧 `boot.img` 保持不动，设备继续用旧内核启动。装好但起不
 来的内核没有自动回滚，回滚方式见 `docs/copr-repository.md`。
 
+挂起路径上每次会打 4 条 `qdss already disabled` / `qdss already unprepared`
+（`drivers/clk/clk.c` 的 `clk_core_disable` / `clk_core_unprepare`，从
+`amba_pm_runtime_suspend` 进来）。两轮挂起都复现，唤醒正常、桌面恢复、
+`systemctl --failed` 为空，目前只有日志噪声。来源是 coresight qdss 的时钟在
+runtime PM 里被重复关闭，属于上游驱动的问题，不是本仓库的补丁。
+
 `kernel-piano` 是 installonly 包，升级后旧内核的模块树与 `modules.weakdep`、
 `updates/` 会留在 `/usr/lib/modules/` 下（rpm 删掉的是它自己拥有的文件，这些
 是 `depmod` 之后生成的）。它们不影响启动，`dnf` 也不会再引用；要清掉只能手工
