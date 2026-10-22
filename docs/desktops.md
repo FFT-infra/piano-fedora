@@ -57,7 +57,9 @@
   `HandlePowerKey=ignore`、`HandleLidSwitch=ignore`、`IdleAction=ignore` 保证
   它不跟用户服务抢这两个输入。
 
-挂起在这台设备上仍不可靠，所以任何一档都不允许桌面自己进入睡眠。
+挂起与唤醒本身是可用的：`rtcwake -m mem -s 20` 实测正常，桌面上做挂起/唤醒两轮
+也都回到了原会话。四档仍然关掉自动睡眠，因为电源键与合盖已经由
+`piano-power-button` 统一接管，桌面再自己睡一次会和它抢同一个事件。
 
 ## 自动旋转
 
