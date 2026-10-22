@@ -56,7 +56,13 @@ def build(sun, product, output, cc=None, sysroot=None):
             repack.prototype_policy(binary, native, selector_dir, product, app, native_dir)
         finally:
             app.unlink()
+        # 上游把这份清单写进 native/，但 prepare-device-boot.py 与
+        # verify-native-boot.py 都从 boot-tools 根目录读它。留在 native/ 里
+        # 会让发布的 boot-tools 永远生成不出 boot_linux.img（"boot-tools lacks
+        # selector-module.json"），而这两处都是在本机跑的，CI 不会碰到。
         selector_module = json.loads((native_dir / 'selector-module.json').read_text())
+        (output / 'selector-module.json').write_text(
+            (native_dir / 'selector-module.json').read_text())
     except Exception:
         marker.unlink(missing_ok=True)
         raise

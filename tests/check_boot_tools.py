@@ -88,6 +88,10 @@ def main():
         assert (output / "selector.bin").is_file()
         assert (output / "native/piano-boot-repack").is_file()
         assert (output / "native/selector-module.json").is_file()
+        # 消费侧（prepare-device-boot.py、verify-native-boot.py）从根目录读，
+        # 只留在 native/ 里会让发布的 boot-tools 用不了。
+        assert (output / "selector-module.json").is_file(), (
+            "selector-module.json must also sit at the boot-tools root")
         assert not (output / ".selector").exists(), "selector work directory leaked into the artifact"
         assert not (output / ".incomplete").exists()
         assert result["selector"] == {"ok": True}
