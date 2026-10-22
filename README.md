@@ -70,7 +70,7 @@
 
    传了 `--ssh-key` 就可以直接用密钥登录。
 
-需要逐步控制时按[手动刷机](docs/installation.md#三之二-手动刷机不使用一键脚本)执行，那里列了每条 `fastboot` 命令、SHA256 校验、读回验证和回滚方法。**不要擦除 `dtbo_b`**，ABL 会因此拒绝整条引导链。
+需要逐步控制时按[手动刷机](docs/installation.md#三之二-手动刷机不使用一键脚本)执行，那里列了每条 `fastboot` 命令、SHA256 校验、读回验证和回滚方法。**不要擦除 `dtbo_a` 或 `dtbo_b`**，ABL 会因此拒绝整条引导链。
 
 ### 双系统切换
 
@@ -89,7 +89,8 @@
 | `PianoUEFI-product.img` | SunUEFI 产品固件本体，`sunuefi_esp.img` 的载荷来源 |
 | `pianoroot.f2fs.img.zst` / `pianoroot-<desktop>.f2fs.img.zst` | 封存的根文件系统，不能直接刷；单档时不带后缀 |
 | `root-install/` | 写入设备配置后的 sparse 根镜像与清单（由 `unpack-release.sh --desktop <档位>` 还原） |
-| `SHA256SUMS` | 各资产哈希 |
+| `SHA256SUMS` | 上面这些资产的哈希 |
+| `root-install/SHA256SUMS` | `root-install/` 内 sparse 镜像与清单的哈希，单独一份，不与上面合并 |
 
 Release 另带 `piano-installer-<tag>.zip`（刷写脚本与说明）和 `piano-boot-tools-<tag>.tar.zst`（本机生成 `device-boot/boot_linux.img`）。`scripts/package-release-bundle.sh` 是本地兼容打包器，不是发布主入口。
 
@@ -99,7 +100,7 @@ Release 另带 `piano-installer-<tag>.zip`（刷写脚本与说明）和 `piano-
 - [桌面档](docs/desktops.md)：四档的登录、电源、旋转与验收状态
 - [安装与分区](docs/installation.md)：分区计算、GPT 检查、一键与手动刷写、首次登录
 - [交付物与流水线](docs/artifacts.md)：内核、RPM、initramfs 与 bundle 的组装标准
-- [维护与验收](docs/internals.md)：流水线入口、产物绑定、run id 传递、PR 门槛
+- [维护与验收](docs/internals.md)：流水线入口、产物绑定、各步的 run id、PR 门槛
 - [COPR 软件源](docs/copr-repository.md)：全部 10 个包的在线升级，包括内核；回滚边界与失败模式
 - [上游跟踪](docs/upstream.md)：当前 pin、漂移看板、跟进规则
 - [已知问题](docs/known-issues.md)：未解决与观察中的问题
@@ -116,7 +117,7 @@ make test                  # 全套离线单测：GPT 计算、镜像与元数�
 make plan RELEASEVER=44    # 打印 Fedora 44 根文件系统生成计划
 ```
 
-流水线入口是 `.github/workflows/`。主链是 `host-check`（带 `build_piano_rpms=true`）→ `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`，后四步还要各自带上内核、运行时、Mesa、FFmpeg 与 UEFI 的成功 run id，不是单纯的线性接力。
+流水线入口是 `.github/workflows/`。主链是 `host-check`（带 `build_piano_rpms=true`）→ `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`。每一步都要显式指定上游的成功 run id：`build-rootfs` 要 RPM 矩阵、运行时、Mesa 与 FFmpeg，`build-image` 再加内核，`build-bundle` 要镜像与 UEFI，`prepare-install` 要 bundle，不是单纯的线性接力。
 
 每一步只接受成功 run 的产物，混用不同 run 会被拒绝。细节见 [docs/internals.md](docs/internals.md)。
 

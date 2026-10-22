@@ -12,7 +12,7 @@
 | `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，需 `qt6-qtsensors` | 未上真机 |
 | `niri` | niri | greetd `[initial_session]` | 仅 logind | 无，需手动 `transform` | 未上真机 |
 | `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 无，需手动 rotate | 未上真机 |
-| `server` | 无 | 无 | 仅 logind | — | 只用于测试装配 |
+| `server` | 无 | 无 | 仅 logind | — | 只用于测试装配，不进 Release |
 
 ## 登录方式
 

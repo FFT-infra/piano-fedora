@@ -1,6 +1,6 @@
 > **Experimental project.** This repository targets driver work and hardware bring-up. It is not a stable system for daily use.
 >
-> Flashing unlocks the bootloader, rewrites the GPT, and writes the A/B slots and the boot chain. A careless step can brick the tablet or destroy all data. Back up every partition and your personal data before you start.
+> Flashing unlocks the bootloader, rewrites the GPT, replaces the combined BOOT in `boot_a`, and rewrites the Linux partition. A careless step can brick the tablet or destroy all data. Back up every partition and your personal data before you start.
 >
 > This project ships under the [MIT license](LICENSE) as is. The authors and contributors take no responsibility for damaged hardware, lost data, or a voided warranty.
 
@@ -86,7 +86,8 @@ A release is triggered by a tag (for example `v44.1`) and only ships verified ar
 | `PianoUEFI-product.img` | SunUEFI product firmware; the payload inside `sunuefi_esp.img` |
 | `pianoroot.f2fs.img.zst` / `pianoroot-<desktop>.f2fs.img.zst` | Sealed root filesystem; never flash it directly. No suffix when the release carries one profile |
 | `root-install/` | Sparse root transport with device configuration written (restored by `unpack-release.sh --desktop <profile>`) |
-| `SHA256SUMS` | Hashes of every asset |
+| `SHA256SUMS` | Hashes of the assets above |
+| `root-install/SHA256SUMS` | Hashes of the sparse image and manifests inside `root-install/`, kept separate and never merged with the file above |
 
 The release also carries `piano-installer-<tag>.zip` (flash scripts and guide) and `piano-boot-tools-<tag>.tar.zst` (builds `device-boot/boot_linux.img` locally). `scripts/package-release-bundle.sh` is a local compatibility packer, not the release entry point.
 
@@ -113,7 +114,7 @@ make test                  # offline suite: GPT math, image and metadata checks
 make plan RELEASEVER=44    # print the Fedora 44 root filesystem plan
 ```
 
-The pipeline lives in `.github/workflows/`. The main chain is `host-check` (with `build_piano_rpms=true`) → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`. The last four also take successful kernel, runtime, Mesa, FFmpeg and UEFI run ids, so it is not a plain linear hand-off.
+The pipeline lives in `.github/workflows/`. The main chain is `host-check` (with `build_piano_rpms=true`) → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`. Every stage takes explicit run ids for its inputs: `build-rootfs` needs the RPM matrix, runtime, Mesa and FFmpeg, `build-image` adds the kernel, `build-bundle` needs the image and UEFI, and `prepare-install` needs the bundle. It is not a plain linear hand-off.
 
 Each stage accepts only artifacts from successful runs. Mixing runs is rejected. See [docs/internals.md](docs/internals.md).
 

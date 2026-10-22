@@ -2,11 +2,8 @@
 
 流水线能把系统装上这台平板，但有几处把“这一台、这一个人”的东西固化进了构建期。自用不受影响。把 bundle、root-install 或 GitHub Release 当公开物发布之前，逐项处理。
 
-仓库里的 Release 目前都是 draft，没有公开过任何一个。`deploy-bundle` 与
-`root-install` 也仍以 workflow artifact 形式单独存在。
-
 `release.yml` 的两个输入控制公开范围：`publish` 默认 `false`，跑完停在 draft；`prerelease` 默认 `false`，
-转公开时决定是否标成 pre-release。转公开必须显式传参，不靠人记。
+转公开时决定是否标成 pre-release。转公开必须显式传参，不靠人记，也不在构建时默认发生。
 
 | 项 | 位置 | 现状 | 公开分发的问题 | 状态 |
 | --- | --- | --- | --- | --- |

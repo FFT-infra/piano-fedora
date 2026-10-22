@@ -6,7 +6,7 @@
 
 ## 流水线入口
 
-PR 分支里的 workflow 不等于 Actions 里能启动的入口。GitHub 只给默认分支 `main` 上已注册的 workflow 提供 `workflow_dispatch`。只在 PR 分支新增的 `build-piano-rpms.yml` 在分支状态下查不到 workflow_id。发布链因此统一从已注册的 `host-check` 启动 RPM 矩阵复用作。`build-rootfs` 再按 `host-check.yml` 解析同一次 run 的 `piano-rpms` artifact。
+PR 分支里的 workflow 不等于 Actions 里能启动的入口。GitHub 只给默认分支 `main` 上已注册的 workflow 提供 `workflow_dispatch`。只在 PR 分支新增的 `build-piano-rpms.yml` 在分支状态下查不到 workflow_id。发布链因此统一从已注册的 `host-check` 启动，用 `workflow_call` 复用 RPM 矩阵构建。`build-rootfs` 再按 `host-check.yml` 解析同一次 run 的 `piano-rpms` artifact。
 
 ```text
 host-check (build_piano_rpms=true, kernel_run_id=...)

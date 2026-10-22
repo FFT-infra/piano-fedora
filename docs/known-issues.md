@@ -1,7 +1,7 @@
 # 已知问题
 
 这里只列仍未解决的问题，和已经定位、还要继续观察的噪声。已修复的缺陷不在
-这里，修复过程留在本地验收记录。每项写明当前证据和还缺什么。
+这里，修复过程留在本地验收记录。每项写明当前证据与复现条件。
 
 ## 显示与关屏
 
@@ -106,7 +106,7 @@ helper 优先读 Android 安装器维护的 ESP 记录
 BOOT，不重写内核；模块页面用它写请求页与重装引导。SukiSU root 仍在
 `init_boot_a`：`su -c id` 返回 uid=0、context `u:r:ksu:s0`。
 
-更早的脚手架 `piano_sunuefi_module.zip` 只有模块脚手架及根目录 request 程序，缺少 manager 要求的 bin/ 原生工具和策略/状态。它不能安装，也不要和上面的匹配模块混用。
+更早的 `piano_sunuefi_module.zip` 只包含模块结构与根目录 request 程序，缺少 manager 要求的 bin/ 原生工具和策略/状态。它不能安装，也不要和上面的匹配模块混用。
 
 `boot_a` 被重刷成另一份镜像（例如重新跑 `fastboot flash boot_a device-boot/boot_linux.img`）
 后，模块的 `install-state.json` 仍指向旧镜像，`switch linux` 会报
@@ -151,8 +151,6 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 防误触、绘图应用效果、充电与重连仍需分别验证。
 
 ## 触屏、网络、音频与相机
-
-这些模块已有实机行为记录，持续负载下的表现也单独取证过：
 
 - 触控：45 秒持续单指划动，SYN 报文 97 次/秒，43/45 秒有事件（两个空秒
   是换手间隙），NVT 中断同期增长 5425。X 覆盖 5395–28696、Y 覆盖
@@ -299,6 +297,6 @@ manifest 按 NVRA 命名（`/usr/share/piano/kernel-manifest-<version>-<release>
 - `docs/public-release-gaps.md` 的电极校准一项已决定：数据早已在公开仓库与公开 COPR 里，`NOTICE` 写明来源，发布不再因此阻挡。`release.yml` 仍默认只建 draft，转公开要显式传 `publish=true`。
 - 三个 UEFI 补丁的 `series.json` 里 `note` 引用的文档分两类。`docs/status.md`、
   `docs/ufs-dedicated-area-audit.md` 与 `docs/piano-full-ddr-producer-gaps.md`
-  在上游 SunUEFI 仓库，按 `sources.lock.json` 的 pin 取。`docs/device-acceptance-20261015.md`
+  在上游 SunUEFI 仓库，按 `sources.lock.json` 的 pin 取。还有一份设备验收记录
   已移到不入库的本地笔记，这条引用是历史记录。改 `series.json` 会改变
-  `project_source_sha256`，现有 bundle 的 UEFI 来源校验会失效，所以先不动。
+  `project_source_sha256`，现有 bundle 的 UEFI 来源校验会失效，因此本轮不改它。

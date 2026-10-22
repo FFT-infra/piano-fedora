@@ -60,7 +60,7 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 
 ## 为什么不用 UKI
 
-[fedora-sheng](https://github.com/GhfunNiHe/sheng_fedora_packages) 与 [nabu_fedora](https://github.com/jhuang6451/nabu_fedora) 用 UKI（`systemd-stub` + `.efi` 内核镜像）把内核、initramfs 和 cmdline 打成一个 EFI 可执行文件，由固件直接启动。这条路在本设备上不通，原因是固件，不是 Fedora 那一侧。
+[sheng-fedora-packages](https://github.com/GhfunNiHe/sheng-fedora-packages) 与 [nabu_fedora](https://github.com/jhuang6451/nabu_fedora) 用 UKI（`systemd-stub` + `.efi` 内核镜像）把内核、initramfs 和 cmdline 打成一个 EFI 可执行文件，由固件直接启动。这条路在本设备上不通，原因是固件，不是 Fedora 那一侧。
 
 `PianoEspBootSource.c` 只读 `\EFI\Piano\stable\boot.img`，格式是 Android boot v2，要求 pagesize 4096、`Second` / `RecoveryDtbo` / `Signature` / `Trailing` 全零、内核段 56 字节处是 `ARM\x64`。UKI 是 PE/COFF，塞不进这个解析器。
 
@@ -76,7 +76,7 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 
 所以内核升级走的是另一条路：`kernel-piano` 的 `%posttrans` 在设备上重建 initramfs、把新内核重新打成 Android boot v2 容器、原子替换 ESP 的 `boot.img`。细节见 [COPR 软件源](copr-repository.md)。
 
-如果上游以后把 `PianoProductOsController` 接进产品调用链、并把 pin 改成运行时校验，UKI 才值得重新评估。当前不作为路线。
+如果上游以后把 `PianoProductOsController` 接进产品调用链、并把 pin 改成运行时校验，UKI 才值得重新评估。
 
 ## 从 nabu_fedora 取什么
 

@@ -40,7 +40,7 @@ clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel r
 
 ## 交付内容
 
-每档桌面各有一个 `deploy-bundle` run，bundle 内部文件名不随桌面变化：`verify-bundle.py`、`prepare-root-capacity.py` 与 `flash-linux.sh` 只认规范名。桌面维度在到 Release 时才展开成资产名。
+每档桌面各有一个 `deploy-bundle` run，bundle 内部文件名不随桌面变化：`verify-bundle.py`、`prepare-root-capacity.py` 与 `flash-linux.sh` 只认规范名。桌面维度在发布成 Release 时才展开成带后缀的资产名。
 
 最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、`initramfs.tar.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。`initramfs.tar.zst` 由 build-image 用固定时间戳与 owner 打出，四档逐字节相同，是平台资产：内容就是 `boot_sunuefi.img` 里那个 initramfs，单独发一份便于离线检查与手工重打包。有了 bundle 自带的 sparse，从 Release 装机不需要再跑一次 Actions。发布资产名与 `fastboot flash sunuefi_esp` / `boot_a` 的目标一致。上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
 
@@ -54,7 +54,7 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 ## 发布链基线
 
-当前基线是 SunUEFI pin `065b192` 的一次完整链，每一阶段都 success：
+当前基线是 `sources.lock.json` 锁定的那组上游的一次完整链，每一阶段都 success：
 
 | 阶段 | 关键产物 |
 | --- | --- |

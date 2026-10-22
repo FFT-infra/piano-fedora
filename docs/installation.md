@@ -1,6 +1,6 @@
 # Xiaomi Pad 8 Pro (piano) 安装、分区与双系统指南
 
-本指南讲两件事：在**小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）**上从零安装 Fedora 44，以及对已有 Linux 分区做增量更新。默认桌面是 GNOME，其余档位的差异见[桌面档](desktops.md)。
+本指南覆盖：在**小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）**上从零安装 Fedora 44，对已有 Linux 分区做增量更新，以及双系统往返与故障排查。默认桌面是 GNOME，其余档位的差异见[桌面档](desktops.md)。
 
 ---
 
@@ -586,7 +586,7 @@ sha256sum stock-recovery/boot.img    # 与上一条相同
 
 原厂 ROM 包里的 `images/boot.img` 也是 96 MiB，但只有设备还跑着那一版固件时才逐字节相同。用前比摘要，不一致以设备读出的为准。
 
-在连接平板的 Linux 主机上执行，以下路径指你下载的那份材料，`--serial` 是实际 Android ADB 序列号：
+在连接平板的 Linux 主机上执行。以下路径指已经解开的安装材料目录，`--serial` 是 `adb devices` 显示的 Android 序列号：
 
 ```sh
 python3 boot-tools/installer/scripts/update-f2fs.py plan \
