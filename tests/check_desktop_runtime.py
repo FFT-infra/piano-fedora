@@ -27,6 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "piano-fedora-configs"
 POWER_BUTTON = PACKAGE / "usr" / "lib" / "piano" / "power-button"
+UDEV_RULE = PACKAGE / "etc" / "udev" / "rules.d" / "70-piano-power-button.rules"
+FINALIZE = ROOT / "scripts" / "finalize-fedora-rootfs.py"
 TABLET_MODE = PACKAGE / "usr" / "libexec" / "piano-fake-tablet-mode"
 COLLECTORS = (
     PACKAGE / "usr" / "bin" / "piano-collect-boot",
@@ -128,6 +130,36 @@ def check_power_button_falls_back_across_desktops():
                    "/org/kde/Shutdown",
                    "org.kde.Shutdown"):
         assert needle in text, f"{needle} missing from the power button fallback chain"
+
+
+def check_power_button_device_names_match_the_kernel():
+    """服务按名字找设备，udev 规则也按名字授权；三处必须是同一个字符串。
+
+    2026-10-22 在平板上发现：`power-button` 打开 `soc:piano-hall-ml`，但 udev
+    规则授权的是 `hall_lid`，那个名字在设备上根本不存在。`event1` 因此只有
+    `:power-switch:` 标签、没有 uaccess ACL。
+
+    这一处目前没有造成故障——`piano` 用户在 `input` 组里，而 `event1` 的组权限
+    是 `rw-`，服务照样能打开。规则本身是死的：它从不匹配任何设备，等到组权限
+    不再是唯一通路时才会以"合盖没反应"的形式暴露出来，而且不会有报错。
+
+    设备名来自内核 DTS 的 `input-name`，不是随便起的别名，所以这里拿真机上
+    实测到的字符串做基准。
+    """
+    LID_DEVICE = "soc:piano-hall-ml"
+    KEY_DEVICE = "pmic_pwrkey"
+    script = POWER_BUTTON.read_text(encoding="utf-8")
+    assert f"LID_NAME = '{LID_DEVICE}'" in script, (
+        "power-button must open the lid switch by its kernel input name")
+    assert f"KEY_NAME = '{KEY_DEVICE}'" in script
+    for path in (UDEV_RULE, FINALIZE):
+        text = path.read_text(encoding="utf-8")
+        assert f'ATTRS{{name}}=="{LID_DEVICE}"' in text, (
+            f"{path.name} must grant uaccess on {LID_DEVICE}")
+        assert f'ATTRS{{name}}=="{KEY_DEVICE}"' in text, (
+            f"{path.name} must grant uaccess on {KEY_DEVICE}")
+        assert 'ATTRS{name}=="hall_lid"' not in text, (
+            f"{path.name} still names a lid device that does not exist")
 
 
 def check_tablet_mode_asks_logind_for_a_user_session():
@@ -326,6 +358,7 @@ def check_login_units_match_the_profiles():
 
 def main():
     check_power_button_falls_back_across_desktops()
+    check_power_button_device_names_match_the_kernel()
     check_tablet_mode_asks_logind_for_a_user_session()
     check_collectors_cover_every_display_manager()
     check_login_units_match_the_profiles()

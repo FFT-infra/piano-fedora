@@ -212,7 +212,7 @@ def stage_boot_diagnostics(root, context):
             "# /usr/lib/piano/power-button).  The power key is grabbed; the lid switch\n"
             "# is only read, so its state stays visible to logind and GNOME.\n"
             'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="pmic_pwrkey", TAG+="uaccess"\n'
-            'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="hall_lid", TAG+="uaccess"\n',
+            'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="soc:piano-hall-ml", TAG+="uaccess"\n',
         "etc/modules-load.d/piano-bwmon.conf":
             "# CPU bandwidth monitors: icc-bwmon samples each CPU cluster's memory\n"
             "# traffic and votes on the APPS->EBI1 interconnect path.\n"
