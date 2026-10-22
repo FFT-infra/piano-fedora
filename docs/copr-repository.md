@@ -12,7 +12,7 @@
 
 **失败边界。** 任何一步失败，`boot.img` 保持原样，设备继续用上一个内核启动。写入顺序是：先打 `.boot.img.new` 并 fsync，逐段解包比对通过，把旧文件复制成 `boot.img.bak`，最后 `os.replace` 换上去。
 
-**实机记录。** `7.2.9-1` → `7.2.9-3` 在平板上走过一次：事务收尾时 initramfs 重建（6 个早期模块）、ESP 的 `Image`、`initramfs`、`boot.img` 三份都换掉并各留一份 `.bak`，审计记录写到 `/var/lib/piano/kernel-esp/<release>.json`。重启后 `uname -r` 是 `7.2.9-piano-gnome-g80eebb86d621`，`graphical.target` 与 GDM 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载，`/dev/video40`、`/dev/video41` 在。
+**实机记录。** `7.2.9-1` → `7.2.9-3` 在平板上走过一次：事务收尾时 initramfs 重建（6 个早期模块）、ESP 的 `Image`、`initramfs`、`boot.img` 三份都换掉并各留一份 `.bak`，审计记录写到 `/var/lib/piano/kernel-esp/<release>.json`。重启后 `uname -r` 是升级后的 `7.2.9` release，`graphical.target` 与 GDM 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载，`/dev/video40`、`/dev/video41` 在。
 
 同一条路径也从 COPR 走过一次 `dnf reinstall kernel-piano`（版本不变，等于把下载、校验、`%posttrans` 整条重跑）：事务成功，审计记录里 `changed` 三项全为 `false`，`boot.img` 摘要没变——同样的输入重打出的容器逐字节相同，所以重复触发不会重写 43 MB。
 

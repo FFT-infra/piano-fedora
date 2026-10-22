@@ -316,7 +316,9 @@ fastboot getvar partition-size:sunuefi_esp     # 十六进制字节数
 fastboot fetch sunuefi_esp esp-readback.img
 ```
 
-这台平板的 `sunuefi_esp` 分区比 `sunuefi_esp.img` 大（实测分区 537899008 字节，镜像 536870912 字节；以自己的 `fastboot getvar` 结果为准）。`fetch` 读的是整个分区，尾部会带上分区里原有的数据，整份哈希必然不同。
+`sunuefi_esp` 分区通常比 `sunuefi_esp.img` 大（按 512 MiB 规划分区，镜像
+536870912 字节；实际分区字节数以自己的 `fastboot getvar` 结果为准）。`fetch`
+读的是整个分区，尾部会带上分区里原有的数据，整份哈希必然不同。
 
 只比对镜像长度那一段：
 

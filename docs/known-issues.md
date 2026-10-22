@@ -29,7 +29,7 @@
 
 原厂 ABL 不实现 `fastboot fetch`。主机 fastboot 37.0.0 认得这个子命令，设备
 回 `Device does not support fetch command`，宿主上留下一个 0 字节读回文件。
-`sunuefi_esp` 分区也比镜像大（537899008 对 536870912 字节），即使换了支持
+`sunuefi_esp` 分区也比 512 MiB 的镜像大，即使换了支持
 `fetch` 的引导器，整份哈希也不会等于镜像摘要。读回只能作辅助证据，刷写正确
 与否最终以启动后的 `uname -r`、`findmnt /` 和进入所选桌面为准。
 
@@ -74,12 +74,12 @@ A 槽启动，不切活动槽，也不改 GPT。
   正常重启后选择器进入 Android。
 - Android → Linux：安装「SunUEFI 引导助手」模块（KernelSU/SukiSU），在模块页面
   选 Linux；没有模块时，开机前 3 秒按音量键选 Linux，选择会被保存。
-- 两次独立实测：`boot_android.img` 从请求页 target 0→2→0→2→0、
-  sequence 0→4；随后 `flash boot_a device-boot/boot_linux.img`（未签名，
-  SHA256 `8fc67dc4…`）直接进 Linux（target=2、sequence=1，40 秒），helper 回
-  Android（target=0、sequence=2，45 秒），模块重新采纳后再切 Linux
-  （target=2、sequence=3，120 秒），helper 再回 Android（target=0、
-  sequence=4，35 秒）。`ro.boot.slot_suffix` 始终是 `_a`，`sys.boot_completed=1`。
+- 两轮真机往返：`boot_android.img` 从请求页 target 0→2→0→2→0、
+  sequence 0→4；随后 `flash boot_a device-boot/boot_linux.img`（未签名）
+  直接进 Linux（target=2、sequence=1，约 40 秒），helper 回
+  Android（target=0、sequence=2，约 45 秒），模块重新采纳后再切 Linux
+  （target=2、sequence=3，约 2 分钟），helper 再回 Android（target=0、
+  sequence=4，约 35 秒）。`ro.boot.slot_suffix` 始终是 `_a`，`sys.boot_completed=1`。
 - 请求页偏移 37490688（0x23C1000），magic `SUNUEFI-NEXTv1`，两页相隔 4096
   字节滚动写入。
 

@@ -8,7 +8,7 @@ set -euo pipefail
 
 if [ $# -lt 2 ]; then
     echo "用法: $0 <ssh 主机> <输出目录> [素材目录]" >&2
-    echo "  例: $0 piano-usb build/media-check" >&2
+    echo "  例: $0 piano build/media-check" >&2
     exit 2
 fi
 

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "scripts" / "plan-first-partition.py"
 BLOCK = 4096
 COUNT = 64
-DISK_GUID = "d55fa102-1ed9-4154-b3a7-3e84cd916cb5"
+DISK_GUID = "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
 
 
 def gpt_module():
@@ -59,10 +59,10 @@ def build_image(path, sectors, rows, gap=0):
             stream.write(data)
     return path
 
-# 2026-10-09 从本机 piano 只读捕获的 sgdisk --print 尾部。
+# 一次真机只读捕获的 sgdisk --print 尾部；磁盘标识换成了固定占位值。
 REAL_GPT = """Disk /dev/block/sda: 249518080 sectors, 951.8 GiB
 Sector size (logical/physical): 4096/4096 bytes
-Disk identifier (GUID): D55FA102-1ED9-4154-B3A7-3E84CD916CB5
+Disk identifier (GUID): A1B2C3D4-5E6F-4A7B-8C9D-0E1F2A3B4C5D
 Partition table holds up to 64 entries
 First usable sector is 6, last usable sector is 249518074
 Total free space is 0 sectors (0 bytes)
@@ -242,7 +242,7 @@ def main():
         # sfdisk --dump 的文本没有总扇区数与表项数，缺了就拒绝并指出怎么补。
         sfdisk_dump = tmp / "sfdisk.txt"
         sfdisk_dump.write_text(
-            "label: gpt\nlabel-id: D55FA102-1ED9-4154-B3A7-3E84CD916CB5\n"
+            "label: gpt\nlabel-id: A1B2C3D4-5E6F-4A7B-8C9D-0E1F2A3B4C5D\n"
             "unit: sectors\nfirst-lba: 6\nlast-lba: 249518074\nsector-size: 4096\n\n"
             "sda32 : start=       191488, size=       32768, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, "
             "uuid=11111111-2222-3333-4444-555555555555, name=\"rescue\"\n"
