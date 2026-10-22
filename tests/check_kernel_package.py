@@ -99,6 +99,9 @@ def check_spec(failures):
                         "installonly upgrades would collide on a fixed path")
     if re.search(r"^\s*%\{_datadir\}/piano/kernel-manifest\.json\s*$", body, re.MULTILINE):
         failures.append("kernel-piano.spec still owns the fixed kernel-manifest.json path")
+    if body.count(named) < 3:
+        failures.append("kernel-piano.spec must use the NVRA-named manifest in %install, "
+                        "%files and %posttrans alike")
 
     # 内核升级所需的那套工具必须随本包发布，且路径与 %posttrans 里的一致。
     for name in ("f2fs-disk-bootstrap", "piano-kernel-esp-update",

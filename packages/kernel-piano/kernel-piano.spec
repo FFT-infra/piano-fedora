@@ -158,13 +158,13 @@ depmod -a "$RELEASE" || exit 1
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
-* Wed Oct 22 2026 FFT-infra <dev@piano.invalid> - 7.2.9-3.piano
+* Thu Oct 22 2026 FFT-infra <dev@piano.invalid> - 7.2.9-3.piano
 - manifest 按 NVRA 命名：installonly 升级时新旧内核不再争同一个
   /usr/share/piano/kernel-manifest.json，rpm 事务得以完成
 
-* Wed Oct 22 2026 FFT-infra <dev@piano.invalid> - 7.2.9-2.piano
+* Thu Oct 22 2026 FFT-infra <dev@piano.invalid> - 7.2.9-2.piano
 - 内核纳入设备侧 dnf 升级：%posttrans 重建 initramfs 并重打 ESP 的 boot.img，
   失败时旧文件保持不动；v4l2loopback 改由本包拥有，外部模块跟着内核走
 
-* Wed Oct 22 2026 FFT-infra <dev@piano.invalid> - 7.2.9-1.piano
+* Thu Oct 22 2026 FFT-infra <dev@piano.invalid> - 7.2.9-1.piano
 - Standalone kernel packaging spec with F2FS, DPU, Iris, and FS19xx hardware limit patches
