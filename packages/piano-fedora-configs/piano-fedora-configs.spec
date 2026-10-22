@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        8%{?dist}
+Release:        9%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -143,6 +143,12 @@ systemd-tmpfiles --create %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf %{_p
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service
 
 %changelog
+* Thu Oct 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-9
+- udev 电源键规则改用真机上的盖子设备名：`hall_lid` 改成 `soc:piano-hall-ml`。
+  旧名来自早期 DTS，规则从未匹配过任何设备，`event1` 因此没有 uaccess ACL；
+  现在靠 piano 在 input 组的组权限才打得开。已经发布出去的同 NEVRA 包里内容
+  不同，必须升 Release，否则 COPR 会对同一个 NVRA 给出两份不同的 RPM
+
 * Wed Oct 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-8
 - 放开内核在线升级：.repo 去掉 exclude=kernel-piano，改由 kernel-piano 的
   %posttrans 重建 initramfs 并重打 ESP 的 boot.img。这份 .repo 去掉 noreplace，
