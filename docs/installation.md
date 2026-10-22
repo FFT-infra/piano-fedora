@@ -613,13 +613,15 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 
 ### 只升级内核（已装系统）
 
-装好之后内核跟着 `dnf upgrade` 走，不需要重跑刷写，也不需要 bundle。`kernel-piano` 提供 `kernel-core`，是 installonly 包：新内核与旧内核并存，旧模块树保留。
+装好之后内核跟着 `dnf upgrade` 走，不需要重跑刷写，也不需要 bundle。`kernel-piano` 提供 `kernel-core`，是 installonly 包：新内核与旧内核的模块树并存。
 
 ```sh
 sudo dnf upgrade --refresh
 ```
 
 升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再把新内核、新 initramfs 与 ESP 上原有的 `board.dtb` 重新打成 Android boot v2 容器，原子替换 `/boot/efi/EFI/Piano/stable/boot.img`。重启后固件读到的是新内核。
+
+这条路径在真机上验证过：`7.2.9-1` 升到 `7.2.9-3` 之后重启，`uname -r` 是新内核，桌面正常起，`v4l2loopback` 从新模块树的 `updates/` 加载。
 
 失败边界：任何一步失败，`boot.img` 保持原样，设备继续用上一个内核启动。审计记录写在 `/var/lib/piano/kernel-esp/<release>.json`。
 

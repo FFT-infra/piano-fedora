@@ -268,12 +268,23 @@ eDP，内屏走 DSI，用不上。
 ## 内核在线升级
 
 `dnf upgrade` 现在会带上 `kernel-piano`，事务收尾时由 `%posttrans` 重建
-initramfs 并重打 ESP 上的 `boot.img`。这条路径只在离线测试和构建链里验证过，
-**还没有在平板上跑过一次真实升级**：容器字节、原子替换与 `depmod` 的顺序都有
-测试覆盖，但"升级事务收尾时这套工具在真机上能跑通"这件事缺实机记录。
+initramfs 并重打 ESP 上的 `boot.img`。这条路径在平板上跑过一次真实升级
+（`7.2.9-1` → `7.2.9-3`）：`%posttrans` 重建了 initramfs，ESP 上的 `Image`、
+`initramfs` 与 `boot.img` 都换了，`.bak` 三份都在，重启后 `uname -r` 是新的
+内核，`graphical.target` 起来，`systemctl --failed` 为空，`v4l2loopback` 从新
+模块树的 `updates/` 加载。
 
 失败边界是写盘失败时旧 `boot.img` 保持不动，设备继续用旧内核启动。装好但起不
 来的内核没有自动回滚，回滚方式见 `docs/copr-repository.md`。
+
+`kernel-piano` 是 installonly 包，升级后旧内核的模块树与 `modules.weakdep`、
+`updates/` 会留在 `/usr/lib/modules/` 下（rpm 删掉的是它自己拥有的文件，这些
+是 `depmod` 之后生成的）。它们不影响启动，`dnf` 也不会再引用；要清掉只能手工
+删目录。
+
+manifest 按 NVRA 命名（`/usr/share/piano/kernel-manifest-<version>-<release>.json`）。
+固定名字会让两个版本争同一个路径，rpm 直接中止升级事务——这条在设备上撞过
+一次，症状是 `file ... conflicts with file from package`。
 
 ## 仓库整理
 
