@@ -16,7 +16,8 @@
 
 ## 登录方式
 
-四档都自动登录到 `piano` 用户，首次开机不需要在登录界面输入密码。
+四档都自动登录到 `piano` 用户，首次开机不需要在登录界面输入密码。默认口令是
+`piano123456`，桌面起来之后用 `passwd` 改。
 
 - **GNOME**：`/etc/gdm/custom.conf` 写 `AutomaticLoginEnable=True` 与
   `AutomaticLogin=piano`，由 `gdm.service` 接管。
@@ -32,8 +33,7 @@
   兜底。会话崩溃或用户注销后回到 tuigreet 的文本选择界面，而不是黑屏 VT。
 
 四个显示管理器都在 `piano-display.service` 之后启动（`Requires=` + `After=`
-的 drop-in），面板没就绪时不会先起桌面。改密码用 `passwd`，默认口令是
-`piano123456`。
+的 drop-in），面板没就绪时不会先起桌面。
 
 ## 电源行为
 
@@ -87,7 +87,7 @@
 
 只有 Hyprland 档启用第三方仓库 `copr-hyprland`
 （`download.copr.fedorainfracloud.org/results/lionheartp/Hyprland/`），Fedora 44
-官方仓库没有 Hyprland 全家。构建时：
+官方仓库没有 Hyprland 及其配套组件。构建时：
 
 - 仓库以 `--repofrompath` 临时加入，不写进镜像的持久 `.repo`；
 - `gpgcheck=1`，公钥先下载到构建目录，按 profile 里的 `gpgkey_sha256` 校验后

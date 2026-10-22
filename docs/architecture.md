@@ -91,8 +91,8 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 不取：
 
 - 构建器镜像（Dockerfile → GHCR）。多一个镜像与一层缓存失效面。现有 podman 容器按 `releasever` 锁定，可复现性由 manifest 兜底。
-- base rootfs `cp -a` 再增量 dnf 的变体模型。它会打断"一次审计事务、RPM 归属、SELinux 单次 relabel"这条链。四档在 arm runner 上并行，墙钟时间不因此变差。
-- 每个变体一份独立脚本加全局 `--nogpgcheck`。这里是一个 profile 加一个解释器，四档共用一次有签名的安装事务。反向做的还有测试：每档的派生名、登录文件与运行时脚本都在 `make test` 里。
+- base rootfs `cp -a` 再增量 dnf 的变体模型。它会打断"一次审计事务、RPM 归属、SELinux 单次 relabel"这条链。四档在 arm runner 上并行，总耗时不会因此拉长。
+- 每个变体一份独立脚本加全局 `--nogpgcheck`。这里是一个 profile 加一个解释器，四档共用一次有签名的安装事务。这一侧也有测试：每档的派生名、登录文件与运行时脚本都在 `make test` 里。
 
 各档的登录、电源与旋转差异见[桌面档](desktops.md)。
 
