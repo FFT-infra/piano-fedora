@@ -333,6 +333,24 @@ def test_device_verifier_fetches_compressed_repodata():
     assert "text=not binary" in text
 
 
+def test_device_verifier_repoquery_is_bounded():
+    """临时仓库必须自带 baseurl，且不能被设备上其它仓库拖住。
+
+    2026-10-22 在设备上跑时，`dnf repoquery --repofrompath=coprcheck,<url>`
+    只给了 repo id 和 URL 的一半，dnf5 报 "Empty mirrorlist and no basepath
+    specified"，却仍然先把所有 enabled 仓库解析一遍；rpmfusion 一超时，整条
+    验收就挂十分钟没有输出。两个修法缺一不可：显式 baseurl 让这个临时仓库
+    可用，--disablerepo=* 让它不依赖别的仓库，超时兜住任何仍然卡住的镜像。
+    """
+    text = DEVICE_VERIFIER.read_text()
+    assert "--setopt=coprcheck.baseurl=" in text, (
+        "repoquery 必须给临时仓库显式 baseurl，否则 dnf5 认为仓库是坏的")
+    assert '"--disablerepo=*"' in text, (
+        "repoquery 不该解析设备上其它 enabled 仓库")
+    assert "timeout=180" in text, "repoquery 必须有超时上限"
+    assert "TimeoutExpired" in text, "run() 必须把超时转成可报告的错误"
+
+
 def test_device_verifier_pubkey_is_at_repo_root():
     """公钥在 results/<owner>/<project>/pubkey.gpg，不在 fedora-<rel>-<arch>/ 下。
 

@@ -28,10 +28,14 @@ DEFAULT_BASEURL = "https://download.copr.fedorainfracloud.org/results/xinyang26/
 KERNEL_PACKAGE = "kernel-piano"
 
 
-def run(args, *, check=True, sudo=False, binary=False):
+def run(args, *, check=True, sudo=False, binary=False, timeout=None):
     command = ["sudo", "-n", *args] if sudo else list(args)
     # binary=True 时保留原始字节：repodata 的 primary 是 gzip，先解码会在 0x8b 上炸。
-    result = subprocess.run(command, capture_output=True, text=not binary)
+    try:
+        result = subprocess.run(command, capture_output=True, text=not binary,
+                                timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"{' '.join(command)} timed out after {timeout}s")
     if check and result.returncode:
         stderr = result.stderr if binary else result.stderr.strip()
         if isinstance(stderr, bytes):
@@ -109,18 +113,31 @@ def repo_file_state():
 
 
 def repoquery_kernel(baseurl):
-    """确认 kernel-piano 在仓库里，且不会被排除规则挡掉。"""
+    """确认 kernel-piano 在仓库里，且不会被排除规则挡掉。
+
+    只查这一个仓库：设备上的 rpmfusion 之类经常超时，一旦它们参与解析，
+    `dnf repoquery` 会先等完全部 enabled 仓库才报 "Empty mirrorlist"。
+    `--repofrompath` 只给出 repo id 与 baseurl 的一半，dnf5 还需要显式的
+    `baseurl=`，否则这个临时仓库自己就是坏的。
+    """
     result = run([
-        "dnf", "repoquery", f"--repofrompath=coprcheck,{baseurl}",
+        "dnf", "repoquery",
+        "--disablerepo=*", f"--repofrompath=coprcheck,{baseurl}",
+        f"--setopt=coprcheck.baseurl={baseurl}",
         "--setopt=coprcheck.gpgcheck=1", "--setopt=coprcheck.repo_gpgcheck=0",
         "--setopt=coprcheck.skip_if_unavailable=True",
         "--qf", "%{name}", KERNEL_PACKAGE,
-    ], check=False)
-    return {"listed": KERNEL_PACKAGE in result.stdout.split()}
+    ], check=False, timeout=180)
+    return {"listed": KERNEL_PACKAGE in result.stdout.split(),
+            "stderr": result.stderr.strip()[:2000]}
 
 
 def upgrade_dry_run():
-    result = run(["dnf", "-q", "--assumeno", "upgrade", "--refresh"], check=False)
+    # --disablerepo='*' 会连本地仓库一起关掉，升级计划就永远为空；这里只
+    # 关掉网络上的第三方仓库不够精确，所以保留默认启用集合，但给一个上限：
+    # 一个卡住的镜像不应该让整个验收挂十分钟。
+    result = run(["dnf", "-q", "--assumeno", "upgrade", "--refresh"],
+                 check=False, timeout=300)
     output = result.stdout + result.stderr
     return {
         "exit_code": result.returncode,
