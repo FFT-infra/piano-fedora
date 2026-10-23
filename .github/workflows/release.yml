@@ -131,7 +131,7 @@ jobs:
           ## piano Fedora 44 ${TAG}
 
           - 源码提交: [${GITHUB_SHA}](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})
-          - 桌面档位: ${DESKTOPS}
+          - 档位: ${DESKTOPS}
           - 产物状态: Actions 内完整校验通过；真机验证记录见 [docs/known-issues.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/known-issues.md)
 
           ### 怎么装
@@ -140,7 +140,7 @@ jobs:
           Linux 分区。先备份全部数据。`current-slot` 必须是 `a`。不要擦除
           `dtbo_a` 或 `dtbo_b`。完整前提见 docs/installation.md。
 
-          每个档位一个归档。只下自己那一档，别的档不用下。以 ${example} 为例：
+          每个档位一个归档。只下载自己那一档的归档，别的档不用下。以 ${example} 为例：
 
           1. 下载 \`piano-${TAG}-${example}.sha256\`，再下载
              \`piano-${TAG}-${example}.tar.zst\` 的全部分片。有这个档位的
@@ -150,7 +150,7 @@ jobs:
              只有一个分片时改用 \`zstd -dc piano-${TAG}-${example}.tar.zst | tar -x\`。
           4. \`sha256sum -c SHA256SUMS\` 与 \`(cd root-install && sha256sum -c SHA256SUMS)\`
           5. \`./make-device-boot.sh\` 生成这台的 \`device-boot/boot_linux.img\`
-          6. 按 \`README-INSTALL.txt\` 刷写。全新平板先读 docs/installation.md 第四节。
+          6. 全新平板先读 docs/installation.md 第四节，再按 \`README-INSTALL.txt\` 刷写。
 
           也可以让仓库里的 \`scripts/unpack-release.sh\` 代做第 1 至 4 步：
           \`bash scripts/unpack-release.sh --tag ${TAG} --desktop ${example}\`。
@@ -158,10 +158,10 @@ jobs:
           归档里有平台镜像（ESP、Linux 载荷、产品固件）、这一档的
           \`root-install/\`、组件 manifest、一键脚本与 boot-tools。
           \`SHA256SUMS\` 只列归档里真实存在的文件，所以上面两条校验命令都能直接过。
-          \`device-boot/boot_linux.img\` 不在归档里：它必须用这台平板自己的原厂
-          BOOT 生成，工具随归档发布。
+          \`device-boot/boot_linux.img\` 不在归档里。这个文件必须用这台平板自己的
+          原厂 BOOT 生成，工具随归档发布。
 
-          Windows 上用 7-Zip 解 \`.tar.zst\`。分片先用 \`copy /b\` 合并。
+          Windows 上用 7-Zip 解 \`.tar.zst\`。有分片时先用 \`copy /b\` 合并，再解压。
 
           校验构建来源: \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`
           EOF
