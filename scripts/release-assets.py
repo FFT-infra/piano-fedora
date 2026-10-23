@@ -22,25 +22,48 @@
 import argparse
 import sys
 
-# 四份 bundle 必须逐字节相同、只上传一份的文件。bundle-manifest.json、
-# root-image-manifest.json、rootfs-manifest.json、source-runs.json 与
-# SHA256SUMS 都在每档里各写各的，因此不在这个集合里。
+# 四份 bundle 必须逐字节相同、只上传一份的文件。
 #
-# esp-manifest.json 也不在：它是上游 package_release.py 的产物，`files`
-# 一节记录了输出目录里每个文件（含按桌面不同的 root.tar.zst）的大小与
-# 摘要，四档的字节不同。拿它当共用资产会在发布门禁里被误判为平台分叉。
+# 每档各写各的不在这个集合里：bundle-manifest.json、root-image-manifest.json、
+# rootfs-manifest.json、source-runs.json 与 SHA256SUMS 走
+# DESKTOP_BUNDLE_ARCHIVE。esp-manifest.json 同理——它是上游
+# package_release.py 的产物，`files` 一节记录了输出目录里每个文件（含按
+# 桌面不同的 root.tar.zst）的大小与摘要，四档字节不同，拿它当共用资产会在
+# 发布门禁里被误判为平台分叉。
+#
+# initramfs.tar.zst 与 diagnostic-abl-storage.tar.zst 曾经在这里，现在不发：
+# 前者是 build-bundle 解包用的中间产物，内容与 boot_sunuefi.img 里那份
+# 逐字节相同；后者是 ABL 只读探针的调试件，manifest 自标 device_tested:
+# false，装机脚本不读。两者都从对应的 workflow artifact 取。
 PLATFORM_ASSETS = (
     "PianoUEFI-product.img",
     "sunuefi_esp.img",
     "boot_sunuefi.img",
     "uefi-source.json",
     "kernel-manifest.json",
-    "initramfs.tar.zst",
     "initramfs-manifest.json",
-    "diagnostic-abl-storage.tar.zst",
     "runtime-manifest.json",
     "mesa-manifest.json",
     "ffmpeg-manifest.json",
+)
+
+# 每档的 bundle manifest 不单独发，打成一个 tar 发布。装机脚本要读它们
+# （flash-linux.sh 用 bundle-manifest 与 root-image-manifest 证明
+# root-install 来自这个 bundle，install-f2fs.py 的首装还要读
+# source-runs），但它们全是给脚本读的 JSON，没有一个需要单独点开。
+# 逐个发会让每档占 6 个资产条目，四档就是 24 个。
+DESKTOP_BUNDLE_ARCHIVE = "manifests.tar.zst"
+
+# 打进 DESKTOP_BUNDLE_ARCHIVE 的成员。这是唯一一处定义：
+# release.yml 的 tar 命令与 unpack-release.sh 的解包都按它来，
+# tests/check_release_assets.py 逐项比对，防止两边分叉。
+MANIFEST_MEMBERS = (
+    "bundle-manifest.json",
+    "esp-manifest.json",
+    "root-image-manifest.json",
+    "rootfs-manifest.json",
+    "source-runs.json",
+    "SHA256SUMS",
 )
 
 # root-install 侧：每档各一份，名字走同一条规则。
@@ -62,26 +85,35 @@ def published_name(name, desktop):
 
 
 def classify(name):
-    """`platform` 表示四档共用一份；其余一律按桌面资产处理。
+    """`platform` 表示四档共用一份；`manifest-archive` 表示打 tar；
+    其余一律按桌面资产处理。
 
     默认按桌面资产处理是有意为之：新出现的文件不会被悄悄当成共用资产
     上传，漏进四档差异时发布门禁会直接失败。
     """
-    return "platform" if name in PLATFORM_ASSETS else "desktop"
+    if name in PLATFORM_ASSETS:
+        return "platform"
+    if name in MANIFEST_MEMBERS:
+        return "manifest-archive"
+    return "desktop"
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    one = sub.add_parser("classify", help="打印 platform 或 desktop")
+    one = sub.add_parser("classify", help="打印 platform、manifest-archive 或 desktop")
     one.add_argument("name")
     named = sub.add_parser("name", help="打印桌面资产在 Release 里的名字")
     named.add_argument("name")
     named.add_argument("desktop")
     sub.add_parser("platform", help="打印全部平台资产，一行一个")
+    sub.add_parser("manifest-members", help="打印打进 manifests.tar.zst 的成员，一行一个")
     args = parser.parse_args(argv)
     if args.command == "platform":
         print("\n".join(PLATFORM_ASSETS))
+        return 0
+    if args.command == "manifest-members":
+        print("\n".join(MANIFEST_MEMBERS))
         return 0
     if args.command == "classify":
         print(classify(args.name))

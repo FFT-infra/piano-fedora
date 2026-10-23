@@ -107,6 +107,27 @@ def test_classify_defaults_to_desktop():
     assert release_assets.classify("kernel-manifest.json") == "platform"
     assert release_assets.classify("brand-new-file.bin") == "desktop"
     assert release_assets.classify("root-install-manifest.json") == "desktop"
+    # 每档各写各的 manifest 打成一个 tar，不进平台集合，也不逐个发。
+    for name in release_assets.MANIFEST_MEMBERS:
+        assert release_assets.classify(name) == "manifest-archive", name
+    # 不再随 Release 发布的两份中间产物与调试件。
+    for name in ("initramfs.tar.zst", "diagnostic-abl-storage.tar.zst"):
+        assert name not in release_assets.PLATFORM_ASSETS, name
+
+
+def test_manifest_archive_is_one_definition():
+    """归档成员只有一处定义：release.yml 与 unpack-release.sh 都从它取值。"""
+    text = WORKFLOW.read_text()
+    assert "scripts/release-assets.py manifest-members" in text, (
+        "release.yml must read the archive members instead of hard-coding them")
+    assert "manifests.tar.zst" in text
+    # 打包必须可复现：四档用同一套 tar 参数，重复跑出同样的字节。
+    for flag in ("--sort=name", "--mtime=@0", "--owner=0", "--group=0", "--numeric-owner"):
+        assert flag in text, f"release.yml manifest tar lacks {flag}"
+    unpack = UNPACK.read_text()
+    assert "manifests.tar.zst" in unpack
+    for name in ("bundle-manifest.json", "root-image-manifest.json", "source-runs.json"):
+        assert name in unpack, f"unpack-release.sh never checks for {name}"
 
 
 def test_workflow_uses_the_classification():
@@ -126,13 +147,18 @@ def test_cli_surface():
     for args, expected in (
             (["classify", "pianoroot.f2fs.sparse.img"], "desktop"),
             (["classify", "sunuefi_esp.img"], "platform"),
-            (["name", "root-install-manifest.json", "kde"], "root-install-manifest-kde.json")):
+            (["classify", "bundle-manifest.json"], "manifest-archive"),
+            (["name", "root-install-manifest.json", "kde"], "root-install-manifest-kde.json"),
+            (["name", "manifests.tar.zst", "kde"], "manifests-kde.tar.zst")):
         result = subprocess.run(["python3", str(ASSETS), *args], check=True,
                                 stdout=subprocess.PIPE, text=True)
         assert result.stdout.strip() == expected, (args, result.stdout)
     result = subprocess.run(["python3", str(ASSETS), "platform"], check=True,
                             stdout=subprocess.PIPE, text=True)
     assert result.stdout.split() == list(release_assets.PLATFORM_ASSETS)
+    result = subprocess.run(["python3", str(ASSETS), "manifest-members"], check=True,
+                            stdout=subprocess.PIPE, text=True)
+    assert result.stdout.split() == list(release_assets.MANIFEST_MEMBERS)
 
 
 def main():
@@ -140,6 +166,7 @@ def main():
     test_the_two_implementations_agree_on_every_bundle_file()
     test_platform_assets_are_identical_across_desktops()
     test_classify_defaults_to_desktop()
+    test_manifest_archive_is_one_definition()
     test_workflow_uses_the_classification()
     test_cli_surface()
     print("OK: 平台资产只发一份、桌面资产按 -<desktop> 命名，两条实现逐项一致")

@@ -35,7 +35,8 @@ one desktop; with several desktops the script lists them and stops. See
 docs/desktops.md for what each desktop provides.
 unpack-release.sh checks the assets you downloaded against
 RELEASE-SHA256SUMS, merges the >2 GiB pieces, decompresses the zstd root
-transport, and leaves the folder in the layout below. The boot tools asset
+transport, unpacks the per-desktop manifests-<desktop>.tar.zst, and leaves the
+folder in the layout below. The boot tools asset
 (piano-boot-tools-<tag>.tar.zst) generates device-boot/boot_linux.img for this
 tablet; that image itself is never shipped in the release.
 
@@ -45,11 +46,20 @@ Required Files in this Folder:
 - boot_sunuefi.img                 (ESP-internal Linux payload; NOT a boot_a image)
 - device-boot/boot_linux.img       (boot_a image from prepare-device-boot.py)
 - sunuefi_esp.img                  (SunUEFI EFI System Partition)
+- PianoUEFI-product.img            (SunUEFI product firmware; first-install check)
+- uefi-source.json                 (UEFI source pin and patch digests)
 - SHA256SUMS                       (checksums of the files unpacked above)
+- bundle-manifest.json             (binds root-install/ to this bundle)
+- root-image-manifest.json         (binds root-install/ to this root image)
+- source-runs.json                 (run ids behind this bundle; used by install-f2fs.py)
 - root-install/                    (complete prepare-install artifact)
   - pianoroot.f2fs.sparse.img      (prepared root transport for this tablet)
   - root-install-manifest.json
   - SHA256SUMS                     (root-install checksums)
+
+unpack-release.sh produces bundle-manifest.json, root-image-manifest.json,
+source-runs.json and SHA256SUMS from manifests-<desktop>.tar.zst; keep them
+next to the images.
 
 The release does not ship the sealed 8 GiB build image
 (pianoroot.f2fs.img.zst) or the bundle's sparse copy: both hold the same root

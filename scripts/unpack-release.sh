@@ -6,16 +6,18 @@
 #   root-install/       prepared root transport, manifest, checksums
 #
 # GitHub rejects files of 2 GiB or more, so the large images are shipped as
-# numbered pieces and the root transports are zstd-compressed. Run this script
+# numbered pieces and the root transports are zstd-compressed. Each desktop's
+# six bundle manifests ship as one manifests-<desktop>.tar.zst. Run this script
 # from the directory that holds the assets you downloaded; it checks them
 # against RELEASE-SHA256SUMS itself:
 #
 #   bash unpack-release.sh [--desktop <name>]
 #
 # A release may carry several desktops. ESP, kernel and initramfs are shared and
-# published once without a suffix; the root images and manifests are published as
-# `<stem>-<desktop>.<rest>` (see scripts/release-assets.py). With only one
-# desktop the flag can be left out; with several it is required.
+# published once without a suffix; the root image, its manifests and the
+# manifest archive are published as `<stem>-<desktop>.<rest>` (see
+# scripts/release-assets.py). With only one desktop the flag can be left out;
+# with several it is required.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -33,8 +35,8 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-for tool in sha256sum zstd; do
-    command -v "$tool" >/dev/null || die "missing $tool (Fedora: sudo dnf install coreutils zstd)"
+for tool in sha256sum zstd tar; do
+    command -v "$tool" >/dev/null || die "missing $tool (Fedora: sudo dnf install coreutils zstd tar)"
 done
 
 [ -f RELEASE-SHA256SUMS ] || die "RELEASE-SHA256SUMS is missing; download the platform assets and one desktop's root-install"
@@ -173,20 +175,29 @@ unpack_zstd() {
 unpack_zstd root-install-pianoroot.f2fs.sparse.img.zst root-install/pianoroot.f2fs.sparse.img
 
 say "[3/5] Restoring the documented directory layout..."
-# Release 只排除两份 root 镜像（完整镜像与封存镜像），bundle 里其余文件照发：
-# flash-linux.sh 要用 bundle-manifest.json 与 root-image-manifest.json 证明
+# Release 只发三个单独的 bundle 文件；每档那 6 个 manifest 打在一个 tar 里
+# （scripts/release-assets.py 的 MANIFEST_MEMBERS）。装机脚本要读它们：
+# flash-linux.sh 用 bundle-manifest.json 与 root-image-manifest.json 证明
 # root-install 来自这个 bundle，install-f2fs.py 的首装还要读 source-runs.json。
 bundle_files=(
-    PianoUEFI-product.img SHA256SUMS boot_sunuefi.img
-    bundle-manifest.json diagnostic-abl-storage.tar.zst esp-manifest.json
-    ffmpeg-manifest.json initramfs-manifest.json initramfs.tar.zst
-    kernel-manifest.json mesa-manifest.json root-image-manifest.json
-    rootfs-manifest.json runtime-manifest.json source-runs.json
-    sunuefi_esp.img uefi-source.json
+    PianoUEFI-product.img boot_sunuefi.img uefi-source.json
 )
 for name in "${bundle_files[@]}"; do
     claim "$name" || die "missing release asset: $name"
 done
+
+manifest_archive=$(resolve manifests.tar.zst) || die "missing manifests.tar.zst or its .part-* pieces"
+if compgen -G "$manifest_archive.part-*" >/dev/null; then
+    cat "$manifest_archive".part-* | zstd -dc | tar -xf - -C .
+    rm -f "$manifest_archive".part-*
+else
+    zstd -dc "$manifest_archive" | tar -xf - -C .
+    rm -f "$manifest_archive"
+fi
+for name in bundle-manifest.json root-image-manifest.json source-runs.json SHA256SUMS; do
+    [ -f "$name" ] || die "manifests archive did not contain $name"
+done
+
 claim root-install-manifest.json || die "missing release asset: root-install-manifest.json"
 claim root-install-SHA256SUMS || die "missing release asset: root-install-SHA256SUMS"
 mv root-install-manifest.json root-install/

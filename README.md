@@ -86,7 +86,7 @@
 
 Release 由 tag 触发（形如 `v44.1`），只包含同一次 `build-bundle` 与它派生的 `prepare-install` 的已验证产物，不重新编译。一个 Release 带四档桌面：ESP、内核、initramfs 与 UEFI 四档逐字节相同，只发一份（约 0.6 GiB）；root 每档一份，带 `-<档位>` 后缀（0.9–2.7 GiB）。
 
-所以装机下的是平台资产加自己那一档，合计 1.5–3.3 GiB，不必把 Releases 页上的文件下完。资产条数看着多，是因为 root 超过 GitHub 单文件 2 GiB 上限要切片，加上每档各有一份清单。`unpack-release.sh` 会按 `RELEASE-SHA256SUMS` 校验下载到的部分、合并分片、还原成文档里的文件名并解出 `root-install/`。逐个文件的作用见[交付物与流水线](docs/artifacts.md#release-发布)。
+所以装机下的是平台资产加自己那一档，合计 1.5–3.3 GiB，不必把 Releases 页上的文件下完。每档的 bundle manifest 打在一个 `manifests-<档位>.tar.zst` 里，`unpack-release.sh` 会按 `RELEASE-SHA256SUMS` 校验下载到的部分、合并分片、解出 manifest 与 `root-install/`。逐个文件的作用见[交付物与流水线](docs/artifacts.md#release-发布)。
 
 ## 文档
 

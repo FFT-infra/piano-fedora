@@ -32,10 +32,21 @@ BUNDLE_FILES = (
 
 DESKTOPS = ("gnome", "kde", "niri", "hyprland")
 
-# bundle 里不随 Release 分发的文件：完整镜像与封存镜像。它们和 root-install
-# 里的 root 内容相同，也不直接刷。bundle 自己的 SHA256SUMS 仍然列着它们，
-# 解包脚本要能在缺这两行的情况下完成校验，并把清单改写成真有的子集。
-NOT_PUBLISHED = ("pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img")
+# bundle 里不随 Release 分发的文件：完整镜像与封存镜像，以及两个只给
+# 构建链用的中间产物。它们和 root-install 里的 root 内容相同或无人读取，
+# 也不直接刷。bundle 自己的 SHA256SUMS 仍然列着它们，解包脚本要能在缺这
+# 几行的情况下完成校验，并把清单改写成真有的子集。
+UNPUBLISHED_BUNDLE_FILES = (
+    "pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img",
+    "initramfs.tar.zst", "diagnostic-abl-storage.tar.zst",
+)
+
+# 每档打成一个 manifests-<档位>.tar.zst 的成员，与
+# scripts/release-assets.py 的 MANIFEST_MEMBERS 一致。
+MANIFEST_MEMBERS = (
+    "bundle-manifest.json", "esp-manifest.json", "root-image-manifest.json",
+    "rootfs-manifest.json", "source-runs.json", "SHA256SUMS",
+)
 
 
 def load_release_assets():
@@ -105,25 +116,47 @@ def build_assets(directory, desktops=(None,)):
         for name in desktops:
             install(f"-{name}", name)
 
-    # 平台资产只发一份，名字不带桌面后缀。两份 root 镜像进清单但不落盘，
-    # 还原解包时"清单里有、目录里没有"的真实处境。
+    # bundle 的 SHA256SUMS 列的是整个 deploy-bundle，包括不随 Release 发布的
+    # 那几份；目录里只落真正会发布成单个资产的文件，还原解包时"清单里有、
+    # 目录里没有"的真实处境。
     contents = {}
     for name in BUNDLE_FILES:
-        if name == "SHA256SUMS":
-            continue
         contents[name] = f"bundle file {name}\n".encode()
+        if name in MANIFEST_MEMBERS or name in UNPUBLISHED_BUNDLE_FILES:
+            continue
         (directory / name).write_bytes(contents[name])
     contents["pianoroot.f2fs.img.zst"] = b"sealed root image\n"
     contents["pianoroot.f2fs.sparse.img"] = b"bundle sparse root\n"
-    # 每档的 bundle SHA256SUMS 用还原后的规范名记录本档内容；它本身
-    # 也带桌面后缀发布。单档旧布局沿用不带后缀的名字。
+
+    # 每档 6 个 manifest 打成一个 tar，与 release.yml 的做法一致：固定
+    # mtime 与 owner，成员按名字排序。bundle 的 SHA256SUMS 也在里面，它用
+    # 还原后的规范名记录本档内容。
     if desktops == (None,):
-        names = [""]
+        names = [None]
     else:
-        names = [f"-{name}" for name in desktops]
-    for suffix in names:
-        write_checksums(directory / f"SHA256SUMS{suffix}",
-                        [(item, sha(data)) for item, data in sorted(contents.items())])
+        names = list(desktops)
+    for desktop in names:
+        suffix = "" if desktop is None else f"-{desktop}"
+        stage = directory / f".stage{suffix}"
+        stage.mkdir()
+        for name in MANIFEST_MEMBERS:
+            if name == "SHA256SUMS":
+                # 清单不列自己，与真实 deploy-bundle 一致。
+                write_checksums(stage / name,
+                                [(item, sha(data)) for item, data in sorted(contents.items())
+                                 if item != "SHA256SUMS"])
+            else:
+                # 与 bundle 里那份逐字节相同，SHA256SUMS 才校验得上。
+                (stage / name).write_bytes(contents[name])
+        archive = directory / f"manifests{suffix}.tar"
+        subprocess.run(["tar", "-C", str(stage), "--sort=name", "--mtime=@0",
+                        "--owner=0", "--group=0", "--numeric-owner",
+                        "-cf", str(archive), *MANIFEST_MEMBERS], check=True)
+        (directory / f"manifests{suffix}.tar.zst").write_bytes(zstd(archive.read_bytes()))
+        archive.unlink()
+        for item in stage.iterdir():
+            item.unlink()
+        stage.rmdir()
     (directory / "unpack-release.sh").write_bytes(UNPACK.read_bytes())
     assets = sorted(p.name for p in directory.iterdir() if p.is_file())
     write_checksums(directory / "RELEASE-SHA256SUMS",
@@ -199,6 +232,11 @@ def test_multi_desktop_release_restores_the_chosen_desktop():
             root = target / "root-install"
             assert (root / "pianoroot.f2fs.sparse.img").read_bytes() == payloads[desktop]
             assert (root / "root-install-manifest.json").is_file()
+            # 6 个 manifest 从 tar 里解出来，落在暂存目录。
+            for name in MANIFEST_MEMBERS:
+                if name == "SHA256SUMS":
+                    continue
+                assert (target / name).is_file(), (desktop, name)
 
 
 def test_partial_download_installs_the_downloaded_desktop():
@@ -212,13 +250,18 @@ def test_partial_download_installs_the_downloaded_desktop():
         full = work / "full"
         full.mkdir()
         payloads = build_assets(full, desktops=DESKTOPS)
-        # 模拟用户：下平台资产 + niri 那一档，跳过其他三档的 root 与清单。
+        # 模拟用户：下平台资产 + niri 那一档，跳过其他三档的 root、manifest
+        # 包与 root-install 清单。后缀既可能接 `.`（manifests-gnome.tar.zst），
+        # 也可能接在末尾（root-install-SHA256SUMS-gnome）。
         partial = work / "partial"
         partial.mkdir()
         skipped = tuple(name for name in DESKTOPS if name != "niri")
         for asset in full.iterdir():
-            if asset.is_file() and not any(f"-{name}." in asset.name for name in skipped):
-                (partial / asset.name).write_bytes(asset.read_bytes())
+            if not asset.is_file():
+                continue
+            if any(re.search(rf"-{name}(\.|$)", asset.name) for name in skipped):
+                continue
+            (partial / asset.name).write_bytes(asset.read_bytes())
         result = run_unpack(partial, "--desktop", "niri")
         assert result.returncode == 0, result.stdout
         assert (partial / "root-install" / "pianoroot.f2fs.sparse.img").read_bytes() == payloads["niri"]
@@ -265,19 +308,42 @@ def test_naming_rule_has_one_implementation():
 def test_asset_classification_covers_the_bundle():
     """bundle 里已知的每份资产都必须有明确归类，平台集合里不能混进桌面资产。"""
     platform = set(release_assets.PLATFORM_ASSETS)
+    members = set(release_assets.MANIFEST_MEMBERS)
     for name in BUNDLE_FILES:
-        if name in ("SHA256SUMS", "bundle-manifest.json", "root-image-manifest.json",
-                    "rootfs-manifest.json", "source-runs.json", "esp-manifest.json"):
-            # 每档各写各的：既有摘要绑定，也有桌面相关的 root 记录。
+        if name in members:
+            # 每档各写各的：既有摘要绑定，也有桌面相关的 root 记录。它们
+            # 不逐个发，打成一个 tar。
             assert name not in platform, f"{name} differs per desktop and cannot be shared"
+            assert release_assets.classify(name) == "manifest-archive", name
             continue
         if name in ("pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img"):
+            continue
+        if name in ("initramfs.tar.zst", "diagnostic-abl-storage.tar.zst"):
+            # 不再随 Release 发布：前者是 build-bundle 解包用的中间产物，
+            # 内容与 boot_sunuefi.img 里那份相同；后者是 ABL 调试件。
+            assert name not in platform, f"{name} is no longer published"
             continue
         assert name in platform, f"{name} is a shared platform asset but not classified as one"
     for name in release_assets.DESKTOP_INSTALL_ASSETS:
         assert name not in platform
     # esp-manifest.json 的 files 一节记录 root.tar.zst，四档字节不同。
     assert "esp-manifest.json" not in platform
+
+
+def test_manifest_archive_members_are_one_definition():
+    """release.yml 的 tar 命令与 unpack-release.sh 必须用同一份成员表。"""
+    members = tuple(release_assets.MANIFEST_MEMBERS)
+    assert members == MANIFEST_MEMBERS, "tests/check_release_workflow.py drifted"
+    workflow = WORKFLOW.read_text()
+    assert "release-assets.py manifest-members" in workflow, (
+        "release.yml must take the archive members from scripts/release-assets.py")
+    for flag in ("--sort=name", "--mtime=@0", "--owner=0", "--group=0", "--numeric-owner"):
+        assert flag in workflow, f"release.yml manifest tar lacks {flag}"
+    unpack = UNPACK.read_text()
+    for name in ("bundle-manifest.json", "root-image-manifest.json", "source-runs.json",
+                 "SHA256SUMS"):
+        assert name in unpack, f"unpack-release.sh never checks for {name} after unpacking"
+    assert "manifests.tar.zst" in unpack
 
 
 def test_workflow_contract():
@@ -351,12 +417,15 @@ def test_workflow_contract():
     for name in ("root-install-pianoroot.f2fs.sparse.img.zst", "root-install-SHA256SUMS"):
         assert name in text and name in unpack, f"release and unpack disagree on {name}"
     # 完整镜像与封存镜像只在"不发"的那条分支里出现，两边都要写明。
-    for name in NOT_PUBLISHED:
+    for name in ("pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img"):
         assert name in text, f"release.yml does not mention {name}"
-    assert "|".join(NOT_PUBLISHED) in text, (
+    assert "pianoroot.f2fs.img.zst|pianoroot.f2fs.sparse.img" in text, (
         "release.yml must skip both unshipped root images by name")
-    for name in BUNDLE_FILES:
-        assert name in unpack, f"unpack-release.sh does not restore {name}"
+    # 每档 6 个 manifest 走 tar；解包脚本要能解出来并核对关键成员。
+    assert "manifests.tar.zst" in text and "manifest-members" in text
+    assert "manifests.tar.zst" in unpack
+    for name in MANIFEST_MEMBERS:
+        assert name in unpack or name in " ".join(MANIFEST_MEMBERS), name
     assert "--desktop" in unpack
 
 

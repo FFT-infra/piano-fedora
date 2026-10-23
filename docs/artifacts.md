@@ -42,7 +42,7 @@ clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel r
 
 每档桌面各有一个 `deploy-bundle` run，bundle 内部文件名不随桌面变化：`verify-bundle.py`、`prepare-root-capacity.py` 与 `flash-linux.sh` 只认规范名。桌面维度在发布成 Release 时才展开成带后缀的资产名。
 
-最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、`initramfs.tar.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。`initramfs.tar.zst` 由 build-image 用固定时间戳与 owner 打出，四档逐字节相同，是平台资产：内容就是 `boot_sunuefi.img` 里那个 initramfs，单独发一份便于离线检查与手工重打包。有了 bundle 自带的 sparse，从 Release 装机不需要再跑一次 Actions。发布资产名与 `fastboot flash sunuefi_esp` / `boot_a` 的目标一致。上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
+最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、`initramfs.tar.zst`、`diagnostic-abl-storage.tar.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。`initramfs.tar.zst` 由 build-image 用固定时间戳与 owner 打出，四档逐字节相同；它是 `build-bundle` 解包后重新打进 `boot_sunuefi.img` 的中间产物，不随 Release 发布（内容与 ESP 里那份相同）。有了 bundle 自带的 sparse，从 Release 装机不需要再跑一次 Actions。发布资产名与 `fastboot flash sunuefi_esp` / `boot_a` 的目标一致。上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
 
 Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合体 BOOT 必须用本机当前 stock BOOT、槽位和 generation 另行包装；通用构建产物不包含这些个人设备输入。
 
@@ -80,10 +80,12 @@ root 镜像与设备容量脱钩。早期方案把 root 离线扩到目标容量
 
 多档桌面的 Release 用 `desktop_runs` 给出每档一对 run（`gnome=<bundle>:<prepare>,kde=...`）。每档独立走一遍身份、状态与提交绑定校验，`root-install` 还要与它自己的 bundle 和 root 镜像逐摘要对齐。资产分两组：
 
-- **平台资产**：`PianoUEFI-product.img`、`sunuefi_esp.img`、`boot_sunuefi.img`、`uefi-source.json`、`kernel-manifest.json`、`initramfs.tar.zst`、`initramfs-manifest.json`、`diagnostic-abl-storage.tar.zst` 与其余两份组件 manifest。名字不带后缀，四档逐字节相同，只上传第一档的副本，其余三档只做 `cmp`，不一致就在写 Release 之前失败。
-- **桌面资产**：`root-install-pianoroot.f2fs.sparse.img.zst`、`root-install-manifest.json`、`root-install-SHA256SUMS`，以及每档的 `bundle-manifest.json`、`esp-manifest.json`、`root-image-manifest.json`、`rootfs-manifest.json`、`source-runs.json` 与 `SHA256SUMS`。在第一处 `.` 前插入 `-<desktop>`（`root-install-SHA256SUMS` 与 `SHA256SUMS` 没有扩展名，后缀接在末尾）。
+- **平台资产**：`PianoUEFI-product.img`、`sunuefi_esp.img`、`boot_sunuefi.img`、`uefi-source.json`、`kernel-manifest.json`、`initramfs-manifest.json`、`runtime-manifest.json`、`mesa-manifest.json`、`ffmpeg-manifest.json`。名字不带后缀，四档逐字节相同，只上传第一档的副本，其余三档只做 `cmp`，不一致就在写 Release 之前失败。
+- **桌面资产**：`root-install-pianoroot.f2fs.sparse.img.zst`、`root-install-manifest.json`、`root-install-SHA256SUMS`，以及每档的 `manifests.tar.zst`。在第一处 `.` 前插入 `-<desktop>`（`root-install-SHA256SUMS` 没有扩展名，后缀接在末尾）。
 
-Release 不发 bundle 里的两份 root 镜像：完整镜像 `pianoroot.f2fs.img.zst` 与封存镜像 `pianoroot.f2fs.sparse.img`。它们与 `root-install` 里的 root 内容相同，也不能直接刷，同一份 root 发三种形态只会让人分不清该下哪个，还把每个 Release 撑到 20 GiB。要存档副本就从对应的 workflow artifact 取，或自己跑一次 `prepare-install`。manifest 全部照发：`flash-linux.sh` 用 `bundle-manifest.json` 与 `root-image-manifest.json` 证明 `root-install` 来自这个 bundle，`install-f2fs.py` 的首装还要读 `source-runs.json`。
+每档那 6 份 bundle manifest（`bundle-manifest.json`、`esp-manifest.json`、`root-image-manifest.json`、`rootfs-manifest.json`、`source-runs.json`、`SHA256SUMS`）不逐个发布，打成 `manifests-<档位>.tar.zst`。它们是装机脚本读的，不是给人点开的：`flash-linux.sh` 用 `bundle-manifest.json` 与 `root-image-manifest.json` 证明 `root-install` 来自这个 bundle，`install-f2fs.py` 的首装还要读 `source-runs.json`。逐个发会让四档占掉 24 个资产条目，打包后是 4 个。成员表只有一处定义（`scripts/release-assets.py` 的 `MANIFEST_MEMBERS`），打包固定 mtime 与 owner，同一档重跑出同样的字节。
+
+Release 不发三样东西。完整镜像 `pianoroot.f2fs.img.zst` 与封存镜像 `pianoroot.f2fs.sparse.img` 与 `root-install` 里的 root 内容相同，也不能直接刷，同一份 root 发三种形态只会让人分不清该下哪个，还把每个 Release 撑到 20 GiB。`initramfs.tar.zst` 是 `build-bundle` 解包用的中间产物，内容与 `boot_sunuefi.img` 里那份逐字节相同；`diagnostic-abl-storage.tar.zst` 是 ABL 只读探针的调试件，manifest 自标 `device_tested: false`，装机脚本不读它的内容。这四样都能从对应的 workflow artifact 取。
 
 ### 资产清单
 
@@ -93,17 +95,17 @@ Release 不发 bundle 里的两份 root 镜像：完整镜像 `pianoroot.f2fs.im
 | --- | --- | --- | --- |
 | SunUEFI 固件 | `sunuefi_esp.img` | 512 MiB | 刷 `sunuefi_esp` |
 | ESP 内 Linux 载荷 | `boot_sunuefi.img` | 45 MiB | 不单独刷，随 ESP |
-| SunUEFI 产品固件 | `PianoUEFI-product.img` | 28 MiB | `sunuefi_esp.img` 的载荷来源 |
-| initramfs | `initramfs.tar.zst` | 3 MiB | 与 ESP 里那份相同 |
-| ABL 诊断 | `diagnostic-abl-storage.tar.zst` | 17 MiB | ABL 存储链路诊断 |
+| SunUEFI 产品固件 | `PianoUEFI-product.img` | 28 MiB | `sunuefi_esp.img` 的载荷来源；首装校验用 |
 | 组件来源 | `kernel-manifest.json`、`initramfs-manifest.json`、`runtime-manifest.json`、`mesa-manifest.json`、`ffmpeg-manifest.json`、`uefi-source.json` | 合计 < 1 MiB | 各组件的 pin 与摘要 |
 | 引导工具 | `piano-boot-tools-<tag>.tar.zst` | 19 MiB | 本机生成 `device-boot/boot_linux.img` |
 | 刷写脚本 | `piano-installer-<tag>.zip` | 20 KiB | `flash-linux.sh`、`flash-linux.bat` 与说明 |
 | 解包脚本 | `unpack-release.sh` | 20 KiB | 与仓库里那份同步 |
 | 根文件系统 | `root-install-pianoroot-<档位>.f2fs.sparse.img.zst` | 0.9–2.7 GiB | 刷 `sunuefi_root`；超 2 GiB 时按 1900 MiB 分片 |
 | root 清单 | `root-install-manifest-<档位>.json`、`root-install-SHA256SUMS-<档位>` | 各几 KiB | 绑定 bundle 与 root 镜像，列出 root 内各文件摘要 |
-| bundle 溯源 | `bundle-manifest-<档位>.json`、`root-image-manifest-<档位>.json`、`rootfs-manifest-<档位>.json`、`esp-manifest-<档位>.json`、`source-runs-<档位>.json`、`SHA256SUMS-<档位>` | 合计几十 KiB | 刷写脚本据此证明 `root-install` 来自这个 bundle；首装还要用 `source-runs` |
+| bundle manifest | `manifests-<档位>.tar.zst` | 约 25 KiB | 上面那 6 份；刷写脚本据此证明 `root-install` 来自这个 bundle |
 | 总校验 | `RELEASE-SHA256SUMS` | 几 KiB | 全部资产的哈希，也是 build provenance 的 subject |
+
+一档 2–3 个资产、共 12 个，加平台 9 个与工具 4 个，四档 Release 合计 23 个。
 
 装机下载的是平台资产加一档 `root-install-*`：单档 1.5–3.3 GiB，四档全下约 7 GiB。
 
