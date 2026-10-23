@@ -57,7 +57,7 @@
 
 1. 解锁 Bootloader，准备好 `fastboot`。
 2. 原始 GPT 的设备先按[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)分区、擦除 `userdata`、让 Android 首次开机。**没有这一步，一键脚本不能运行。**
-3. 从 [Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh --desktop <档位>`（Release 只有一档时可省略）。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle` 与该 run 派生的 `prepare-install` 的 `root-install`，不要混用不同 run 的资产。
+3. 从 [Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载平台资产与自己那一档的 `root-install-*`（其他档位的 root 不必下），然后 `bash unpack-release.sh --desktop <档位>`（只有一档时可省略），脚本会校验下载到的资产并解出 `root-install/`。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle` 与该 run 派生的 `prepare-install` 的 `root-install`，不要混用不同 run 的资产。
 4. 按[安装指南第三节](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本)整理暂存目录：Release 的 `piano-installer-<tag>.zip` 里有刷写脚本；从源码构建时把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat` 放进同一层。
 
    刷写前还要用 Release 的 `piano-boot-tools-<tag>.tar.zst` 在本机生成一次 `device-boot/boot_linux.img`。它由这台平板自己的原厂 BOOT 重打包而成，通用产物的 `boot_sunuefi.img` 不能顶替。脚本把当前目录当作暂存目录，不会从仓库里找镜像。
@@ -84,19 +84,9 @@
 
 ## 发布产物
 
-正式 Release 由 tag 触发（形如 `v44.1`），只包含同一次 `build-bundle` 与它派生的 `prepare-install` 已验证产物；大镜像自动分片，附带 `RELEASE-SHA256SUMS` 与 `unpack-release.sh`。一个 Release 可以带多档桌面：ESP、内核、initramfs 与 UEFI 四档逐字节相同，只发布一份；root 镜像与 `root-install/` 按 `-<desktop>` 加后缀，每档各一份：
+Release 由 tag 触发（形如 `v44.1`），只包含同一次 `build-bundle` 与它派生的 `prepare-install` 的已验证产物，不重新编译。一个 Release 带四档桌面：ESP、内核、initramfs 与 UEFI 四档逐字节相同，只发一份（约 0.6 GiB）；root 每档一份，带 `-<档位>` 后缀（0.9–2.7 GiB）。
 
-| 文件 | 说明 |
-|---|---|
-| `boot_sunuefi.img` | ESP 内部的 Linux 载荷，不刷进 `boot_a` |
-| `sunuefi_esp.img` | SunUEFI EDK2、DTB、Linux 7.2.9 内核与 initramfs |
-| `PianoUEFI-product.img` | SunUEFI 产品固件本体，`sunuefi_esp.img` 的载荷来源 |
-| `pianoroot.f2fs.img.zst` / `pianoroot-<desktop>.f2fs.img.zst` | 封存的根文件系统，不能直接刷；单档时不带后缀 |
-| `root-install/` | 写入设备配置后的 sparse 根镜像与清单（由 `unpack-release.sh --desktop <档位>` 还原） |
-| `SHA256SUMS` | 上面这些资产的哈希 |
-| `root-install/SHA256SUMS` | `root-install/` 内 sparse 镜像与清单的哈希，单独一份，不与上面合并 |
-
-Release 另带 `piano-installer-<tag>.zip`（刷写脚本与说明）和 `piano-boot-tools-<tag>.tar.zst`（本机生成 `device-boot/boot_linux.img`）。`scripts/package-release-bundle.sh` 是本地兼容打包器，不是发布主入口。
+所以装机下的是平台资产加自己那一档，合计 1.5–3.3 GiB，不必把 Releases 页上的文件下完。资产条数看着多，是因为 root 超过 GitHub 单文件 2 GiB 上限要切片，加上每档各有一份清单。`unpack-release.sh` 会按 `RELEASE-SHA256SUMS` 校验下载到的部分、合并分片、还原成文档里的文件名并解出 `root-install/`。逐个文件的作用见[交付物与流水线](docs/artifacts.md#release-发布)。
 
 ## 文档
 

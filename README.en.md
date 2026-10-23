@@ -55,7 +55,7 @@ Pick a profile at download time with `bash unpack-release.sh --desktop <profile>
 
 1. Unlock the bootloader and set up `fastboot`.
 2. On a device with the stock GPT, follow [First install from the stock GPT/UFS](docs/installation.md#四-从原始-gptufs-开始的首次安装) to create the partitions, erase `userdata`, and let Android boot once. **The one-step script does not work without this step.**
-3. Download the latest release from [Releases](https://github.com/FFT-infra/piano-fedora/releases), run `sha256sum -c RELEASE-SHA256SUMS`, then `bash unpack-release.sh --desktop <profile>` (the flag is optional when the release carries one profile). When building from source, use the `deploy-bundle` from one successful `build-bundle` run and the `root-install` that `prepare-install` produced from that same bundle run. Do not mix assets from different runs.
+3. Download the platform assets and the `root-install-*` files of the profile you picked (the other profiles' roots are not needed) from [Releases](https://github.com/FFT-infra/piano-fedora/releases), then run `bash unpack-release.sh --desktop <profile>` (optional when the release carries one profile). The script verifies the assets you downloaded and unpacks `root-install/`. When building from source, use the `deploy-bundle` from one successful `build-bundle` run and the `root-install` that `prepare-install` produced from that same bundle run. Do not mix assets from different runs.
 4. Prepare the staging directory as described in [section 3 of the installation guide](docs/installation.md#三-已有-linux-分区的刷写跨平台一键脚本). The release's `piano-installer-<tag>.zip` carries the flash scripts; when building from source, copy `flash-linux.sh` and `flash-linux.bat` from `scripts/installer/` into it.
 
    Before flashing, use the release's `piano-boot-tools-<tag>.tar.zst` to build `device-boot/boot_linux.img` on the host once. It is repacked from this tablet's own stock BOOT; the shared `boot_sunuefi.img` cannot replace it. The installer treats its working directory as the staging directory and never looks for images inside the repository.
@@ -82,19 +82,9 @@ For step-by-step control, see [Manual flashing](docs/installation.md#三之二-�
 
 ## Release artifacts
 
-A release is triggered by a tag (for example `v44.1`) and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Large images are split automatically, with `RELEASE-SHA256SUMS` and `unpack-release.sh`. One release can carry several desktops: the ESP, kernel, initramfs and UEFI are byte-identical across profiles and are published once, while the root image and `root-install/` are published per profile with a `-<desktop>` suffix:
+A release is triggered by a tag (for example `v44.1`) and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it; nothing is rebuilt. One release carries four desktops: the ESP, kernel, initramfs and UEFI are byte-identical across profiles and are published once (about 0.6 GiB); the root is published per profile with a `-<profile>` suffix (0.9–2.7 GiB).
 
-| File | Contents |
-|---|---|
-| `boot_sunuefi.img` | Linux payload inside the ESP; never flash it to `boot_a` |
-| `sunuefi_esp.img` | SunUEFI EDK2, DTB, Linux 7.2.9 kernel, initramfs |
-| `PianoUEFI-product.img` | SunUEFI product firmware; the payload inside `sunuefi_esp.img` |
-| `pianoroot.f2fs.img.zst` / `pianoroot-<desktop>.f2fs.img.zst` | Sealed root filesystem; never flash it directly. No suffix when the release carries one profile |
-| `root-install/` | Sparse root transport with device configuration written (restored by `unpack-release.sh --desktop <profile>`) |
-| `SHA256SUMS` | Hashes of the assets above |
-| `root-install/SHA256SUMS` | Hashes of the sparse image and manifests inside `root-install/`, kept separate and never merged with the file above |
-
-The release also carries `piano-installer-<tag>.zip` (flash scripts and guide) and `piano-boot-tools-<tag>.tar.zst` (builds `device-boot/boot_linux.img` locally). `scripts/package-release-bundle.sh` is a local compatibility packer, not the release entry point.
+So an install downloads the platform assets plus one profile, 1.5–3.3 GiB in total; you do not need every file on the Releases page. The asset count looks large because the root exceeds GitHub's 2 GiB per-file limit and is split, and because each profile carries its own manifests. `unpack-release.sh` checks what you downloaded against `RELEASE-SHA256SUMS`, merges split pieces, restores the documented file names, and unpacks `root-install/`. What each file is: [Artifacts and pipeline](docs/artifacts.md#release-发布).
 
 ## Documentation
 

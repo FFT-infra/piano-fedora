@@ -70,13 +70,10 @@
 ### 1. 获取 Release 资产
 从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载最新发行包。Release 由 tag 触发，内容是同一次 `build-bundle` 与它派生的 `prepare-install` 产物；失败后可以用同一个 workflow 手动重跑。不要在本地重新打包历史 `out/` 目录充当发布资产。
 
-Release 资产是扁平的，全部下载到同一个空目录后：
-
-1. `sha256sum -c RELEASE-SHA256SUMS`
-2. `bash unpack-release.sh --desktop <档位>`
+Release 资产是扁平的。装机只需要平台资产与所选档位的 `root-install-*`，其他档位的 root 各 1–3 GiB，不必下载。放进同一个空目录后执行 `bash unpack-release.sh --desktop <档位>`，脚本按 `RELEASE-SHA256SUMS` 校验目录里已有的资产，缺的档位不影响所选档位的还原。
 
 一个 Release 可以带多档桌面（`gnome`、`kde`、`niri`、`hyprland`）。ESP、内核、
-initramfs 与 UEFI 四档逐字节相同，只发布一份；root 镜像与 `root-install/` 每档
+initramfs 与 UEFI 四档逐字节相同，只发布一份；`root-install/` 每档
 各一份，名字带 `-<档位>` 后缀。`--desktop` 决定哪一档的 root 进入
 `root-install/`；Release 里只有一档时脚本自动识别，多档时不传参数会报错并列出
 可选项。各档有什么差别见[桌面档](desktops.md)。
@@ -205,7 +202,7 @@ Windows 脚本不自动注入；需要时按 `flash-linux.bat` 的提示手工�
 
 ### 1. 从 Release 取哪些文件
 
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载发行包。资产是扁平的，先 `sha256sum -c RELEASE-SHA256SUMS`，再 `bash unpack-release.sh --desktop <档位>`（只有一档时可省略）；手动刷机只认解包后的文件名。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及这个 run 派生的 `prepare-install` 的 `root-install`。不要拿历史 `out/` 目录拼装。
+从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载平台资产与所选档位的 `root-install-*`（其他档位的 root 不必下）。资产是扁平的，`bash unpack-release.sh --desktop <档位>`（只有一档时可省略）负责校验、合并分片并还原成规范名；手动刷机只认解包后的文件名。还没有 Release 时，用同一次成功 `build-bundle` run 的完整 `deploy-bundle`，以及这个 run 派生的 `prepare-install` 的 `root-install`。不要拿历史 `out/` 目录拼装。
 
 手动刷机至少需要这些资产：
 

@@ -32,6 +32,11 @@ BUNDLE_FILES = (
 
 DESKTOPS = ("gnome", "kde", "niri", "hyprland")
 
+# bundle 里不随 Release 分发的文件：完整镜像与封存镜像。它们和 root-install
+# 里的 root 内容相同，也不直接刷。bundle 自己的 SHA256SUMS 仍然列着它们，
+# 解包脚本要能在缺这两行的情况下完成校验，并把清单改写成真有的子集。
+NOT_PUBLISHED = ("pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img")
+
 
 def load_release_assets():
     loader = importlib.machinery.SourceFileLoader("release_assets", str(ASSETS))
@@ -80,16 +85,10 @@ def build_assets(directory, desktops=(None,)):
     else:
         layouts = [(f"-{name}", name) for name in desktops]
     for suffix, desktop in layouts:
-        sealed = f"sealed root image bytes {desktop}\n".encode() * 64
-        sparse = f"bundle sparse bytes {desktop}\n".encode() * 64
         prepared = f"prepared root bytes {desktop}\n".encode() * 64
-        (directory / f"pianoroot{suffix}.f2fs.img.zst").write_bytes(sealed)
-        (directory / f"pianoroot{suffix}.f2fs.sparse.img.zst").write_bytes(zstd(sparse))
         (directory / f"root-install-pianoroot{suffix}.f2fs.sparse.img.zst").write_bytes(zstd(prepared))
-        split(directory / f"pianoroot{suffix}.f2fs.img.zst", 2)
-        split(directory / f"pianoroot{suffix}.f2fs.sparse.img.zst", 2)
         split(directory / f"root-install-pianoroot{suffix}.f2fs.sparse.img.zst", 2)
-        payloads[desktop] = (sealed, sparse, prepared)
+        payloads[desktop] = prepared
 
     def install(suffix, desktop):
         manifest = b'{"android_slot": "_a"}\n'
@@ -97,7 +96,7 @@ def build_assets(directory, desktops=(None,)):
         # root-install/SHA256SUMS 记录的是还原后的规范名，与真实 prepare-install
         # 产物一致；桌面后缀只出现在 Release 资产名上。
         write_checksums(directory / f"root-install-SHA256SUMS{suffix}",
-                        [("pianoroot.f2fs.sparse.img", sha(payloads[desktop][2])),
+                        [("pianoroot.f2fs.sparse.img", sha(payloads[desktop])),
                          ("root-install-manifest.json", sha(manifest))])
 
     if desktops == (None,):
@@ -106,27 +105,25 @@ def build_assets(directory, desktops=(None,)):
         for name in desktops:
             install(f"-{name}", name)
 
-    # 平台资产只发一份，名字不带桌面后缀。
+    # 平台资产只发一份，名字不带桌面后缀。两份 root 镜像进清单但不落盘，
+    # 还原解包时"清单里有、目录里没有"的真实处境。
     contents = {}
     for name in BUNDLE_FILES:
         if name == "SHA256SUMS":
             continue
         contents[name] = f"bundle file {name}\n".encode()
         (directory / name).write_bytes(contents[name])
+    contents["pianoroot.f2fs.img.zst"] = b"sealed root image\n"
+    contents["pianoroot.f2fs.sparse.img"] = b"bundle sparse root\n"
+    # 每档的 bundle SHA256SUMS 用还原后的规范名记录本档内容；它本身
+    # 也带桌面后缀发布。单档旧布局沿用不带后缀的名字。
     if desktops == (None,):
-        contents["pianoroot.f2fs.img.zst"] = payloads[None][0]
-        contents["pianoroot.f2fs.sparse.img"] = payloads[None][1]
-        write_checksums(directory / "SHA256SUMS",
-                        [(name, sha(data)) for name, data in sorted(contents.items())])
+        names = [""]
     else:
-        # 每档的 bundle SHA256SUMS 用还原后的规范名记录本档内容；它本身
-        # 也带桌面后缀发布。
-        for name in desktops:
-            desktop_contents = dict(contents)
-            desktop_contents["pianoroot.f2fs.img.zst"] = payloads[name][0]
-            desktop_contents["pianoroot.f2fs.sparse.img"] = payloads[name][1]
-            write_checksums(directory / f"SHA256SUMS-{name}",
-                            [(item, sha(data)) for item, data in sorted(desktop_contents.items())])
+        names = [f"-{name}" for name in desktops]
+    for suffix in names:
+        write_checksums(directory / f"SHA256SUMS{suffix}",
+                        [(item, sha(data)) for item, data in sorted(contents.items())])
     (directory / "unpack-release.sh").write_bytes(UNPACK.read_bytes())
     assets = sorted(p.name for p in directory.iterdir() if p.is_file())
     write_checksums(directory / "RELEASE-SHA256SUMS",
@@ -147,11 +144,14 @@ def test_single_unsuffixed_release_still_works():
         result = run_unpack(work)
         assert result.returncode == 0, result.stdout
         root = work / "root-install"
-        assert (work / "pianoroot.f2fs.sparse.img").read_bytes() == payloads[None][1]
-        assert (work / "pianoroot.f2fs.img.zst").read_bytes() == payloads[None][0]
-        assert (root / "pianoroot.f2fs.sparse.img").read_bytes() == payloads[None][2]
+        assert (root / "pianoroot.f2fs.sparse.img").read_bytes() == payloads[None]
+        # 完整镜像与封存镜像都不进 Release，装机只用 root-install 那一份。
+        assert not (work / "pianoroot.f2fs.sparse.img").exists()
+        assert not (work / "pianoroot.f2fs.img.zst").exists()
         assert (root / "root-install-manifest.json").is_file()
         assert (root / "SHA256SUMS").is_file()
+        # 解包后暂存目录的清单只列真有的文件，手动刷机的
+        # `sha256sum -c SHA256SUMS` 才能直接跑通。
         subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=work, check=True,
                        stdout=subprocess.PIPE)
         subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=root, check=True,
@@ -169,7 +169,7 @@ def test_single_suffixed_release_needs_no_flag():
         result = run_unpack(work)
         assert result.returncode == 0, result.stdout
         assert "Desktop: kde" in result.stdout, result.stdout
-        assert (work / "root-install" / "pianoroot.f2fs.sparse.img").read_bytes() == payloads["kde"][2]
+        assert (work / "root-install" / "pianoroot.f2fs.sparse.img").read_bytes() == payloads["kde"]
 
 
 def test_multi_desktop_release_requires_a_choice():
@@ -197,9 +197,33 @@ def test_multi_desktop_release_restores_the_chosen_desktop():
             result = run_unpack(target, "--desktop", desktop)
             assert result.returncode == 0, (desktop, result.stdout)
             root = target / "root-install"
-            assert (target / "pianoroot.f2fs.sparse.img").read_bytes() == payloads[desktop][1]
-            assert (root / "pianoroot.f2fs.sparse.img").read_bytes() == payloads[desktop][2]
+            assert (root / "pianoroot.f2fs.sparse.img").read_bytes() == payloads[desktop]
             assert (root / "root-install-manifest.json").is_file()
+
+
+def test_partial_download_installs_the_downloaded_desktop():
+    """只下平台资产加一档 root-install 也要能装：README 就是这么教用户下的。
+
+    另外三档的 root 各 1–3 GiB，装机时不该被要求下完。所以第 1 步只能校验
+    目录里真有的资产，第 4 步的 bundle 清单也只能校验它的子集。
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        work = Path(directory)
+        full = work / "full"
+        full.mkdir()
+        payloads = build_assets(full, desktops=DESKTOPS)
+        # 模拟用户：下平台资产 + niri 那一档，跳过其他三档的 root 与清单。
+        partial = work / "partial"
+        partial.mkdir()
+        skipped = tuple(name for name in DESKTOPS if name != "niri")
+        for asset in full.iterdir():
+            if asset.is_file() and not any(f"-{name}." in asset.name for name in skipped):
+                (partial / asset.name).write_bytes(asset.read_bytes())
+        result = run_unpack(partial, "--desktop", "niri")
+        assert result.returncode == 0, result.stdout
+        assert (partial / "root-install" / "pianoroot.f2fs.sparse.img").read_bytes() == payloads["niri"]
+        subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=partial, check=True,
+                       stdout=subprocess.PIPE)
 
 
 def test_unknown_desktop_is_rejected_with_the_available_choices():
@@ -324,9 +348,13 @@ def test_workflow_contract():
             "desktop would stop at zstd's overwrite prompt: " + command)
 
     unpack = UNPACK.read_text()
-    for name in ("pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img.zst",
-                 "root-install-pianoroot.f2fs.sparse.img.zst", "root-install-SHA256SUMS"):
+    for name in ("root-install-pianoroot.f2fs.sparse.img.zst", "root-install-SHA256SUMS"):
         assert name in text and name in unpack, f"release and unpack disagree on {name}"
+    # 完整镜像与封存镜像只在"不发"的那条分支里出现，两边都要写明。
+    for name in NOT_PUBLISHED:
+        assert name in text, f"release.yml does not mention {name}"
+    assert "|".join(NOT_PUBLISHED) in text, (
+        "release.yml must skip both unshipped root images by name")
     for name in BUNDLE_FILES:
         assert name in unpack, f"unpack-release.sh does not restore {name}"
     assert "--desktop" in unpack
@@ -340,6 +368,7 @@ def main():
     test_single_suffixed_release_needs_no_flag()
     test_multi_desktop_release_requires_a_choice()
     test_multi_desktop_release_restores_the_chosen_desktop()
+    test_partial_download_installs_the_downloaded_desktop()
     test_unknown_desktop_is_rejected_with_the_available_choices()
     print("OK: release workflow 绑定 tag commit，多桌面资产按后缀还原为规范名")
 

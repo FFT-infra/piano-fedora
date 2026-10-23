@@ -136,16 +136,19 @@ jobs:
 
           ### 下载后
 
-          1. 把本 Release 的全部资产下载到同一个空目录。
-          2. \`sha256sum -c RELEASE-SHA256SUMS\`
-          3. \`bash unpack-release.sh --desktop <桌面>\` 还原 bundle 文件并解出 \`root-install/\`。
+          1. 把平台资产与所选桌面档的 \`root-install-*\` 下载到同一个空目录。其他档位的
+             \`root-install-*\` 各 1–3 GiB，装机不需要。
+          2. \`bash unpack-release.sh --desktop <桌面>\`：按 \`RELEASE-SHA256SUMS\` 校验
+             下载到的资产，合并分片，还原成文档里的规范名并解出 \`root-install/\`。
              只有一档时参数可省略。
-          4. 按 \`README-INSTALL.txt\` 操作；全新平板先读 docs/installation.md 第四节。
+          3. 按 \`README-INSTALL.txt\` 操作；全新平板先读 docs/installation.md 第四节。
 
           平台资产（ESP、内核、initramfs、UEFI）在所有桌面档之间完全相同，只发布一份。
-          桌面与安装资产带 \`-<desktop>\` 后缀，\`unpack-release.sh\` 会还原成文档里的规范名。
+          桌面资产带 \`-<desktop>\` 后缀，\`unpack-release.sh\` 会还原成文档里的规范名。
           大于 2 GiB 的镜像以 \`.part-*\` 分片发布，脚本会自动合并。
-          \`boot_linux.img\` 不随 Release 发布：它必须用本机原厂 BOOT 生成，
+          \`pianoroot-<桌面>.f2fs.img.zst\` 与 \`pianoroot-<桌面>.f2fs.sparse.img.zst\`
+          不发布：它们和 \`root-install\` 里的 root 内容相同，也不能直接刷，只是存档副本。
+          \`boot_linux.img\` 也不随 Release 发布：它必须用本机原厂 BOOT 生成，
           工具在 \`piano-boot-tools-${TAG}.tar.zst\` 里。
 
           校验构建来源: \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`
@@ -197,9 +200,18 @@ jobs:
               done
             fi
 
+            # Release 发布 bundle 里的全部文件，只有两份 root 镜像除外：完整镜像
+            # （pianoroot.f2fs.img.zst）与封存镜像（pianoroot.f2fs.sparse.img）
+            # 和 root-install 里那份 root 内容相同，也不能直接刷，只是还原与检查
+            # 用的存档副本。同一份 root 发三种形态，只会让人分不清该下哪个，还把
+            # 每个 Release 撑到 20 GiB。要存档副本就从 workflow artifact 取，或者
+            # 自己跑 prepare-install。manifest 一律照发：flash-linux.sh 用
+            # bundle-manifest.json 与 root-image-manifest.json 证明 root-install
+            # 来自这个 bundle，install-f2fs.py 的首装还要读 source-runs.json。
             (cd build/in/bundle
              for name in *; do
                case "$name" in
+                 # 两份 root 镜像都不发，见上面的说明。
                  pianoroot.f2fs.img.zst|pianoroot.f2fs.sparse.img) continue ;;
                esac
                if [ "$(python3 ../../../scripts/release-assets.py classify "$name")" = platform ]; then
@@ -208,23 +220,6 @@ jobs:
                published=$(python3 ../../../scripts/release-assets.py name "$name" "$desktop")
                release_upload "$name" "$published"
              done)
-
-            release_upload_split build/in/bundle/pianoroot.f2fs.img.zst \
-              "$(python3 scripts/release-assets.py name pianoroot.f2fs.img.zst "$desktop")"
-
-            # bundle 的 sparse 与封存镜像同源；压缩后再切片，避免每次下载 6 GB。
-            # -f：这个暂存名四档共用，上一档传完还留在盘上。没有 -f 时 zstd 在
-            # 第二档就问要不要覆盖，非交互环境下直接以 1 退出。
-            zstd -10 -f -T0 --no-progress build/in/bundle/pianoroot.f2fs.sparse.img \
-              -o "$STAGE/pianoroot.f2fs.sparse.img.zst"
-            original=$(sha256sum build/in/bundle/pianoroot.f2fs.sparse.img | awk '{print $1}')
-            decoded=$(zstd -dc "$STAGE/pianoroot.f2fs.sparse.img.zst" | sha256sum | awk '{print $1}')
-            test "$original" = "$decoded" || {
-              echo "compressed root transport does not round-trip" >&2
-              exit 2
-            }
-            release_upload_split "$STAGE/pianoroot.f2fs.sparse.img.zst" \
-              "$(python3 scripts/release-assets.py name pianoroot.f2fs.sparse.img.zst "$desktop")"
 
             # root-install 的绑定校验要按档核对 bundle manifest，但两份镜像
             # 不能同时留在盘上，所以只留下这两个小文件。
