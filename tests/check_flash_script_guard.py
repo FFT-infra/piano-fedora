@@ -216,7 +216,7 @@ def check_docs():
                 f"docs/installation.md:{lineno}: still instructs 'fastboot erase dtbo_b'")
 
     # The manual flash chapter must exist and cover the required ground.
-    required = ("手动刷机", "SHA256SUMS", "sha256sum -c", "fastboot flash boot_a",
+    required = ("手动刷写", "SHA256SUMS", "sha256sum -c", "fastboot flash boot_a",
                 "fastboot flash sunuefi_esp", "fastboot flash sunuefi_root")
     for token in required:
         if token not in doc:

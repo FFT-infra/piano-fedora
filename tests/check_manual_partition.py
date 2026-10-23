@@ -26,8 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs" / "installation.md"
 PLANNER = ROOT / "scripts" / "plan-first-partition.py"
 
-START = "### 手动分区（不使用安装脚本）"
-END = "## 更新已有 Linux 分区"
+START = "### 2. 手动分区"
+END = "## 五、 手动刷写 Linux"
 
 SECTOR = 4096
 SECTORS_PER_MIB = SECTOR and (1024 * 1024) // SECTOR
