@@ -150,10 +150,7 @@ jobs:
 
           校验构建来源: \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`
           EOF
-          # 默认 draft，等电极校准数据的再分发许可确认后再 --draft=false。
-          # 见 docs/public-release-gaps.md。
-          # 许可结论已定：校准数据从 4649de7 起就在公开仓库与公开 COPR 里，
-          # 发布不增加暴露面。门禁改为显式参数，默认仍停 draft。
+          # 默认 draft：转公开要显式传 publish=true。
           gh release create "$TAG" --draft --title "piano Fedora 44 ${TAG}" \
             --notes-file build/stage/notes.md
 
@@ -216,7 +213,9 @@ jobs:
               "$(python3 scripts/release-assets.py name pianoroot.f2fs.img.zst "$desktop")"
 
             # bundle 的 sparse 与封存镜像同源；压缩后再切片，避免每次下载 6 GB。
-            zstd -10 -T0 --no-progress build/in/bundle/pianoroot.f2fs.sparse.img \
+            # -f：这个暂存名四档共用，上一档传完还留在盘上。没有 -f 时 zstd 在
+            # 第二档就问要不要覆盖，非交互环境下直接以 1 退出。
+            zstd -10 -f -T0 --no-progress build/in/bundle/pianoroot.f2fs.sparse.img \
               -o "$STAGE/pianoroot.f2fs.sparse.img.zst"
             original=$(sha256sum build/in/bundle/pianoroot.f2fs.sparse.img | awk '{print $1}')
             decoded=$(zstd -dc "$STAGE/pianoroot.f2fs.sparse.img.zst" | sha256sum | awk '{print $1}')
@@ -296,7 +295,7 @@ jobs:
             release_upload build/in/root-install/SHA256SUMS \
               "$(python3 scripts/release-assets.py name root-install-SHA256SUMS "$desktop")"
             rm -f build/in/root-install/SHA256SUMS
-            zstd -10 -T0 --no-progress build/in/root-install/pianoroot.f2fs.sparse.img \
+            zstd -10 -f -T0 --no-progress build/in/root-install/pianoroot.f2fs.sparse.img \
               -o "$STAGE/root-install-pianoroot.f2fs.sparse.img.zst"
             original=$(sha256sum build/in/root-install/pianoroot.f2fs.sparse.img | awk '{print $1}')
             decoded=$(zstd -dc "$STAGE/root-install-pianoroot.f2fs.sparse.img.zst" | sha256sum | awk '{print $1}')

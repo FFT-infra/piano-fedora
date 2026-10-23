@@ -8,15 +8,16 @@
 
 | 档位 | 会话 | 登录 | 电源策略 | 自动旋转 | 验收状态 |
 |---|---|---|---|---|---|
-| `gnome` | GNOME 44 workstation | GDM 自动登录 | dconf（`00-power`） | 走 Mutter | 真机通过 |
-| `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，需 `qt6-qtsensors` | 未上真机 |
-| `niri` | niri | greetd `[initial_session]` | 仅 logind | 无，需手动 `transform` | 未上真机 |
-| `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 无，需手动 rotate | 未上真机 |
-| `server` | 无 | 无 | 仅 logind | — | 只用于测试装配 |
+| `gnome` | GNOME 50（Workstation 环境） | GDM 自动登录 | dconf（`00-power`） | 走 Mutter，已实机验证 | 已登录桌面，旋转已验 |
+| `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，需 `qt6-qtsensors` | 已登录桌面，旋转已验 |
+| `niri` | niri | greetd `[initial_session]` | 仅 logind | 无，需手动 `transform` | 已登录桌面，镜像需重建 |
+| `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 无，需手动 rotate | 已登录桌面，镜像需重建 |
+| `server` | 无 | 无 | 仅 logind | — | 只用于测试装配，不进 Release |
 
 ## 登录方式
 
-四档都自动登录到 `piano` 用户，首次开机不需要在登录界面输入密码。
+四档都自动登录到 `piano` 用户，首次开机不需要在登录界面输入密码。默认口令是
+`piano123456`，桌面起来之后用 `passwd` 改。
 
 - **GNOME**：`/etc/gdm/custom.conf` 写 `AutomaticLoginEnable=True` 与
   `AutomaticLogin=piano`，由 `gdm.service` 接管。
@@ -31,9 +32,19 @@
   `niri-session` 或 `start-hyprland`，`[default_session]` 留 `tuigreet --time`
   兜底。会话崩溃或用户注销后回到 tuigreet 的文本选择界面，而不是黑屏 VT。
 
+  `[default_session]` 的 `user` 必须是 `greetd`，不是 `greeter`。这个账户由
+  `greetd` 包里的 sysusers 片段建立（`u greetd - "greetd daemon"`），名字写错时
+  greetd 每 1 秒重启一次，5 次后撞 `StartLimitBurst` 变成 failed，显示管理器整个
+  起不来，桌面也就进不去。现场核对：
+
+  ```sh
+  getent passwd greetd        # 应有一行，uid 994 左右
+  systemctl is-active greetd  # active
+  ```
+  日志里出现 `configured default session user 'greeter' not found` 即是这个问题。
+
 四个显示管理器都在 `piano-display.service` 之后启动（`Requires=` + `After=`
-的 drop-in），面板没就绪时不会先起桌面。改密码用 `passwd`，默认口令是
-`piano123456`。
+的 drop-in），面板没就绪时不会先起桌面。
 
 ## 电源行为
 
@@ -57,7 +68,9 @@
   `HandlePowerKey=ignore`、`HandleLidSwitch=ignore`、`IdleAction=ignore` 保证
   它不跟用户服务抢这两个输入。
 
-挂起在这台设备上仍不可靠，所以任何一档都不允许桌面自己进入睡眠。
+挂起与唤醒本身是可用的：`rtcwake -m mem -s 20` 实测正常，桌面上做挂起/唤醒两轮
+也都回到了原会话。四档仍然关掉自动睡眠，因为电源键与合盖已经由
+`piano-power-button` 统一接管，桌面再自己睡一次会和它抢同一个事件。
 
 ## 自动旋转
 
@@ -68,7 +81,8 @@
 **只有 GNOME 与 KDE 走桌面自身的旋转路径。**
 
 - GNOME（Mutter）订阅 `iio-sensor-proxy` 的 `AccelerometerOrientation`，平板模式
-  打开时自动旋转。
+  打开时自动旋转。已在真机验证：平板从平放转成 `left-up`，逻辑显示器的
+  `transform` 从 0 变成 1，屏幕跟着转。
 - KDE（KWin）依赖 `qt6-qtsensors`。F44 的 `kwin` 包声明了 `iio-sensor-proxy`，
   没有声明 `qt6-qtsensors`，所以 Plasma 6 上自动旋转要这个包在位才出现
   「自动」选项。
@@ -76,13 +90,17 @@
   `transform "90"` 之类的值；Hyprland 用 `hyprctl keyword monitor` 或配置里的
   `transform`。没有自动旋转是预期行为，不是缺陷。
 
+传感器走 SSC 后端，不经过 IIO 子系统。`/sys/bus/iio/devices` 为空是正常的；
+`libssc` 与 `iio-sensor-proxy-ssc` 装上、`qrtr_smd`/`qrtr_mhi`/`mhi` 加载之后，
+代理能直接拿到加速度计、环境光与接近传感器。
+
 桌面旋转之外，`iio-sensor-proxy` 仍提供光感与接近传感器，四档都装了。
 
 ## 第三方软件源
 
 只有 Hyprland 档启用第三方仓库 `copr-hyprland`
 （`download.copr.fedorainfracloud.org/results/lionheartp/Hyprland/`），Fedora 44
-官方仓库没有 Hyprland 全家。构建时：
+官方仓库没有 Hyprland 及其配套组件。构建时：
 
 - 仓库以 `--repofrompath` 临时加入，不写进镜像的持久 `.repo`；
 - `gpgcheck=1`，公钥先下载到构建目录，按 profile 里的 `gpgkey_sha256` 校验后
@@ -124,5 +142,6 @@ make plan-desktop DESKTOP=niri RELEASEVER=44
   是自己打包，本轮评估后没有采用。
 - **`denial` 是占位档位**，`buildable: false`。`build-clean-rootfs.py --plan`
   对它返回 `INPUTS_REQUIRED` 并以非零退出，不会产出镜像。
-- **内核不在 COPR 里。** 四档都用 release bundle 里的 `kernel-piano`，原因见
-  [COPR 软件源](copr-repository.md)。
+- **内核在 COPR 里，四档共用。** 装机用 release bundle 里的 `kernel-piano`；
+  装好之后由 `dnf upgrade` 升级，包自己的 `%posttrans` 重建 initramfs 并重打
+  ESP 的 `boot.img`。失败与回滚边界见 [COPR 软件源](copr-repository.md)。

@@ -65,6 +65,86 @@ def check_spec(failures):
         failures.append("kernel-piano.spec does not disable strip; modules would "
                         "differ from the sealed kernel artifact")
 
+    # 设备侧内核升级：%posttrans 重建 initramfs 并重打 ESP 的 boot.img。镜像
+    # 构建（dnf --installroot）里没有 ESP 载荷，必须先跳过再动手，否则
+    # build-rootfs 会在 chroot 里失败。
+    posttrans = body.split("%posttrans", 1)
+    if len(posttrans) != 2:
+        failures.append("kernel-piano.spec has no %posttrans; a dnf kernel upgrade "
+                        "would leave the ESP booting the old Image")
+    else:
+        script = posttrans[1].split("%changelog", 1)[0]
+        if "EFI/Piano/stable" not in script:
+            failures.append("%posttrans does not name the ESP payload path")
+        if "board.dtb" not in script or "exit 0" not in script:
+            failures.append("%posttrans does not skip a rootfs with no ESP payload")
+        skip = script.split("exit 0", 1)[0]
+        if "depmod" in skip or "piano-kernel-esp-update" in skip:
+            failures.append("%posttrans must skip before depmod/repack when the ESP is absent")
+        for token in ("depmod", "piano-kernel-esp-update"):
+            if token not in script:
+                failures.append(f"%posttrans never runs {token}")
+        # installonly 升级后新旧内核共存，旧 manifest 仍在盘上；%posttrans 必须
+        # 点名刚装上的那一份，否则工具会拒绝在多份之间猜。
+        if "--manifest" not in script:
+            failures.append("%posttrans does not name the manifest it just installed")
+
+    # 实机教训（2026-10-22）：manifest 曾是固定路径 /usr/share/piano/
+    # kernel-manifest.json。kernel-piano 是 installonly，升级时两个版本同时
+    # 安装，rpm 报 "file ... conflicts with file from package" 并中止整个事务，
+    # 设备上的内核因此永远升不上去。名字必须带 NVRA。
+    named = "%{_datadir}/piano/kernel-manifest-%{version}-%{release}.json"
+    if named not in body:
+        failures.append("kernel-piano.spec does not ship an NVRA-named kernel manifest; "
+                        "installonly upgrades would collide on a fixed path")
+    if re.search(r"^\s*%\{_datadir\}/piano/kernel-manifest\.json\s*$", body, re.MULTILINE):
+        failures.append("kernel-piano.spec still owns the fixed kernel-manifest.json path")
+    if body.count(named) < 3:
+        failures.append("kernel-piano.spec must use the NVRA-named manifest in %install, "
+                        "%files and %posttrans alike")
+
+    # 内核升级所需的那套工具必须随本包发布，且路径与 %posttrans 里的一致。
+    for name in ("f2fs-disk-bootstrap", "piano-kernel-esp-update",
+                 "build-initramfs.py", "piano_artifacts.py", "piano_boot_container.py"):
+        if f"%{{_prefix}}/lib/piano/{name}" not in body:
+            failures.append(f"kernel-piano.spec does not ship /usr/lib/piano/{name}")
+    if "/usr/lib/piano/piano-kernel-esp-update" not in body:
+        failures.append("%posttrans calls a path the package does not own")
+
+    # v4l2loopback 由本包拥有：它给这一版内核编，落在该内核的模块树里。
+    # 运行时不再产出第二份，否则 DNF 会因为双所有者中止事务。
+    if not re.search(r"^%\{_prefix\}/lib/modules/\*$", body, re.MULTILINE):
+        failures.append("kernel-piano.spec must own the whole module tree, "
+                        "including updates/v4l2loopback.ko")
+    if "Requires:       python3" not in body or "Requires:       kmod" not in body:
+        failures.append("%posttrans needs python3 and kmod at runtime")
+
+
+def check_tools(failures):
+    """spec 里点名的那两个工具必须真的接受 manifest 参数。
+
+    %posttrans 传 --manifest 而工具不认，升级会在事务收尾时报 2，并且是装完
+    才失败——比升级本身失败更难收拾。
+    """
+    esp_update = ROOT / "scripts" / "piano-kernel-esp-update"
+    initramfs = ROOT / "scripts" / "build-initramfs.py"
+    for path in (esp_update, initramfs):
+        if not path.is_file():
+            failures.append(f"missing {path.relative_to(ROOT)}")
+            return
+    updater = esp_update.read_text(encoding="utf-8")
+    if '"--manifest"' not in updater:
+        failures.append("piano-kernel-esp-update does not accept --manifest")
+    if updater.count("manifest_name") < 2:
+        failures.append("piano-kernel-esp-update does not forward the named manifest "
+                        "to inspect_installed_kernel and build-initramfs")
+    builder = initramfs.read_text(encoding="utf-8")
+    if '"--manifest"' not in builder:
+        failures.append("build-initramfs.py does not accept --manifest")
+    if "installed_manifest" not in builder:
+        failures.append("build-initramfs.py does not forward the named manifest "
+                        "to InstalledKernel")
+
 
 def check_build_script(failures):
     if not BUILD_SH.is_file():
@@ -82,6 +162,28 @@ def check_build_script(failures):
     # Failing to find the payload must abort, not fall through to a stub build.
     if not re.search(r"resolve_kernel_payload\)\s*\|\|\s*\{", body):
         failures.append("build-rpms.sh does not fail when no kernel payload is found")
+
+    # v4l2loopback 同理：它由本包拥有，缺了就是一个没有相机模块的内核包。
+    # 早先这里用 `if [ -n "$LOOPBACK_MODULE" ]` 静默跳过，正是空壳 RPM 的同一
+    # 种失败形态，只是换了个文件。
+    if "resolve_loopback_module" not in body:
+        failures.append("build-rpms.sh does not resolve v4l2loopback for kernel-piano")
+    if not re.search(r"resolve_loopback_module\)\s*\|\|\s*\{", body):
+        failures.append("build-rpms.sh does not fail when v4l2loopback is missing")
+    if re.search(r"if\s*\[\s*-n\s+\"?\$\{LOOPBACK_MODULE:-\}\"?\s*\]", body):
+        failures.append("build-rpms.sh still silently skips a missing v4l2loopback")
+    if "updates/v4l2loopback.ko" not in body:
+        failures.append("build-rpms.sh does not stage updates/v4l2loopback.ko")
+
+    # spec 从 piano-tools/ 装哪些文件，build-rpms.sh 就必须暂存哪些文件。
+    # 少一个不是缺文件那么简单：rpmbuild 的 %install 在矩阵 job 里才失败，
+    # 而前面每一步都是绿的。
+    spec = strip_spec_comments(SPEC.read_text(encoding="utf-8"))
+    staged = set(re.findall(r"piano-tools/([A-Za-z0-9_.+-]+)", spec))
+    for name in sorted(staged):
+        if not re.search(r'"?\$REPO_ROOT/[^"\s]*' + re.escape(name) + r'"?', body):
+            failures.append(f"kernel-piano.spec installs piano-tools/{name} "
+                            "but build-rpms.sh never stages it")
 
 
 def check_built_rpm(failures):
@@ -150,6 +252,7 @@ def check_built_rpm(failures):
 def main():
     failures = []
     check_spec(failures)
+    check_tools(failures)
     check_build_script(failures)
     check_built_rpm(failures)
     if failures:

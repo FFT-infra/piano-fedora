@@ -17,19 +17,21 @@
 | 模块 | 状态 | 说明 |
 |---|---|---|
 | 显示与渲染 | ✅ | 3200×2136 @ 120Hz，Mesa 26.2.3 Turnip（Adreno 830）硬件加速 |
-| 触控 | ✅ | 卡尔曼滤波、24 像素死区防抖、正交轴向锁 |
-| 视频编解码 | 🟡 | Iris V4L2 M2M 已通：H.264 与 HEVC 各 300 帧的硬件编码与解码、带 B 帧素材的解码，逐帧摘要与软件解码一致，Iris 中断计数同步增长（1080p）。VP9、10-bit 与 4K60 未实测，浏览器硬解待验收，见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
+| 触控 | ✅ | 卡尔曼滤波、24 像素死区防抖、正交轴向锁；45 秒持续划动 97 次/秒，全屏可达，多点正常 |
+| 视频编解码 | ✅ | Iris V4L2 M2M 已通：H.264 与 HEVC 各 300 帧的硬件编码与解码、带 B 帧素材的解码，逐帧摘要与软件解码一致，Iris 中断计数同步增长（1080p）。浏览器硬解已验收：Chrome 与 Firefox 默认走硬件解码，Fedora 的 Chromium 不能，原因见[已知问题](docs/known-issues.md#触屏网络音频与相机)。VP9、10-bit 与 4K60 未实测 |
 | 电源与电池 | ✅ | 双电芯电量监控，支持深度挂起 |
 | 引导稳定性 | ✅ | `qbootctl.service` 写入 `Successful: 1`，避免 ABL 计数归零掉进 Fastboot |
-| 相机 | 🟡 | `piano-camerad` 常驻，ISP 直出 NV12；前摄画面正常，后摄也在产帧但需在亮处复看，连续预览待验收，见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
-| 音频 | ✅ | 功放上限 215（-15 dB）防炸音圈，麦克风增益 +40 dB |
+| 相机 | ✅ | `piano-camerad` 常驻，ISP 直出 NV12，前摄与后摄都能正常成像。注意刚起流的前几帧是黑的，自动曝光要几帧才收敛，见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
+| 音频 | ✅ | 功放上限 215（-15 dB）防炸音圈，麦克风增益 +40 dB；120 秒播放无 xrun，130 秒录音全程有信号 |
 | 性能调度 | ✅ | `uperf-linux` 触控提频 |
 | 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
-| 传感器 | ✅ | `iio-sensor-proxy` 采集加速度计、环境光、接近、罗盘 |
+| 传感器 | ✅ | 走 SSC 后端（`libssc` + `iio-sensor-proxy-ssc`，QRTR/MHI），加速度计、环境光、接近均有数据；自动旋转实测可用，转成 `left-up` 后屏幕跟着转 90° |
 | 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk 与 virtio-net、单 vCPU 客体启动；SMP、图形与 GUI 操作待验收 |
 | 双系统往返 | ✅ | 合体 BOOT 装在 `boot_a`：Linux→Android 用 `piano-next-boot android --reboot`，Android→Linux 用「SunUEFI 引导助手」模块或开机 3 秒菜单；两次往返实测，见[已知问题](docs/known-issues.md#双系统切换) |
-| 手写笔 | 🟡 | 守护服务与 Type 29 协议就绪，等待实物划线终验 |
-| 指纹 / IR / HDR | ❌ | 依赖闭源 TEE 固件，主线不支持 |
+| 手写笔 | ✅ | Type 29 协议就绪，压感 0–1，位置与倾斜正常；实测捕获 1906 条轴事件、22 条 proximity、18 条 tip，见[已知问题](docs/known-issues.md#手写笔) |
+| 指纹 | ❌ | 侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。主线没有对应的控制驱动与 libfprint 后端，短期不可用，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
+| 红外 | ❌ | 消费级红外发射器（QUPv3 SE15）。主线 `ir-spi` 驱动完整，但我们这条链上 DT 缺 IR 节点、内核也没编 `LIRC`。与 TEE 无关，是可解项，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
+| HDR | ❌ | 面板支持 HDR10，但 msm 没有挂 `HDR_OUTPUT_METADATA`、没有 colorop 管线，现有的 msm 静态 HDR 系列只覆盖 DP/eDP，内屏走 DSI 用不上。等上游，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 
 ## 桌面
 
@@ -38,10 +40,14 @@
 
 | 档位 | 会话 | 登录 | 自动旋转 | 验收状态 |
 |---|---|---|---|---|
-| `gnome` | GNOME 44 workstation | GDM 自动登录 | Mutter | 真机通过 |
-| `kde` | KDE Plasma | plasma-login-manager 自动登录 | KWin，需 `qt6-qtsensors` | 未上真机 |
-| `niri` | niri | greetd + tuigreet | 无，手动 `transform` | 未上真机 |
-| `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无，手动 rotate | 未上真机 |
+| `gnome` | GNOME 50（Workstation 环境） | GDM 自动登录 | Mutter | 已登录桌面，旋转已实机验证 |
+| `kde` | KDE Plasma | plasma-login-manager 自动登录 | KWin，需 `qt6-qtsensors` | 已登录桌面，旋转已验；旋转瞬间有一次画面闪烁，见[已知问题](docs/known-issues.md) |
+| `niri` | niri | greetd + tuigreet | 无，手动 `transform` | 已登录桌面（镜像需重建后才开箱可用） |
+| `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无，手动 rotate | 已登录桌面（镜像需重建后才开箱可用） |
+
+`niri` 与 `hyprland` 两档在实机验收时遇到 greetd 的 greeter 账户名写错
+（`greeter` 而非 Fedora 建立的 `greetd`），显示管理器起不来。修复已在源码里，
+这两档的发布镜像需要重建后才不需要手工干预。
 
 下载时用 `bash unpack-release.sh --desktop <档位>` 选档，不传参数时取 Release
 里唯一的那一档。每档的登录、电源行为、旋转能力与已知缺口见
@@ -68,7 +74,7 @@
 
    传了 `--ssh-key` 就可以直接用密钥登录。
 
-需要逐步控制时按[手动刷机](docs/installation.md#三之二-手动刷机不使用一键脚本)执行，那里列了每条 `fastboot` 命令、SHA256 校验、读回验证和回滚方法。**不要擦除 `dtbo_b`**，ABL 会因此拒绝整条引导链。
+需要逐步控制时按[手动刷机](docs/installation.md#三之二-手动刷机不使用一键脚本)执行，那里列了每条 `fastboot` 命令、SHA256 校验、读回验证和回滚方法。**不要擦除 `dtbo_a` 或 `dtbo_b`**，ABL 会因此拒绝整条引导链。
 
 ### 双系统切换
 
@@ -78,7 +84,7 @@
 
 ## 发布产物
 
-正式 Release 由 tag 触发，只包含同一次 `build-bundle` 与它派生的 `prepare-install` 已验证产物；大镜像自动分片，附带 `RELEASE-SHA256SUMS` 与 `unpack-release.sh`。一个 Release 可以带多档桌面：ESP、内核、initramfs 与 UEFI 四档逐字节相同，只发布一份；root 镜像与 `root-install/` 按 `-<desktop>` 加后缀，每档各一份：
+正式 Release 由 tag 触发（形如 `v44.1`），只包含同一次 `build-bundle` 与它派生的 `prepare-install` 已验证产物；大镜像自动分片，附带 `RELEASE-SHA256SUMS` 与 `unpack-release.sh`。一个 Release 可以带多档桌面：ESP、内核、initramfs 与 UEFI 四档逐字节相同，只发布一份；root 镜像与 `root-install/` 按 `-<desktop>` 加后缀，每档各一份：
 
 | 文件 | 说明 |
 |---|---|
@@ -87,7 +93,8 @@
 | `PianoUEFI-product.img` | SunUEFI 产品固件本体，`sunuefi_esp.img` 的载荷来源 |
 | `pianoroot.f2fs.img.zst` / `pianoroot-<desktop>.f2fs.img.zst` | 封存的根文件系统，不能直接刷；单档时不带后缀 |
 | `root-install/` | 写入设备配置后的 sparse 根镜像与清单（由 `unpack-release.sh --desktop <档位>` 还原） |
-| `SHA256SUMS` | 各资产哈希 |
+| `SHA256SUMS` | 上面这些资产的哈希 |
+| `root-install/SHA256SUMS` | `root-install/` 内 sparse 镜像与清单的哈希，单独一份，不与上面合并 |
 
 Release 另带 `piano-installer-<tag>.zip`（刷写脚本与说明）和 `piano-boot-tools-<tag>.tar.zst`（本机生成 `device-boot/boot_linux.img`）。`scripts/package-release-bundle.sh` 是本地兼容打包器，不是发布主入口。
 
@@ -97,8 +104,8 @@ Release 另带 `piano-installer-<tag>.zip`（刷写脚本与说明）和 `piano-
 - [桌面档](docs/desktops.md)：四档的登录、电源、旋转与验收状态
 - [安装与分区](docs/installation.md)：分区计算、GPT 检查、一键与手动刷写、首次登录
 - [交付物与流水线](docs/artifacts.md)：内核、RPM、initramfs 与 bundle 的组装标准
-- [维护与验收](docs/internals.md)：流水线入口、产物绑定、run id 传递、PR 门槛
-- [COPR 软件源](docs/copr-repository.md)：用户态包在线升级与回滚边界（内核不在内）
+- [维护与验收](docs/internals.md)：流水线入口、产物绑定、各步的 run id、PR 门槛
+- [COPR 软件源](docs/copr-repository.md)：全部 10 个包的在线升级，包括内核；回滚边界与失败模式
 - [上游跟踪](docs/upstream.md)：当前 pin、漂移看板、跟进规则
 - [已知问题](docs/known-issues.md)：未解决与观察中的问题
 - [Gunyah 虚拟化](docs/virtualization.md)：SM8750 上的虚拟机生命周期与网络
@@ -114,7 +121,7 @@ make test                  # 全套离线单测：GPT 计算、镜像与元数�
 make plan RELEASEVER=44    # 打印 Fedora 44 根文件系统生成计划
 ```
 
-流水线入口是 `.github/workflows/`。主链是 `host-check`（带 `build_piano_rpms=true`）→ `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`，后四步还要各自带上内核、运行时、Mesa、FFmpeg 与 UEFI 的成功 run id，不是单纯的线性接力。
+流水线入口是 `.github/workflows/`。主链是 `host-check`（带 `build_piano_rpms=true`）→ `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`。每一步都要显式指定上游的成功 run id：`build-rootfs` 要 RPM 矩阵、运行时、Mesa 与 FFmpeg，`build-image` 再加内核，`build-bundle` 要镜像与 UEFI，`prepare-install` 要 bundle，不是单纯的线性接力。
 
 每一步只接受成功 run 的产物，混用不同 run 会被拒绝。细节见 [docs/internals.md](docs/internals.md)。
 

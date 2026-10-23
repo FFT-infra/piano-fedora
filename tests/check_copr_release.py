@@ -263,13 +263,20 @@ def test_repo_file_contract():
     text = REPO_FILE.read_text()
     assert "gpgcheck=1" in text
     assert "repo_gpgcheck=0" in text
-    assert "exclude=kernel-piano*" in text
+    # 内核在线升级已放开：仓库不能再排除 kernel-piano，否则设备永远拿不到内核。
+    assert "exclude=kernel-piano" not in text, "the COPR repo must not exclude kernel-piano"
     assert "download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/" in text
     assert "gpgkey=" in text and "pubkey.gpg" in text
     # The file must actually be packaged, otherwise the repo never reaches a
-    # system built from these RPMs.
+    # system built from these RPMs. It must not be %config(noreplace): an
+    # installed device keeps the old file with the exclude rule, and the
+    # upgrade never sees kernel-piano.
     spec = SPEC.read_text()
-    assert "%{_sysconfdir}/yum.repos.d/piano-fedora-copr.repo" in spec
+    entry = next(line for line in spec.splitlines()
+                 if "piano-fedora-copr.repo" in line and "%{_sysconfdir}" in line)
+    assert "%config(noreplace)" not in entry, (
+        "the shipped .repo must not be noreplace; an old copy keeps exclude=kernel-piano")
+    assert "%config " in entry
     assert (CONFIGS / "etc" / "yum.repos.d" / "piano-fedora-copr.repo").is_file()
 
 
@@ -303,9 +310,14 @@ def test_device_verifier_contract():
     # It reads the same repo id the shipped .repo defines.
     repo = REPO_FILE.read_text()
     assert "xinyang26/piano-fedora" in text and "xinyang26/piano-fedora" in repo
-    # exclusions and signature policy must be asserted, not assumed.
-    for token in ("exclude=kernel-piano*", "gpgcheck=1", "repo_gpgcheck=0"):
+    # signature policy must be asserted, not assumed.
+    for token in ("gpgcheck=1", "repo_gpgcheck=0"):
         assert token in repo
+    # The verifier now asserts the opposite of the old contract: kernel-piano
+    # must be visible and the upgrade plan must carry it.
+    assert "kernel_visibility" in text
+    assert "does not carry kernel-piano" in text
+    assert "still excludes kernel-piano" in text
 
 
 def test_device_verifier_fetches_compressed_repodata():
@@ -319,6 +331,24 @@ def test_device_verifier_fetches_compressed_repodata():
     # subprocess 必须以二进制取回 curl 输出，否则解码发生在解压之前。
     assert "binary=True" in text, "run() 需要二进制模式，text=True 会在解压前解码"
     assert "text=not binary" in text
+
+
+def test_device_verifier_repoquery_is_bounded():
+    """临时仓库必须自带 baseurl，且不能被设备上其它仓库拖住。
+
+    2026-10-22 在设备上跑时，`dnf repoquery --repofrompath=coprcheck,<url>`
+    只给了 repo id 和 URL 的一半，dnf5 报 "Empty mirrorlist and no basepath
+    specified"，却仍然先把所有 enabled 仓库解析一遍；rpmfusion 一超时，整条
+    验收就挂十分钟没有输出。两个修法缺一不可：显式 baseurl 让这个临时仓库
+    可用，--disablerepo=* 让它不依赖别的仓库，超时兜住任何仍然卡住的镜像。
+    """
+    text = DEVICE_VERIFIER.read_text()
+    assert "--setopt=coprcheck.baseurl=" in text, (
+        "repoquery 必须给临时仓库显式 baseurl，否则 dnf5 认为仓库是坏的")
+    assert '"--disablerepo=*"' in text, (
+        "repoquery 不该解析设备上其它 enabled 仓库")
+    assert "timeout=180" in text, "repoquery 必须有超时上限"
+    assert "TimeoutExpired" in text, "run() 必须把超时转成可报告的错误"
 
 
 def test_device_verifier_pubkey_is_at_repo_root():
@@ -338,9 +368,10 @@ def test_device_verifier_pubkey_is_at_repo_root():
 def test_device_verifier_passes_setopt_as_separate_argv():
     """每个 --setopt 必须是独立 argv 项，拼成一个字符串 dnf 只看到第一个。"""
     text = DEVICE_VERIFIER.read_text()
-    assert '" ".join([' not in text.split("def repoquery_kernel")[1].split("def ")[0], (
-        "repoquery 的选项不能拼成单个字符串再传给 dnf")
-    assert "*options" in text, "选项列表必须用 *options 展开成独立参数"
+    body = text.split("def repoquery_kernel")[1].split("\ndef ")[0]
+    assert '" ".join([' not in body, "repoquery 的选项不能拼成单个字符串再传给 dnf"
+    assert "--setopt=coprcheck.gpgcheck=1" in body
+    assert "--setopt=coprcheck.repo_gpgcheck=0" in body
 
 
 def main():

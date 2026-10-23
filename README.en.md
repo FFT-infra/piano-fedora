@@ -1,6 +1,6 @@
 > **Experimental project.** This repository targets driver work and hardware bring-up. It is not a stable system for daily use.
 >
-> Flashing unlocks the bootloader, rewrites the GPT, and writes the A/B slots and the boot chain. A careless step can brick the tablet or destroy all data. Back up every partition and your personal data before you start.
+> Flashing unlocks the bootloader, rewrites the GPT, replaces the combined BOOT in `boot_a`, and rewrites the Linux partition. A careless step can brick the tablet or destroy all data. Back up every partition and your personal data before you start.
 >
 > This project ships under the [MIT license](LICENSE) as is. The authors and contributors take no responsibility for damaged hardware, lost data, or a voided warranty.
 
@@ -17,19 +17,21 @@ Fedora 44 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 
 | Module | Status | Notes |
 |---|---|---|
 | Display | ✅ | 3200×2136 at 120 Hz, Mesa 26.2.3 Turnip (Adreno 830) |
-| Touch | ✅ | Kalman filter, 24 px dead zone, orthogonal axis lock |
-| Video | 🟡 | Iris V4L2 M2M works: 300-frame H.264 and HEVC hardware encode and decode, plus decode of B-frame sources, all at 1080p with frame-by-frame digests identical to software decode and growing Iris interrupt counts. VP9, 10-bit and 4K60 are untested, and in-browser hardware decode is still pending. See [known issues](docs/known-issues.md#触屏网络音频与相机) |
+| Touch | ✅ | Kalman filter, 24 px dead zone, orthogonal axis lock; 97 SYN reports per second over a 45-second continuous drag, full screen reachable, multitouch works |
+| Video | ✅ | Iris V4L2 M2M works: 300-frame H.264 and HEVC hardware encode and decode, plus decode of B-frame sources, all at 1080p with frame-by-frame digests identical to software decode and growing Iris interrupt counts. In-browser decode is verified too: Chrome and Firefox decode in hardware by default, Fedora's Chromium does not, see [known issues](docs/known-issues.md#触屏网络音频与相机). VP9, 10-bit and 4K60 are untested |
 | Power | ✅ | Dual-cell battery reporting, deep suspend |
 | Boot | ✅ | `qbootctl.service` writes `Successful: 1`, so the ABL counter cannot drop to Fastboot |
-| Camera | 🟡 | `piano-camerad` streams NV12 straight from the ISP; the front camera produces a normal picture, the rear camera produces frames too but needs a check in good light, and continuous preview is still pending. See [known issues](docs/known-issues.md#触屏网络音频与相机) |
-| Audio | ✅ | Speaker amp capped at 215 (-15 dB), microphone gain +40 dB |
+| Camera | ✅ | `piano-camerad` streams NV12 straight from the ISP; both the front and the rear camera image normally. Note that the first frames after streaming starts are black: auto-exposure takes a few frames to converge. See [known issues](docs/known-issues.md#触屏网络音频与相机) |
+| Audio | ✅ | Speaker amp capped at 215 (-15 dB), microphone gain +40 dB; 120 seconds of playback with no xrun, 130 seconds of recording with signal throughout |
 | Scheduling | ✅ | `uperf-linux` raises frequency on touch |
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
-| Sensors | ✅ | `iio-sensor-proxy` reads accelerometer, ambient light, proximity, compass |
+| Sensors | ✅ | SSC backend (`libssc` + `iio-sensor-proxy-ssc` over QRTR/MHI): accelerometer, ambient light and proximity all report data, and auto-rotate works on device, rotating the screen 90° when the tablet is turned to `left-up` |
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are still pending |
 | Dual boot | ✅ | The combined BOOT lives in `boot_a`: Linux→Android uses `piano-next-boot android --reboot`, Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two round trips verified; see [known issues](docs/known-issues.md#双系统切换) |
-| Stylus | 🟡 | Daemon and Type 29 protocol are ready; a physical drawing test is pending |
-| Fingerprint / IR / HDR | ❌ | Require closed TEE firmware; mainline does not support them |
+| Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally; 1906 axis events, 22 proximity and 18 tip events captured, see [known issues](docs/known-issues.md#手写笔) |
+| Fingerprint | ❌ | Side-mounted capacitive, Goodix; authentication runs in the TEE's `gfpia` TA. Mainline has neither the control driver nor a libfprint backend, so it is not usable short-term. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| IR | ❌ | Consumer IR blaster (QUPv3 SE15). Mainline's `ir-spi` driver is complete, but our DT has no IR node and the kernel is built without `LIRC`. Unrelated to TEE and fixable. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| HDR | ❌ | The panel supports HDR10, but msm attaches no `HDR_OUTPUT_METADATA` and has no colorop pipeline; the current msm static-HDR series only covers DP/eDP, not the internal DSI panel. Waiting on upstream. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
 
 ## Desktops
 
@@ -37,10 +39,15 @@ Images are built per desktop from the same release chain and differ only in the 
 
 | Profile | Session | Login | Auto-rotate | Acceptance |
 |---|---|---|---|---|
-| `gnome` | GNOME 44 workstation | GDM autologin | Mutter | On device |
-| `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Not on device |
-| `niri` | niri | greetd + tuigreet | None; manual `transform` | Not on device |
-| `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None; manual rotate | Not on device |
+| `gnome` | GNOME 50 (Workstation environment) | GDM autologin | Mutter | Desktop reached; rotation verified on device |
+| `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Desktop reached; rotation verified. One brief flicker per rotation, see [known issues](docs/known-issues.md) |
+| `niri` | niri | greetd + tuigreet | None; manual `transform` | Desktop reached (image requires a rebuild before it works unaided) |
+| `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None; manual rotate | Desktop reached (image requires a rebuild before it works unaided) |
+
+On device, `niri` and `hyprland` hit a wrong greeter account name in greetd
+(`greeter` instead of the `greetd` account Fedora creates), so the display
+manager never starts. The source fix is in; both images need a rebuild before
+they work without manual intervention.
 
 Pick a profile at download time with `bash unpack-release.sh --desktop <profile>`. Without the flag the script takes the only profile in the release. Login, power behavior, rotation, and known gaps per profile are in [Desktops](docs/desktops.md).
 
@@ -75,7 +82,7 @@ For step-by-step control, see [Manual flashing](docs/installation.md#三之二-�
 
 ## Release artifacts
 
-A release is triggered by a tag and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Large images are split automatically, with `RELEASE-SHA256SUMS` and `unpack-release.sh`. One release can carry several desktops: the ESP, kernel, initramfs and UEFI are byte-identical across profiles and are published once, while the root image and `root-install/` are published per profile with a `-<desktop>` suffix:
+A release is triggered by a tag (for example `v44.1`) and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Large images are split automatically, with `RELEASE-SHA256SUMS` and `unpack-release.sh`. One release can carry several desktops: the ESP, kernel, initramfs and UEFI are byte-identical across profiles and are published once, while the root image and `root-install/` are published per profile with a `-<desktop>` suffix:
 
 | File | Contents |
 |---|---|
@@ -84,7 +91,8 @@ A release is triggered by a tag and only ships verified artifacts from the same 
 | `PianoUEFI-product.img` | SunUEFI product firmware; the payload inside `sunuefi_esp.img` |
 | `pianoroot.f2fs.img.zst` / `pianoroot-<desktop>.f2fs.img.zst` | Sealed root filesystem; never flash it directly. No suffix when the release carries one profile |
 | `root-install/` | Sparse root transport with device configuration written (restored by `unpack-release.sh --desktop <profile>`) |
-| `SHA256SUMS` | Hashes of every asset |
+| `SHA256SUMS` | Hashes of the assets above |
+| `root-install/SHA256SUMS` | Hashes of the sparse image and manifests inside `root-install/`, kept separate and never merged with the file above |
 
 The release also carries `piano-installer-<tag>.zip` (flash scripts and guide) and `piano-boot-tools-<tag>.tar.zst` (builds `device-boot/boot_linux.img` locally). `scripts/package-release-bundle.sh` is a local compatibility packer, not the release entry point.
 
@@ -95,7 +103,7 @@ The release also carries `piano-installer-<tag>.zip` (flash scripts and guide) a
 - [Installation and partitioning](docs/installation.md): partition sizing, GPT checks, one-step and manual flashing, first login
 - [Artifacts and pipeline](docs/artifacts.md): how the kernel, RPMs, initramfs, and bundle are assembled
 - [Maintenance and acceptance](docs/internals.md): pipeline entry points, artifact binding, run id plumbing, PR gate
-- [COPR repository](docs/copr-repository.md): online upgrades for userspace packages, and the rollback boundary (the kernel is not included)
+- [COPR repository](docs/copr-repository.md): online upgrades for all ten packages, kernel included, plus the rollback boundary and failure modes
 - [Upstream tracking](docs/upstream.md): current pin, drift dashboard, follow-up rules
 - [Known issues](docs/known-issues.md): open problems and items under observation
 - [Gunyah virtualization](docs/virtualization.md): VM lifecycle and networking on SM8750
@@ -111,7 +119,7 @@ make test                  # offline suite: GPT math, image and metadata checks
 make plan RELEASEVER=44    # print the Fedora 44 root filesystem plan
 ```
 
-The pipeline lives in `.github/workflows/`. The main chain is `host-check` (with `build_piano_rpms=true`) → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`. The last four also take successful kernel, runtime, Mesa, FFmpeg and UEFI run ids, so it is not a plain linear hand-off.
+The pipeline lives in `.github/workflows/`. The main chain is `host-check` (with `build_piano_rpms=true`) → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`. Every stage takes explicit run ids for its inputs: `build-rootfs` needs the RPM matrix, runtime, Mesa and FFmpeg, `build-image` adds the kernel, `build-bundle` needs the image and UEFI, and `prepare-install` needs the bundle. It is not a plain linear hand-off.
 
 Each stage accepts only artifacts from successful runs. Mixing runs is rejected. See [docs/internals.md](docs/internals.md).
 

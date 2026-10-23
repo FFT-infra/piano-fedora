@@ -7,6 +7,7 @@
 """
 
 import gzip
+import hashlib
 import json
 import shutil
 import struct
@@ -85,8 +86,13 @@ def build_fixture(tmp, busybox):
 
     rescue = rootfs / "usr/local/sbin/piano-debug-bootstrap"
     rescue.parent.mkdir(parents=True)
-    rescue.write_text("#!/bin/sh\nexit 0\n")
+    # rpm 的 brp-mangle-shebangs 会把解释器改写成 /usr/bin/sh，归档里只有
+    # bin/sh。fixture 直接复现那份被改过的字节，验证装配时归一回来。
+    rescue.write_text("#!/usr/bin/sh\nexit 0\n")
     rescue.chmod(0o755)
+    collector = rootfs / "usr" / "bin" / "piano-collect-boot"
+    collector.write_text("#!/usr/bin/sh\nexit 0\n")
+    collector.chmod(0o755)
     kernel = tmp / "kernel"
     modules = kernel / "modules" / "lib" / "modules" / RELEASE
     (modules / "kernel" / "drivers" / "iommu").mkdir(parents=True)
@@ -119,6 +125,104 @@ def build_fixture(tmp, busybox):
     # 覆盖前面的占位 metadata 为可验证的封存格式，字节仍明确是测试 fixture。
     make_kernel(kernel, RELEASE)
     return rootfs, kernel
+
+
+def build_installed_fixture(tmp, busybox):
+    """造一份"已安装系统"的根：manifest 在 /usr/share/piano，模块在
+    /lib/modules，Image 在 /boot，两份脚本由 rpm 安装并已被改写解释器行。
+
+    设备上 initramfs 构建器与它的模块在 /usr/lib/piano，引导脚本也在同一
+    目录，所以这里把仓库里的脚本复制成那一份布局再跑。
+    """
+    installed = tmp / "installed"
+    for name in ("usr/bin", "usr/lib64", "usr/lib", "usr/sbin", "usr/local/bin",
+                 "usr/share/piano", "boot", "lib", "lib64", "usr/local/sbin"):
+        (installed / name).mkdir(parents=True)
+    (installed / "lib").rmdir()
+    (installed / "lib64").rmdir()
+    (installed / "usr/local/sbin").rmdir()
+    (installed / "lib").symlink_to("usr/lib")
+    (installed / "lib64").symlink_to("usr/lib64")
+    (installed / "usr/local/sbin").symlink_to("bin")
+    shutil.copy2(busybox, installed / "usr/bin/busybox")
+    for name in ("blkid",):
+        source = shutil.which(name)
+        if source:
+            shutil.copy2(source, installed / "usr/bin" / name)
+    fsck = shutil.which("fsck.f2fs") or "/usr/sbin/fsck.f2fs"
+    if Path(fsck).is_file():
+        shutil.copy2(Path(fsck).resolve(), installed / "usr/sbin/fsck.f2fs")
+    for library in ("libblkid.so.1", "libselinux.so.1", "libf2fs.so.10", "libpcre2-8.so.0",
+                    "libgcc_s.so.1", "libc.so.6"):
+        for directory in ("/usr/lib64", "/lib64", "/usr/lib", "/lib/aarch64-linux-gnu"):
+            source = Path(directory) / library
+            if source.exists():
+                shutil.copy2(source.resolve(), installed / "usr/lib64" / library)
+                break
+    for loader in (Path("/usr/lib/ld-linux-aarch64.so.1"), Path("/lib/ld-linux-aarch64.so.1")):
+        if loader.exists():
+            shutil.copy2(loader.resolve(), installed / "usr/lib/ld-linux-aarch64.so.1")
+            break
+    for name in ("usr/local/bin/piano-debug-bootstrap", "usr/bin/piano-collect-boot"):
+        path = installed / name
+        path.write_text("#!/usr/bin/sh\nexit 0\n")
+        path.chmod(0o755)
+
+    # 内核：manifest、Image 与模块闭包。depmod 之后索引会重写，这里放一份
+    # 与封存值不同的 modules.dep 证明索引不参与设备侧校验。
+    modules = installed / "usr/lib/modules" / RELEASE
+    for relative in ("kernel/drivers/iommu/arm-smmu.ko",
+                     "kernel/drivers/ufs/ufs-qcom.ko",
+                     "kernel/drivers/pinctrl/pinctrl-sm8750.ko",
+                     "kernel/drivers/mailbox/qcom-cpucp-mbox.ko",
+                     "kernel/drivers/phy/qualcomm/phy-qcom-qmp-ufs.ko"):
+        path = modules / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"placeholder-module\n")
+    # 索引由 depmod 重写：这里给一份与封存值不同的 modules.dep，证明索引
+    # 不参与设备侧校验，闭包仍然按它展开。
+    (modules / "modules.dep").write_text(
+        "kernel/drivers/iommu/arm-smmu.ko:\n"
+        "kernel/drivers/pinctrl/pinctrl-sm8750.ko: kernel/drivers/iommu/arm-smmu.ko\n"
+        "kernel/drivers/mailbox/qcom-cpucp-mbox.ko: kernel/drivers/iommu/arm-smmu.ko\n"
+        "kernel/drivers/phy/qualcomm/phy-qcom-qmp-ufs.ko: kernel/drivers/iommu/arm-smmu.ko\n"
+        "kernel/drivers/ufs/ufs-qcom.ko: kernel/drivers/iommu/arm-smmu.ko"
+        " kernel/drivers/phy/qualcomm/phy-qcom-qmp-ufs.ko\n"
+    )
+    (modules / "modules.builtin").write_text("kernel/drivers/soc/qcom/qcom-pmic-glink.ko\n")
+    (modules / "modules.softdep").write_text("")
+    # updates/ 里的外部模块不属于封存集合，不能进闭包也不能让校验失败。
+    (modules / "updates").mkdir()
+    (modules / "updates/v4l2loopback.ko").write_bytes(b"external-module\n")
+    image = b"TEST-FIXTURE-NOT-A-BOOTABLE-KERNEL"
+    (installed / "boot" / "vmlinuz-7.2.9-1.piano.fc44").write_bytes(image)
+    (installed / "boot" / "vmlinuz-6.0-old").write_bytes(b"an older kernel")
+    (installed / "usr/share/piano/kernel-manifest-7.2.9-1.piano.fc44.json").write_text(json.dumps({
+        "status": "HOST_BUILT_FULL_CANDIDATE_NOT_HARDWARE_VERIFIED",
+        "source_clean": True,
+        "kernel_release": RELEASE,
+        "source_commit": "352508459733d3e6d349ea5581a8dd2fd8bb4180",
+        "root_policy": "LABEL=PIANOROOT",
+        "image": {"sha256": hashlib.sha256(image).hexdigest(), "bytes": len(image)},
+        "modules": [{
+            "path": f"lib/modules/{RELEASE}/{relative}",
+            "sha256": hashlib.sha256((modules / relative).read_bytes()).hexdigest(),
+            "bytes": (modules / relative).stat().st_size,
+            "vermagic": RELEASE + " SMP preempt mod_unload aarch64",
+        } for relative in ("kernel/drivers/iommu/arm-smmu.ko",
+                           "kernel/drivers/ufs/ufs-qcom.ko",
+                           "kernel/drivers/pinctrl/pinctrl-sm8750.ko",
+                           "kernel/drivers/mailbox/qcom-cpucp-mbox.ko",
+                           "kernel/drivers/phy/qualcomm/phy-qcom-qmp-ufs.ko")],
+    }))
+
+    # 设备上 /usr/lib/piano 里那份布局。
+    package = tmp / "package"
+    package.mkdir()
+    for name in ("build-initramfs.py", "piano_artifacts.py"):
+        shutil.copy2(ROOT / "scripts" / name, package / name)
+    shutil.copy2(BOOTSTRAP, package / "f2fs-disk-bootstrap")
+    return installed, package
 
 
 def read_newc(archive):
@@ -172,6 +276,15 @@ def main():
             line for line in text.splitlines() if not line.lstrip().startswith("#")
         )
         check("ext4" not in code, "bootstrap must not depend on ext4")
+        # 看门狗规则由 piano-fedora-configs 的 RPM 提供。initramfs 里写文件会
+        # 绕过 SELinux 标签事务，systemd-modules-load 读到 unlabeled_t，规则
+        # 不生效；那个文件也不属于任何包。引导脚本只做存在性断言，读它可以，
+        # 写它不行。
+        writes = [line for line in code.splitlines()
+                  if "/sysroot/etc/modprobe.d" in line and (">" in line or "mkdir" in line)]
+        check(not writes, f"bootstrap must not write /etc/modprobe.d entries: {writes}")
+        check("piano-blacklist-watchdog.conf" in code,
+              "bootstrap must assert the watchdog blacklist reached the rootfs")
 
     # 参数缺失：拒绝。
     check(run("--rootfs", "/nonexistent", "--kernel", "/nonexistent",
@@ -256,6 +369,80 @@ def main():
                       "a root larger than its partition must stop the boot")
                 check(bootstrap.index(b"grow_root\n") < bootstrap.index(b'mount -t f2fs -o rw'),
                       "the grow branch must run before the writable mount")
+
+        # 解释器行归一：fixture 里两份脚本都是 rpm 改写后的 /usr/bin/sh，
+        # 归档里必须回到 bin/sh，否则设备上救援与取证都执行不了。
+        check(records.get("usr/local/sbin/piano-debug-bootstrap", b"").startswith(b"#!/bin/sh\n"),
+              "rescue helper keeps the rpm-mangled /usr/bin/sh interpreter")
+        check(records.get("usr/bin/piano-collect-boot", b"").startswith(b"#!/bin/sh\n"),
+              "boot evidence collector keeps the rpm-mangled /usr/bin/sh interpreter")
+
+        # 设备侧模式：同一份装配代码，内核输入取自"已安装系统"。
+        installed, package = build_installed_fixture(tmp, busybox)
+        installed_output = tmp / "installed-out"
+        device = subprocess.run(
+            [sys.executable, str(package / "build-initramfs.py"), "--installed",
+             "--rootfs", str(installed), "--output", str(installed_output)],
+            capture_output=True, text=True, cwd=package,
+        )
+        if device.returncode != 0:
+            check(False, f"installed-mode build failed: {device.stderr.strip()}")
+        else:
+            device_manifest = json.loads((installed_output / "manifest.json").read_text())
+            check(device_manifest["kernel_source"] == "installed",
+                  "installed-mode manifest must record where the kernel came from")
+            check(device_manifest["kernel_release"] == RELEASE,
+                  "installed-mode manifest release differs")
+            check(device_manifest["modules"] == manifest["modules"],
+                  "installed mode produced a different module closure")
+            check(not any(name.endswith("v4l2loopback.ko")
+                          for name in read_newc(installed_output / "initramfs.cpio.gz")),
+                  "updates/ must stay out of the early module closure")
+            device_records = read_newc(installed_output / "initramfs.cpio.gz")
+            for name in ("init", "pianoinit", "usr/local/sbin/piano-debug-bootstrap",
+                         "usr/bin/piano-collect-boot"):
+                check(device_records.get(name, b"").startswith(b"#!/bin/sh\n"),
+                      f"installed mode leaves a mangled interpreter: {name}")
+            # 索引由 depmod 重写，不能参与设备侧校验；把 modules.dep 改成
+            # 垃圾之后仍然必须通过。
+            check(device_manifest["verification"]["module_identities_verified"] is True,
+                  "installed mode must still verify module identities")
+
+        # 设备侧模式不接受 --kernel，也不支持 ABL 链。
+        check(subprocess.run(
+            [sys.executable, str(package / "build-initramfs.py"), "--installed",
+             "--rootfs", str(installed), "--kernel", str(tmp / "kernel"),
+             "--output", str(tmp / "reject-out")],
+            capture_output=True, text=True, cwd=package).returncode == 2,
+            "installed mode must reject an explicit --kernel")
+        check(subprocess.run(
+            [sys.executable, str(package / "build-initramfs.py"), "--installed",
+             "--rootfs", str(installed), "--boot-chain", "abl-storage",
+             "--output", str(tmp / "reject-chain")],
+            capture_output=True, text=True, cwd=package).returncode == 2,
+            "installed mode must reject the ABL chain")
+
+        # installonly 升级后盘上同时有两份 manifest。工具不能挑，必须点名。
+        old_manifest = installed / "usr/share/piano/kernel-manifest-7.2.9-0.piano.fc44.json"
+        shutil.copy2(installed / "usr/share/piano/kernel-manifest-7.2.9-1.piano.fc44.json",
+                     old_manifest)
+        check(subprocess.run(
+            [sys.executable, str(package / "build-initramfs.py"), "--installed",
+             "--rootfs", str(installed), "--output", str(tmp / "ambiguous-out")],
+            capture_output=True, text=True, cwd=package).returncode == 2,
+            "installed mode must refuse to guess between several kernel manifests")
+        named_output = tmp / "named-out"
+        named = subprocess.run(
+            [sys.executable, str(package / "build-initramfs.py"), "--installed",
+             "--rootfs", str(installed), "--output", str(named_output),
+             "--manifest", old_manifest.name],
+            capture_output=True, text=True, cwd=package)
+        check(named.returncode == 0,
+              f"installed mode must accept a named manifest: {named.stderr.strip()}")
+        if named.returncode == 0:
+            check(json.loads((named_output / "manifest.json").read_text())["kernel_release"]
+                  == RELEASE, "named-manifest build picked a different kernel")
+        old_manifest.unlink()
 
     if failures:
         for item in failures:

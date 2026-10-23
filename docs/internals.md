@@ -6,7 +6,7 @@
 
 ## 流水线入口
 
-PR 分支里的 workflow 不等于 Actions 里能启动的入口。GitHub 只给默认分支 `main` 上已注册的 workflow 提供 `workflow_dispatch`。只在 PR 分支新增的 `build-piano-rpms.yml` 在分支状态下查不到 workflow_id。发布链因此统一从已注册的 `host-check` 启动 RPM 矩阵复用作。`build-rootfs` 再按 `host-check.yml` 解析同一次 run 的 `piano-rpms` artifact。
+PR 分支里的 workflow 不等于 Actions 里能启动的入口。GitHub 只给默认分支 `main` 上已注册的 workflow 提供 `workflow_dispatch`。只在 PR 分支新增的 `build-piano-rpms.yml` 在分支状态下查不到 workflow_id。发布链因此统一从已注册的 `host-check` 启动，用 `workflow_call` 复用 RPM 矩阵构建。`build-rootfs` 再按 `host-check.yml` 解析同一次 run 的 `piano-rpms` artifact。
 
 ```text
 host-check (build_piano_rpms=true, kernel_run_id=...)
@@ -23,6 +23,17 @@ build-image
 build-bundle
   └─ deploy-bundle/sunuefi_esp.img + boot_sunuefi.img
 ```
+
+四步之间要显式传 run id，链路不会自己去找"最新的那个"：
+
+| 步骤 | 必填输入 |
+| --- | --- |
+| build-rootfs | `piano_rpms_run_id`、`runtime_run_id`、`mesa_run_id`、`ffmpeg_run_id` |
+| build-image | `kernel_run_id`、`runtime_run_id`、`rootfs_run_id`、`mesa_run_id`、`ffmpeg_run_id` |
+| build-bundle | `root_image_run_id` |
+| prepare-install | `bundle_run` |
+
+每次 dispatch 都用 tag 或分支钉住 commit，不要用会移动的分支名。四档产物必须落在同一个 commit 上，`release.yml` 会逐档核对 run 的 `head_sha`，混进一个别的提交就拒绝发布。中途往分支上推任何 commit 都会让后续步骤落到新提交上，所以发布期间停在 tag 上跑。
 
 发布验收必须用这一整条链的新产物，并从原始 GPT/UFS 布局重新分区。手工补进会话 RPM 的 rootfs 不算通过。
 
@@ -41,6 +52,41 @@ boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。
 `host-check` 的 `package_prepare_run` 是另一个可选入口。填一个成功的 `prepare-install` run，`host-check` 调用 `package-install.yml` 把那份 `root-install` 压成 zstd。`package-install.yml` 只压缩已校验的产物，不重建文件系统。
 
 只读排查用的两个脚本不进流水线，直接在本机跑。`scripts/probe-device.sh` 取设备身份、槽位与 GPT。`scripts/verify-new-image.sh` 挂载镜像核对交接前提。两者都只读。
+
+## 真机取证脚本
+
+以下脚本连着平板跑，只在维护者机器上用，不进 Release 也不进 root 文件系统。
+`make test` 是离线契约测试，和这些分开。
+
+编解码验收：
+
+```sh
+make test-device-media MEDIA_HOST=<ssh 目标> MEDIA_OUTPUT=<新的证据目录> \
+  FIXTURE_DIR=<已有的 B 帧素材目录>   # 可选
+```
+
+脚本本体必须在设备上跑，它读 `/proc/interrupts` 判断 Iris 是否真的在干活。
+但目标镜像没有 `make`，`ffmpeg-free` 也没编译 `libx264`/`libx265`，所以
+`scripts/run-device-media.sh` 在主机侧准备素材、推进 `/tmp`、执行、再拉回证据。
+主机有 `libx264`/`libx265` 时素材当场生成，没有就用 `FIXTURE_DIR` 指向已有的一份。
+设备上的 `ffprobe` 把开源码流的 `pict_type` 报成 `?`，帧类型清单由主机算好一起带过去。
+`vainfo` 在目标镜像里不存在，那一步记为 skipped。
+
+COPR 仓库验收：`scripts/verify-copr-device.py`，在设备上跑，只读模式与
+`--install-test` 两种，见 [COPR 软件源](copr-repository.md#设备侧验证)。
+
+浏览器硬解验收：`scripts/verify-browser-video.py --output <新的证据目录>`，
+在设备上以登录用户身份跑，需要一个能播放的 H.264 文件（`--video`，默认
+`/tmp/browser-h264.mp4`）。它逐个启动 Chromium、Chrome 与 Firefox，播放同一段
+视频，然后只看两件事：Iris 中断在播放窗口内有没有增长，以及有没有进程打开
+`/dev/video0`。两者都成立才算硬解。浏览器自报的 GPU 状态不算证据，软件解码
+同样会拉高 GPU 中断。
+
+持续触控验收：`scripts/verify-device-touch.py --output <新的证据目录>`，
+同样在设备上跑，需要有人配合划动屏幕。脚本先等第一次真实触摸再开始计时，
+所以等待时间不计入统计。它报 SYN 速率、NVT 中断增长、坐标覆盖范围、多点
+slot 与相邻跳变分位数。速率用 SYN 报文而不是 ABS 事件：协议 B 会把每个
+手指的坐标各发一遍，ABS 计数随手指数翻倍。
 
 ## 本机 BOOT
 
@@ -263,5 +309,5 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
    - 只检查 `boot_a`、`sunuefi_esp`、`sunuefi_root` 是否存在及容量下限，不核对
      GPT 的 CRC、类型 GUID 或整表布局；
    - 分区不存在时直接拒绝，首次分区仍走 `install-f2fs.py`。
-5. **真机终验**：九类 RPM 已上机，硬解、音频、触控滤波与传感器代理可用；
-   冷启动、五门硬件验收与双系统往返仍待完整记录。
+5. **真机终验**：九类 RPM 已上机，触控滤波、音频、编解码、传感器与自动旋转
+   都可用；冷启动、五门硬件验收与双系统往返仍待完整记录。

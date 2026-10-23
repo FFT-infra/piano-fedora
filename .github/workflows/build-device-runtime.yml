@@ -126,7 +126,6 @@ jobs:
               python3 scripts/build-device-runtime.py --sunuefi build/sources/sunuefi \
                 --finger-config-dir build/in/touch-calibration \
                 --kernel build/in/kernel --uapi build/kernel-runtime/uapi \
-                --loopback build/kernel-runtime/v4l2loopback/v4l2loopback.ko \
                 --output build/device-runtime
             '
           sudo chown -R "$(id -u):$(id -g)" build/device-runtime

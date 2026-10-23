@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        6%{?dist}
+Release:        9%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -63,12 +63,23 @@ chmod 0755 %{buildroot}%{_bindir}/* %{buildroot}%{_libexecdir}/*
 chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || true
 
 %files
-%config(noreplace) %{_sysconfdir}/yum.repos.d/piano-fedora-copr.repo
+# 这份 .repo 不带 noreplace：内核升级放开之后，已装设备上那份还带着
+# exclude=kernel-piano，noreplace 会把它留成旧文件，升级永远拿不到内核。
+# 与下面看门狗那条是同一个理由：要换掉的是文件内容，不是保护本地改动。
+%config %{_sysconfdir}/yum.repos.d/piano-fedora-copr.repo
 %config(noreplace) %{_sysconfdir}/systemd/system/qbootctl.service.d/piano.conf
 %config(noreplace) %{_sysconfdir}/systemd/sleep.conf.d/piano.conf
 %config(noreplace) %{_sysconfdir}/systemd/logind.conf.d/piano.conf
 %config(noreplace) %{_sysconfdir}/modules-load.d/piano-bwmon.conf
 %config(noreplace) %{_sysconfdir}/modules-load.d/piano-stats.conf
+# 不加 noreplace，跟上面几份不同，这是有意的。早先的 initramfs 用 printf
+# 直接写这个文件，绕过 rpm 的 SELinux 事务，留下的副本标签是 unlabeled_t，
+# systemd-modules-load 每次启动都被拒。`%config(noreplace)` 遇到已存在的文件
+# 会把新版本落成 .rpmnew 并保留旧文件，那份 unlabeled_t 永远换不掉——实测
+# 从故障态升级到 0.1.0-7 后 rpm -qf 认了主，ls -Z 仍是 unlabeled_t。
+# 改成 %config（无 noreplace），升级时把旧文件存成 .rpmorig、装上带正确
+# 标签的新文件，实测标签变回 modules_conf_t。
+%config %{_sysconfdir}/modprobe.d/piano-blacklist-watchdog.conf
 %config(noreplace) %{_sysconfdir}/udev/rules.d/70-piano-power-button.rules
 %config(noreplace) %{_sysconfdir}/dconf/db/local.d/00-power
 
@@ -132,7 +143,24 @@ systemd-tmpfiles --create %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf %{_p
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service
 
 %changelog
-* Mon Oct 20 2026 FFT-infra <dev@piano.invalid> - 0.1.0-6
+* Thu Oct 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-9
+- udev 电源键规则改用真机上的盖子设备名：`hall_lid` 改成 `soc:piano-hall-ml`。
+  旧名来自早期 DTS，规则从未匹配过任何设备，`event1` 因此没有 uaccess ACL；
+  现在靠 piano 在 input 组的组权限才打得开。已经发布出去的同 NEVRA 包里内容
+  不同，必须升 Release，否则 COPR 会对同一个 NVRA 给出两份不同的 RPM
+
+* Wed Oct 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-8
+- 放开内核在线升级：.repo 去掉 exclude=kernel-piano，改由 kernel-piano 的
+  %posttrans 重建 initramfs 并重打 ESP 的 boot.img。这份 .repo 去掉 noreplace，
+  否则已装设备上的旧文件会被留成 .rpmnew，排除规则永远消不掉
+
+* Wed Oct 21 2026 FFT-infra <dev@piano.invalid> - 0.1.0-7
+- 看门狗黑名单改由本包提供：initramfs 直接写 /etc/modprobe.d 会绕过 rpm 的
+  SELinux 标签事务，留下 unlabeled_t 的无主文件，systemd-modules-load 被拒。
+  已在 COPR 的 0.1.0-6 之后修复，必须升 Release 才能让 dnf upgrade 取到。
+  这份文件不带 noreplace：已经处在故障态的设备升级时，noreplace 会把新版
+  落成 .rpmnew、把 unlabeled_t 的旧文件留在原位，标签修不回来
+* Tue Oct 20 2026 FFT-infra <dev@piano.invalid> - 0.1.0-6
 - 收敛路径归属：收纳 xiaomi-charger-mode 与 logind 落点，交还 piano-boot-request
   给运行时（piano-next-boot-helper 要求的是那份原生实现），不再重复拥有
   SunUEFI 运行时派生的同一批文件

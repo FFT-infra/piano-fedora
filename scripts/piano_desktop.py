@@ -211,6 +211,11 @@ def login_files(context, user):
         # tuigreet 是 F44 里的文本 greeter。`--time` 只是显示时钟；没有
         # 其他参数时它列出会话供选择，输错或会话崩溃后 greetd 会回到这里。
         fallback = autologin.get("fallback", "tuigreet --time")
+        # greetd 的 greeter 账户由包里的 sysusers 片段创建，Fedora 上的名字是
+        # `greetd`（`u greetd - "greetd daemon"`），不是通用的 `greeter`。
+        # 写错名字时 greetd 每 1 秒重启一次，5 次后撞 StartLimitBurst 变成
+        # failed，显示管理器整个起不来。
+        greeter = autologin.get("greeter_user", "greetd")
         return {
             "etc/greetd/config.toml":
                 "[terminal]\n"
@@ -222,7 +227,7 @@ def login_files(context, user):
                 "\n"
                 "[default_session]\n"
                 f"command = {json.dumps(fallback)}\n"
-                'user = "greeter"\n',
+                f"user = {json.dumps(greeter)}\n",
         }
     raise DesktopError(f"unhandled autologin kind {kind!r}")
 
@@ -472,13 +477,32 @@ def validate_against_rootfs(root, context, *, require_enabled=True):
 
     if require_enabled:
         for unit in enable_units(context):
-            want(bool(list(root.glob(f"etc/systemd/system/*.wants/{unit}"))),
+            want(_unit_enabled(root, unit),
                  f"display manager unit enabled: {unit}")
 
     if problems:
         raise DesktopError(
             "rootfs does not match the desktop profile: " + "; ".join(problems))
     return checks
+
+
+def _unit_enabled(root, unit):
+    """`systemctl enable` 对这个单元留下的痕迹存在吗。
+
+    大多数单元带 `WantedBy=`，启用后落一个 `*.wants/<unit>` 链接。GDM 只有
+    `Alias=display-manager.service`，启用后落的是
+    `etc/systemd/system/display-manager.service` 这个指向它的别名链接，
+    `*.wants/` 下什么都不会有。只看 wants 目录会把正常装好的 GDM 判成未启用。
+    """
+    root = Path(root)
+    if list(root.glob(f"etc/systemd/system/*.wants/{unit}")):
+        return True
+    alias = root / "etc/systemd/system/display-manager.service"
+    if not alias.is_symlink():
+        return False
+    target = os.readlink(alias)
+    name = Path(target).name
+    return name == unit
 
 
 def _mode_executable(path):

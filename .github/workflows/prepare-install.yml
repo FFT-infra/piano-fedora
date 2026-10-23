@@ -54,6 +54,10 @@ jobs:
           path: build/in/bundle
           run-id: ${{ inputs.bundle_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      # 下载动作不保证解压完整，实测会在中途静默停下。这一档必须紧跟在下载
+      # 之后：否则要等容量验证跑完二十分钟才看到缺文件。
+      - name: Verify the downloaded bundle immediately
+        run: (cd build/in/bundle && sha256sum -c SHA256SUMS)
       - name: Verify a real filesystem expansion and sparse roundtrip
         env:
           TMPDIR: ${{ github.workspace }}/build/tmp
@@ -68,7 +72,6 @@ jobs:
           TMPDIR: ${{ github.workspace }}/build/tmp
         run: |
           set -euo pipefail
-          (cd build/in/bundle && sha256sum -c SHA256SUMS)
           sudo env TMPDIR="$TMPDIR" python3 scripts/prepare-root-capacity.py \
             --bundle build/in/bundle ${ROOT_SIZE_MIB:+--size-mib "$ROOT_SIZE_MIB"} \
             --output build/root-install --android-slot "$ANDROID_SLOT"
@@ -80,7 +83,8 @@ jobs:
           path: build/root-install/
           if-no-files-found: error
           retention-days: 14
-          compression-level: 0
+          # 与 deploy-bundle 同理：这里是一份 8 GiB 的 sparse 根镜像。
+          compression-level: 6
 
   boot-tools:
     runs-on: ubuntu-24.04-arm

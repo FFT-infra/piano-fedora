@@ -10,7 +10,7 @@
 | Fedora 基础树 | build-rootfs.yml | 原生 DNF installroot，记录容器 ID 和实际 RPM，排除发行版 kernel |
 | A830v1 Mesa RPM | build-mesa.yml | 固定 Fedora 源 RPM 与 piano 补丁，复用 Fedora 配方；从实际 RPM 核对 Gallium/Turnip 芯片表 |
 | FFmpeg RPM | host-check 调用的 build-ffmpeg.yml | 固定 Fedora 源 RPM，沿用 SunUEFI BSP 补丁启用 H.264/HEVC v4l2m2m 解码器；build-ffmpeg 是 workflow_call 复用件，实际 run 的 workflow_id 是 host-check；原生构建及设备解码仍待验证 |
-| 设备运行时 RPM | build-device-runtime.yml | Fedora 原生触控/笔、相机程序、传感器、BOOT 请求工具、拓扑与设备配置；外部模块匹配 SDK；另含 VA-API、crosvm、LibreVM 和平台配置 RPM |
+| 设备运行时 RPM | build-device-runtime.yml | Fedora 原生触控/笔、相机程序、传感器、BOOT 请求工具、拓扑与设备配置；另含 VA-API、crosvm、LibreVM 和平台配置 RPM。ABI 匹配的 `v4l2loopback` 不在这一侧，由 `build-piano-rpms.yml` 编进 `kernel-piano` |
 | 设备 rootfs、initramfs、F2FS raw 镜像 | build-image.yml | 同一 job 安装设备、Mesa 与 FFmpeg RPM，核对已安装包及解码器注册。随后运行上游完整 rootfs 检查，配置服务，清理身份，设置 SELinux 标签，最后完整读回验证 |
 | ESP、Linux boot.img、交付集合 | build-bundle.yml | 从集成记录取得准确内核，调用上游 DTB/mkbootimg/ESP 包装，核对全部文件和展开 root 镜像 |
 
@@ -40,11 +40,13 @@ clean rootfs 的 `kernel-piano` 与内核压缩包必须来自同一次 kernel r
 
 ## 交付内容
 
-每档桌面各有一个 `deploy-bundle` run，bundle 内部文件名不随桌面变化：`verify-bundle.py`、`prepare-root-capacity.py` 与 `flash-linux.sh` 只认规范名。桌面维度在到 Release 时才展开成资产名。
+每档桌面各有一个 `deploy-bundle` run，bundle 内部文件名不随桌面变化：`verify-bundle.py`、`prepare-root-capacity.py` 与 `flash-linux.sh` 只认规范名。桌面维度在发布成 Release 时才展开成带后缀的资产名。
 
-最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。有了 bundle 自带的 sparse，从 Release 装机不需要再跑一次 Actions。发布资产名与 `fastboot flash sunuefi_esp` / `boot_a` 的目标一致。上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
+最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、`initramfs.tar.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。`initramfs.tar.zst` 由 build-image 用固定时间戳与 owner 打出，四档逐字节相同，是平台资产：内容就是 `boot_sunuefi.img` 里那个 initramfs，单独发一份便于离线检查与手工重打包。有了 bundle 自带的 sparse，从 Release 装机不需要再跑一次 Actions。发布资产名与 `fastboot flash sunuefi_esp` / `boot_a` 的目标一致。上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`，`verify-bundle.py` 会显式映射，不要求发布包保留第二套文件名。`verify-bundle.py` 会流式展开压缩 root，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
 
 Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合体 BOOT 必须用本机当前 stock BOOT、槽位和 generation 另行包装；通用构建产物不包含这些个人设备输入。
+
+已装系统升级内核不需要 bundle。`kernel-piano` 提供 `kernel-core`，走 `dnf upgrade` 装上之后由包自己的 `%posttrans` 重建 initramfs 并重打 ESP 上的 `boot.img`；语义与回滚见 [COPR 软件源](copr-repository.md)。
 
 ## 参考来源
 
@@ -52,7 +54,7 @@ Linux boot.img 是 ESP 上的 Linux 载荷。包含当前 Android 内核的合�
 
 ## 发布链基线
 
-当前基线是 SunUEFI pin `065b192` 的一次完整链，每一阶段都 success：
+当前基线是 `sources.lock.json` 锁定的那组上游的一次完整链，每一阶段都 success：
 
 | 阶段 | 关键产物 |
 | --- | --- |

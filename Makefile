@@ -1,4 +1,4 @@
-.PHONY: test test-device-media plan plan-desktop clean build-rpms release-bundle
+.PHONY: test test-device-media plan plan-desktop clean build-rpms release-bundle selinux
 
 test:
 	python3 tests/check_sources.py
@@ -8,6 +8,9 @@ test:
 	python3 tests/check_release_workflow.py
 	python3 tests/check_release_desktops.py
 	python3 tests/check_release_assets.py
+	python3 tests/check_render_screenshot.py
+	python3 tests/check_device_media.py
+	python3 tests/check_browser_video.py
 	python3 tests/check_copr_release.py
 	python3 tests/check_product.py
 	python3 tests/check_links.py
@@ -40,6 +43,7 @@ test:
 	python3 tests/check_ffmpeg_port.py
 	python3 tests/check_ffmpeg_install.py
 	python3 tests/check_initramfs.py
+	python3 tests/check_boot_container.py
 	python3 tests/check_bootstrap_contract.py
 	python3 tests/check_boot_evidence.py
 	python3 tests/check_boot_log_rotation.py
@@ -61,9 +65,11 @@ test:
 	python3 tests/check_manual_flash_flow.py
 	python3 tests/check_next_boot_helper.py
 
-# 在平板上执行，MEDIA_OUTPUT 必须是新的证据目录。
+# 从主机驱动平板上的编解码验收：素材在主机生成，脚本推到设备上执行，
+# 证据拉回 MEDIA_OUTPUT。MEDIA_HOST 是 ssh 目标。只在维护者机器上跑。
 test-device-media:
-	python3 scripts/verify-device-media.py --output "$(MEDIA_OUTPUT)"
+	test -n "$(MEDIA_OUTPUT)" && test -n "$(MEDIA_HOST)"
+	bash scripts/run-device-media.sh "$(MEDIA_HOST)" "$(MEDIA_OUTPUT)" $(FIXTURE_DIR)
 
 RELEASEVER ?= 44
 DESKTOP ?= gnome
@@ -81,3 +87,14 @@ build-rpms:
 
 release-bundle:
 	./scripts/package-release-bundle.sh
+
+# rootfs/selinux/piano_hardware.pp 是本仓库唯一的已提交生成物：运行时
+# semodule -i 加载的是编译后的模块，.te 本身不会被设备读取。改动 .te 之后
+# 必须重跑这一步，否则镜像里装的是旧策略，而源码看起来已经改过。
+# 需要 checkpolicy 与 policycoreutils（Fedora: dnf install checkpolicy）。
+SELINUX_TE ?= rootfs/selinux/piano_hardware.te
+SELINUX_PP ?= rootfs/selinux/piano_hardware.pp
+selinux:
+	mkdir -p build
+	checkmodule -M -m -o build/piano_hardware.mod $(SELINUX_TE)
+	semodule_package -o $(SELINUX_PP) -m build/piano_hardware.mod

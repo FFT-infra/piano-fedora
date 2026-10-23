@@ -23,7 +23,7 @@ def main():
     spec.loader.exec_module(installer)
     count, sectors = 64, 249518080
     table = bytearray(count * 128)
-    guid = uuid.UUID("d55fa102-1ed9-4154-b3a7-3e84cd916cb5")
+    guid = uuid.UUID("a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d")
     rows = []
     for index in range(34):
         name = "userdata" if index == 33 else ("super" if index == 32 else "fixed_" + str(index))

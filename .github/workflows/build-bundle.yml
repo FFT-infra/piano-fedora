@@ -180,6 +180,11 @@ jobs:
         env:
           # ESP 容量只在 product.json 定义，这里不写第二份。
           ESP_SIZE_MIB: ${{ steps.product.outputs.esp_size_mib }}
+          # 四档必须交出逐字节相同的 ESP，release 的上传前比对靠这一条。
+          # 载荷文件的时间戳由 package_release.py 归一，但 mkfs.vfat/mmd/mcopy
+          # 建的 FAT 目录项取的是当前时间，不钉住 epoch，每档的 esp.img 都会
+          # 差在这几个目录项上。mtools 认 SOURCE_DATE_EPOCH。
+          SOURCE_DATE_EPOCH: "0"
         run: |
           set -euo pipefail
           test -n "$ESP_SIZE_MIB"
@@ -190,7 +195,10 @@ jobs:
           export LD_LIBRARY_PATH="$PWD/build/sources/dtc/libfdt"
           PIANO_TEST_SUNUEFI=build/sources/sunuefi python3 tests/check_bundle_overlays.py
           # stock Android BOOT 包装仍要求本机当前 BOOT，通用包不冒充已部署合体 BOOT。
+          # sudo 会清掉环境，SOURCE_DATE_EPOCH 必须显式传进去，否则 mtools
+          # 拿不到它，FAT 目录项又回到当前时间。
           sudo env "PATH=$PATH" "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+            "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" \
             python3 build/sources/sunuefi/tools/package_release.py \
             --uefi build/uefi/PianoUEFI-product.img --kernel build/kernel \
             --dtb build/sources/sunuefi/vendor/piano-linux/board.dtb \
@@ -235,6 +243,11 @@ jobs:
             piano_sparse.encode('build/pianoroot.f2fs.img', 'bundle/pianoroot.f2fs.sparse.img')"
           rm -f build/pianoroot.f2fs.img
           cp build/in/image/diagnostic-abl-storage.tar.zst bundle/
+          # initramfs.tar.zst 由 build-image 用固定时间戳与 owner 打出，四档
+          # 逐字节相同，所以它是平台资产。release.yml 的 platform_files 里
+          # 一直有它，但以前没人把它拷进 bundle，门禁在 release 那一步才以
+          # "deploy-bundle lacks platform asset" 失败。
+          cp build/in/image/initramfs.tar.zst bundle/
           cp build/in/image/root-image-manifest.json build/in/image/source-runs.json build/in/image/runtime-manifest.json bundle/
           cp build/in/image/mesa-manifest.json build/in/image/ffmpeg-manifest.json build/in/image/rootfs-manifest.json bundle/
           cp build/kernel/manifest.json bundle/kernel-manifest.json
@@ -265,4 +278,8 @@ jobs:
           path: bundle/
           if-no-files-found: error
           retention-days: 14
-          compression-level: 0
+          # bundle 里有一份 8 GiB 的 sparse 根镜像，未压缩时 artifact 本身就有
+          # 11.5 GiB，而运行器上并不缺盘。代价是下载：那样一份 artifact 在
+          # actions/download-artifact 里会卡十六分钟，最后静默截断、报成功，
+          # 解出来的 bundle 缺六个文件。压缩后同一份下载 86 秒完成。
+          compression-level: 6

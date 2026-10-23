@@ -11,6 +11,7 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -24,9 +25,9 @@ ASSETS = ROOT / "scripts/release-assets.py"
 BUNDLE_FILES = (
     "PianoUEFI-product.img", "SHA256SUMS", "boot_sunuefi.img", "bundle-manifest.json",
     "diagnostic-abl-storage.tar.zst", "esp-manifest.json", "ffmpeg-manifest.json",
-    "initramfs-manifest.json", "kernel-manifest.json", "mesa-manifest.json",
-    "root-image-manifest.json", "rootfs-manifest.json", "runtime-manifest.json",
-    "source-runs.json", "sunuefi_esp.img", "uefi-source.json",
+    "initramfs-manifest.json", "initramfs.tar.zst", "kernel-manifest.json",
+    "mesa-manifest.json", "root-image-manifest.json", "rootfs-manifest.json",
+    "runtime-manifest.json", "source-runs.json", "sunuefi_esp.img", "uefi-source.json",
 )
 
 DESKTOPS = ("gnome", "kde", "niri", "hyprland")
@@ -305,6 +306,22 @@ def test_workflow_contract():
         "release.yml must upload the platform assets once, then compare later desktops")
     # 每档的 root-install 绑定到自己的 bundle，而不是只绑一档。
     assert 'record.get("desktop") == desktop' in text
+
+    # 每档的循环把压缩副本写到同一个 $STAGE 路径。zstd 没有 -f 时第二档会
+    # 反问要不要覆盖，非交互环境直接以 1 退出——第一次四档发布就停在这里。
+    commands, buffer = [], ""
+    for line in text.splitlines():
+        stripped = line.rstrip()
+        buffer += stripped.rstrip("\\").strip() + " "
+        if not stripped.endswith("\\"):
+            commands.append(buffer)
+            buffer = ""
+    staged = [c for c in commands if "zstd" in c and '-o "$STAGE/' in c]
+    assert staged, "release.yml no longer compresses into $STAGE"
+    for command in staged:
+        assert re.search(r"\bzstd\b[^|]*\s-f\b", command), (
+            "a per-desktop stage compression runs without -f; the second "
+            "desktop would stop at zstd's overwrite prompt: " + command)
 
     unpack = UNPACK.read_text()
     for name in ("pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img.zst",

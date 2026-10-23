@@ -1,6 +1,6 @@
 # Xiaomi Pad 8 Pro (piano) 安装、分区与双系统指南
 
-本指南讲两件事：在**小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）**上从零安装 Fedora 44，以及对已有 Linux 分区做增量更新。默认桌面是 GNOME，其余档位的差异见[桌面档](desktops.md)。
+本指南覆盖：在**小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）**上从零安装 Fedora 44，对已有 Linux 分区做增量更新，以及双系统往返与故障排查。默认桌面是 GNOME，其余档位的差异见[桌面档](desktops.md)。
 
 ---
 
@@ -316,7 +316,9 @@ fastboot getvar partition-size:sunuefi_esp     # 十六进制字节数
 fastboot fetch sunuefi_esp esp-readback.img
 ```
 
-这台平板的 `sunuefi_esp` 分区比 `sunuefi_esp.img` 大（实测分区 537899008 字节，镜像 536870912 字节；以自己的 `fastboot getvar` 结果为准）。`fetch` 读的是整个分区，尾部会带上分区里原有的数据，整份哈希必然不同。
+`sunuefi_esp` 分区通常比 `sunuefi_esp.img` 大（按 512 MiB 规划分区，镜像
+536870912 字节；实际分区字节数以自己的 `fastboot getvar` 结果为准）。`fetch`
+读的是整个分区，尾部会带上分区里原有的数据，整份哈希必然不同。
 
 只比对镜像长度那一段：
 
@@ -584,7 +586,7 @@ sha256sum stock-recovery/boot.img    # 与上一条相同
 
 原厂 ROM 包里的 `images/boot.img` 也是 96 MiB，但只有设备还跑着那一版固件时才逐字节相同。用前比摘要，不一致以设备读出的为准。
 
-在连接平板的 Linux 主机上执行，以下路径指你下载的那份材料，`--serial` 是实际 Android ADB 序列号：
+在连接平板的 Linux 主机上执行。以下路径指已经解开的安装材料目录，`--serial` 是 `adb devices` 显示的 Android 序列号：
 
 ```sh
 python3 boot-tools/installer/scripts/update-f2fs.py plan \
@@ -610,6 +612,30 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 传输成功不等于读回或启动通过。下一步依次是临时 `boot_linux.img` 启动与设备读回、桌面与硬件验收、临时 Android 旁路。全部通过后才单独安装持久 BOOT。
 
 中途中断时先读 session 的 result.json 和实际设备状态，不要自动重试或回滚 GPT。
+
+### 只升级内核（已装系统）
+
+装好之后内核跟着 `dnf upgrade` 走，不需要重跑刷写，也不需要 bundle。`kernel-piano` 提供 `kernel-core`，是 installonly 包：新内核与旧内核的模块树并存。
+
+```sh
+sudo dnf upgrade --refresh
+```
+
+升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再把新内核、新 initramfs 与 ESP 上原有的 `board.dtb` 重新打成 Android boot v2 容器，原子替换 `/boot/efi/EFI/Piano/stable/boot.img`。重启后固件读到的是新内核。
+
+这条路径在真机上验证过：`7.2.9-1` 升到 `7.2.9-3` 之后重启，`uname -r` 是新内核，桌面正常起，`v4l2loopback` 从新模块树的 `updates/` 加载。
+
+失败边界：任何一步失败，`boot.img` 保持原样，设备继续用上一个内核启动。审计记录写在 `/var/lib/piano/kernel-esp/<release>.json`。
+
+已经装好但起不来的内核没有自动回滚，回滚靠 `boot.img.bak`：
+
+```sh
+sudo cp /boot/efi/EFI/Piano/stable/boot.img.bak /boot/efi/EFI/Piano/stable/boot.img
+sudo cp /boot/efi/EFI/Piano/stable/Image.bak /boot/efi/EFI/Piano/stable/Image
+sudo cp /boot/efi/EFI/Piano/stable/initramfs.bak /boot/efi/EFI/Piano/stable/initramfs
+```
+
+`dnf history undo` 只回滚 RPM，不动 ESP。完整语义见 [COPR 软件源](copr-repository.md)。
 
 ## 登录与诊断
 
@@ -678,20 +704,14 @@ ls /usr/lib/modules/          # 有与 uname -r 同名的目录
 | 无线 | Wi-Fi 连接、蓝牙扫描 |
 | 电源与睡眠 | 合盖与 `rtcwake -m mem -s 20` 能唤醒，唤醒后无 failed unit |
 
+浏览器放 H.264 视频另算一项，且三家结果不同：Google Chrome 与 Firefox 默认走
+硬件解码；Fedora 的 Chromium 连 MP4 都打不开，因为它链接系统 `libavcodec`，
+而 `ffmpeg-free` 去掉了软件 H.264 解码器。装 RPM Fusion 的
+`libavcodec-freeworld` 后能播，但仍然软解。细节见
+[已知问题](known-issues.md#触屏网络音频与相机)。
+
 再完整重启一次，确认仍进所选桌面。双系统往返按下一节执行，往返后核对
 `fastboot getvar current-slot`。
-
-编解码另有一条可复现的取证命令，在设备上跑，`MEDIA_OUTPUT` 必须是新的目录：
-
-```sh
-make test-device-media MEDIA_OUTPUT=/tmp/media-check
-```
-
-`ffmpeg-free` 不含 `libx264`/`libx265`，生成 B 帧素材那一步会失败。在别的机器上用
-`-bf 3 -g 60` 编一份 300 帧的 H.264 与 HEVC 素材，连同 `pict_type` 清单放到设备上，
-用 `--fixture-dir` 与 `--fixture-types` 指过去；设备上的 `ffprobe` 把开源码流的
-`pict_type` 报成 `?`，没有清单会判成“没有 B 帧”。目标镜像也没装 `libva-utils`，
-`vainfo` 那一步会跳过，`result.json` 里记为 skipped。
 
 发布验收的标准比这里更严：必须从原始 GPT/UFS 重新分区，并使用同一条流水线新
 产出的 bundle 与 root-install。门槛见[维护与验收](internals.md#pr-验收门槛)。

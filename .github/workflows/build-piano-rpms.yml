@@ -82,7 +82,8 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq podman zstd rpm createrepo-c \
-            python3 git tar xz-utils patch
+            python3 git tar xz-utils patch clang lld llvm make bison flex bc \
+            libelf-dev libssl-dev cpio kmod
 
       - name: Unpack the matching kernel payload
         id: payload
@@ -115,10 +116,23 @@ jobs:
         id: source
         run: |
           set -euo pipefail
-          python3 scripts/checkout-sources.py --output build/sources --mode boot
+          # kernel-piano 拥有 v4l2loopback，所以矩阵也要编这份外部模块：源码、
+          # 内核源码树与 Gunyah 派生输入一起取，与 build-device-runtime 同一套。
+          python3 scripts/checkout-sources.py --output build/sources --mode loopback --kernel
           test -s build/sources/sunuefi/vendor/piano-linux/board.dtb
+          test -d build/sources/sunuefi/upstream/v4l2loopback
           sunuefi_commit=$(git -C build/sources/sunuefi rev-parse HEAD)
           echo "sunuefi_commit=$sunuefi_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Compile the kernel-matched v4l2loopback
+        run: |
+          set -euo pipefail
+          # 外部模块必须用这个内核的 SDK 编：vermagic 与 Module.symvers 都要
+          # 对得上，否则装进 rootfs 之后 modprobe 直接拒绝。SDK 与源码的重放
+          # 由 prepare-runtime-kernel.py 完成，它同时校验 Gunyah 派生树。
+          python3 scripts/prepare-runtime-kernel.py --sunuefi build/sources/sunuefi \
+            --kernel build/kernel --sdk build/in/sdk --output build/kernel-runtime
+          test -s build/kernel-runtime/v4l2loopback/v4l2loopback.ko
 
       - name: Build the local RPM matrix in Fedora
         env:
@@ -150,6 +164,7 @@ jobs:
               git config --global --add safe.directory /workspace/build/sources/sunuefi
               export KERNEL_PAYLOAD=/workspace/build/kernel
               export BOARD_DTB=/workspace/build/sources/sunuefi/vendor/piano-linux/board.dtb
+              export LOOPBACK_MODULE=/workspace/build/kernel-runtime/v4l2loopback/v4l2loopback.ko
               export TMPDIR=/workspace/build/rpm-tmp
               mkdir -p "$TMPDIR"
               SRPM_DIR=/workspace/out/srpms ./scripts/build-rpms.sh /workspace/out/rpms

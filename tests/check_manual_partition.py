@@ -35,7 +35,7 @@ SECTORS_PER_MIB = SECTOR and (1024 * 1024) // SECTOR
 # 与 check_first_partition.py 相同的真实 GPT 形状：userdata 占满盘尾。
 GPT = """Disk /dev/block/sda: {total} sectors, 0 GiB
 Sector size (logical/physical): 4096/4096 bytes
-Disk identifier (GUID): D55FA102-1ED9-4154-B3A7-3E84CD916CB5
+Disk identifier (GUID): A1B2C3D4-5E6F-4A7B-8C9D-0E1F2A3B4C5D
 Partition table holds up to 64 entries
 First usable sector is 6, last usable sector is {last}
 

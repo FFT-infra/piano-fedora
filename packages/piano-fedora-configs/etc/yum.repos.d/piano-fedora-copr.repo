@@ -7,8 +7,3 @@ gpgcheck=1
 gpgkey=https://download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/pubkey.gpg
 repo_gpgcheck=0
 enabled=1
-# kernel-piano is published to this repository for auditing, but a user-space
-# DNF update cannot replace the Image SunUEFI boots from the ESP. Installing it
-# would desync the running kernel from /usr/lib/modules and from the ESP, so it
-# is excluded by default. Kernel updates ship in the release bundle.
-exclude=kernel-piano*

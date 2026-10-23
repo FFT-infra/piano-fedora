@@ -157,3 +157,78 @@ def inspect_kernel(kernel, require_f2fs=True):
     if set(indexes) != {p.relative_to(kernel / "modules").as_posix() for p in module_dir.glob("modules.*") if p.is_file()}:
         raise ValueError("module index set differs from manifest")
     return m, sha256(kernel / "manifest.json")
+
+
+def inspect_installed_kernel(root, boot_dir="boot", manifest=None):
+    """验证已安装系统里的内核就是封存 manifest 描述的那一份。
+
+    `inspect_kernel()` 只在构建机上成立：它要求 `modules.*` 索引逐字节等于
+    封存值、模块集合精确等于 manifest。装进系统之后这两条永远不再成立——
+    `depmod` 会重写索引，外部模块会落进 `updates/`。设备侧因此换一组判据，
+    验的是包管理器不会改写的部分：
+
+    - `/usr/share/piano/kernel-manifest-<NVRA>.json` 必须是完整的封存记录；
+    - `/boot/vmlinuz-*` 里必须有一份的 sha256 与字节数等于 manifest 的 Image；
+    - manifest 列出的每个模块在 `/lib/modules/<release>/` 下存在且摘要相符。
+
+    `updates/` 与 `modules.*` 索引一律不看。installonly 让新旧内核共存，
+    所以 Image 按内容匹配，不按文件名匹配。返回 `(manifest, manifest_sha256,
+    image_path)`。
+
+    manifest 的文件名带 NVRA：installonly 会同时留下多个版本，固定名字会让
+    两个包争同一个路径，rpm 直接拒绝升级。`manifest` 参数可以显式指定一份；
+    不指定时按 `kernel_release` 与文件里记录的值对上号再采用，对不上就报错，
+    不猜。
+    """
+    root = Path(root)
+    candidates = sorted(p for p in (root / "usr/share/piano").glob("kernel-manifest-*.json")
+                        if p.is_file() and not p.is_symlink())
+    if not candidates:
+        raise ValueError("installed kernel manifest missing: "
+                         "/usr/share/piano/kernel-manifest-<NVRA>.json")
+    if manifest is not None:
+        wanted = Path(manifest)
+        candidates = [p for p in candidates if p.name == wanted.name]
+        if not candidates:
+            raise ValueError(f"requested kernel manifest not installed: {manifest}")
+    elif len(candidates) > 1:
+        # 多个内核并存时不能随手挑一份：调用方（%posttrans）知道刚装的是哪一版。
+        raise ValueError("several installed kernel manifests; name the one to verify: "
+                         + ", ".join(p.name for p in candidates))
+    manifest_path = candidates[0]
+    m = json.loads(manifest_path.read_text())
+    if m.get("status") != "HOST_BUILT_FULL_CANDIDATE_NOT_HARDWARE_VERIFIED" or not m.get("source_clean"):
+        raise ValueError("installed kernel is not a completed clean full build")
+    release = m.get("kernel_release", "")
+    if not re.fullmatch(r"[A-Za-z0-9_.+-]{1,128}", release):
+        raise ValueError("invalid kernel release")
+    if m.get("root_policy") != "LABEL=PIANOROOT":
+        raise ValueError("installed kernel does not select the dedicated piano root")
+
+    image = m.get("image", {})
+    if not re.fullmatch(r"[0-9a-f]{64}", image.get("sha256", "")):
+        raise ValueError("installed kernel manifest has no Image digest")
+    candidates = sorted(p for p in (root / boot_dir).glob("vmlinuz-*")
+                        if p.is_file() and not p.is_symlink())
+    matches = [p for p in candidates
+               if p.stat().st_size == image.get("bytes") and sha256(p) == image["sha256"]]
+    if not matches:
+        raise ValueError(f"no {boot_dir}/vmlinuz-* matches the sealed kernel Image "
+                         f"({len(candidates)} present)")
+
+    rows = m.get("modules", [])
+    if not rows:
+        raise ValueError("empty sealed module set")
+    for row in rows:
+        name = row["path"]
+        safe_relative(name)
+        if not name.startswith(f"lib/modules/{release}/") or not name.endswith(".ko"):
+            raise ValueError(f"module path/release mismatch: {name}")
+        if not row["vermagic"].startswith(release + " "):
+            raise ValueError(f"module ABI mismatch: {name}")
+        installed = guest_resolve(root, "/" + name)
+        if (installed.is_symlink() or not installed.is_file()
+                or installed.stat().st_size != row["bytes"]
+                or sha256(installed) != row["sha256"]):
+            raise ValueError(f"installed module differs from the sealed kernel: {name}")
+    return m, sha256(manifest_path), matches[0]

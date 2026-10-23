@@ -161,9 +161,9 @@ say "[3/5] Restoring the documented directory layout..."
 bundle_files=(
     PianoUEFI-product.img SHA256SUMS boot_sunuefi.img bundle-manifest.json
     diagnostic-abl-storage.tar.zst esp-manifest.json ffmpeg-manifest.json
-    initramfs-manifest.json kernel-manifest.json mesa-manifest.json
-    root-image-manifest.json rootfs-manifest.json runtime-manifest.json
-    source-runs.json sunuefi_esp.img uefi-source.json
+    initramfs-manifest.json initramfs.tar.zst kernel-manifest.json
+    mesa-manifest.json root-image-manifest.json rootfs-manifest.json
+    runtime-manifest.json source-runs.json sunuefi_esp.img uefi-source.json
 )
 for name in "${bundle_files[@]}"; do
     claim "$name" || die "missing release asset: $name"

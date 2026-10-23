@@ -3,12 +3,12 @@
 
 COPR 公开实例没有打开二进制上传（`/build/create/rpm-upload` 不存在），
 `copr-cli` 2.4 也没有 `uploadrpm` 子命令。所以这里走 SRPM 重建：用矩阵
-产出的 `.src.rpm` 让 COPR 在干净的 chroot 里重新构建用户态包，结果进
-COPR 的仓库。
+产出的 `.src.rpm` 让 COPR 在干净的 chroot 里重新构建，结果进 COPR 的仓库。
 
-kernel-piano 也发布，但生成的 `.repo` 用 `exclude=kernel-piano*` 排除它：
-用户态 `dnf upgrade` 无法替换 ESP 实际引导的 Image，装上 COPR 的内核会
-让 ESP 和 rootfs 的内核版本脱钩。
+kernel-piano 也在同一批里发布，仓库不再排除它。设备上 `dnf upgrade` 装上
+新内核之后，包自己的 `%posttrans` 会 depmod、重建 initramfs，并把新内核
+重新打成 ESP 上固件读取的 `boot.img`；写失败时旧文件保持不动，设备继续用
+上一个内核启动。
 
 默认只做校验（dry-run）。真正上传必须显式给 `--execute`。
 """
@@ -31,7 +31,8 @@ USERSPACE = (
     "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
     "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
 )
-# 内核包：发布进仓库供审计，但 .repo 默认排除。
+# 内核包：与用户态包一起发布。装到设备上之后由包自己的 %posttrans 重建
+# initramfs 并重打 ESP 的 boot.img，所以不需要在仓库层面排除。
 KERNEL_PACKAGES = ("kernel-piano",)
 REQUIRED = USERSPACE + KERNEL_PACKAGES
 
@@ -219,8 +220,9 @@ def ensure_project(binary, config, project):
         "create", project, "--chroot", CHROOT,
         "--description", "Fedora 44 aarch64 packages for Xiaomi Pad 8 Pro (piano)",
         "--instructions",
-        "kernel-piano is excluded on purpose: user-space DNF cannot update the "
-        "ESP that SunUEFI boots. Use the release bundle for kernel updates.",
+        "kernel-piano upgrades replace the Image in the ESP boot container: "
+        "the package's %posttrans rebuilds the initramfs and repacks boot.img. "
+        "Keep a copy of the ESP boot.img if you want a manual rollback.",
     ], check=False)
     if created.returncode:
         # 并发创建或权限问题：再看一次列表，真的没有才算失败。
@@ -321,7 +323,7 @@ def main():
         "kernel_release": manifest["kernel_release"],
         "sunuefi_commit": manifest["sunuefi_commit"],
         "packages": sorted(packages),
-        "excluded": list(KERNEL_PACKAGES),
+        "kernel_packages": list(KERNEL_PACKAGES),
         "manifest_sha256": sha256(Path(args.rpms) / "piano-rpms-manifest.json"),
     }
     if not args.execute:

@@ -24,6 +24,30 @@ SRPM_DIR="${SRPM_DIR:-$REPO_ROOT/out/srpms}"
 # build stops instead of emitting a kernel RPM with a 0-byte vmlinuz.
 KERNEL_PAYLOAD="${KERNEL_PAYLOAD:-}"
 
+# kernel-piano owns v4l2loopback: it is compiled against this kernel's ABI, so
+# it ships inside this kernel's module tree. Set LOOPBACK_MODULE to that .ko
+# (prepare-runtime-kernel.py produces it). There is no fallback: an RPM without
+# it boots into a system whose camera daemon cannot start, which is exactly the
+# silent-degradation failure kernel-piano was already fixed for once.
+LOOPBACK_MODULE="${LOOPBACK_MODULE:-}"
+
+resolve_loopback_module() {
+    if [ -n "$LOOPBACK_MODULE" ]; then
+        echo "$LOOPBACK_MODULE"
+        return 0
+    fi
+    local candidate
+    for candidate in \
+        "$REPO_ROOT/build/kernel-runtime/v4l2loopback/v4l2loopback.ko" \
+        "$REPO_ROOT/out/artifacts/kernel-runtime/v4l2loopback/v4l2loopback.ko"; do
+        if [ -s "$candidate" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 resolve_kernel_payload() {
     if [ -n "$KERNEL_PAYLOAD" ]; then
         echo "$KERNEL_PAYLOAD"
@@ -155,12 +179,39 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
                 cp -a "$DTB" "$STAGE/board.dtb"
             fi
             [ -f "$PAYLOAD/manifest.json" ] && cp -a "$PAYLOAD/manifest.json" "$STAGE/"
+            # 设备侧升级要用的那套工具跟内核一起发布：initramfs 构建器、容器
+            # 打包器与 manifest 判据都是跟这个内核一起演进的，分开发布会出现
+            # 两套契约。放在 payload 的 piano-tools/ 下，由 spec 装到
+            # /usr/lib/piano。
+            mkdir -p "$STAGE/piano-tools"
+            cp -a "$REPO_ROOT/scripts/build-initramfs.py" \
+                 "$REPO_ROOT/scripts/piano_artifacts.py" \
+                 "$REPO_ROOT/scripts/piano_boot_container.py" \
+                 "$REPO_ROOT/scripts/piano-kernel-esp-update" \
+                 "$REPO_ROOT/initramfs/f2fs-disk-bootstrap" \
+                 "$STAGE/piano-tools/"
+            chmod 0755 "$STAGE/piano-tools/f2fs-disk-bootstrap" \
+                       "$STAGE/piano-tools/piano-kernel-esp-update"
+            # v4l2loopback 由本包拥有：它是给这一版内核编的外部模块，路径里的
+            # release 就是本包的 release。放进 updates/ 让它与内核模块树同生共死。
+            # 找不到就中止：少一个模块的 RPM 装上去相机起不来，而构建全程绿灯。
+            LOOPBACK=$(resolve_loopback_module) || {
+                echo "Error: no v4l2loopback.ko found for kernel-piano." >&2
+                echo "       Set LOOPBACK_MODULE to prepare-runtime-kernel.py's" >&2
+                echo "       v4l2loopback/v4l2loopback.ko built against this kernel." >&2
+                rm -rf "$STAGE"
+                exit 1
+            }
+            echo "--> Using v4l2loopback: $LOOPBACK"
+            LOOPBACK_RELEASE=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["kernel_release"])' "$PAYLOAD/manifest.json")
+            install -D -m 0644 "$LOOPBACK" \
+                "$STAGE/lib/modules/$LOOPBACK_RELEASE/updates/v4l2loopback.ko"
             tar -I 'zstd -6 -T0' -cf "$BUILD_TMP/SOURCES/kernel-payload-${KERNEL_VER}.tar.zst" -C "$STAGE" .
             rm -rf "$STAGE"
             echo "    Staged $(stat -c%s "$BUILD_TMP/SOURCES/kernel-payload-${KERNEL_VER}.tar.zst") bytes"
-            # kernel-piano is published to COPR too, but the generated .repo
-            # excludes it: a user-space DNF update cannot replace the Image the
-            # ESP boots, so a kernel from COPR would desync ESP and rootfs.
+            # kernel-piano is published to COPR too. A DNF update replaces the
+            # Image the ESP boots, and the package's %posttrans repacks the ESP
+            # container from the new kernel, so rootfs and ESP stay in step.
             rpmbuild --define "_topdir $BUILD_TMP" \
                      --define "_annobin_gcc_plugin %{nil}" \
                      -ba "$SPEC_FILE"

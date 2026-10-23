@@ -2,11 +2,9 @@
 
 构建来源由 `sources.lock.json` 固定。上游 main 的进展只用于审阅。更新文档不改变已构建镜像的来源，旧二进制也不会自动获得新实现。
 
-带日期的核对记录留在本地日志，不随仓库发布。
-
 ## 当前 pin
 
-构建消费的上游以 `sources.lock.json` 为准，当前 pin 的 commit 写在 `sources.lock.json` 里，文档不复述。其他消费源的 commit 也记在 `sources.lock.json`。研究与对照仓库登记在 `upstreams.json`，不参与构建。
+构建消费的上游以 `sources.lock.json` 为准，当前 pin 的 commit 写在 `sources.lock.json` 里。其他消费源的 commit 也记在 `sources.lock.json`。研究与对照仓库登记在 `upstreams.json`，不参与构建。本页的引用链接按当前 pin 固定到具体提交。
 
 ## 自动跟踪
 

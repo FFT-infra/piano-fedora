@@ -1,7 +1,7 @@
 # 已知问题
 
 这里只列仍未解决的问题，和已经定位、还要继续观察的噪声。已修复的缺陷不在
-这里，修复过程留在本地验收记录。每项写明当前证据和还缺什么。
+这里，修复过程留在本地验收记录。每项写明当前证据与复现条件。
 
 ## 显示与关屏
 
@@ -16,6 +16,34 @@
 `IRQ…: set affinity failed(-22)` 与 CMA 分配失败出现在关机 CPU 路径上，属既有
 噪声，未发现新增故障。
 
+旋转屏幕时画面会短暂花掉一下，随后自行恢复。复现条件是任何一次方向切换；
+`dmesg` 在同一秒内留下两条：
+
+```
+[drm:dpu_encoder_phys_vid_wait_for_commit_done:550] [dpu error]vblank timeout: 400000
+[drm:dpu_kms_wait_for_commit_done:529] [dpu error]wait for commit done returned -110
+```
+
+`400000` 是 `CTL_FLUSH` 寄存器读回的值，`0x400000` 即 `BIT(22)`。`dpu_hw_ctl.c`
+里 `DSC_IDX` 是 22，这一位代表 DSC 的 flush 请求，硬件没有在等待窗口内清掉它。
+等待超时在 `dpu_encoder_phys_vid.c` 的 `wait_for_commit_done` 里，
+`msecs_to_jiffies(50)`，即 50 ms；当前模式 144 Hz，相当于 7 帧。
+
+内屏是双 DSI 加 DSC 的面板，3200x2136，两路各 4 lane，链路固定 1197.5 Mbps，
+刷新率靠改水平前肩切换，DSC 为 8 bpp。旋转只改 DPU 图层的 transform，但合成
+器会重新提交整条管线（几何从 3200x2136 变成 971x1455、缩放 2.2），DPU 要重算
+图层划分和 DSC slice 边界。flush 位靠 vblank 中断清除，50 ms 内两次提交都没等
+到，第三次成功。
+
+启动日志里同一条 DSI/DPU 链上还有 `arm-smmu 3da0000.iommu … -110` 与
+`msm-mdss ae00000.display-subsystem … -110`，两者都是电源域依赖导致的 deferred
+probe。旋转时的 DSC flush 超时属于同一类时序余量不足，重试即恢复，之后不再
+累积（两次之后计数保持不变）。
+
+调大这个超时没有用。一次 vblank 在 144 Hz 下约 7 ms，50 ms 已经留了 7 帧余量，
+改大只会延长花屏持续时间。要真正消除得动 msm 驱动：在 transform-only 的提交里
+跳过 DSC flush，或在提交前显式等 DPU idle。这属于上游驱动的范围。
+
 ## 刷写与读回
 
 写 `sunuefi_root`（6.1 GB sparse）之后，设备侧的 ABL 会挂死。`lsusb` 仍能
@@ -29,7 +57,7 @@
 
 原厂 ABL 不实现 `fastboot fetch`。主机 fastboot 37.0.0 认得这个子命令，设备
 回 `Device does not support fetch command`，宿主上留下一个 0 字节读回文件。
-`sunuefi_esp` 分区也比镜像大（537899008 对 536870912 字节），即使换了支持
+`sunuefi_esp` 分区也比 512 MiB 的镜像大，即使换了支持
 `fetch` 的引导器，整份哈希也不会等于镜像摘要。读回只能作辅助证据，刷写正确
 与否最终以启动后的 `uname -r`、`findmnt /` 和进入所选桌面为准。
 
@@ -74,12 +102,12 @@ A 槽启动，不切活动槽，也不改 GPT。
   正常重启后选择器进入 Android。
 - Android → Linux：安装「SunUEFI 引导助手」模块（KernelSU/SukiSU），在模块页面
   选 Linux；没有模块时，开机前 3 秒按音量键选 Linux，选择会被保存。
-- 两次独立实测：`boot_android.img` 从请求页 target 0→2→0→2→0、
-  sequence 0→4；随后 `flash boot_a device-boot/boot_linux.img`（未签名，
-  SHA256 `8fc67dc4…`）直接进 Linux（target=2、sequence=1，40 秒），helper 回
-  Android（target=0、sequence=2，45 秒），模块重新采纳后再切 Linux
-  （target=2、sequence=3，120 秒），helper 再回 Android（target=0、
-  sequence=4，35 秒）。`ro.boot.slot_suffix` 始终是 `_a`，`sys.boot_completed=1`。
+- 两轮真机往返：`boot_android.img` 从请求页 target 0→2→0→2→0、
+  sequence 0→4；随后 `flash boot_a device-boot/boot_linux.img`（未签名）
+  直接进 Linux（target=2、sequence=1，约 40 秒），helper 回
+  Android（target=0、sequence=2，约 45 秒），模块重新采纳后再切 Linux
+  （target=2、sequence=3，约 2 分钟），helper 再回 Android（target=0、
+  sequence=4，约 35 秒）。`ro.boot.slot_suffix` 始终是 `_a`，`sys.boot_completed=1`。
 - 请求页偏移 37490688（0x23C1000），magic `SUNUEFI-NEXTv1`，两页相隔 4096
   字节滚动写入。
 
@@ -106,7 +134,7 @@ helper 优先读 Android 安装器维护的 ESP 记录
 BOOT，不重写内核；模块页面用它写请求页与重装引导。SukiSU root 仍在
 `init_boot_a`：`su -c id` 返回 uid=0、context `u:r:ksu:s0`。
 
-更早的脚手架 `piano_sunuefi_module.zip` 只有模块脚手架及根目录 request 程序，缺少 manager 要求的 bin/ 原生工具和策略/状态。它不能安装，也不要和上面的匹配模块混用。
+更早的 `piano_sunuefi_module.zip` 只包含模块结构与根目录 request 程序，缺少 manager 要求的 bin/ 原生工具和策略/状态。它不能安装，也不要和上面的匹配模块混用。
 
 `boot_a` 被重刷成另一份镜像（例如重新跑 `fastboot flash boot_a device-boot/boot_linux.img`）
 后，模块的 `install-state.json` 仍指向旧镜像，`switch linux` 会报
@@ -121,7 +149,7 @@ Android 实测运行在 SELinux Permissive，启动参数带 `selinux=permissive
 
 固定源码已包含 SC8541/MCA 直充支持，设备参数 cp_charge、hv_charge、
 charge_current、mipps_auth、charge_policy 都开启。这不等于实际达到 45 W。
-0036 不应重复套用到已有实现。
+补丁 0036 是这条驱动的历史参考，对应实现已经在固定内核里，不要重复套用。
 
 已有遥测是高电量下的一次采样：电量 94%，MCA USB online、PD_PPS，约
 8.60–8.74 V，sysfs 电压乘电流估算输入 12.075–21.429 W；双电池都 Charging，
@@ -129,31 +157,62 @@ charge_current、mipps_auth、charge_policy 都开启。这不等于实际达到
 最高 45 W 未证明，也没有外置功率计读数。需要真实充电器、线材和负载记录功率
 与温度。
 
-## 手写笔与输入
+## 传感器与自动旋转
 
-用户操作手写笔期间，libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip
-事件，压感 0–1，位置及倾斜变化正常。未捕获 TABLET_TOOL_BUTTON。蓝牙键盘/鼠标
-节点上的按键、捏握、防误触、绘图应用效果、充电与重连仍需分别验证。
+传感器走 SSC，不走 IIO。`libssc` 与 `iio-sensor-proxy-ssc` 都已装好，
+`qrtr_smd`、`qrtr_mhi` 与 `mhi` 三个模块加载后代理能拿到设备：
+`HasAccelerometer`、`HasAmbientLight`、`HasProximity` 全为 true，
+环境光有实际读数（例如 164 lux），`AccelerometerTilt` 随摆放姿态变化
+（平放 `face-up`，举起 `tilted-up`）。`/sys/bus/iio/devices` 为空是正常的，
+SSC 后端不经过 IIO 子系统。
 
-## 虚拟化
+Mutter 订阅 `AccelerometerOrientation`，自动旋转已实测：把平板从平放转成
+`left-up`，`GetCurrentState` 的逻辑显示器变换从 0 变成 1（顺时针 90°），
+屏幕跟着转。旋转锁为 false。罗盘没有对应属性，不参与这一链。
 
-正式内核已通过 RM 实时交接和单 vCPU VM_START；virtio-blk 上 64 MiB ext4 写入
-与读回通过，virtio-net 连通（`NET_OK=1 NET_RX=2`），三轮 disk+net 与一轮有界
-失败退出通过，进程、PID 与 socket 清理干净。GUI 实际创建和操作客体仍需人手在
-场确认，完整 SELinux 流程待测。SMP、UEFI、图形和 Incus 需要分别实现与验收，
-不由单 vCPU 结果推定。门槛见[虚拟化](virtualization.md)。
+## 手写笔
+
+libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压感 0–1，
+位置及倾斜变化正常，未捕获 TABLET_TOOL_BUTTON。设备节点是
+`Piano Focus Pen Pro`（`virtual:0022:5081`）与蓝牙侧的
+`Xiaomi Focus Pen Pro Mouse/Keyboard`。蓝牙键盘/鼠标节点上的按键、捏握、
+防误触、绘图应用效果、充电与重连仍需分别验证。
 
 ## 触屏、网络、音频与相机
 
-这些模块已有实机行为记录，持续负载下的表现还要单独取证：负载下的持续触控
-输入、浏览器实际硬解、音频长时间录放、前摄与后摄在正常光线下取帧。全部项目
-验收前，设备整体状态记为未验证。验收项见[安装指南的真机验收](installation.md#真机验收清单)。
+- 触控：45 秒持续单指划动，SYN 报文 97 次/秒，43/45 秒有事件（两个空秒
+  是换手间隙），NVT 中断同期增长 5425。X 覆盖 5395–28696、Y 覆盖
+  4591–19408，全屏可达；多点 slot 0–5 都出现过。相邻坐标跳变的 p95 为 2770，
+  来自多指交替时的 slot 切换，不是丢帧。
+- 音频：120 秒播放无 xrun/underrun，音量与 sink 状态全程不变；130 秒录音
+  每 10 秒分段都有信号，段均值在 -33.6 到 -18.5 dB 之间，没有静音段。
 
-编解码本身已复验通过。`make test-device-media` 跑完四项：
-H.264 与 HEVC 各 300 帧的 GOP60 硬件编码与解码，以及各 300 帧带 B 帧的硬件
-解码，逐帧摘要与软件解码一致，Iris 中断在每段都有增长。两项前置依赖在目标
-镜像上不满足，脚本已相应放宽或改用外部素材，细节留在验收记录。浏览器里
-是否走向硬件解码仍要单独看。
+- 相机：前摄与后摄都能正常成像，详见下方"取帧"两段。整机验收还没走完，
+  设备整体状态仍记为未验证。验收项见
+  [安装指南的真机验收](installation.md#真机验收清单)。
+
+编解码本身已复验通过。H.264 与 HEVC 各 300 帧的 GOP60 硬件编码与解码，
+以及各 300 帧带 B 帧的硬件解码，逐帧摘要与软件解码一致，Iris 中断在每段都有
+增长。验收脚本在维护者机器上驱动平板运行，命令见[维护与验收](internals.md#真机取证脚本)；
+目标镜像没有 `make` 和 `libx264`/`libx265`，素材由主机准备。
+
+浏览器硬解已单独取证，三家结果不同：
+
+| 浏览器 | 能否播 H.264 | 是否硬解 |
+|---|---|---|
+| Fedora Chromium 155 | 装上 `libavcodec-freeworld` 后能 | 否 |
+| Google Chrome 156（aarch64） | 能 | 是，默认开启 |
+| Firefox 158 | 能 | 是，默认开启 |
+
+Chromium 不走硬解有两个叠加原因。Fedora 的 Chromium 链接系统 `libavcodec`，
+而 `ffmpeg-free` 在构建时用 `--disable-decoder` 去掉了软件 H.264，所以原样
+连 MP4 都打不开，`FFmpegDemuxer: open context failed`；补上 RPM Fusion 的
+`libavcodec-freeworld` 才能播放。播放之后它仍然交给软件解码：GPU 进程没有打开
+`/dev/video0`，Iris 中断在整个播放窗口内不增长。Chrome 自带 FFmpeg 与 V4L2
+解码路径，Firefox 走自己的 VA-API 路径，两者都直接把 `msm_drv_video.so` 用起来。
+
+验收判定不能只看浏览器自己报的状态：软件解码同样拉高 GPU 中断。脚本同时要求
+Iris 中断增长和 `/dev/video0` 有持有者，两者缺一即判为非硬解。
 
 相机另有一条容易误判的路径：`piano-camerad` 在没有上游产帧方时会给
 v4l2loopback 写黑帧，所以“节点能取到帧”不等于传感器在出图。判定要看 camerad
@@ -164,16 +223,108 @@ v4l2loopback 写黑帧，所以“节点能取到帧”不等于传感器在出�
 复测时两颗传感器都走上了 CAMSS 产帧路径。用 `gst-launch` 从两个
 loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255），画面是正常
 室内成像；后摄末帧均值 24、最大值 113，是低照度噪声，当时设备平放在桌面上。
-后摄要举起来对着亮处再看一次，才算画面验收。
+
+后来把两颗放在同一时段一起取，前摄末帧 p50=94、p90=180、p99=255，四乘六
+分块均值从 20 到 216，空间结构清楚；后摄 p50=30、p90=46，分块均值在 23 到 37
+之间，平坦且暗。后者能出图但对着暗处，仍按低照度记录，不算画面失败。
+
+在采光正常的同一时段连取两轮后，两颗都给出了稳定且可重复的空间结构：
+后摄 p50 为 78 与 65、p90 为 209 与 180，四乘六分块均值 16.9 到 197.9；
+前摄两轮 p50 都是 112、p90 为 193 与 194，分块均值 20.2 到 200.7。
+两颗都能正常成像，之前后摄那张暗帧是取帧时对着暗处，不是相机本身的问题。
+
+取帧有个时序问题容易误判：`piano-camerad` 在 loopback 没有读者时会停流，
+来一个读者就重新起流，而自动曝光每轮都要重新收敛。刚起流的前几帧是黑的，
+灰度会从 1 单调爬到稳定值。用第一帧判断画面会把正常出图判成黑屏，必须看
+收敛之后的帧。上面前摄与后摄两组数据的第一帧与末帧差距明显：
+后摄第一帧 p50=30、同一轮末帧 p50=78，只取开头就会把它误判成暗场。
+
+## 指纹、红外与 HDR
+
+这三项以前被合写成一句"依赖闭源 TEE 固件，主线不支持"。逐项核实后只有指纹
+跟 TEE 有关，红外与 HDR 是另外两回事。
+
+### 指纹
+
+侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。主线没有
+`drivers/input/fingerprint/` 这个目录，厂商树里的 `mi_fp` 也只做电源、复位、
+中断和 netlink 上报，图像采集与比对全在 TA 里，移植过来不解决任何实质问题。
+
+主线的 QSEECOM 只白名单 `qcom.tz.uefisecapp` 一个应用，不提供通用 TA 客户端
+接口，任何第三方 TA（含 `gfpia`）都无法通过它启动。`drivers/tee/qcomtee/`
+自 6.18 起在主线，但走 object-IPC，与 piano 的 legacy QSEECom HAL 协议不同，
+不能替代。
+
+用户态没有 libfprint 后端能驱动 `gfpia`。唯一跑通的 Goodix + QSEE 完整栈针对
+的是另一颗 TA（`gfenu`）、另一套传感器，且明确未上游。
+
+### 红外
+
+消费级红外发射器，接在 QUPv3 SE15（SPI `0x89c000`）。它不是结构光、ToF 或
+接近传感器，这个设备**只发不收**——所以"没有 IR 输入设备节点"不能作为它
+不支持的判据，正确的检查是 `/dev/lirc0` 存在且能发码。
+
+主线 `drivers/media/rc/ir-spi.c` 完整实现了 CIR 发射，但当前这条链上有四处
+缺口叠在一起：
+
+- 设备上 `/dev/lirc*` 与 `/sys/class/rc/` 都不存在；
+- 内核配置是 `CONFIG_RC_CORE=m` 但 `# CONFIG_LIRC is not set`，而 `IR_SPI`
+  依赖 `LIRC`；
+- DT 里没有 SE15 的节点：设备上唯一的 SPI 设备是触控
+  （`/soc/qcom,qupv3_1_geni_se@ac0000/spi@a88000/touchscreen@0`），
+  `0x89c000` 那段不存在；
+- 主线驱动认的 compatible 是 `ir-spi-led`，而厂商 DT 写的是 `ir-spi`。
+
+要让它出 `/dev/lirc0`，得补 SE15 控制器节点、把 compatible 改对、打开
+`CONFIG_LIRC` 与 `CONFIG_IR_SPI`。原厂的波形是 32 位 SPI 字、1.92 MHz 采样、
+40% 占空比，主线驱动是 16 bits/pulse、默认 50%，载波会有偏差，需要小改驱动
+才能完全一致。
+
+### HDR
+
+面板硬件支持 HDR10，30bpp DSC 传输。Linux 侧没有输出路径：msm 不挂
+`HDR_OUTPUT_METADATA` 属性，也没有接 DRM 的 colorop 管线。SM8750 的 DSPP
+gamma 块直到 2026 年 9 月才修好。目前唯一的 msm 静态 HDR 系列只覆盖 DP 与
+eDP，内屏走 DSI，用不上。
+
+面板驱动本身也不在主线（`drivers/gpu/drm/panel/` 里没有 nt36532），我们的
+补丁只把 `display_info.bpc` 报对，提交信息自己写明"不声称支持 HDR 或
+12-bit 传输"。这一项要等上游 DRM 层的实质推进，本机单方面做不了。
+
+## 内核在线升级
+
+`dnf upgrade` 现在会带上 `kernel-piano`，事务收尾时由 `%posttrans` 重建
+initramfs 并重打 ESP 上的 `boot.img`。这条路径在平板上跑过一次真实升级
+（`7.2.9-1` → `7.2.9-3`）：`%posttrans` 重建了 initramfs，ESP 上的 `Image`、
+`initramfs` 与 `boot.img` 都换了，`.bak` 三份都在，重启后 `uname -r` 是新的
+内核，`graphical.target` 起来，`systemctl --failed` 为空，`v4l2loopback` 从新
+模块树的 `updates/` 加载。
+
+失败边界是写盘失败时旧 `boot.img` 保持不动，设备继续用旧内核启动。装好但起不
+来的内核没有自动回滚，回滚方式见 `docs/copr-repository.md`。
+
+挂起路径上每次会打 4 条 `qdss already disabled` / `qdss already unprepared`
+（`drivers/clk/clk.c` 的 `clk_core_disable` / `clk_core_unprepare`，从
+`amba_pm_runtime_suspend` 进来）。两轮挂起都复现，唤醒正常、桌面恢复、
+`systemctl --failed` 为空，目前只有日志噪声。来源是 coresight qdss 的时钟在
+runtime PM 里被重复关闭，属于上游驱动的问题，不是本仓库的补丁。
+
+`kernel-piano` 是 installonly 包，升级后旧内核的模块树与 `modules.weakdep`、
+`updates/` 会留在 `/usr/lib/modules/` 下（rpm 删掉的是它自己拥有的文件，这些
+是 `depmod` 之后生成的）。它们不影响启动，`dnf` 也不会再引用；要清掉只能手工
+删目录。
+
+manifest 按 NVRA 命名（`/usr/share/piano/kernel-manifest-<version>-<release>.json`）。
+固定名字会让两个版本争同一个路径，rpm 直接中止升级事务——这条在设备上撞过
+一次，症状是 `file ... conflicts with file from package`。
 
 ## 仓库整理
 
 - `README.md` 与 `README.en.md` 的骨架由 `tests/check_readme_parity.py` 锁定：
   标题层级数量、语言切换行、指向的文档列表必须一致。改一版要同步另一版。
-- `docs/public-release-gaps.md` 的电极校准一项仍待许可决定。在此之前不要把
-  带校准表的 bundle 挂成公开 Release。
+- `docs/public-release-gaps.md` 的电极校准一项已决定：数据早已在公开仓库与公开 COPR 里，`NOTICE` 写明来源，发布不再因此阻挡。`release.yml` 仍默认只建 draft，转公开要显式传 `publish=true`。
 - 三个 UEFI 补丁的 `series.json` 里 `note` 引用的文档分两类。`docs/status.md`、
   `docs/ufs-dedicated-area-audit.md` 与 `docs/piano-full-ddr-producer-gaps.md`
-  在上游 SunUEFI 仓库，按 `sources.lock.json` 的 pin 取。`docs/device-acceptance-20261015.md`
+  在上游 SunUEFI 仓库，按 `sources.lock.json` 的 pin 取。还有一份设备验收记录
   已移到不入库的本地笔记，这条引用是历史记录。改 `series.json` 会改变
-  `project_source_sha256`，现有 bundle 的 UEFI 来源校验会失效，所以先不动。
+  `project_source_sha256`，现有 bundle 的 UEFI 来源校验会失效，因此本轮不改它。

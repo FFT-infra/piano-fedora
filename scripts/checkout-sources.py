@@ -40,11 +40,12 @@ def checkout(url, commit, destination, full_history=False, sparse_paths=()):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--output", type=Path, required=True)
-    ap.add_argument("--mode", choices=("check", "boot", "device", "graphics", "installer", "gunyah"), default="check")
+    ap.add_argument("--mode", choices=("check", "boot", "device", "graphics", "installer",
+                                       "gunyah", "loopback"), default="check")
     ap.add_argument("--kernel", action="store_true")
     args = ap.parse_args()
-    if args.mode == "gunyah" and not args.kernel:
-        ap.error("the Gunyah source mode requires --kernel")
+    if args.mode in ("gunyah", "loopback") and not args.kernel:
+        ap.error(f"the {args.mode} source mode requires --kernel")
     output = args.output.resolve()
     if not output.is_relative_to(ROOT / "build"):
         raise ValueError("source outputs must stay in the ignored build directory")
@@ -59,6 +60,10 @@ def main():
         names = ["Mu-Silicium", "Mu-Silicium/Mu_Basecore", "simple-init"]
     if args.mode == "device":
         names += ["piano-firmware-current", "piano-sensors-current", "audioreach-topology", "v4l2loopback"]
+    if args.mode == "loopback":
+        # kernel-piano 拥有 v4l2loopback，所以矩阵也要这份锁定的源码；外部
+        # 模块还需要内核源码树与 Gunyah 派生输入，那两样由 --kernel 带来。
+        names = ["v4l2loopback"]
     for name in names:
         path = "upstream/" + name
         owner = sun if "/" not in name else sun / "upstream" / name.rsplit("/", 1)[0]

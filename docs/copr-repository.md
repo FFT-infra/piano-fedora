@@ -1,12 +1,37 @@
 # COPR 软件源
 
-设备装好 Fedora 后，用户态包（配置、固件、相机、触控、传感器、VA-API、调度器）可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
+设备装好 Fedora 后，配置、固件、相机、触控、传感器、VA-API、调度器和内核都可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
 
-**当前状态：10 个包已发布，用户态可以 `dnf upgrade` 升级。** 项目是 `xinyang26/piano-fedora`，`fedora-44-aarch64` 仓库开着，仓库里现在有全部 10 个包名：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-camera`、`piano-fedora-configs`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。其中 `kernel-piano` 只供审计，仓库文件用 `exclude` 排除，见下一段。核对方法见下面的启用仓库一节，或在设备上跑 `python3 scripts/verify-copr-device.py`。
+**当前状态：10 个包已发布，全部可以 `dnf upgrade` 升级，内核在内。** 项目是 `xinyang26/piano-fedora`，`fedora-44-aarch64` 仓库开着，仓库里有全部 10 个包名：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-camera`、`piano-fedora-configs`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。核对方法见下面的启用仓库一节，或在设备上跑 `python3 scripts/verify-copr-device.py`。
 
-**内核不在升级范围内。** `kernel-piano` 会发布进仓库供审计，但仓库文件用 `exclude=kernel-piano*` 排除它。原因在引导路径上：SunUEFI 只读 ESP 的 `/EFI/Piano/stable/boot.img`（`PianoEspBootSource.c` 里的固定路径），`PianoProductCore.c` 也只调 `PianoRawLinuxLoadStable`，没有走 `Image.efi` + `PianoProductOsController` 那条路。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，ESP 上的 `boot.img` 不动，装上 COPR 的内核就是让两者脱钩——一台起不来的机器，而且 SunUEFI 没有 boot counter，新内核失败不会自动回滚。
+**内核怎么升级。** 固件只读 ESP 的 `/EFI/Piano/stable/boot.img`（`PianoEspBootSource.c` 里的固定路径），用户态 `dnf upgrade` 本身只改 `/usr/lib/modules`，两者本来是脱钩的。`kernel-piano` 的 `%posttrans` 把这条链接上：升级事务收尾时它先 `depmod -a <release>`，再用刚装上的内核重建 initramfs，最后把新内核、新 initramfs 和 ESP 上原有的 `board.dtb` 重新打成 Android boot v2 容器，原子替换 `boot.img`。重启之后固件读到的是新内核。
 
-内核更新跟着 release bundle 走。切换条件写在这里，方便日后复查：上游把 `simpleinit.static.uefi.json` 的 `Image.efi` 配置改成 `enabled: true` 且 `PianoProductCore.c` 开始调 `PianoProductOsController` 时，或者引导链引入 boot counter 之后，就能迁移到 `kernel-install` / UKI，把内核纳入设备侧升级。
+不需要重编固件，依据在固件自己的代码里：`PianoRawLinuxLoadStable()` 把 `boot.img` 自身的 sha256 存进 `AcceptedSha`，固件不要求这份文件由谁签发，只要求它能被解析成 Android boot v2 容器。
+
+`board.dtb` 用的是 ESP 上那份，不是内核包里的 `/boot/dtb/qcom/sm8750-xiaomi-piano.dtb`。两者不是同一个文件：ESP 上那份叠加过板级 dtbo，内核包里的只是单板 DTB。
+
+**失败边界。** 任何一步失败，`boot.img` 保持原样，设备继续用上一个内核启动。写入顺序是：先打 `.boot.img.new` 并 fsync，逐段解包比对通过，把旧文件复制成 `boot.img.bak`，最后 `os.replace` 换上去。
+
+**实机记录。** `7.2.9-1` → `7.2.9-3` 在平板上走过一次：事务收尾时 initramfs 重建（6 个早期模块）、ESP 的 `Image`、`initramfs`、`boot.img` 三份都换掉并各留一份 `.bak`，审计记录写到 `/var/lib/piano/kernel-esp/<release>.json`。重启后 `uname -r` 是升级后的 `7.2.9` release，`graphical.target` 与 GDM 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载，`/dev/video40`、`/dev/video41` 在。
+
+同一条路径也从 COPR 走过一次 `dnf reinstall kernel-piano`（设备连上 Wi-Fi，包从 `copr:copr.fedorainfracloud.org:xinyang26:piano-fedora` 下载，公钥同源拉取并校验）：事务成功，审计记录里 `changed` 三项全为 `false`，`boot.img` 摘要没变——同样的输入重打出的容器逐字节相同，所以重复触发不会重写 43 MB。
+
+挂起与唤醒各测了两轮，都能回到桌面，`systemctl --failed` 保持为空。挂起路径上每次会打 4 条 `qdss already disabled/unprepared` 的 clk 警告（`amba_pm_runtime_suspend` 对 coresight qdss 重复 disable），不影响唤醒，没有对应的故障现象。
+
+manifest 的名字带 NVRA：`kernel-piano` 是 installonly，升级时新旧版本同时安装，固定的 `/usr/share/piano/kernel-manifest.json` 会让两个包争同一路径，rpm 报 `file ... conflicts with file from package` 并中止整个事务。`%posttrans` 读的是自己那一版，并把文件名传给 `piano-kernel-esp-update`，盘上有多份 manifest 时工具不猜。
+
+已经装好但起不来的内核没有自动回滚。上游没有 boot counter（`PianoNvJournal` 是现成的双槽 NV journal，只是没有人往里写尝试计数），回滚是手工的：
+
+```bash
+# 恢复上一个容器，重启即回到旧内核
+sudo cp /boot/efi/EFI/Piano/stable/boot.img.bak /boot/efi/EFI/Piano/stable/boot.img
+sudo cp /boot/efi/EFI/Piano/stable/Image.bak /boot/efi/EFI/Piano/stable/Image
+sudo cp /boot/efi/EFI/Piano/stable/initramfs.bak /boot/efi/EFI/Piano/stable/initramfs
+```
+
+`dnf history undo` 只回滚 RPM，不动 ESP，所以单跑它不会让设备回到旧内核。`kernel-piano` 提供 `kernel-core`，旧模块树与 `/boot/vmlinuz-*` 在 `installonly_limit` 之内会保留下来，但把它们重新装进 ESP 需要再走一次打包。
+
+`Image.efi` 那条路仍然帮不上忙。`PianoProductOsController.c` 里定义了 `\EFI\Piano\stable\Image.efi` + `piano.dtb` + `initramfs.cpio` 的加载路径，但模块没有绑定到产品调用链，而且它对三份载荷做编译期固定哈希与长度校验，接上之后换内核反而必须重编固件。
 
 ## 为什么是 COPR 重建，而不是上传二进制
 
@@ -35,7 +60,6 @@ CI 的 RPM 矩阵、COPR 的重建产物与 bundle 里的 RPM 版本号相同但
 [copr:copr.fedorainfracloud.org:xinyang26:piano-fedora]
 gpgcheck=1
 repo_gpgcheck=0
-exclude=kernel-piano*
 ```
 
 装好系统后直接：
@@ -45,7 +69,7 @@ sudo dnf makecache
 sudo dnf upgrade --refresh
 ```
 
-`kernel-piano` 被排除，所以升级只动用户态包。
+内核升级会重写 ESP 的 `boot.img`，所以升级前先确认电量充足，别在升级事务中间断电。
 
 ## 核对与回滚
 
@@ -54,8 +78,12 @@ sudo dnf upgrade --refresh
 dnf repolist --enabled | grep piano
 rpm -q gpg-pubkey --qf '%{SUMMARY}\n' | grep -i copr
 
-# 确认内核不会被这条源替换
+# 确认内核在这条源里、升级会带上它
 dnf list --showduplicates kernel-piano
+dnf upgrade --assumeno | grep kernel-piano
+
+# 看上次内核升级做了什么（重建的 initramfs 摘要、模块数、容器摘要）
+cat /var/lib/piano/kernel-esp/*.json
 
 # 停用仓库
 sudo dnf config-manager setopt copr:copr.fedorainfracloud.org:xinyang26:piano-fedora.enabled=0
@@ -73,16 +101,13 @@ sudo dnf makecache
 
 ## 边界
 
-- COPR 只覆盖用户态包。ESP、`boot.img`、内核、initramfs 和 F2FS 根镜像仍要走 release bundle 和安装文档。
+- COPR 覆盖全部 10 个包，包括内核。ESP 上的 `boot.img` 由 `kernel-piano` 的 `%posttrans` 维护，但 `board.dtb` 不换——它来自固件的板级叠加，升级路径只复用 ESP 上已有那份。
 - 设备的 `.repo` 只指向项目自己的 COPR。Hyprland 档在构建期另加第三方源
   `lionheartp/Hyprland`（Fedora 44 官方仓库没有 Hyprland 全家），仓库以
   `--repofrompath` 临时加入并校验公钥，不写进镜像的持久配置。四档里只有
   Hyprland 用这个源，其余三档只连官方仓库；细节见[桌面档](desktops.md)。
 - 重建产物和 CI 矩阵产物不是逐字节同一份。版本号相同，构建环境不同。要完全一致的二进制就用 bundle 里的 RPM，不要用 COPR。
-- 设备目前没有默认路由，只有 USB NCM 的 `192.168.77.0/30`。接上 Wi-Fi 之前 `dnf` 连不上 COPR。这是设备侧的网络配置，不是仓库的问题。
 
 ## 设备侧验证
 
-`verify-copr-device.py` 已在平板上跑通，只读模式与 `--install-test` 都通过：仓库里的 10 个包名齐全，公钥可下载，`exclude=kernel-piano*` 生效，`dnf upgrade --assumeno` 不涉及内核。
-
-这一步同时修掉了脚本自身的三处缺陷：repodata 的 `.xml.gz` 被当文本解码、公钥地址被拼到 `fedora-<rel>-<arch>/` 子目录、`--setopt` 被拼成单个 argv 导致 `exclude` 从未生效。三处都补了离线断言。
+`verify-copr-device.py` 在平板上跑：只读模式核对仓库里的 10 个包名齐全、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包；`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano` 且仍然要求确认。
