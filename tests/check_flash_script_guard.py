@@ -194,7 +194,7 @@ def check_docs():
     for required in ("THIS INSTALLER DOES NOT PARTITION A STOCK TABLET.",
                      "sunuefi_esp and sunuefi_root",
                      "follow docs/installation.md section 4 first",
-                     "Android stays bootable from the same",
+                     "Android stays bootable from Slot A",
                      'must be "a" for this first-install path',
                      "partition-size:sunuefi_root",
                      "expanded_bytes"):
