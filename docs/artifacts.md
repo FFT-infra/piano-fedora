@@ -111,7 +111,7 @@ piano-<tag>-<档位>.sha256             这一档已上传文件的摘要
 
 `SHA256SUMS` 在装配完之后按目录里的实际内容生成。`SHA256SUMS` 只列真实存在的文件，所以 `sha256sum -c SHA256SUMS` 在归档里与手动路径下都能直接过。清单里混进未发布的成员时，手动路径恒返回 1。
 
-打包固定 `--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`，同一档位重跑产出相同字节。归档打完后先解回来与装配目录比对，不一致就停下。
+打包固定 `--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`，同一档位重跑产出相同字节。归档打完后先解回来与打包前的暂存目录比对，不一致就停下。
 
 成员表只有一处定义：`scripts/release-assets.py` 的 `BUNDLE_MEMBERS`、`EXCLUDED_BUNDLE_FILES` 与 `ARCHIVE_FILES`/`ARCHIVE_DIRS`。`release.yml` 按它装配，`check-bundle` 拒绝成员表不认识的 bundle 文件。
 

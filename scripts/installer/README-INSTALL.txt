@@ -131,7 +131,7 @@ Step 1 - Verify the downloaded files:
    sha256sum -c SHA256SUMS
    (cd root-install && sha256sum -c SHA256SUMS)
    (macOS: use "shasum -a 256 -c SHA256SUMS")
-   Run these commands in the staging folder. Every line must say OK.
+   Run these commands in the staging directory. Every line must say OK.
 
 Step 2 - Confirm the prepared root exists:
    test -f root-install/pianoroot.f2fs.sparse.img
