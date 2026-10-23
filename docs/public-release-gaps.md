@@ -1,6 +1,6 @@
 # 公开分发前的个人化与许可缺口
 
-流水线能把系统装上这台平板，但有几处把「这一台、这一个人」的东西固化进了构建期。自用不受影响。把 bundle、root-install 或 GitHub Release 当公开物发布之前，要逐项处理下表。
+流水线能把系统装上这台平板，但有几处把「这一台、这一个人」的东西固化进了构建期。自用不受影响。把 bundle、root-install 或 GitHub Release 当公开物发布之前，要按下表逐项处理。
 
 `release.yml` 的两个输入控制公开范围。`publish` 默认 `false`，跑完停在 draft。
 `prerelease` 默认 `false`，转公开时决定是否标成 pre-release。转公开必须显式传参，
@@ -8,7 +8,7 @@
 
 | 项 | 位置 | 现状 | 公开分发的问题 | 状态 |
 | --- | --- | --- | --- | --- |
-| SSH 管理公钥 | `scripts/installer/flash-linux.sh` 与 `scripts/install-f2fs.py` 的 `--ssh-key`，设备侧 `piano-first-boot-ssh-key.service` | 镜像里不带 `authorized_keys`。刷写脚本在 SHA256、来源与分区校验之后把公钥写进 ESP 的 `/piano-ssh-key.pub`，首启服务导入后删除。不传 `--ssh-key` 就只保留密码登录 | 已解决 | 完成 |
+| SSH 管理公钥 | `scripts/installer/flash-linux.sh` 与 `scripts/install-f2fs.py` 的 `--ssh-key`，设备侧 `piano-first-boot-ssh-key.service` | 镜像里不带 `authorized_keys`。一键脚本在 SHA256、来源与分区校验之后把公钥写进 ESP 的 `/piano-ssh-key.pub`，首启服务导入后删除。不传 `--ssh-key` 就只保留密码登录 | 已解决 | 完成 |
 | 电极校准（厂商数据） | `packages/xiaomi-piano-thp/usr/share/piano/touch/piano-{csot,boe}.json` 与 `usr/share/piano/pen/calibration/piano-{csot,boe}.ini`，来源是仓库密钥 `TOUCH_CALIBRATION_TGZ_B64` 里的原厂 INI | 原厂 INI 本身不进 Git，但从它提取的触控校准表与笔校准数值已经提交（`source_sha256` 指回 INI），并随 RPM 分发 | 许可不明的厂商数据已经进入公开仓库与镜像。INI 不进 Git 不等于数据没有公开 | 已决定：承认已公开，`NOTICE` 写明来源与保留意见，发布照常。下一轮拆成独立的 `piano-calibration` 可选包，主镜像不带 |
 | 已知默认密码与自动登录 | `scripts/finalize-fedora-rootfs.py:21`（口令常量）、`:743`（自动登录由档位落盘）、`:845`（manifest 里的登录证明） | `piano` 用户使用文档化默认密码 `piano123456`，自动登录，root 锁定 | 拿到同一镜像的任何人都能直接进桌面 | 已决定：默认密码作为产品默认值保留，文档继续写明。不强制改密，不生成随机密码，自动登录保持现状 |
 | 真机序列号 | `docs/installation.md`、`tests/check_manual_flash_flow.py` | 已改为 `<serial>` 与 `SN-TEST-1` | 已解决，历史提交里仍有 | 完成（历史未重写） |
