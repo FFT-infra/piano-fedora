@@ -26,17 +26,18 @@ needed; each is 1-3 GiB), then:
    bash unpack-release.sh --desktop <name>
    unzip piano-installer-<tag>.zip
 A release can carry several desktops (gnome, kde, niri, hyprland). The ESP,
-kernel and initramfs are identical across them and are published once; the
-root-install assets are published per desktop as
-root-install-pianoroot-<desktop>.f2fs.sparse.img.zst,
-root-install-manifest-<desktop>.json and so on. --desktop picks which desktop's
-root goes into root-install/. It can be omitted when the release carries only
-one desktop; with several desktops the script lists them and stops. See
+kernel and initramfs are identical across them and are published once, zstd
+compressed; the root is published per desktop as
+root-install-pianoroot-<desktop>.f2fs.sparse.img.zst, and that desktop's
+manifests as manifests-<desktop>.tar.zst. --desktop picks which desktop's root
+goes into root-install/. It can be omitted when the release carries only one
+desktop; with several desktops the script lists them and stops. See
 docs/desktops.md for what each desktop provides.
 unpack-release.sh checks the assets you downloaded against
-RELEASE-SHA256SUMS, merges the >2 GiB pieces, decompresses the zstd root
-transport, unpacks the per-desktop manifests-<desktop>.tar.zst, and leaves the
-folder in the layout below. The boot tools asset
+RELEASE-SHA256SUMS, merges the >2 GiB pieces, decompresses the zstd images
+(sunuefi_esp.img.zst, boot_sunuefi.img.zst, PianoUEFI-product.img.zst and the
+root transport), unpacks the per-desktop manifests-<desktop>.tar.zst, and
+leaves the folder in the layout below. The boot tools asset
 (piano-boot-tools-<tag>.tar.zst) generates device-boot/boot_linux.img for this
 tablet; that image itself is never shipped in the release.
 
@@ -58,8 +59,9 @@ Required Files in this Folder:
   - SHA256SUMS                     (root-install checksums)
 
 unpack-release.sh produces bundle-manifest.json, root-image-manifest.json,
-source-runs.json and SHA256SUMS from manifests-<desktop>.tar.zst; keep them
-next to the images.
+source-runs.json and SHA256SUMS from manifests-<desktop>.tar.zst, and unpacks
+that archive's root-install/ entries into root-install/; keep them next to the
+images.
 
 The release does not ship the sealed 8 GiB build image
 (pianoroot.f2fs.img.zst) or the bundle's sparse copy: both hold the same root

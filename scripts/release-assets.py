@@ -17,6 +17,10 @@
     python3 scripts/release-assets.py classify <name>
     python3 scripts/release-assets.py name <name> <desktop>
     python3 scripts/release-assets.py platform
+    python3 scripts/release-assets.py platform-name <name>
+    python3 scripts/release-assets.py platform-compressed
+    python3 scripts/release-assets.py manifest-members
+    python3 scripts/release-assets.py archive-members
 """
 
 import argparse
@@ -47,15 +51,27 @@ PLATFORM_ASSETS = (
     "ffmpeg-manifest.json",
 )
 
-# 每档的 bundle manifest 不单独发，打成一个 tar 发布。装机脚本要读它们
-# （flash-linux.sh 用 bundle-manifest 与 root-image-manifest 证明
-# root-install 来自这个 bundle，install-f2fs.py 的首装还要读
-# source-runs），但它们全是给脚本读的 JSON，没有一个需要单独点开。
-# 逐个发会让每档占 6 个资产条目，四档就是 24 个。
+# 三份镜像压缩发布，Release 里的名字是规范名加 `.zst`。
+#
+# ESP 是 512 MiB 的 ext4，绝大部分扇区是零，zstd -10 后只剩 36 MiB；另外
+# 两份也各能省一半。不压缩时每个用户白下 510 MiB，比资产条数重要得多。
+# 装机脚本读的仍是解压后的规范名，由 unpack-release.sh 还原；从源码构建时
+# deploy-bundle 里本来就是解压状态，脚本会跳过。
+PLATFORM_COMPRESSED = (
+    "PianoUEFI-product.img",
+    "sunuefi_esp.img",
+    "boot_sunuefi.img",
+)
+
+# 每档的 bundle manifest 与 root-install 的两份小文件不单独发，打成一个 tar
+# 发布。装机脚本要读它们（flash-linux.sh 用 bundle-manifest 与
+# root-image-manifest 证明 root-install 来自这个 bundle，install-f2fs.py 的
+# 首装还要读 source-runs），但它们全是给脚本读的 JSON 与摘要，没有一个需要
+# 单独点开。逐个发会让每档占 9 个资产条目，四档就是 36 个。
 DESKTOP_BUNDLE_ARCHIVE = "manifests.tar.zst"
 
-# 打进 DESKTOP_BUNDLE_ARCHIVE 的成员。这是唯一一处定义：
-# release.yml 的 tar 命令与 unpack-release.sh 的解包都按它来，
+# 打进 DESKTOP_BUNDLE_ARCHIVE 的成员，相对 deploy-bundle 根目录。这是唯一
+# 一处定义：release.yml 的 tar 命令与 unpack-release.sh 的核对都按它来，
 # tests/check_release_assets.py 逐项比对，防止两边分叉。
 MANIFEST_MEMBERS = (
     "bundle-manifest.json",
@@ -66,10 +82,16 @@ MANIFEST_MEMBERS = (
     "SHA256SUMS",
 )
 
-# root-install 侧：每档各一份，名字走同一条规则。
+# 同一个归档里还带这一档 root-install 的两份小文件。它们来自 prepare-install
+# 而不是 deploy-bundle，所以单独列；`root-install/` 前缀让解包后直接落在
+# 装机脚本要求的位置，不需要再挪一次。
+ROOT_INSTALL_MEMBERS = (
+    "root-install/root-install-manifest.json",
+    "root-install/SHA256SUMS",
+)
+
+# root-install 侧：只有 root 传输镜像单独发。清单与摘要进了归档。
 DESKTOP_INSTALL_ASSETS = (
-    "root-install-manifest.json",
-    "root-install-SHA256SUMS",
     "root-install-pianoroot.f2fs.sparse.img.zst",
 )
 
@@ -82,6 +104,15 @@ def published_name(name, desktop):
     if dot:
         return f"{stem}-{desktop}.{rest}"
     return f"{name}-{desktop}"
+
+
+def platform_published_name(name):
+    """平台资产在 Release 里的名字：三份镜像加 `.zst`，其余同名。
+
+    `unpack-release.sh` 不查这张表，它只认「同名文件在就用、`.zst` 在就解压」，
+    所以这条规则在 shell 侧没有第二份实现。
+    """
+    return f"{name}.zst" if name in PLATFORM_COMPRESSED else name
 
 
 def classify(name):
@@ -107,16 +138,29 @@ def main(argv=None):
     named.add_argument("name")
     named.add_argument("desktop")
     sub.add_parser("platform", help="打印全部平台资产，一行一个")
+    sub.add_parser("platform-compressed", help="打印压缩发布的平台资产，一行一个")
+    named_platform = sub.add_parser("platform-name", help="打印平台资产在 Release 里的名字")
+    named_platform.add_argument("name")
     sub.add_parser("manifest-members", help="打印打进 manifests.tar.zst 的成员，一行一个")
+    sub.add_parser("archive-members", help="打印归档里的全部成员，含 root-install 那两份")
     args = parser.parse_args(argv)
     if args.command == "platform":
         print("\n".join(PLATFORM_ASSETS))
         return 0
+    if args.command == "platform-compressed":
+        print("\n".join(PLATFORM_COMPRESSED))
+        return 0
     if args.command == "manifest-members":
         print("\n".join(MANIFEST_MEMBERS))
         return 0
+    if args.command == "archive-members":
+        print("\n".join(MANIFEST_MEMBERS + ROOT_INSTALL_MEMBERS))
+        return 0
     if args.command == "classify":
         print(classify(args.name))
+        return 0
+    if args.command == "platform-name":
+        print(platform_published_name(args.name))
         return 0
     try:
         print(published_name(args.name, args.desktop))

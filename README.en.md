@@ -82,9 +82,9 @@ For step-by-step control, see [Manual flashing](docs/installation.md#三之二-�
 
 ## Release artifacts
 
-A release is triggered by a tag (for example `v44.1`) and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it; nothing is rebuilt. One release carries four desktops: the ESP, kernel, initramfs and UEFI are byte-identical across profiles and are published once (about 0.6 GiB); the root is published per profile with a `-<profile>` suffix (0.9–2.7 GiB).
+A release is triggered by a tag (for example `v44.1`) and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it; nothing is rebuilt. One release carries four desktops: the ESP, kernel, initramfs and UEFI are byte-identical across profiles and are published once, zstd-compressed (about 69 MiB); the root is published per profile with a `-<profile>` suffix (0.9–2.7 GiB).
 
-So an install downloads the platform assets plus one profile, 1.5–3.3 GiB in total; you do not need every file on the Releases page. Each profile's bundle manifests ship as one `manifests-<profile>.tar.zst`. `unpack-release.sh` checks what you downloaded against `RELEASE-SHA256SUMS`, merges split pieces, and unpacks the manifests and `root-install/`. What each file is: [Artifacts and pipeline](docs/artifacts.md#release-发布).
+So an install downloads the platform assets plus one profile, 1.0–2.8 GiB in total; you do not need every file on the Releases page. Each profile's bundle manifests ship as one `manifests-<profile>.tar.zst`. `unpack-release.sh` checks what you downloaded against `RELEASE-SHA256SUMS`, merges split pieces, decompresses the images, and unpacks the manifests and `root-install/`. What each file is: [Artifacts and pipeline](docs/artifacts.md#release-发布).
 
 ## Documentation
 

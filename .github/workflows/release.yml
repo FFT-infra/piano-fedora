@@ -137,18 +137,21 @@ jobs:
           ### 下载后
 
           1. 把平台资产与所选桌面档的 \`root-install-*\` 下载到同一个空目录。其他档位的
-             \`root-install-*\` 各 1–3 GiB，装机不需要。
+             root 各 1–3 GiB，装机不需要。
           2. \`bash unpack-release.sh --desktop <桌面>\`：按 \`RELEASE-SHA256SUMS\` 校验
-             下载到的资产，合并分片，还原成文档里的规范名并解出 \`root-install/\`。
-             只有一档时参数可省略。
+             下载到的资产，合并分片，解压镜像，还原成文档里的规范名并解出
+             \`root-install/\`。只有一档时参数可省略。
           3. 按 \`README-INSTALL.txt\` 操作；全新平板先读 docs/installation.md 第四节。
 
           平台资产（ESP、内核、initramfs、UEFI）在所有桌面档之间完全相同，只发布一份。
+          其中 ESP、内核与 UEFI 三份镜像以 \`.zst\` 压缩发布（合计 69 MiB，解压后 585 MiB），
+          \`unpack-release.sh\` 会解压还原成装机脚本读的规范名。
           桌面资产带 \`-<desktop>\` 后缀，\`unpack-release.sh\` 会还原成文档里的规范名。
           大于 2 GiB 的镜像以 \`.part-*\` 分片发布，脚本会自动合并。
           每档的 bundle manifest（\`bundle-manifest\`、\`root-image-manifest\`、
-          \`source-runs\` 等六份）打在一个 \`manifests-<桌面>.tar.zst\` 里，
-          \`unpack-release.sh\` 会解到暂存目录。
+          \`source-runs\` 等六份）与 \`root-install/\` 的清单、摘要打在一个
+          \`manifests-<桌面>.tar.zst\` 里，\`unpack-release.sh\` 会解到暂存目录与
+          \`root-install/\`。
           \`pianoroot-<桌面>.f2fs.img.zst\` 与 \`pianoroot-<桌面>.f2fs.sparse.img.zst\`
           不发布：它们和 \`root-install\` 里的 root 内容相同，也不能直接刷，只是存档副本。
           \`boot_linux.img\` 也不随 Release 发布：它必须用本机原厂 BOOT 生成，
@@ -178,7 +181,8 @@ jobs:
 
             # 平台资产：四档共用同一份 ESP、内核与 initramfs。第一档留下参考
             # 副本并上传；后续各档只做逐字节比对，不一致就停下，不能悄悄
-            # 挑一份发布。
+            # 挑一份发布。比对的是 deploy-bundle 里的原文件，压缩只发生在上传
+            # 那一刻。
             if [ ! -d build/reference/platform ]; then
               mkdir -p build/reference/platform
               for name in "${platform_files[@]}"; do
@@ -188,7 +192,7 @@ jobs:
                 cp -p "build/in/bundle/$name" build/reference/platform/
               done
               for name in "${platform_files[@]}"; do
-                release_upload "build/in/bundle/$name"
+                release_upload_platform "build/in/bundle/$name"
               done
             else
               for name in "${platform_files[@]}"; do
@@ -209,14 +213,21 @@ jobs:
             # 只是还原与检查用的存档副本。同一份 root 发三种形态，只会让人分
             # 不清该下哪个，还把每个 Release 撑到 20 GiB。
             #
-            # 每档那 6 个 manifest 也不逐个发，打完包走下面一步：它们全是给
-            # 装机脚本读的 JSON，没有一个需要单独点开，逐个发会让四档占掉
-            # 24 个资产条目。要存档副本或调试件，从 workflow artifact 取。
+            # 每档那 6 个 manifest 也不逐个发：它们全是给装机脚本读的 JSON，
+            # 没有一个需要单独点开，逐个发会让四档占掉 24 个资产条目。先把
+            # 它们收进 build/archive/$desktop，等这一档的 root-install 下载
+            # 下来后，连同它的清单与摘要一起打成一个 tar（见下一个 step，
+            # 四档一共 4 个资产条目而不是 32 个）。要存档副本或调试件，从
+            # workflow artifact 取。
             (cd build/in/bundle
              for name in *; do
                case "$name" in
                  # 两份 root 镜像都不发，见上面的说明。
                  pianoroot.f2fs.img.zst|pianoroot.f2fs.sparse.img) continue ;;
+                 # 两个只给构建链用的中间产物与调试件，同样不发。它们不在
+                 # PLATFORM_ASSETS 里，classify 会把它们当成桌面资产，所以
+                 # 必须在这里点名跳过，否则四档各发一份，反而更多。
+                 initramfs.tar.zst|diagnostic-abl-storage.tar.zst) continue ;;
                esac
                case "$(python3 ../../../scripts/release-assets.py classify "$name")" in
                  platform|manifest-archive) continue ;;
@@ -225,15 +236,11 @@ jobs:
                release_upload "$name" "$published"
              done)
 
-            # 每档 6 个 manifest 打成一个 tar。固定 mtime、owner 与排序，
-            # 同一档重跑出同样的字节；`-f` 是暂存名四档共用时的既有约定。
+            mkdir -p "build/archive/$desktop"
             mapfile -t manifest_members < <(python3 scripts/release-assets.py manifest-members)
-            tar -C build/in/bundle --sort=name --mtime=@0 --owner=0 --group=0 \
-              --numeric-owner -cf "$STAGE/manifests.tar" "${manifest_members[@]}"
-            zstd -10 -f -T0 --no-progress "$STAGE/manifests.tar" -o "$STAGE/manifests.tar.zst"
-            rm -f "$STAGE/manifests.tar"
-            release_upload "$STAGE/manifests.tar.zst" \
-              "$(python3 scripts/release-assets.py name manifests.tar.zst "$desktop")"
+            for name in "${manifest_members[@]}"; do
+              cp "build/in/bundle/$name" "build/archive/$desktop/$name"
+            done
             # root-install 的绑定校验要按档核对 bundle manifest，但两份镜像
             # 不能同时留在盘上，所以只留下这两个小文件。
             mkdir -p "build/reference/$desktop"
@@ -298,11 +305,23 @@ jobs:
           print(f"OK: {desktop} root-install binds to its own bundle")
           PY
 
-            release_upload build/in/root-install/root-install-manifest.json \
-              "$(python3 scripts/release-assets.py name root-install-manifest.json "$desktop")"
-            release_upload build/in/root-install/SHA256SUMS \
-              "$(python3 scripts/release-assets.py name root-install-SHA256SUMS "$desktop")"
-            rm -f build/in/root-install/SHA256SUMS
+            # 这一档的 root-install 小文件与 bundle manifest 一起打成一个
+            # tar，四档一共 4 个资产条目，而不是 32 个。归档成员来自
+            # scripts/release-assets.py，打包固定 mtime、owner 与排序，同一
+            # 档重跑出同样的字节；`-f` 是暂存名四档共用时的既有约定。
+            archive="build/archive/$desktop"
+            mkdir -p "$archive/root-install"
+            cp build/in/root-install/root-install-manifest.json "$archive/root-install/"
+            cp build/in/root-install/SHA256SUMS "$archive/root-install/SHA256SUMS"
+            mapfile -t archive_members < <(python3 scripts/release-assets.py archive-members)
+            tar -C "$archive" --sort=name --mtime=@0 --owner=0 --group=0 \
+              --numeric-owner -cf "$STAGE/manifests.tar" "${archive_members[@]}"
+            zstd -10 -f -T0 --no-progress "$STAGE/manifests.tar" -o "$STAGE/manifests.tar.zst"
+            rm -f "$STAGE/manifests.tar"
+            release_upload "$STAGE/manifests.tar.zst" \
+              "$(python3 scripts/release-assets.py name manifests.tar.zst "$desktop")"
+            rm -rf "$archive"
+
             zstd -10 -f -T0 --no-progress build/in/root-install/pianoroot.f2fs.sparse.img \
               -o "$STAGE/root-install-pianoroot.f2fs.sparse.img.zst"
             original=$(sha256sum build/in/root-install/pianoroot.f2fs.sparse.img | awk '{print $1}')

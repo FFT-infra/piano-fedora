@@ -78,19 +78,20 @@ initramfs 与 UEFI 四档逐字节相同，只发布一份；`root-install/` 每
 `root-install/`；Release 里只有一档时脚本自动识别，多档时不传参数会报错并列出
 可选项。各档有什么差别见[桌面档](desktops.md)。
 
-`unpack-release.sh` 会合并大于 2 GiB 的分片、解压 zstd 传输镜像、解开这一档的
+`unpack-release.sh` 会合并大于 2 GiB 的分片、解压 zstd 压缩的镜像、解开这一档的
 `manifests-<档位>.tar.zst`，并把 `root-install/` 放回脚本要求的布局。完成后这个
 目录就是下面的暂存目录。
 
 Release 里各资产的用途：
 - `piano-installer-<tag>.zip`：`flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` 与 `unpack-release.sh`；
 - `piano-boot-tools-<tag>.tar.zst`：生成设备专用 `device-boot/boot_linux.img` 的脚本与 x86-64 工具；
-- `sunuefi_esp.img`：SunUEFI ESP 分区镜像；
-- `boot_sunuefi.img`：ESP 内部的 Linux 载荷，不刷任何分区；
-- `PianoUEFI-product.img`、`uefi-source.json`：产品固件与它的来源记录，首装校验用；
-- `manifests-<档位>.tar.zst`：这一档的 6 份 bundle manifest，解包后落在暂存目录；
-- `root-install-pianoroot-<档位>.f2fs.sparse.img.zst`：`prepare-install` 写入设备配置后的传输镜像，解包后是 `root-install/pianoroot.f2fs.sparse.img`；
-- `root-install-manifest-<档位>.json`、`root-install-SHA256SUMS-<档位>`：这一档 root 的清单与摘要，解包后进入 `root-install/`。
+- `sunuefi_esp.img.zst`：SunUEFI ESP 分区镜像，解包后是 `sunuefi_esp.img`；
+- `boot_sunuefi.img.zst`：ESP 内部的 Linux 载荷，不刷任何分区；
+- `PianoUEFI-product.img.zst`、`uefi-source.json`：产品固件与它的来源记录，首装校验用；
+- `manifests-<档位>.tar.zst`：这一档的 6 份 bundle manifest 与 `root-install/` 的清单、摘要，解包后落在暂存目录与 `root-install/`；
+- `root-install-pianoroot-<档位>.f2fs.sparse.img.zst`：`prepare-install` 写入设备配置后的传输镜像，解包后是 `root-install/pianoroot.f2fs.sparse.img`。
+
+三份镜像压缩发布：ESP 是 512 MiB 的 ext4，绝大部分扇区是零，压完 36 MiB，三份合计从 585 MiB 降到 69 MiB。解压后的字节与 `SHA256SUMS` 一致，装机脚本读的始终是解压后的规范名。
 
 完整镜像 `pianoroot-<档位>.f2fs.img.zst`、封存镜像 `pianoroot-<档位>.f2fs.sparse.img.zst`、`initramfs.tar.zst` 与 `diagnostic-abl-storage.tar.zst` 不随 Release 发布，需要时从对应的 workflow artifact 取。
 
@@ -130,7 +131,7 @@ piano-install/
     └── SHA256SUMS
 ```
 
-用 Release 时，`unpack-release.sh` 会把每档的 6 份 bundle manifest 从 `manifests-<档位>.tar.zst` 解到这一层；从源码构建时它们本来就在 `deploy-bundle` 里。其余几份组件 manifest（`kernel-manifest.json` 等）留着不动。
+用 Release 时，`unpack-release.sh` 会把每档的 6 份 bundle manifest 与 `root-install/` 的清单、摘要从 `manifests-<档位>.tar.zst` 解到这一层；从源码构建时它们本来就在 `deploy-bundle` 里。其余几份组件 manifest（`kernel-manifest.json` 等）留着不动。
 
 `device-boot/` 不属于 deploy-bundle，要用 `scripts/prepare-device-boot.py` 在
 本机生成一次。它不在两份 `SHA256SUMS` 里，脚本单独核对它的结构。

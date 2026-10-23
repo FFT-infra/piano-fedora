@@ -119,7 +119,7 @@
 | rootfs artifact | `rootfs-<rel>-<desktop>` |
 | 镜像 artifact | `root-image-<rel>-<desktop>` |
 | bundle artifact | `deploy-bundle`（每档各一个 run，内部文件名不变） |
-| Release 桌面资产 | `pianoroot-<desktop>.f2fs.img.zst` 等，平台资产不带后缀 |
+| Release 桌面资产 | `root-install-pianoroot-<desktop>.f2fs.sparse.img.zst` 与 `manifests-<desktop>.tar.zst`，平台资产不带后缀 |
 | 本地还原 | `unpack-release.sh --desktop <档位>`，还原成上面这些规范名 |
 
 查看当前矩阵与某一档的展开结果：
