@@ -16,6 +16,34 @@
 `IRQ…: set affinity failed(-22)` 与 CMA 分配失败出现在关机 CPU 路径上，属既有
 噪声，未发现新增故障。
 
+旋转屏幕时画面会短暂花掉一下，随后自行恢复。复现条件是任何一次方向切换；
+`dmesg` 在同一秒内留下两条：
+
+```
+[drm:dpu_encoder_phys_vid_wait_for_commit_done:550] [dpu error]vblank timeout: 400000
+[drm:dpu_kms_wait_for_commit_done:529] [dpu error]wait for commit done returned -110
+```
+
+`400000` 是 `CTL_FLUSH` 寄存器读回的值，`0x400000` 即 `BIT(22)`。`dpu_hw_ctl.c`
+里 `DSC_IDX` 是 22，这一位代表 DSC 的 flush 请求，硬件没有在等待窗口内清掉它。
+等待超时在 `dpu_encoder_phys_vid.c` 的 `wait_for_commit_done` 里，
+`msecs_to_jiffies(50)`，即 50 ms；当前模式 144 Hz，相当于 7 帧。
+
+内屏是双 DSI 加 DSC 的面板，3200x2136，两路各 4 lane，链路固定 1197.5 Mbps，
+刷新率靠改水平前肩切换，DSC 为 8 bpp。旋转只改 DPU 图层的 transform，但合成
+器会重新提交整条管线（几何从 3200x2136 变成 971x1455、缩放 2.2），DPU 要重算
+图层划分和 DSC slice 边界。flush 位靠 vblank 中断清除，50 ms 内两次提交都没等
+到，第三次成功。
+
+启动日志里同一条 DSI/DPU 链上还有 `arm-smmu 3da0000.iommu … -110` 与
+`msm-mdss ae00000.display-subsystem … -110`，两者都是电源域依赖导致的 deferred
+probe。旋转时的 DSC flush 超时属于同一类时序余量不足，重试即恢复，之后不再
+累积（两次之后计数保持不变）。
+
+调大这个超时没有用。一次 vblank 在 144 Hz 下约 7 ms，50 ms 已经留了 7 帧余量，
+改大只会延长花屏持续时间。要真正消除得动 msm 驱动：在 transform-only 的提交里
+跳过 DSC flush，或在提交前显式等 DPU idle。这属于上游驱动的范围。
+
 ## 刷写与读回
 
 写 `sunuefi_root`（6.1 GB sparse）之后，设备侧的 ABL 会挂死。`lsusb` 仍能
