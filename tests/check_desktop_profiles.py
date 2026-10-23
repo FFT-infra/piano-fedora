@@ -404,6 +404,14 @@ def check_greetd_desktops_stage_a_config_toml():
                 .split("command = ", 1)[1].splitlines()[0]
         ) == command, (desktop, text)
         assert '[default_session]' in text and 'user = "greetd"' in text, text
+        # 上面那句只证明字符串出现过。分段落再断言一次：`[default_session]`
+        # 的 user 才是 tuigreet 的运行账户，写成 greeter 时 greetd 每 1 秒
+        # 重启一次，5 次后撞 StartLimitBurst 变成 failed，显示管理器整个起不来。
+        # 这个 bug 曾经源码和断言一起写错，CI 全绿照样放行，所以这里不能
+        # 满足于子串命中。
+        default_section = text.split("[default_session]", 1)[1]
+        assert 'user = "greetd"' in default_section, (desktop, text)
+        assert 'user = "greeter"' not in text, (desktop, text)
         # 单元启用与依赖 drop-in 都指向 greetd。
         assert piano_desktop.enable_units(context) == ["greetd.service"], desktop
         path, body = piano_desktop.display_dependency_dropin(context)
