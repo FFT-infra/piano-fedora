@@ -54,10 +54,10 @@ payload DTB 的 `/hypervisor/qcom,resource-manager-rpc@…` 节点 `reg` 记录�
 | 项目 | 当前结果 | 剩余工作 |
 | --- | --- | --- |
 | 平台接口 | 正式内核、`/dev/gunyah`、实时 RM capability 交接及 SELinux Enforcing 通过 | 后续内核更新后复测 |
-| 客体执行 | LibreVM Auto 选中 Gunyah；单 vCPU VM_START、客体正常退出通过 | 控制台交互体验仍需验收 |
-| 数据路径 | virtio-blk 上 64 MiB ext4 写入和读回通过；virtio-net 连通通过（`NET_OK=1 NET_RX=2`，与宿主同网段伪桥，无 NAT） | 无 |
-| 生命周期 | 三轮 disk+net 全通过、单轮无磁盘失败有界退出通过；每轮 crosvm 退出后进程、PID、socket 全清（0 hub、0 僵尸） | 无 |
-| 管理器 | RPM、CLI、daemon、D-Bus 与安装二进制核验通过；KVM sandbox 回归通过 | GUI 实际创建/操作客体及完整 SELinux 流程待测；Gunyah 自动关闭 crosvm sandbox |
+| 客体执行 | LibreVM Auto 选中 Gunyah。单 vCPU VM_START 与客体正常退出通过 | 控制台交互体验仍需验收 |
+| 数据路径 | virtio-blk 上 64 MiB ext4 写入和读回通过。virtio-net 连通通过（`NET_OK=1 NET_RX=2`，与宿主同网段伪桥，无 NAT） | 无 |
+| 生命周期 | 三轮 disk+net 全通过，单轮无磁盘失败有界退出通过。每轮 crosvm 退出后进程、PID、socket 全清（0 hub、0 僵尸） | 无 |
+| 管理器 | RPM、CLI、daemon、D-Bus 与安装二进制核验通过，KVM sandbox 回归通过 | GUI 实际创建与操作客体、完整 SELinux 流程待测。Gunyah 自动关闭 crosvm sandbox |
 | 扩展 | — | SMP、UEFI、图形和 Incus 分别实现与验收，不由单 vCPU 结果推定 |
 
 首次 RM 请求失败后卡在发送许可等待，属于修复前的记录。根本原因是构建期冻结的 RM capability。`uefi-live-rm` 补丁已在正常启动路径生效。

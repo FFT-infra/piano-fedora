@@ -28,7 +28,7 @@ SunUEFI 提供启动链。本仓库增加四项：Fedora 后端、F2FS 全链路
 3. 首次分区。只读探测本机并生成计划。使用模拟 GPT 在主机上验证计划。
 4. 安装与验收。实际写入，启动验证，双向切换。
 
-F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用实测的 root 镜像容量定分区方案。镜像容量与设备容量已经脱钩，封存镜像固定 8192 MiB，首次启动时由 initramfs 长满分区。
+F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用实测的 root 镜像容量定分区方案。镜像容量与设备容量已经脱钩。封存镜像的容量由 `product.json` 的 `root_size_mib` 定义，首次启动时由 initramfs 长满分区。
 
 ## CI 分工
 
@@ -41,12 +41,12 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 | `build-kernel.yml` | 手动 | F2FS/SELinux Image、完整模块与匹配 SDK |
 | `build-uefi.yml` | 手动 | UEFI 产品与原始 manifest |
 | `build-mesa.yml` | 手动 | Fedora 原生 A830v1 Mesa RPM 与实际驱动检查记录 |
-| `build-device-runtime.yml` | 手动 | Fedora 原生设备运行时；ABI 匹配的 `v4l2loopback` 由 `build-piano-rpms.yml` 编进 `kernel-piano` |
+| `build-device-runtime.yml` | 手动 | Fedora 原生设备运行时。ABI 匹配的 `v4l2loopback` 由 `build-piano-rpms.yml` 编进 `kernel-piano` |
 | `build-initramfs.yml` | 手动 | 独立 initramfs 构建与检查。正式 bundle 消费 build-image 的 initramfs |
 | `verify-f2fs.yml` | push / PR | 小 fixture 的 F2FS 元数据往返验证 |
 | `build-image.yml` | 手动 | 单档：同一次集成的设备 rootfs、initramfs、F2FS 镜像及相互绑定的 manifest，产物名 `root-image-<rel>-<desktop>` |
-| `build-bundle.yml` | 手动 | 汇总内核、UEFI、rootfs、镜像为部署包；每档一个 `deploy-bundle`，内部文件名不随桌面变 |
-| `prepare-install.yml` | 手动 | 按 bundle run 扩容 root、写入设备配置，产出 `root-install` 与 `boot-tools`；`root-install-manifest.json` 记录桌面档 |
+| `build-bundle.yml` | 手动 | 汇总内核、UEFI、rootfs、镜像为部署包。每档一个 `deploy-bundle`，内部文件名不随桌面变 |
+| `prepare-install.yml` | 手动 | 按 bundle run 扩容 root、写入设备配置，产出 `root-install` 与 `boot-tools`。`root-install-manifest.json` 记录桌面档 |
 | `package-install.yml` | 手动 / `host-check` 调用 | 压缩已校验的 `root-install`，不重建文件系统 |
 | `publish-copr.yml` | 手动 | 从矩阵 SRPM 在 COPR 重建用户态包 |
 | `release.yml` | tag / 手动 | 单 Release 带一档或多档桌面：平台资产逐字节比对后只发一份，桌面资产按 `-<desktop>` 加后缀 |
@@ -72,7 +72,7 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 
 还有一处 live-memory 补丁与 UKI 不兼容：本项目给 UEFI 打的 `patches/uefi-live-memory` 在 ExitBootServices 之前把运行中内核的内存映射交给 `EFI_DT_FIXUP_PROTOCOL` 处理。`systemd-stub` 自己接管 LoadImage/StartImage 与内存描述符，两套机制叠在一起没有验证过的顺序。
 
-代价对比也偏向现有路径。合体 BOOT 路径的 `AcceptedSha` 来自 ESP 上文件自身的 sha256，换内核不需要重编固件；UKI 至少要改 `PinValid()` 的编译期 pin。切系统（Android ↔ Fedora）不受影响：`PianoRawLinuxLoadStable` 的槽位与返回 Android 的路径都由 `piano-next-boot-helper` 写请求页，与内核容器格式无关。
+代价对比也偏向现有路径。合体 BOOT 路径的 `AcceptedSha` 来自 ESP 上文件自身的 sha256，换内核不需要重编固件。UKI 至少要改 `PinValid()` 的编译期 pin。切系统（Android ↔ Fedora）不受影响：`PianoRawLinuxLoadStable` 的槽位与返回 Android 的路径都由 `piano-next-boot-helper` 写请求页，与内核容器格式无关。
 
 所以内核升级走的是另一条路：`kernel-piano` 的 `%posttrans` 在设备上重建 initramfs、把新内核重新打成 Android boot v2 容器、原子替换 ESP 的 `boot.img`。细节见 [COPR 软件源](copr-repository.md)。
 
@@ -98,7 +98,7 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 
 ## 前提
 
-整套方案假设 SunUEFI 的启动交接在目标设备上成立。上游在 16 GB 机型和 OS3.0.309 上验证过；本项目在 24 GB / 1 TB 的同一机型上实测。首次分区前的只读探测会核对 GPT、槽位与原厂 BOOT，任何一项与预期不符就停在计划阶段，不写设备。
+整套方案假设 SunUEFI 的启动交接在目标设备上成立。上游在 16 GB 机型和 OS3.0.309 上验证过。本项目在 24 GB / 1 TB 的同一机型上实测。首次分区前的只读探测会核对 GPT、槽位与原厂 BOOT，任何一项与预期不符就停在计划阶段，不写设备。
 
 ## 设备约束
 

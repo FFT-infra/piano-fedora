@@ -25,7 +25,7 @@
   `kde-desktop` 组把登录管理器换成了 `plasma-login-manager`（`plasmalogin.service`），
   它是 SDDM 的衍生实现，`[Autologin]` 的键与按 `<session>.desktop` 查找会话的
   规则都沿用 SDDM。装配后 `validate_against_rootfs()` 会确认
-  `/usr/share/wayland-sessions/plasma.desktop` 真的在树里；名字对不上时
+  `/usr/share/wayland-sessions/plasma.desktop` 真的在树里。名字对不上时
   只在日志里留一句错误，退回登录界面。SDDM 与 plasmalogin 都会往
   `display-manager.service` 建别名，同装必冲突，所以 profile 里只装后者。
 - **niri / Hyprland**：`/etc/greetd/config.toml` 的 `[initial_session]` 指向
@@ -49,7 +49,7 @@
 ## 电源行为
 
 电源键与合盖由 `piano-fedora-configs` 里的 `piano-power-button` 用户服务统一
-处理，四档一致：短按只关背光，再按恢复；合盖同上；长按弹出关机入口。
+处理，四档一致。短按只关背光，再按恢复。合盖同上。长按弹出关机入口。
 
 长按的关机入口按桌面依次回退：先调 GNOME 的
 `org.gnome.SessionManager.Shutdown`，失败再调 KDE 的
@@ -87,10 +87,10 @@
   没有声明 `qt6-qtsensors`，所以 Plasma 6 上自动旋转要这个包在位才出现
   「自动」选项。
 - niri 与 Hyprland 的合成器不读传感器。niri 要在 `output` 段里手动写
-  `transform "90"` 之类的值；Hyprland 用 `hyprctl keyword monitor` 或配置里的
+  `transform "90"` 之类的值。Hyprland 用 `hyprctl keyword monitor` 或配置里的
   `transform`。没有自动旋转是预期行为，不是缺陷。
 
-传感器走 SSC 后端，不经过 IIO 子系统。`/sys/bus/iio/devices` 为空是正常的；
+传感器走 SSC 后端，不经过 IIO 子系统。`/sys/bus/iio/devices` 为空是正常的。
 `libssc` 与 `iio-sensor-proxy-ssc` 装上、`qrtr_smd`/`qrtr_mhi`/`mhi` 加载之后，
 代理能直接拿到加速度计、环境光与接近传感器。
 
@@ -102,9 +102,9 @@
 （`download.copr.fedorainfracloud.org/results/lionheartp/Hyprland/`），Fedora 44
 官方仓库没有 Hyprland 及其配套组件。构建时：
 
-- 仓库以 `--repofrompath` 临时加入，不写进镜像的持久 `.repo`；
+- 仓库以 `--repofrompath` 临时加入，不写进镜像的持久 `.repo`。
 - `gpgcheck=1`，公钥先下载到构建目录，按 profile 里的 `gpgkey_sha256` 校验后
-  才交给 dnf，哈希对不上直接失败；
+  才交给 dnf，哈希对不上直接失败。
 - 其余三档不启用任何第三方源。
 
 本地未签名的 `piano-local` 仓库单独设 `gpgcheck=0`，不再用全局 `--nogpgcheck`。
@@ -138,10 +138,10 @@ make plan-desktop DESKTOP=niri RELEASEVER=44
 - **niri / Hyprland 没有自动旋转**，见上一节。
 - **KDE 的自动旋转依赖 `qt6-qtsensors`**，这一条来自 Plasma 6 的已知行为，
   本轮没有在设备上验证。
-- **Hyprland 依赖第三方 COPR。** 仓库消失或公钥更换时构建会硬失败；升级路径
+- **Hyprland 依赖第三方 COPR。** 仓库消失或公钥更换时构建会硬失败。升级路径
   是自己打包，本轮评估后没有采用。
 - **`denial` 是占位档位**，`buildable: false`。`build-clean-rootfs.py --plan`
   对它返回 `INPUTS_REQUIRED` 并以非零退出，不会产出镜像。
-- **内核在 COPR 里，四档共用。** 装机用 release bundle 里的 `kernel-piano`；
+- **内核在 COPR 里，四档共用。** 装机用 release bundle 里的 `kernel-piano`。
   装好之后由 `dnf upgrade` 升级，包自己的 `%posttrans` 重建 initramfs 并重打
   ESP 的 `boot.img`。失败与回滚边界见 [COPR 软件源](copr-repository.md)。

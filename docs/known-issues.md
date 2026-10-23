@@ -16,7 +16,7 @@
 `IRQ…: set affinity failed(-22)` 与 CMA 分配失败出现在关机 CPU 路径上，属既有
 噪声，未发现新增故障。
 
-旋转屏幕时画面会短暂花掉一下，随后自行恢复。复现条件是任何一次方向切换；
+旋转屏幕时画面会短暂花掉一下，随后自行恢复。任何一次方向切换都能复现。
 `dmesg` 在同一秒内留下两条：
 
 ```
@@ -27,7 +27,7 @@
 `400000` 是 `CTL_FLUSH` 寄存器读回的值，`0x400000` 即 `BIT(22)`。`dpu_hw_ctl.c`
 里 `DSC_IDX` 是 22，这一位代表 DSC 的 flush 请求，硬件没有在等待窗口内清掉它。
 等待超时在 `dpu_encoder_phys_vid.c` 的 `wait_for_commit_done` 里，
-`msecs_to_jiffies(50)`，即 50 ms；当前模式 144 Hz，相当于 7 帧。
+`msecs_to_jiffies(50)`，即 50 ms。当前模式 144 Hz，相当于 7 帧。
 
 内屏是双 DSI 加 DSC 的面板，3200x2136，两路各 4 lane，链路固定 1197.5 Mbps，
 刷新率靠改水平前肩切换，DSC 为 8 bpp。旋转只改 DPU 图层的 transform，但合成
@@ -53,7 +53,8 @@ probe。旋转时的 DSC flush 超时属于同一类时序余量不足，重试�
 写 `boot_a` 只要 2.4 秒，说明挂死只跟大分区写入有关。
 
 因此一次完整安装要按这个顺序做：先写 `boot_a`，再写 `sunuefi_esp`，最后写
-`sunuefi_root`；root 写完直接断电，重新进 Fastboot 只重启，不再写大分区。一键脚本已经是这个顺序。
+`sunuefi_root`。root 写完直接断电，重新进 Fastboot 只重启，不再写大分区。
+一键脚本已经是这个顺序。
 
 原厂 ABL 不实现 `fastboot fetch`。主机 fastboot 37.0.0 认得这个子命令，设备
 回 `Device does not support fetch command`，宿主上留下一个 0 字节读回文件。
@@ -68,14 +69,14 @@ probe。旋转时的 DSC flush 超时属于同一类时序余量不足，重试�
 
 `fastboot erase userdata` 只清分区，不写 BCB 的 `wiped` 标志。在
 OS3.0.309.0 上两次安装，重启后 Android 都停在 Recovery，底部显示
-`Couldn't initialize user 0`；在 Recovery 里选一次“清除数据”才重建加密
+`Couldn't initialize user 0`。在 Recovery 里选一次“清除数据”才重建加密
 userdata。安装脚本目前只做擦除，这一步需要操作者现场处理，步骤见
-[安装指南](installation.md#4-让-android-重建-userdata)。
+[安装指南](installation.md#24-让-android-重建-userdata)。
 
 ## 首次启动扩容
 
-封存镜像固定 8192 MiB，文件系统在首次启动时由 initramfs 里的 `resize.f2fs`
-扩到 `sunuefi_root` 的实际大小。这条路径的离线部分有测试覆盖：归档里有
+封存镜像的容量由 `product.json` 的 `root_size_mib` 固定。文件系统在首次启动时
+由 initramfs 里的 `resize.f2fs` 扩到 `sunuefi_root` 的实际大小。这条路径的离线部分有测试覆盖：归档里有
 `fsck.f2fs` 与 `resize.f2fs` 的符号链接，`blkid -p -o export` 能读出
 `FSSIZE`，`resize.f2fs` 对已满的镜像是 no-op。真机扩容验证通过：首启后
 `FSSIZE` 与 `blockdev --getsize64` 都等于分区大小，`findmnt /` 看到的是
@@ -101,9 +102,9 @@ A 槽启动，不切活动槽，也不改 GPT。
 - Linux → Android：`piano-next-boot android --reboot` 把持久请求写成 target=0，
   正常重启后选择器进入 Android。
 - Android → Linux：安装「SunUEFI 引导助手」模块（KernelSU/SukiSU），在模块页面
-  选 Linux；没有模块时，开机前 3 秒按音量键选 Linux，选择会被保存。
+  选 Linux。没有模块时，开机前 3 秒按音量键选 Linux，选择会被保存。
 - 两轮真机往返：`boot_android.img` 从请求页 target 0→2→0→2→0、
-  sequence 0→4；随后 `flash boot_a device-boot/boot_linux.img`（未签名）
+  sequence 0→4。随后 `flash boot_a device-boot/boot_linux.img`（未签名）
   直接进 Linux（target=2、sequence=1，约 40 秒），helper 回
   Android（target=0、sequence=2，约 45 秒），模块重新采纳后再切 Linux
   （target=2、sequence=3，约 2 分钟），helper 再回 Android（target=0、
@@ -112,15 +113,15 @@ A 槽启动，不切活动槽，也不改 GPT。
   字节滚动写入。
 
 helper 优先读 Android 安装器维护的 ESP 记录
-`/boot/efi/EFI/SunUEFI/boot-request.json`，OTA 换槽后由 Android 侧刷新；
+`/boot/efi/EFI/SunUEFI/boot-request.json`，OTA 换槽后由 Android 侧刷新。
 `/etc/piano/boot-request.json` 只在早于共享槽位追踪的旧安装上回退使用。
 
 旧的 B 槽布局（Linux 写进 `boot_b`、`set_active b`）不再使用。保留一条历史
-排障记录：qbootctl 的 `set_active` 只改活动标志，不交换槽位 type GUID；A 活动
+排障记录：qbootctl 的 `set_active` 只改活动标志，不交换槽位 type GUID。A 活动
 时执行 `qbootctl -s b` 会留下“B 活动 + generic GUID”的表，ABL 的
 `ValidateSlotGuids` 会拒绝启动，报 `BootableSlot _b does not have valid guids`。
 `fastboot set_active` 走 ABL 的 `SetActiveSlot → SwitchPtnSlots`，会交换 GUID
-并切 UFS boot LUN；UFS boot LUN 必须与活动槽一致（1 = A，2 = B）。手工重建 GPT
+并切 UFS boot LUN。UFS boot LUN 必须与活动槽一致（1 = A，2 = B）。手工重建 GPT
 时主表和备份表要一起写，两份 CRC 都要重算。
 
 仍停在旧 B 槽布局的设备按这条路径迁移：把 `device-boot/boot_android.img` 写进
@@ -131,7 +132,7 @@ helper 优先读 Android 安装器维护的 ESP 记录
 
 已装回与当前 BOOT generation 匹配的「SunUEFI 引导助手」模块
 （`/data/adb/modules/piano_sunuefi`）。安装走 `adopt` 只读识别现有合体
-BOOT，不重写内核；模块页面用它写请求页与重装引导。SukiSU root 仍在
+BOOT，不重写内核。模块页面用它写请求页与重装引导。SukiSU root 仍在
 `init_boot_a`：`su -c id` 返回 uid=0、context `u:r:ksu:s0`。
 
 更早的 `piano_sunuefi_module.zip` 只包含模块结构与根目录 request 程序，缺少 manager 要求的 bin/ 原生工具和策略/状态。它不能安装，也不要和上面的匹配模块混用。
@@ -152,8 +153,8 @@ charge_current、mipps_auth、charge_policy 都开启。这不等于实际达到
 补丁 0036 是这条驱动的历史参考，对应实现已经在固定内核里，不要重复套用。
 
 已有遥测是高电量下的一次采样：电量 94%，MCA USB online、PD_PPS，约
-8.60–8.74 V，sysfs 电压乘电流估算输入 12.075–21.429 W；双电池都 Charging，
-温度 32.8–35.5 °C 与 31.9–34.4 °C；SC8541 online 始终为 0。低电量直充与
+8.60–8.74 V，sysfs 电压乘电流估算输入 12.075–21.429 W。双电池都 Charging，
+温度 32.8–35.5 °C 与 31.9–34.4 °C。SC8541 online 始终为 0。低电量直充与
 最高 45 W 未证明，也没有外置功率计读数。需要真实充电器、线材和负载记录功率
 与温度。
 
@@ -182,18 +183,18 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 
 - 触控：45 秒持续单指划动，SYN 报文 97 次/秒，43/45 秒有事件（两个空秒
   是换手间隙），NVT 中断同期增长 5425。X 覆盖 5395–28696、Y 覆盖
-  4591–19408，全屏可达；多点 slot 0–5 都出现过。相邻坐标跳变的 p95 为 2770，
+  4591–19408，全屏可达。多点 slot 0–5 都出现过。相邻坐标跳变的 p95 为 2770，
   来自多指交替时的 slot 切换，不是丢帧。
-- 音频：120 秒播放无 xrun/underrun，音量与 sink 状态全程不变；130 秒录音
+- 音频：120 秒播放无 xrun/underrun，音量与 sink 状态全程不变。130 秒录音
   每 10 秒分段都有信号，段均值在 -33.6 到 -18.5 dB 之间，没有静音段。
 
 - 相机：前摄与后摄都能正常成像，详见下方"取帧"两段。整机验收还没走完，
   设备整体状态仍记为未验证。验收项见
-  [安装指南的真机验收](installation.md#真机验收清单)。
+  [安装指南的真机验收](installation.md#十-真机验收清单)。
 
 编解码本身已复验通过。H.264 与 HEVC 各 300 帧的 GOP60 硬件编码与解码，
 以及各 300 帧带 B 帧的硬件解码，逐帧摘要与软件解码一致，Iris 中断在每段都有
-增长。验收脚本在维护者机器上驱动平板运行，命令见[维护与验收](internals.md#真机取证脚本)；
+增长。验收脚本在维护者机器上驱动平板运行，命令见[维护与验收](internals.md#真机取证脚本)。
 目标镜像没有 `make` 和 `libx264`/`libx265`，素材由主机准备。
 
 浏览器硬解已单独取证，三家结果不同：
@@ -206,7 +207,7 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 
 Chromium 不走硬解有两个叠加原因。Fedora 的 Chromium 链接系统 `libavcodec`，
 而 `ffmpeg-free` 在构建时用 `--disable-decoder` 去掉了软件 H.264，所以原样
-连 MP4 都打不开，`FFmpegDemuxer: open context failed`；补上 RPM Fusion 的
+连 MP4 都打不开，`FFmpegDemuxer: open context failed`。补上 RPM Fusion 的
 `libavcodec-freeworld` 才能播放。播放之后它仍然交给软件解码：GPU 进程没有打开
 `/dev/video0`，Iris 中断在整个播放窗口内不增长。Chrome 自带 FFmpeg 与 V4L2
 解码路径，Firefox 走自己的 VA-API 路径，两者都直接把 `msm_drv_video.so` 用起来。
@@ -222,14 +223,14 @@ v4l2loopback 写黑帧，所以“节点能取到帧”不等于传感器在出�
 
 复测时两颗传感器都走上了 CAMSS 产帧路径。用 `gst-launch` 从两个
 loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255），画面是正常
-室内成像；后摄末帧均值 24、最大值 113，是低照度噪声，当时设备平放在桌面上。
+室内成像。后摄末帧均值 24、最大值 113，是低照度噪声，当时设备平放在桌面上。
 
 后来把两颗放在同一时段一起取，前摄末帧 p50=94、p90=180、p99=255，四乘六
-分块均值从 20 到 216，空间结构清楚；后摄 p50=30、p90=46，分块均值在 23 到 37
+分块均值从 20 到 216，空间结构清楚。后摄 p50=30、p90=46，分块均值在 23 到 37
 之间，平坦且暗。后者能出图但对着暗处，仍按低照度记录，不算画面失败。
 
 在采光正常的同一时段连取两轮后，两颗都给出了稳定且可重复的空间结构：
-后摄 p50 为 78 与 65、p90 为 209 与 180，四乘六分块均值 16.9 到 197.9；
+后摄 p50 为 78 与 65、p90 为 209 与 180，四乘六分块均值 16.9 到 197.9。
 前摄两轮 p50 都是 112、p90 为 193 与 194，分块均值 20.2 到 200.7。
 两颗都能正常成像，之前后摄那张暗帧是取帧时对着暗处，不是相机本身的问题。
 
@@ -267,12 +268,12 @@ loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255）�
 主线 `drivers/media/rc/ir-spi.c` 完整实现了 CIR 发射，但当前这条链上有四处
 缺口叠在一起：
 
-- 设备上 `/dev/lirc*` 与 `/sys/class/rc/` 都不存在；
+- 设备上 `/dev/lirc*` 与 `/sys/class/rc/` 都不存在。
 - 内核配置是 `CONFIG_RC_CORE=m` 但 `# CONFIG_LIRC is not set`，而 `IR_SPI`
-  依赖 `LIRC`；
+  依赖 `LIRC`。
 - DT 里没有 SE15 的节点：设备上唯一的 SPI 设备是触控
   （`/soc/qcom,qupv3_1_geni_se@ac0000/spi@a88000/touchscreen@0`），
-  `0x89c000` 那段不存在；
+  `0x89c000` 那段不存在。
 - 主线驱动认的 compatible 是 `ir-spi-led`，而厂商 DT 写的是 `ir-spi`。
 
 要让它出 `/dev/lirc0`，得补 SE15 控制器节点、把 compatible 改对、打开
@@ -311,7 +312,7 @@ runtime PM 里被重复关闭，属于上游驱动的问题，不是本仓库的
 
 `kernel-piano` 是 installonly 包，升级后旧内核的模块树与 `modules.weakdep`、
 `updates/` 会留在 `/usr/lib/modules/` 下（rpm 删掉的是它自己拥有的文件，这些
-是 `depmod` 之后生成的）。它们不影响启动，`dnf` 也不会再引用；要清掉只能手工
+是 `depmod` 之后生成的）。它们不影响启动，`dnf` 也不会再引用。要清掉只能手工
 删目录。
 
 manifest 按 NVRA 命名（`/usr/share/piano/kernel-manifest-<version>-<release>.json`）。
