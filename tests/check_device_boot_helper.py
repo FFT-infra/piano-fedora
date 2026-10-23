@@ -92,6 +92,22 @@ def test_help_runs_without_a_device():
     assert "fastboot fetch" in result.stdout  # 说明为什么不这么做
 
 
+def test_repacker_imports_under_isolated_python():
+    """`python3 -I` 隐含 `-P`，脚本目录不在 sys.path 里。
+
+    prepare-device-boot.py 依赖同级的 piano_artifacts 与 piano_sparse。没有
+    把脚本目录补回 sys.path 时，`--help` 会在 import 阶段就报
+    ModuleNotFoundError，用户第一次刷机卡在 Step 2b。这里真的跑一次，不靠
+    字符串匹配。
+    """
+    result = subprocess.run(
+        ["python3", "-I", str(ROOT / "scripts/prepare-device-boot.py"), "--help"],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    assert result.returncode == 0, result.stdout
+    assert "--stock-boot" in result.stdout
+    assert "ModuleNotFoundError" not in result.stdout
+
+
 def main():
     test_reads_through_adb_not_fastboot_fetch()
     test_requires_a_complete_96_mib_read()
@@ -99,6 +115,7 @@ def main():
     test_slot_is_validated()
     test_archive_ships_the_script()
     test_help_runs_without_a_device()
+    test_repacker_imports_under_isolated_python()
     print("OK: make-device-boot.sh 只用 adb，96 MiB 与两条摘要都核对后才生成")
 
 

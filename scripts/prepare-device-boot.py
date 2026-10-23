@@ -7,9 +7,16 @@ import json
 from pathlib import Path
 import struct
 import subprocess
+import sys
 
-from piano_artifacts import sha256
-from piano_sparse import require
+# 调用方用 `python3 -I` 启动（见 make-device-boot.sh）。`-I` 隐含 `-P`，
+# 会把脚本目录移出 sys.path，同级的 piano_artifacts 与 piano_sparse 就导入
+# 不到。这里只补回脚本自己的目录，`-I` 对用户 site-packages 与 PYTHON*
+# 环境变量的隔离仍然生效。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from piano_artifacts import sha256  # noqa: E402
+from piano_sparse import require  # noqa: E402
 
 BOOT_PARTITION_BYTES = 96 * 1024**2
 # 合体 BOOT 保持上游的 unsigned AVB NONE 元数据。槽 A 的 ABL 直接加载这份
