@@ -211,6 +211,11 @@ def login_files(context, user):
         # tuigreet 是 F44 里的文本 greeter。`--time` 只是显示时钟；没有
         # 其他参数时它列出会话供选择，输错或会话崩溃后 greetd 会回到这里。
         fallback = autologin.get("fallback", "tuigreet --time")
+        # greetd 的 greeter 账户由包里的 sysusers 片段创建，Fedora 上的名字是
+        # `greetd`（`u greetd - "greetd daemon"`），不是通用的 `greeter`。
+        # 写错名字时 greetd 每 1 秒重启一次，5 次后撞 StartLimitBurst 变成
+        # failed，显示管理器整个起不来。
+        greeter = autologin.get("greeter_user", "greetd")
         return {
             "etc/greetd/config.toml":
                 "[terminal]\n"
@@ -222,7 +227,7 @@ def login_files(context, user):
                 "\n"
                 "[default_session]\n"
                 f"command = {json.dumps(fallback)}\n"
-                'user = "greeter"\n',
+                f"user = {json.dumps(greeter)}\n",
         }
     raise DesktopError(f"unhandled autologin kind {kind!r}")
 

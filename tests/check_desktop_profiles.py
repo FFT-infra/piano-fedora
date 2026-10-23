@@ -403,7 +403,7 @@ def check_greetd_desktops_stage_a_config_toml():
             text.split("[initial_session]", 1)[1]
                 .split("command = ", 1)[1].splitlines()[0]
         ) == command, (desktop, text)
-        assert '[default_session]' in text and 'user = "greeter"' in text, text
+        assert '[default_session]' in text and 'user = "greetd"' in text, text
         # 单元启用与依赖 drop-in 都指向 greetd。
         assert piano_desktop.enable_units(context) == ["greetd.service"], desktop
         path, body = piano_desktop.display_dependency_dropin(context)
