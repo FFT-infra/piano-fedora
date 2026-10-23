@@ -121,7 +121,7 @@ cat piano-<tag>-<档位>.tar.zst.part-* | zstd -dc | tar -x
 sha256sum -c SHA256SUMS
 ```
 
-第二行在没有分片时换成 `zstd -dc piano-<tag>-<档位>.tar.zst | tar -x`。两条命令都接受 `cat` 的通配，有分片时用分片那条。
+第二行在没有分片时换成 `zstd -dc piano-<tag>-<档位>.tar.zst | tar -x`。GNOME 与 KDE 有分片，用上面那条。
 
 解完这个目录就是暂存目录，第五节与第七节的命令都在这里执行。再校验一次 prepared root：
 
