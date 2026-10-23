@@ -33,8 +33,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs" / "installation.md"
 
 # The manual chapter is delimited by these headings.
-START = "## 三之二、 手动刷机"
-END = "## 四、 从原始 GPT/UFS 开始的首次安装"
+START = "## 五、 手动刷写 Linux"
+END = "## 六、 一键脚本"
 
 STUB = r"""#!/usr/bin/env python3
 import os, sys
@@ -109,13 +109,13 @@ def extract_manual_chapter(text):
 
 
 def extract_checksum_blocks(text):
-    """Return checksum commands from the asset-list and manual chapters.
+    """Return checksum commands from the asset-prep and manual chapters.
 
-    The file distinguishes deploy-bundle and root-install in two places. Both
+    The file distinguishes the archive and root-install in two places. Both
     need to execute against a realistic pair of artifact directories.
     """
-    start = text.index("### 1. 获取 Release 资产")
-    end = text.index("### 3. 确认设备和槽位")
+    start = text.index("### 7. 校验材料")
+    end = text.index("## 四、 从原始 GPT/UFS 开始的首次安装")
     return re.findall(r"```sh\n(.*?)```", text[start:end], re.DOTALL)
 
 
@@ -374,12 +374,13 @@ def main():
         if key_step < 0 or esp_flash < 0 or key_step > esp_flash:
             failures.append("manual chapter injects the SSH key after the ESP flash")
 
-        # The asset list must name the files the commands actually use.
+        # The asset list must name the files the commands actually use. It
+        # lives in the asset-prep chapter, which both install paths share.
         for asset in ("boot_sunuefi.img", "sunuefi_esp.img",
                       "root-install/pianoroot.f2fs.sparse.img",
                       "root-install/SHA256SUMS", "SHA256SUMS"):
-            if asset not in chapter:
-                failures.append(f"manual chapter does not list asset {asset}")
+            if asset not in document:
+                failures.append(f"installation guide does not list asset {asset}")
 
         # A root-install produced by another bundle must be rejected even when
         # both artifacts' own SHA256SUMS are internally valid.

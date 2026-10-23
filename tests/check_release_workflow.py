@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""离线回归：release.yml 只发布绑定到 tag commit 的已验证产物，单 Release
-可以带多档桌面，并且 unpack-release.sh 能把扁平资产还原成安装器与文档要求
-的目录布局。
+"""离线回归：release.yml 只发布绑定到 tag commit 的已验证产物，每档一个
+自包含归档，unpack-release.sh 能把归档还原成安装指南要求的暂存目录。
 
-命名规则只有一处实现：`scripts/release-assets.py`。这里的测试直接调它，
-再从 unpack-release.sh 里取同样的输入算一遍，两边不一致就失败。
+命名规则只有一处实现：`scripts/release-assets.py`。这里合成真实的归档与
+sidecar，再跑 unpack-release.sh，两条路径（手动与脚本）都要得到同一个目录。
 """
 
 import hashlib
 import importlib.machinery
 import importlib.util
-import json
-import re
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -21,36 +19,8 @@ WORKFLOW = ROOT / ".github/workflows/release.yml"
 UNPACK = ROOT / "scripts/unpack-release.sh"
 UPLOAD = ROOT / "scripts/release-upload.sh"
 ASSETS = ROOT / "scripts/release-assets.py"
-
-BUNDLE_FILES = (
-    "PianoUEFI-product.img", "SHA256SUMS", "boot_sunuefi.img", "bundle-manifest.json",
-    "diagnostic-abl-storage.tar.zst", "esp-manifest.json", "ffmpeg-manifest.json",
-    "initramfs-manifest.json", "initramfs.tar.zst", "kernel-manifest.json",
-    "mesa-manifest.json", "root-image-manifest.json", "rootfs-manifest.json",
-    "runtime-manifest.json", "source-runs.json", "sunuefi_esp.img", "uefi-source.json",
-)
-
+TAG = "v44.5"
 DESKTOPS = ("gnome", "kde", "niri", "hyprland")
-
-# bundle 里不随 Release 分发的文件：完整镜像与封存镜像，以及两个只给
-# 构建链用的中间产物。它们和 root-install 里的 root 内容相同或无人读取，
-# 也不直接刷。bundle 自己的 SHA256SUMS 仍然列着它们，解包脚本要能在缺这
-# 几行的情况下完成校验，并把清单改写成真有的子集。
-UNPUBLISHED_BUNDLE_FILES = (
-    "pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img",
-    "initramfs.tar.zst", "diagnostic-abl-storage.tar.zst",
-)
-
-# 每档打成一个 manifests-<档位>.tar.zst 的成员，与
-# scripts/release-assets.py 的 MANIFEST_MEMBERS 一致。
-MANIFEST_MEMBERS = (
-    "bundle-manifest.json", "esp-manifest.json", "root-image-manifest.json",
-    "rootfs-manifest.json", "source-runs.json", "SHA256SUMS",
-)
-
-# 归档里还带这一档 root-install 的两份小文件，对应 ROOT_INSTALL_MEMBERS。
-ARCHIVE_MEMBERS = MANIFEST_MEMBERS + ("root-install/root-install-manifest.json",
-                                      "root-install/SHA256SUMS")
 
 
 def load_release_assets():
@@ -63,349 +33,277 @@ def load_release_assets():
 
 release_assets = load_release_assets()
 
+# 归档里每份文件的内容。manifest 与镜像只需要可区分字节，测试关心的是
+# 目录形状与清单覆盖，不是镜像语义。
+ARCHIVE_FILES = {
+    "PianoUEFI-product.img": b"uefi product\n",
+    "boot_sunuefi.img": b"esp payload\n",
+    "sunuefi_esp.img": b"esp image\n",
+    "bundle-manifest.json": b'{"status": "fixture"}\n',
+    "esp-manifest.json": b'{"esp_files": []}\n',
+    "ffmpeg-manifest.json": b'{"ffmpeg": true}\n',
+    "initramfs-manifest.json": b'{"initramfs": true}\n',
+    "kernel-manifest.json": b'{"kernel_release": "7.2.9"}\n',
+    "mesa-manifest.json": b'{"mesa": true}\n',
+    "root-image-manifest.json": b'{"desktop": "gnome"}\n',
+    "rootfs-manifest.json": b'{"rootfs": true}\n',
+    "runtime-manifest.json": b'{"runtime": true}\n',
+    "source-runs.json": b'{"uefi_run": "1"}\n',
+    "uefi-source.json": b'{"uefi": true}\n',
+    "README-INSTALL.txt": b"install guide\n",
+    "flash-linux.sh": b"#!/usr/bin/env bash\n",
+    "flash-linux.bat": b"@echo off\n",
+    "make-device-boot.sh": b"#!/usr/bin/env bash\n",
+    "root-install/root-install-manifest.json": b'{"android_slot": "_a"}\n',
+    "scripts/prepare-device-boot.py": b"# helper\n",
+    "scripts/piano_artifacts.py": b"# helper\n",
+    "scripts/piano_sparse.py": b"# helper\n",
+    "boot-tools/config.json": b'{"target": "android"}\n',
+    "host-boot-tool/manifest.json": b'{"arch": "host"}\n',
+}
 
-def sha(data):
-    return hashlib.sha256(data).hexdigest()
+
+def root_payload(desktop):
+    """每档的 root 内容不同，装机只该看到自己那一档。"""
+    return f"prepared root for {desktop}\n".encode() * 64
 
 
-def zstd(data):
-    return subprocess.run(["zstd", "-q", "-c"], input=data, check=True,
-                          stdout=subprocess.PIPE).stdout
+def build_archive(directory, desktop, parts=1):
+    """在 directory 里写这一档的归档与 sidecar，返回 root 的字节。"""
+    stage = Path(tempfile.mkdtemp(dir=directory, prefix=".stage-"))
+    try:
+        for name, data in ARCHIVE_FILES.items():
+            path = stage / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        root = root_payload(desktop)
+        (stage / "root-install" / "pianoroot.f2fs.sparse.img").write_bytes(root)
+        # root-install 自己的清单只覆盖它的两份文件。
+        (stage / "root-install" / "SHA256SUMS").write_text(
+            f"{hashlib.sha256(root).hexdigest()}  pianoroot.f2fs.sparse.img\n"
+            f"{hashlib.sha256(ARCHIVE_FILES['root-install/root-install-manifest.json']).hexdigest()}"
+            "  root-install-manifest.json\n")
+        (stage / "flash-linux.sh").chmod(0o755)
+        (stage / "make-device-boot.sh").chmod(0o755)
+        release_assets.write_sums(stage)
 
-
-def write_checksums(path, rows):
-    path.write_text("".join(f"{digest}  {name}\n" for name, digest in rows))
+        name = release_assets.archive_name(TAG, desktop)
+        archive = directory / name
+        packed = subprocess.run(
+            ["tar", "-C", str(stage), "--sort=name", "--mtime=@0", "--owner=0",
+             "--group=0", "--numeric-owner", "-cf", "-", "."],
+            check=True, stdout=subprocess.PIPE).stdout
+        archive.write_bytes(subprocess.run(["zstd", "-q", "-c"], input=packed,
+                                           check=True, stdout=subprocess.PIPE).stdout)
+        pieces = [archive]
+        if parts > 1:
+            split(archive, parts)
+            pieces = sorted(directory.glob(f"{name}.part-*"))
+        sidecar = directory / release_assets.sidecar_name(TAG, desktop)
+        sidecar.write_text("".join(
+            f"{hashlib.sha256(piece.read_bytes()).hexdigest()}  {piece.name}\n"
+            for piece in pieces))
+        return root
+    finally:
+        for item in sorted(stage.rglob("*"), reverse=True):
+            item.unlink() if item.is_file() else item.rmdir()
+        stage.rmdir()
 
 
 def split(path, parts):
     data = path.read_bytes()
     size = max(1, len(data) // parts)
     for index in range(parts):
-        chunk = data[index * size:(index + 1) * size] if index < parts - 1 else data[index * size:]
+        chunk = data[index * size:(index + 1) * size] if index < parts - 1 \
+            else data[index * size:]
         (path.parent / f"{path.name}.part-{index:02d}").write_bytes(chunk)
     path.unlink()
 
 
-def published(name, desktop):
-    """unpack-release.sh 的 published_name()，用它来对照 Python 边。"""
-    stem, dot, rest = name.partition(".")
-    return f"{stem}-{desktop}.{rest}" if dot else f"{name}-{desktop}"
+def write_release_sums(directory):
+    rows = []
+    for path in sorted(directory.iterdir()):
+        if path.is_file() and path.name != "RELEASE-SHA256SUMS":
+            rows.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}")
+    (directory / "RELEASE-SHA256SUMS").write_text("\n".join(rows) + "\n")
 
 
-def build_assets(directory, desktops=(None,)):
-    """写一套 Release 资产。desktops=None 表示旧版单档无后缀。"""
+def build_release(directory, desktops=DESKTOPS, parts=None):
+    parts = parts or {name: 1 for name in desktops}
     payloads = {}
-    if desktops == (None,):
-        layouts = [("", None)]
-    else:
-        layouts = [(f"-{name}", name) for name in desktops]
-    for suffix, desktop in layouts:
-        prepared = f"prepared root bytes {desktop}\n".encode() * 64
-        (directory / f"root-install-pianoroot{suffix}.f2fs.sparse.img.zst").write_bytes(zstd(prepared))
-        split(directory / f"root-install-pianoroot{suffix}.f2fs.sparse.img.zst", 2)
-        payloads[desktop] = prepared
-
-    def install(suffix, desktop):
-        manifest = b'{"android_slot": "_a"}\n'
-        (directory / f"root-install-manifest{suffix}.json").write_bytes(manifest)
-        # root-install/SHA256SUMS 记录的是还原后的规范名，与真实 prepare-install
-        # 产物一致；桌面后缀只出现在 Release 资产名上。它和清单一起打进
-        # manifests tar，所以只留在归档成员里，不落成独立资产。
-        write_checksums(directory / f"root-install-SHA256SUMS{suffix}",
-                        [("pianoroot.f2fs.sparse.img", sha(payloads[desktop])),
-                         ("root-install-manifest.json", sha(manifest))])
-
-    if desktops == (None,):
-        install("", None)
-    else:
-        for name in desktops:
-            install(f"-{name}", name)
-
-    # bundle 的 SHA256SUMS 列的是整个 deploy-bundle，包括不随 Release 发布的
-    # 那几份；目录里只落真正会发布成单个资产的文件，还原解包时"清单里有、
-    # 目录里没有"的真实处境。三份平台镜像按 Release 的样子压缩发布。
-    contents = {}
-    for name in BUNDLE_FILES:
-        contents[name] = f"bundle file {name}\n".encode()
-        if name in MANIFEST_MEMBERS or name in UNPUBLISHED_BUNDLE_FILES:
-            continue
-        if name in release_assets.PLATFORM_COMPRESSED:
-            (directory / f"{name}.zst").write_bytes(zstd(contents[name]))
-            continue
-        (directory / name).write_bytes(contents[name])
-    contents["pianoroot.f2fs.img.zst"] = b"sealed root image\n"
-    contents["pianoroot.f2fs.sparse.img"] = b"bundle sparse root\n"
-
-    # 每档的 manifest 与 root-install 小文件打成一个 tar，与 release.yml 的
-    # 做法一致：固定 mtime 与 owner，成员按名字排序。bundle 的 SHA256SUMS 也
-    # 在里面，它用还原后的规范名记录本档内容；root-install 的清单与摘要带
-    # `root-install/` 前缀，解包后直接落到装机脚本要求的位置。
-    if desktops == (None,):
-        names = [None]
-    else:
-        names = list(desktops)
-    for desktop in names:
-        suffix = "" if desktop is None else f"-{desktop}"
-        stage = directory / f".stage{suffix}"
-        stage.mkdir()
-        (stage / "root-install").mkdir()
-        for name in MANIFEST_MEMBERS:
-            if name == "SHA256SUMS":
-                # 清单不列自己，与真实 deploy-bundle 一致。
-                write_checksums(stage / name,
-                                [(item, sha(data)) for item, data in sorted(contents.items())
-                                 if item != "SHA256SUMS"])
-            else:
-                # 与 bundle 里那份逐字节相同，SHA256SUMS 才校验得上。
-                (stage / name).write_bytes(contents[name])
-        (stage / "root-install" / "root-install-manifest.json").write_bytes(
-            (directory / f"root-install-manifest{suffix}.json").read_bytes())
-        (stage / "root-install" / "SHA256SUMS").write_bytes(
-            (directory / f"root-install-SHA256SUMS{suffix}").read_bytes())
-        # 归档成员是本档的最终资产；它们不再单独发布，从目录里删掉。
-        (directory / f"root-install-manifest{suffix}.json").unlink()
-        (directory / f"root-install-SHA256SUMS{suffix}").unlink()
-        archive = directory / f"manifests{suffix}.tar"
-        subprocess.run(["tar", "-C", str(stage), "--sort=name", "--mtime=@0",
-                        "--owner=0", "--group=0", "--numeric-owner",
-                        "-cf", str(archive), *ARCHIVE_MEMBERS], check=True)
-        (directory / f"manifests{suffix}.tar.zst").write_bytes(zstd(archive.read_bytes()))
-        archive.unlink()
-        for item in sorted(stage.rglob("*"), reverse=True):
-            item.unlink() if item.is_file() else item.rmdir()
-        stage.rmdir()
-    (directory / "unpack-release.sh").write_bytes(UNPACK.read_bytes())
-    assets = sorted(p.name for p in directory.iterdir() if p.is_file())
-    write_checksums(directory / "RELEASE-SHA256SUMS",
-                    [(name, sha((directory / name).read_bytes())) for name in assets])
+    for desktop in desktops:
+        payloads[desktop] = build_archive(directory, desktop, parts[desktop])
+    write_release_sums(directory)
     return payloads
 
 
-def run_unpack(work, *args):
-    return subprocess.run(["bash", "unpack-release.sh", *args], cwd=work,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+def run_unpack(work, *args, env=None):
+    return subprocess.run(["bash", str(UNPACK), *args], cwd=work,
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          text=True, env=env)
 
 
-def test_single_unsuffixed_release_still_works():
-    """旧版 Release（无 --desktop、无后缀）保持原来的行为。"""
+def assert_staging_layout(directory):
+    """解出来的目录就是安装指南画的暂存目录。"""
+    for name in ARCHIVE_FILES:
+        assert (directory / name).is_file(), name
+    for name in ("root-install/pianoroot.f2fs.sparse.img",
+                 "root-install/root-install-manifest.json",
+                 "root-install/SHA256SUMS", "boot-tools", "host-boot-tool",
+                 "scripts/prepare-device-boot.py", "make-device-boot.sh"):
+        assert (directory / name).exists(), name
+    # device-boot/ 由 make-device-boot.sh 现场生成，archive 里不该有。
+    assert not (directory / "device-boot").exists()
+    subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=directory, check=True,
+                   stdout=subprocess.PIPE)
+    subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=directory / "root-install",
+                   check=True, stdout=subprocess.PIPE)
+
+
+def test_single_desktop_needs_no_flag():
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
-        payloads = build_assets(work, desktops=(None,))
-        result = run_unpack(work)
-        assert result.returncode == 0, result.stdout
-        root = work / "root-install"
-        assert (root / "pianoroot.f2fs.sparse.img").read_bytes() == payloads[None]
-        # 完整镜像与封存镜像都不进 Release，装机只用 root-install 那一份。
-        assert not (work / "pianoroot.f2fs.sparse.img").exists()
-        assert not (work / "pianoroot.f2fs.img.zst").exists()
-        assert (root / "root-install-manifest.json").is_file()
-        assert (root / "SHA256SUMS").is_file()
-        # 解包后暂存目录的清单只列真有的文件，手动刷机的
-        # `sha256sum -c SHA256SUMS` 才能直接跑通。
-        subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=work, check=True,
-                       stdout=subprocess.PIPE)
-        subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=root, check=True,
-                       stdout=subprocess.PIPE)
-        # 重新解包必须拒绝覆盖已经验证过的目录。
-        again = run_unpack(work)
-        assert again.returncode != 0 and "already exists" in again.stdout, again.stdout
-
-
-def test_single_suffixed_release_needs_no_flag():
-    """一档带后缀的 Release：省略 --desktop 也能自动识别。"""
-    with tempfile.TemporaryDirectory() as directory:
-        work = Path(directory)
-        payloads = build_assets(work, desktops=("kde",))
+        payloads = build_release(work, desktops=("kde",))
+        # 只下这一档的分片与 sidecar，与 README 教的下载方式一致。
         result = run_unpack(work)
         assert result.returncode == 0, result.stdout
         assert "Desktop: kde" in result.stdout, result.stdout
-        assert (work / "root-install" / "pianoroot.f2fs.sparse.img").read_bytes() == payloads["kde"]
+        assert (work / "root-install" / "pianoroot.f2fs.sparse.img").read_bytes() \
+            == payloads["kde"]
+        assert_staging_layout(work)
 
 
-def test_multi_desktop_release_requires_a_choice():
-    """多档 Release 不给 --desktop 必须失败，并列出可选项。"""
+def test_multi_desktop_requires_a_choice():
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
-        build_assets(work, desktops=DESKTOPS)
+        build_release(work)
         result = run_unpack(work)
-        assert result.returncode != 0, "a multi-desktop release unpacked without a choice"
-        for name in DESKTOPS:
-            assert name in result.stdout, result.stdout
+        assert result.returncode != 0, "a multi-desktop directory unpacked without a choice"
         assert "--desktop" in result.stdout, result.stdout
 
 
-def test_multi_desktop_release_restores_the_chosen_desktop():
+def test_each_desktop_installs_its_own_root():
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
-        payloads = build_assets(work, desktops=DESKTOPS)
+        payloads = build_release(work, parts={name: 2 for name in DESKTOPS})
         for desktop in DESKTOPS:
             target = work / desktop
             target.mkdir()
-            for asset in work.iterdir():
-                if asset.is_file():
-                    (target / asset.name).write_bytes(asset.read_bytes())
+            # 用户只下自己那一档：分片与 sidecar，别的档一概不碰。
+            for piece in work.glob(f"piano-{TAG}-{desktop}.*"):
+                (target / piece.name).write_bytes(piece.read_bytes())
             result = run_unpack(target, "--desktop", desktop)
             assert result.returncode == 0, (desktop, result.stdout)
-            root = target / "root-install"
-            assert (root / "pianoroot.f2fs.sparse.img").read_bytes() == payloads[desktop]
-            assert (root / "root-install-manifest.json").is_file()
-            # 6 个 manifest 从 tar 里解出来，落在暂存目录。
-            for name in MANIFEST_MEMBERS:
-                if name == "SHA256SUMS":
-                    continue
-                assert (target / name).is_file(), (desktop, name)
+            assert (target / "root-install" / "pianoroot.f2fs.sparse.img").read_bytes() \
+                == payloads[desktop], desktop
+            assert_staging_layout(target)
 
 
-def test_partial_download_installs_the_downloaded_desktop():
-    """只下平台资产加一档 root-install 也要能装：README 就是这么教用户下的。
-
-    另外三档的 root 各 1–3 GiB，装机时不该被要求下完。所以第 1 步只能校验
-    目录里真有的资产，第 4 步的 bundle 清单也只能校验它的子集。
-    """
+def test_unknown_desktop_is_rejected():
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
-        full = work / "full"
-        full.mkdir()
-        payloads = build_assets(full, desktops=DESKTOPS)
-        # 模拟用户：下平台资产 + niri 那一档，跳过其他三档的 root、manifest
-        # 包与 root-install 清单。后缀既可能接 `.`（manifests-gnome.tar.zst），
-        # 也可能接在末尾（root-install-SHA256SUMS-gnome）。
-        partial = work / "partial"
-        partial.mkdir()
-        skipped = tuple(name for name in DESKTOPS if name != "niri")
-        for asset in full.iterdir():
-            if not asset.is_file():
-                continue
-            if any(re.search(rf"-{name}(\.|$)", asset.name) for name in skipped):
-                continue
-            (partial / asset.name).write_bytes(asset.read_bytes())
-        result = run_unpack(partial, "--desktop", "niri")
-        assert result.returncode == 0, result.stdout
-        assert (partial / "root-install" / "pianoroot.f2fs.sparse.img").read_bytes() == payloads["niri"]
-        subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=partial, check=True,
-                       stdout=subprocess.PIPE)
-
-
-def test_legacy_release_ships_the_platform_images_raw():
-    """旧 Release 直接发解压后的平台镜像，新脚本不能强行找 .zst。"""
-    with tempfile.TemporaryDirectory() as directory:
-        work = Path(directory)
-        payloads = build_assets(work, desktops=("gnome",))
-        # 还原成 v44.3 那种形状：平台镜像是原名文件，没有 .zst。
-        for name in release_assets.PLATFORM_COMPRESSED:
-            archive = work / f"{name}.zst"
-            (work / name).write_bytes(subprocess.run(
-                ["zstd", "-dc", str(archive)], check=True, stdout=subprocess.PIPE).stdout)
-            archive.unlink()
-        assets = sorted(p.name for p in work.iterdir()
-                        if p.is_file() and p.name != "RELEASE-SHA256SUMS")
-        write_checksums(work / "RELEASE-SHA256SUMS",
-                        [(name, sha((work / name).read_bytes())) for name in assets])
-        result = run_unpack(work, "--desktop", "gnome")
-        assert result.returncode == 0, result.stdout
-        for name in release_assets.PLATFORM_COMPRESSED:
-            assert (work / name).is_file(), name
-        assert (work / "root-install" / "pianoroot.f2fs.sparse.img").read_bytes() == payloads["gnome"]
-
-
-def test_unknown_desktop_is_rejected_with_the_available_choices():
-    with tempfile.TemporaryDirectory() as directory:
-        work = Path(directory)
-        build_assets(work, desktops=("gnome", "kde"))
+        build_release(work, desktops=("gnome", "kde"))
         result = run_unpack(work, "--desktop", "niri")
         assert result.returncode != 0, "an absent desktop was accepted"
-        assert "gnome" in result.stdout and "kde" in result.stdout, result.stdout
+        assert "niri" in result.stdout, result.stdout
 
 
-def test_naming_rule_has_one_implementation():
-    """Python 与 unpack-release.sh 的 published_name 必须给出同样的名字。"""
-    unpack = UNPACK.read_text()
-    assert "published_name()" in unpack, "unpack-release.sh lost its naming helper"
-    # 从脚本里把函数体单独抠出来跑，避免只比对字符串长相。
-    function = subprocess.run(
-        ["sed", "-n", "/^published_name() {/,/^}/p", str(UNPACK)],
-        check=True, stdout=subprocess.PIPE, text=True).stdout
-    assert function.count("\n") > 3, "could not extract published_name() from unpack-release.sh"
-    probe = function + '\n[ "$#" -eq 2 ] || exit 0\npublished_name "$1" "$2"\n'
-    script = Path(tempfile.mkdtemp()) / "probe.sh"
-    try:
-        script.write_text("#!/usr/bin/env bash\nset -euo pipefail\n" + probe)
-        script.chmod(0o755)
-        for name in ("pianoroot.f2fs.img.zst", "root-install-manifest.json",
-                     "root-install-SHA256SUMS", "root-install-pianoroot.f2fs.sparse.img.zst",
-                     "pianoroot.f2fs.sparse.img.zst"):
-            for desktop in DESKTOPS:
-                got = subprocess.run(["bash", str(script), name, desktop], check=True,
-                                     stdout=subprocess.PIPE, text=True).stdout.strip()
-                want = release_assets.published_name(name, desktop)
-                assert got == want, (name, desktop, got, want)
-    finally:
-        script.unlink(missing_ok=True)
-        script.parent.rmdir()
+def test_partial_download_fails_the_sidecar_check():
+    """分片缺一片就必须在解开之前停下，不能解出半个归档。"""
+    with tempfile.TemporaryDirectory() as directory:
+        work = Path(directory)
+        build_release(work, desktops=("gnome",), parts={"gnome": 2})
+        (work / f"piano-{TAG}-gnome.tar.zst.part-01").unlink()
+        result = run_unpack(work)
+        assert result.returncode != 0, result.stdout
+        assert not (work / "root-install").exists(), "a partial archive was unpacked"
 
 
-def test_asset_classification_covers_the_bundle():
-    """bundle 里已知的每份资产都必须有明确归类，平台集合里不能混进桌面资产。"""
-    platform = set(release_assets.PLATFORM_ASSETS)
-    members = set(release_assets.MANIFEST_MEMBERS)
-    for name in BUNDLE_FILES:
-        if name in members:
-            # 每档各写各的：既有摘要绑定，也有桌面相关的 root 记录。它们
-            # 不逐个发，打成一个 tar。
-            assert name not in platform, f"{name} differs per desktop and cannot be shared"
-            assert release_assets.classify(name) == "manifest-archive", name
-            continue
-        if name in ("pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img"):
-            continue
-        if name in ("initramfs.tar.zst", "diagnostic-abl-storage.tar.zst"):
-            # 不再随 Release 发布：前者是 build-bundle 解包用的中间产物，
-            # 内容与 boot_sunuefi.img 里那份相同；后者是 ABL 调试件。
-            assert name not in platform, f"{name} is no longer published"
-            continue
-        assert name in platform, f"{name} is a shared platform asset but not classified as one"
-    for name in release_assets.DESKTOP_INSTALL_ASSETS:
-        assert name not in platform
-    # esp-manifest.json 的 files 一节记录 root.tar.zst，四档字节不同。
-    assert "esp-manifest.json" not in platform
+def test_download_path_fetches_only_this_desktop():
+    """`--tag` 只拉 sidecar 列出的文件，已在盘上的跳过。"""
+    with tempfile.TemporaryDirectory() as directory:
+        work = Path(directory)
+        release = work / "release"
+        release.mkdir()
+        payloads = build_release(release, parts={name: 2 for name in DESKTOPS})
+        target = work / "target"
+        logs = work / "curl.log"
+        stub = make_curl_stub(work, release)
+        result = run_unpack(work, "--tag", TAG, "--desktop", "niri", "--dir", str(target),
+                            env={**os.environ, "PATH": f"{stub.parent}:{os.environ['PATH']}",
+                                 "STUB_LOG": str(logs), "STUB_SOURCE": str(release)})
+        assert result.returncode == 0, result.stdout
+        fetched = sorted(line.split("/")[-1] for line in logs.read_text().split())
+        assert fetched == sorted([f"piano-{TAG}-niri.sha256", f"piano-{TAG}-niri.tar.zst.part-00",
+                                  f"piano-{TAG}-niri.tar.zst.part-01"]), fetched
+        assert (target / "root-install" / "pianoroot.f2fs.sparse.img").read_bytes() \
+            == payloads["niri"]
+        assert_staging_layout(target)
 
 
-def test_manifest_archive_members_are_one_definition():
-    """release.yml 的 tar 命令与 unpack-release.sh 必须用同一份成员表。"""
-    members = tuple(release_assets.MANIFEST_MEMBERS)
-    assert members == MANIFEST_MEMBERS, "tests/check_release_workflow.py drifted"
-    workflow = WORKFLOW.read_text()
-    assert "release-assets.py manifest-members" in workflow, (
-        "release.yml must take the archive members from scripts/release-assets.py")
-    for flag in ("--sort=name", "--mtime=@0", "--owner=0", "--group=0", "--numeric-owner"):
-        assert flag in workflow, f"release.yml manifest tar lacks {flag}"
-    unpack = UNPACK.read_text()
-    for name in ("bundle-manifest.json", "root-image-manifest.json", "source-runs.json",
-                 "SHA256SUMS"):
-        assert name in unpack, f"unpack-release.sh never checks for {name} after unpacking"
-    assert "manifests.tar.zst" in unpack
+def make_curl_stub(work, source):
+    bindir = work / "bin"
+    bindir.mkdir()
+    script = bindir / "curl"
+    script.write_text(f"""#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -o) out=$2; shift 2 ;;
+        -*) shift ;;
+        *) url=$1; shift ;;
+    esac
+done
+[ -n "$out" ] || exit 2
+echo "$url" >> "$STUB_LOG"
+cp "$STUB_SOURCE/$out" "$out"
+""")
+    script.chmod(0o755)
+    return script
+
+
+def test_rerun_refuses_to_overwrite():
+    with tempfile.TemporaryDirectory() as directory:
+        work = Path(directory)
+        build_release(work, desktops=("gnome",))
+        first = run_unpack(work)
+        assert first.returncode == 0, first.stdout
+        again = run_unpack(work)
+        assert again.returncode != 0 and "empty one" in again.stdout, again.stdout
 
 
 def test_workflow_contract():
     text = WORKFLOW.read_text()
     required = [
-        'tags: ["v*"]',
         "contents: write",
         "id-token: write",
         "attestations: write",
         "scripts/release-desktops.py",
         "--desktop-runs",
-        "scripts/release-assets.py platform",
-        "scripts/release-assets.py classify",
-        "scripts/release-assets.py name",
+        "scripts/release-assets.py archive-name",
+        "scripts/release-assets.py sidecar-name",
+        "scripts/release-assets.py bundled",
+        "scripts/release-assets.py check-bundle",
+        "scripts/release-assets.py write-sums",
         ". scripts/release-upload.sh",
         'gh release create "$TAG" --draft',
         'gh release edit "$TAG" --draft=false',
         "subject-checksums: build/stage/RELEASE-SHA256SUMS",
         "if: inputs.publish == 'true'",
         "if: inputs.publish != 'true'",
+        "release_upload_split",
+        'gh release upload "$TAG" "$STAGE/RELEASE-SHA256SUMS"',
+        '--name "deploy-bundle-${desktop}"',
+        '--name "root-install-${desktop}"',
+        "make-device-boot.sh",
     ]
     missing = [item for item in required if item not in text]
     assert not missing, f"release.yml lost: {missing}"
+    # 打 tag 不能再自动建 Release：四档发布要显式 dispatch。
+    assert "push:" not in text, "release.yml still triggers on tag pushes"
+    assert "tags: [" not in text, "release.yml still triggers on tag pushes"
+    assert "GITHUB_REF_NAME" not in text
     # 转公开必须显式传参，默认停在 draft。
     assert 'default: "false"' in text, "publish/prerelease 输入必须有 false 默认值"
     publish_block = text[text.index("name: Publish the release"):]
@@ -426,77 +324,42 @@ def test_workflow_contract():
         assert forbidden not in text, f"release.yml rebuilds instead of releasing: {forbidden}"
     # draft 必须在任何上传之前建好，否则 gh release upload 没有目标。
     assert text.index("Create the draft release") < text.index("release_upload")
-    # 平台资产先逐字节比对，再上传一次：参考副本第一次写入后才允许上传，
-    # 之后的档只能 cmp，不能重传。上传走压缩 helper，比对仍用 bundle 原件。
-    reference = text.index("build/reference/platform")
-    compare = text.index("cmp -s")
-    upload_first = text.index('release_upload_platform "build/in/bundle/$name"')
-    assert reference < upload_first < compare, (
-        "release.yml must upload the platform assets once, then compare later desktops")
-    # 平台镜像压缩发布；解包脚本负责还原。
-    assert "release_upload_platform" in text
-    # 解包脚本的压缩名单是 PLATFORM_COMPRESSED 的第二份实现，必须逐项一致；
-    # 名单里的每个名字都按 `<name>.zst` 还原。
-    block = UNPACK.read_text()
-    block = block[block.index("compressed_platform=(") + len("compressed_platform=("):]
-    block = block[:block.index(")")]
-    assert block.split() == list(release_assets.PLATFORM_COMPRESSED), (
-        "unpack-release.sh compresses a different set than scripts/release-assets.py")
-    assert '"$name.zst"' in UNPACK.read_text(), (
-        "unpack-release.sh must decompress each platform image from <name>.zst")
     # 每档的 root-install 绑定到自己的 bundle，而不是只绑一档。
     assert 'record.get("desktop") == desktop' in text
+    # 归档解压回来必须与装配目录逐项相同。
+    assert "diff -r \"$archive\" build/verify" in text
+    # 旧的扁平布局不再出现。
+    for gone in ("release_upload_platform", "manifests.tar.zst", "piano-installer-",
+                 "PLATFORM_COMPRESSED"):
+        assert gone not in text, f"release.yml still carries {gone}"
 
-    # 每档的循环把压缩副本写到同一个 $STAGE 路径。zstd 没有 -f 时第二档会
-    # 反问要不要覆盖，非交互环境直接以 1 退出——第一次四档发布就停在这里。
-    commands, buffer = [], ""
-    for line in text.splitlines():
-        stripped = line.rstrip()
-        buffer += stripped.rstrip("\\").strip() + " "
-        if not stripped.endswith("\\"):
-            commands.append(buffer)
-            buffer = ""
-    staged = [c for c in commands if "zstd" in c and '-o "$STAGE/' in c]
-    assert staged, "release.yml no longer compresses into $STAGE"
-    for command in staged:
-        assert re.search(r"\bzstd\b[^|]*\s-f\b", command), (
-            "a per-desktop stage compression runs without -f; the second "
-            "desktop would stop at zstd's overwrite prompt: " + command)
 
-    unpack = UNPACK.read_text()
-    assert "root-install-pianoroot.f2fs.sparse.img.zst" in text
-    assert "root-install-pianoroot.f2fs.sparse.img.zst" in unpack
-    # root-install 的清单与摘要进了归档，不再单独发布；两边都按归档成员核对。
-    assert "root-install-manifest.json" in text and "root-install-manifest.json" in unpack
-    assert "root-install/SHA256SUMS" in text and "root-install/SHA256SUMS" in unpack
-    assert "archive-members" in text, (
-        "release.yml must take the archive members, root-install files included, "
-        "from scripts/release-assets.py")
-    # 完整镜像与封存镜像只在"不发"的那条分支里出现，两边都要写明。
-    for name in ("pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img"):
-        assert name in text, f"release.yml does not mention {name}"
-    assert "pianoroot.f2fs.img.zst|pianoroot.f2fs.sparse.img" in text, (
-        "release.yml must skip both unshipped root images by name")
-    # 每档 6 个 manifest 走 tar；解包脚本要能解出来并核对关键成员。
-    assert "manifests.tar.zst" in text and "manifest-members" in text
-    assert "manifests.tar.zst" in unpack
-    for name in MANIFEST_MEMBERS:
-        assert name in unpack or name in " ".join(MANIFEST_MEMBERS), name
-    assert "--desktop" in unpack
+def test_release_notes_teach_both_paths():
+    """说明里的命令必须与归档真实形状一致：分片合并、两条校验、生成 BOOT。"""
+    text = WORKFLOW.read_text()
+    notes = text[text.index("cat > build/stage/notes.md"):text.index("gh release create")]
+    for token in ("sha256sum -c piano-${TAG}-${example}.sha256",
+                  "cat piano-${TAG}-${example}.tar.zst.part-* | zstd -dc | tar -x",
+                  "sha256sum -c SHA256SUMS",
+                  "(cd root-install && sha256sum -c SHA256SUMS)",
+                  "./make-device-boot.sh",
+                  "unpack-release.sh --tag ${TAG} --desktop ${example}"):
+        assert token in notes, f"release notes omit {token!r}"
+    # 原厂 ABL 不实现 fetch，说明里不能再教它。
+    assert "fastboot fetch boot_a" not in text
 
 
 def main():
     test_workflow_contract()
-    test_asset_classification_covers_the_bundle()
-    test_naming_rule_has_one_implementation()
-    test_single_unsuffixed_release_still_works()
-    test_single_suffixed_release_needs_no_flag()
-    test_multi_desktop_release_requires_a_choice()
-    test_multi_desktop_release_restores_the_chosen_desktop()
-    test_partial_download_installs_the_downloaded_desktop()
-    test_legacy_release_ships_the_platform_images_raw()
-    test_unknown_desktop_is_rejected_with_the_available_choices()
-    print("OK: release workflow 绑定 tag commit，多桌面资产按后缀还原为规范名")
+    test_release_notes_teach_both_paths()
+    test_single_desktop_needs_no_flag()
+    test_multi_desktop_requires_a_choice()
+    test_each_desktop_installs_its_own_root()
+    test_unknown_desktop_is_rejected()
+    test_partial_download_fails_the_sidecar_check()
+    test_download_path_fetches_only_this_desktop()
+    test_rerun_refuses_to_overwrite()
+    print("OK: 每档一个自包含归档，手动与脚本两条路径解出同一个暂存目录")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,14 @@
 name: prepare-install
+run-name: prepare-install ${{ inputs.desktop }}
 
 # 构建安装材料与真实 F2FS 扩容验证；不连接或写入平板。
 on:
   workflow_dispatch:
     inputs:
+      desktop:
+        description: "桌面档；只用于定位 deploy-bundle-<desktop> 与命名 root-install-<desktop>"
+        required: false
+        default: "gnome"
       bundle_run:
         description: "已成功且完整验证的 deploy-bundle run"
         required: true
@@ -38,6 +43,7 @@ jobs:
       - name: Validate the exact deploy-bundle run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DESKTOP: ${{ inputs.desktop }}
         run: |
           set -euo pipefail
           test -n "${{ inputs.bundle_run }}" || {
@@ -45,19 +51,34 @@ jobs:
             exit 2
           }
           python3 scripts/resolve-artifact-run.py --workflow build-bundle.yml \
-            --artifact deploy-bundle --run-id "${{ inputs.bundle_run }}" \
+            --artifact "deploy-bundle-${DESKTOP}" --run-id "${{ inputs.bundle_run }}" \
             --output-key bundle_run
 
       - uses: actions/download-artifact@v4
         with:
-          name: deploy-bundle
+          name: deploy-bundle-${{ inputs.desktop }}
           path: build/in/bundle
           run-id: ${{ inputs.bundle_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       # 下载动作不保证解压完整，实测会在中途静默停下。这一档必须紧跟在下载
       # 之后：否则要等容量验证跑完二十分钟才看到缺文件。
       - name: Verify the downloaded bundle immediately
-        run: (cd build/in/bundle && sha256sum -c SHA256SUMS)
+        env:
+          DESKTOP: ${{ inputs.desktop }}
+        run: |
+          set -euo pipefail
+          (cd build/in/bundle && sha256sum -c SHA256SUMS)
+          # bundle artifact 名里的档位是手填的，root 镜像记录里的档位是构建
+          # 时写下的。两者不一致说明取错了 run，后面每一步都会错。
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          record = json.loads(Path("build/in/bundle/root-image-manifest.json").read_text())
+          assert record.get("desktop") == os.environ["DESKTOP"], (
+              f"bundle was built for desktop {record.get('desktop')!r}, "
+              f"not {os.environ['DESKTOP']!r}")
+          print(f"OK: bundle desktop is {os.environ['DESKTOP']}")
+          PY
       - name: Verify a real filesystem expansion and sparse roundtrip
         env:
           TMPDIR: ${{ github.workspace }}/build/tmp
@@ -79,7 +100,7 @@ jobs:
           (cd build/root-install && sha256sum -c SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: root-install
+          name: root-install-${{ inputs.desktop }}
           path: build/root-install/
           if-no-files-found: error
           retention-days: 14
@@ -103,6 +124,7 @@ jobs:
         id: bundle_src
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DESKTOP: ${{ inputs.desktop }}
         run: |
           set -euo pipefail
           test -n "${{ inputs.bundle_run }}" || {
@@ -110,12 +132,12 @@ jobs:
             exit 2
           }
           python3 scripts/resolve-artifact-run.py --workflow build-bundle.yml \
-            --artifact deploy-bundle --run-id "${{ inputs.bundle_run }}" \
+            --artifact "deploy-bundle-${DESKTOP}" --run-id "${{ inputs.bundle_run }}" \
             --output-key bundle_run
 
       - uses: actions/download-artifact@v4
         with:
-          name: deploy-bundle
+          name: deploy-bundle-${{ inputs.desktop }}
           path: build/in/bundle
           run-id: ${{ steps.bundle_src.outputs.bundle_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

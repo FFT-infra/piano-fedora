@@ -1,169 +1,196 @@
 #!/usr/bin/env python3
-"""Release 资产命名：哪些文件四档共用，哪些按桌面加后缀。
+"""Release 里每档一个自包含归档：命名、成员表与 bundle 核对。
 
-四档镜像共用同一个 ESP、内核、initramfs 与 UEFI，差的是 root 文件系统。
-所以 Release 里的资产分两类：
+四档镜像共用同一个 ESP、内核与 UEFI，差的是 root 文件系统。Release 把它们
+按桌面打成一个归档，用户只下自己那一档：
 
-- 平台资产：四档逐字节相同，只上传一份，名字不变。
-- 桌面资产：每档各一份，名字在第一处 `.` 前插入 `-<desktop>`
-  （`pianoroot.f2fs.img.zst` → `pianoroot-gnome.f2fs.img.zst`，
-  `root-install-manifest.json` → `root-install-manifest-gnome.json`）。
+    piano-<tag>-<desktop>.tar.zst[.part-NN]   归档，超过 2 GiB 时切片
+    piano-<tag>-<desktop>.sha256              这一档已上传文件的摘要
 
-`unpack-release.sh` 用同一套规则还原成规范名，两边由
-`tests/check_release_assets.py` 逐项比对，防止命名分叉。规则本身只有一处
-实现：`desktop_asset()` 与 `published_name()` 是同一个函数。
+归档解到当前目录，就是安装指南里的暂存目录。刷写脚本、boot-tools、平台
+镜像、这一档的 manifest 与 root-install 全在里面，不需要再拼装第二次。
+
+本文件是成员表的唯一来源：release.yml 按它装配归档，unpack-release.sh 与
+文档按它核对，tests/check_release_assets.py 逐项比对。
 
 用法：
-    python3 scripts/release-assets.py classify <name>
-    python3 scripts/release-assets.py name <name> <desktop>
-    python3 scripts/release-assets.py platform
-    python3 scripts/release-assets.py platform-name <name>
-    python3 scripts/release-assets.py platform-compressed
-    python3 scripts/release-assets.py manifest-members
-    python3 scripts/release-assets.py archive-members
+    python3 scripts/release-assets.py archive-name <tag> <desktop>
+    python3 scripts/release-assets.py sidecar-name <tag> <desktop>
+    python3 scripts/release-assets.py bundled
+    python3 scripts/release-assets.py excluded
+    python3 scripts/release-assets.py members
+    python3 scripts/release-assets.py check-bundle <deploy-bundle dir>
+    python3 scripts/release-assets.py verify-name <path>
 """
 
 import argparse
+import hashlib
+import re
 import sys
+from pathlib import Path
 
-# 四份 bundle 必须逐字节相同、只上传一份的文件。
-#
-# 每档各写各的不在这个集合里：bundle-manifest.json、root-image-manifest.json、
-# rootfs-manifest.json、source-runs.json 与 SHA256SUMS 走
-# DESKTOP_BUNDLE_ARCHIVE。esp-manifest.json 同理——它是上游
-# package_release.py 的产物，`files` 一节记录了输出目录里每个文件（含按
-# 桌面不同的 root.tar.zst）的大小与摘要，四档字节不同，拿它当共用资产会在
-# 发布门禁里被误判为平台分叉。
-#
-# initramfs.tar.zst 与 diagnostic-abl-storage.tar.zst 曾经在这里，现在不发：
-# 前者是 build-bundle 解包用的中间产物，内容与 boot_sunuefi.img 里那份
-# 逐字节相同；后者是 ABL 只读探针的调试件，manifest 自标 device_tested:
-# false，装机脚本不读。两者都从对应的 workflow artifact 取。
-PLATFORM_ASSETS = (
+ARCHIVE_STEM = "piano"
+
+# 从 deploy-bundle 原样复制进归档的文件。三份镜像刷设备或供校验，其余是
+# 装机脚本与构建记录读的 manifest。
+BUNDLE_MEMBERS = (
     "PianoUEFI-product.img",
-    "sunuefi_esp.img",
     "boot_sunuefi.img",
-    "uefi-source.json",
-    "kernel-manifest.json",
-    "initramfs-manifest.json",
-    "runtime-manifest.json",
-    "mesa-manifest.json",
-    "ffmpeg-manifest.json",
-)
-
-# 三份镜像压缩发布，Release 里的名字是规范名加 `.zst`。
-#
-# ESP 是 512 MiB 的 ext4，绝大部分扇区是零，zstd -10 后只剩 36 MiB；另外
-# 两份也各能省一半。不压缩时每个用户白下 510 MiB，比资产条数重要得多。
-# 装机脚本读的仍是解压后的规范名，由 unpack-release.sh 还原；从源码构建时
-# deploy-bundle 里本来就是解压状态，脚本会跳过。
-PLATFORM_COMPRESSED = (
-    "PianoUEFI-product.img",
     "sunuefi_esp.img",
-    "boot_sunuefi.img",
-)
-
-# 每档的 bundle manifest 与 root-install 的两份小文件不单独发，打成一个 tar
-# 发布。装机脚本要读它们（flash-linux.sh 用 bundle-manifest 与
-# root-image-manifest 证明 root-install 来自这个 bundle，install-f2fs.py 的
-# 首装还要读 source-runs），但它们全是给脚本读的 JSON 与摘要，没有一个需要
-# 单独点开。逐个发会让每档占 9 个资产条目，四档就是 36 个。
-DESKTOP_BUNDLE_ARCHIVE = "manifests.tar.zst"
-
-# 打进 DESKTOP_BUNDLE_ARCHIVE 的成员，相对 deploy-bundle 根目录。这是唯一
-# 一处定义：release.yml 的 tar 命令与 unpack-release.sh 的核对都按它来，
-# tests/check_release_assets.py 逐项比对，防止两边分叉。
-MANIFEST_MEMBERS = (
     "bundle-manifest.json",
     "esp-manifest.json",
+    "ffmpeg-manifest.json",
+    "initramfs-manifest.json",
+    "kernel-manifest.json",
+    "mesa-manifest.json",
     "root-image-manifest.json",
     "rootfs-manifest.json",
+    "runtime-manifest.json",
     "source-runs.json",
+    "uefi-source.json",
+)
+
+# deploy-bundle 里有、但不进归档的文件。
+#
+# 两份 root 镜像与 root-install 里的 root 内容相同，也不能直接刷：装机的
+# 那份由 prepare-install 写好设备配置再扩容。同一份 root 发三种形态只会让
+# 人分不清该下哪个，还把归档撑大。`initramfs.tar.zst` 是 build-bundle 解包
+# 用的中间产物，内容与 `boot_sunuefi.img` 里那份相同；
+# `diagnostic-abl-storage.tar.zst` 是 ABL 只读探针的调试件，manifest 自标
+# `device_tested: false`，装机脚本不读。`SHA256SUMS` 对应的清单在归档里重新
+# 生成，只列归档里真实存在的文件。
+EXCLUDED_BUNDLE_FILES = (
+    "diagnostic-abl-storage.tar.zst",
+    "initramfs.tar.zst",
+    "pianoroot.f2fs.img.zst",
+    "pianoroot.f2fs.sparse.img",
     "SHA256SUMS",
 )
 
-# 同一个归档里还带这一档 root-install 的两份小文件。它们来自 prepare-install
-# 而不是 deploy-bundle，所以单独列；`root-install/` 前缀让解包后直接落在
-# 装机脚本要求的位置，不需要再挪一次。
-ROOT_INSTALL_MEMBERS = (
-    "root-install/root-install-manifest.json",
-    "root-install/SHA256SUMS",
+# 归档里的目录。每个目录都由 release.yml 现场装配：
+#
+#   boot-tools/      Android 侧选择器模块与 aarch64 原生重打包器
+#   host-boot-tool/  x86-64 宿主机重打包器
+#   scripts/         prepare-device-boot.py 与它的两个辅助模块
+#   root-install/    这一档的 root 传输镜像、清单与摘要
+ARCHIVE_DIRS = ("boot-tools", "host-boot-tool", "root-install", "scripts")
+
+# 归档顶层的普通文件。`SHA256SUMS` 由 release.yml 在装配完后按目录里的实际
+# 内容生成，不是从别处复制来的。
+ARCHIVE_FILES = BUNDLE_MEMBERS + (
+    "README-INSTALL.txt",
+    "SHA256SUMS",
+    "flash-linux.bat",
+    "flash-linux.sh",
+    "make-device-boot.sh",
 )
 
-# root-install 侧：只有 root 传输镜像单独发。清单与摘要进了归档。
-DESKTOP_INSTALL_ASSETS = (
-    "root-install-pianoroot.f2fs.sparse.img.zst",
-)
+_NAME = re.compile(r"[a-z0-9][a-z0-9.-]*")
 
 
-def published_name(name, desktop):
-    """桌面资产在 Release 里的名字：第一处 `.` 前插入 `-<desktop>`。"""
-    if not desktop:
-        raise ValueError("desktop is required for a desktop asset")
-    stem, dot, rest = name.partition(".")
-    if dot:
-        return f"{stem}-{desktop}.{rest}"
-    return f"{name}-{desktop}"
+def _checked(value, what):
+    if not value or not _NAME.fullmatch(value) or ".." in value:
+        raise ValueError(f"invalid {what}: {value!r}")
+    return value
 
 
-def platform_published_name(name):
-    """平台资产在 Release 里的名字：三份镜像加 `.zst`，其余同名。
+def archive_name(tag, desktop):
+    """`piano-<tag>-<desktop>.tar.zst`。"""
+    return f"{ARCHIVE_STEM}-{_checked(tag, 'tag')}-{_checked(desktop, 'desktop')}.tar.zst"
 
-    `unpack-release.sh` 不查这张表，它只认「同名文件在就用、`.zst` 在就解压」，
-    所以这条规则在 shell 侧没有第二份实现。
+
+def sidecar_name(tag, desktop):
+    """`piano-<tag>-<desktop>.sha256`，列这一档已上传的分片。"""
+    return f"{ARCHIVE_STEM}-{_checked(tag, 'tag')}-{_checked(desktop, 'desktop')}.sha256"
+
+
+def members():
+    """归档顶层条目，文件与目录各按名字排序。"""
+    return sorted(ARCHIVE_FILES) + sorted(ARCHIVE_DIRS)
+
+
+def verify_name(path):
+    """`archive` 表示这个相对路径属于归档，`excluded` 表示不属于。"""
+    top = path.strip("/").split("/")[0]
+    if top in ARCHIVE_FILES or top in ARCHIVE_DIRS:
+        return "archive"
+    return "excluded"
+
+
+def write_sums(directory):
+    """按目录里的实际内容写 `SHA256SUMS`，返回行数。
+
+    清单只列真实存在的文件。机读清单里混进未发布的成员，手动路径的
+    `sha256sum -c SHA256SUMS` 就会恒返回 1。
     """
-    return f"{name}.zst" if name in PLATFORM_COMPRESSED else name
+    root = Path(directory)
+    rows = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path == root / "SHA256SUMS":
+            continue
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(8 << 20), b""):
+                digest.update(chunk)
+        rows.append((str(path.relative_to(root)), digest.hexdigest()))
+    (root / "SHA256SUMS").write_text(
+        "".join(f"{digest}  {name}\n" for name, digest in sorted(rows)))
+    return len(rows)
 
 
-def classify(name):
-    """`platform` 表示四档共用一份；`manifest-archive` 表示打 tar；
-    其余一律按桌面资产处理。
+def check_bundle(directory):
+    """核对 deploy-bundle 的文件集合，返回缺失与未知两份名单。
 
-    默认按桌面资产处理是有意为之：新出现的文件不会被悄悄当成共用资产
-    上传，漏进四档差异时发布门禁会直接失败。
+    发布只能装配它认识的成员。bundle 里多出一个文件说明上游改了产物，
+    这里必须失败，不能悄悄漏发。
     """
-    if name in PLATFORM_ASSETS:
-        return "platform"
-    if name in MANIFEST_MEMBERS:
-        return "manifest-archive"
-    return "desktop"
+    present = {item.name for item in Path(directory).iterdir() if item.is_file()}
+    expected = set(BUNDLE_MEMBERS) | set(EXCLUDED_BUNDLE_FILES)
+    return sorted(expected - present), sorted(present - expected)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    one = sub.add_parser("classify", help="打印 platform、manifest-archive 或 desktop")
-    one.add_argument("name")
-    named = sub.add_parser("name", help="打印桌面资产在 Release 里的名字")
-    named.add_argument("name")
+    named = sub.add_parser("archive-name", help="打印这一档的归档名")
+    named.add_argument("tag")
     named.add_argument("desktop")
-    sub.add_parser("platform", help="打印全部平台资产，一行一个")
-    sub.add_parser("platform-compressed", help="打印压缩发布的平台资产，一行一个")
-    named_platform = sub.add_parser("platform-name", help="打印平台资产在 Release 里的名字")
-    named_platform.add_argument("name")
-    sub.add_parser("manifest-members", help="打印打进 manifests.tar.zst 的成员，一行一个")
-    sub.add_parser("archive-members", help="打印归档里的全部成员，含 root-install 那两份")
+    sidecar = sub.add_parser("sidecar-name", help="打印这一档的摘要文件名")
+    sidecar.add_argument("tag")
+    sidecar.add_argument("desktop")
+    sub.add_parser("bundled", help="打印从 deploy-bundle 复制进归档的文件")
+    sub.add_parser("excluded", help="打印 deploy-bundle 里不进归档的文件")
+    sub.add_parser("members", help="打印归档顶层条目")
+    check = sub.add_parser("check-bundle", help="核对 deploy-bundle 的文件集合")
+    check.add_argument("directory")
+    verify = sub.add_parser("verify-name", help="打印 archive 或 excluded")
+    verify.add_argument("path")
+    sums = sub.add_parser("write-sums", help="按目录实际内容写 SHA256SUMS")
+    sums.add_argument("directory")
     args = parser.parse_args(argv)
-    if args.command == "platform":
-        print("\n".join(PLATFORM_ASSETS))
-        return 0
-    if args.command == "platform-compressed":
-        print("\n".join(PLATFORM_COMPRESSED))
-        return 0
-    if args.command == "manifest-members":
-        print("\n".join(MANIFEST_MEMBERS))
-        return 0
-    if args.command == "archive-members":
-        print("\n".join(MANIFEST_MEMBERS + ROOT_INSTALL_MEMBERS))
-        return 0
-    if args.command == "classify":
-        print(classify(args.name))
-        return 0
-    if args.command == "platform-name":
-        print(platform_published_name(args.name))
-        return 0
     try:
-        print(published_name(args.name, args.desktop))
+        if args.command == "archive-name":
+            print(archive_name(args.tag, args.desktop))
+        elif args.command == "sidecar-name":
+            print(sidecar_name(args.tag, args.desktop))
+        elif args.command == "bundled":
+            print("\n".join(BUNDLE_MEMBERS))
+        elif args.command == "excluded":
+            print("\n".join(EXCLUDED_BUNDLE_FILES))
+        elif args.command == "members":
+            print("\n".join(members()))
+        elif args.command == "verify-name":
+            print(verify_name(args.path))
+        elif args.command == "write-sums":
+            print(f"OK: SHA256SUMS lists {write_sums(args.directory)} files")
+        else:
+            missing, unknown = check_bundle(args.directory)
+            if missing:
+                print("deploy-bundle lacks: " + " ".join(missing), file=sys.stderr)
+            if unknown:
+                print("deploy-bundle carries unclassified files: " + " ".join(unknown),
+                      file=sys.stderr)
+            return 1 if missing or unknown else 0
     except ValueError as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2

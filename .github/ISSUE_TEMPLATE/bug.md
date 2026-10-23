@@ -15,7 +15,7 @@ assignees: ""
 
 ## 刷机材料
 
-- 使用的 deploy-bundle 来自哪次 `build-bundle` run（run id）：
+- 使用的归档或 deploy-bundle-<档位> 来自哪个 tag，或哪次 `build-bundle` run（run id）：
 - root-install 是否来自同一次 run：
 - 镜像 manifest 里的 `kernel_release`：
 - 是否核对过 `SHA256SUMS`：
