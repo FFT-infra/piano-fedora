@@ -14,7 +14,7 @@
 
 **实机记录。** `7.2.9-1` → `7.2.9-3` 在平板上走过一次：事务收尾时 initramfs 重建（6 个早期模块）、ESP 的 `Image`、`initramfs`、`boot.img` 三份都换掉并各留一份 `.bak`，审计记录写到 `/var/lib/piano/kernel-esp/<release>.json`。重启后 `uname -r` 是升级后的 `7.2.9` release，`graphical.target` 与 GDM 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载，`/dev/video40`、`/dev/video41` 在。
 
-同一条路径也从 COPR 走过一次 `dnf reinstall kernel-piano`（版本不变，等于把下载、校验、`%posttrans` 整条重跑）：事务成功，审计记录里 `changed` 三项全为 `false`，`boot.img` 摘要没变——同样的输入重打出的容器逐字节相同，所以重复触发不会重写 43 MB。
+同一条路径也从 COPR 走过一次 `dnf reinstall kernel-piano`（设备连上 Wi-Fi，包从 `copr:copr.fedorainfracloud.org:xinyang26:piano-fedora` 下载，公钥同源拉取并校验）：事务成功，审计记录里 `changed` 三项全为 `false`，`boot.img` 摘要没变——同样的输入重打出的容器逐字节相同，所以重复触发不会重写 43 MB。
 
 挂起与唤醒各测了两轮，都能回到桌面，`systemctl --failed` 保持为空。挂起路径上每次会打 4 条 `qdss already disabled/unprepared` 的 clk 警告（`amba_pm_runtime_suspend` 对 coresight qdss 重复 disable），不影响唤醒，没有对应的故障现象。
 
@@ -107,7 +107,6 @@ sudo dnf makecache
   `--repofrompath` 临时加入并校验公钥，不写进镜像的持久配置。四档里只有
   Hyprland 用这个源，其余三档只连官方仓库；细节见[桌面档](desktops.md)。
 - 重建产物和 CI 矩阵产物不是逐字节同一份。版本号相同，构建环境不同。要完全一致的二进制就用 bundle 里的 RPM，不要用 COPR。
-- 设备目前没有默认路由，只有 USB NCM 的 `192.168.77.0/30`。接上 Wi-Fi 之前 `dnf` 连不上 COPR。这是设备侧的网络配置，不是仓库的问题。
 
 ## 设备侧验证
 
