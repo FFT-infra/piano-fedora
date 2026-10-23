@@ -49,7 +49,7 @@ On device, `niri` and `hyprland` hit a wrong greeter account name in greetd
 manager never starts. The source fix is in. Both images need a rebuild before
 they work without manual intervention.
 
-Pick a profile at download time with `bash unpack-release.sh --desktop <profile>`. Without the flag the script takes the only profile in the release. Login, power behavior, rotation, and known gaps per profile are in [Desktops](docs/desktops.md).
+Each profile ships as one self-contained archive, so you download only the profile you install. Login, power behavior, rotation, and known gaps per profile are in [Desktops](docs/desktops.md).
 
 ## Install
 
@@ -57,8 +57,16 @@ There are two paths. The manual path is the primary one: it gives each command, 
 
 1. Unlock the bootloader and set up `fastboot`.
 2. On a device with the stock GPT, follow [First install from the stock GPT/UFS](docs/installation.md#四-从原始-gptufs-开始的首次安装) to create the partitions, erase `userdata`, and let Android boot once. **The one-step script does not work without this step.**
-3. Download the platform assets and the `root-install-*` files of the profile you picked (the other profiles' roots are not needed) from [Releases](https://github.com/FFT-infra/piano-fedora/releases). Put them in one empty directory and run `bash unpack-release.sh --desktop <profile>` (optional when the release carries one profile). The script verifies what you downloaded against `RELEASE-SHA256SUMS`, merges split pieces, decompresses the images, and unpacks `root-install/`. When building from source, use the `deploy-bundle` from one successful `build-bundle` run and the `root-install` that `prepare-install` produced from that same bundle run. Do not mix assets from different runs.
-4. Build `device-boot/boot_linux.img` once on the host with the release's `piano-boot-tools-<tag>.tar.zst`. It is repacked from this tablet's own stock BOOT. The shared `boot_sunuefi.img` cannot replace it.
+3. Download `piano-<tag>-<profile>.sha256` and every piece of `piano-<tag>-<profile>.tar.zst` from [Releases](https://github.com/FFT-infra/piano-fedora/releases). Put them in one empty directory and run:
+
+   ```sh
+   sha256sum -c piano-<tag>-<profile>.sha256
+   cat piano-<tag>-<profile>.tar.zst.part-* | zstd -dc | tar -x
+   sha256sum -c SHA256SUMS
+   ```
+
+   The other profiles are separate archives and are not needed. The unpacked directory is the staging folder: it holds the flash scripts, `root-install/`, and the component manifests. `bash scripts/unpack-release.sh --tag <tag> --desktop <profile>` performs these three steps for you. When building from source, use the `deploy-bundle-<profile>` from one successful `build-bundle` run and the `root-install-<profile>` that `prepare-install` produced from that same bundle run. Do not mix assets from different runs.
+4. Run `./make-device-boot.sh` in the staging folder. It repacks this tablet's own stock BOOT into `device-boot/boot_linux.img`. The shared `boot_sunuefi.img` cannot replace it.
 5. Power off the device. Hold `Power + Volume Down` until Fastboot appears. Verify that `fastboot getvar current-slot` returns `a`. Then follow [Manual flashing](docs/installation.md#五-手动刷写-linux): check both `SHA256SUMS` files, confirm the device identity, write `boot_a`, `sunuefi_esp`, and `sunuefi_root` in that order, then run `fastboot reboot`.
 
    To do it in one run, execute `./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub` from the staging directory (Linux / macOS), or double-click `flash-linux.bat` (Windows, which does not inject a key). The script performs the same writes and adds a few checks before writing.
@@ -75,9 +83,9 @@ There are two paths. The manual path is the primary one: it gives each command, 
 
 ## Release artifacts
 
-A release is triggered by a tag (for example `v44.1`) and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Nothing is rebuilt. One release carries four desktops. The ESP, kernel, initramfs and UEFI are byte-identical across profiles and are published once, zstd-compressed, about 68 MiB. The root is published per profile with a `-<profile>` suffix, 0.9–2.7 GiB.
+A release is triggered by a tag and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Nothing is rebuilt. One release carries four desktops, each as one self-contained archive `piano-<tag>-<profile>.tar.zst`, split into `.part-NN` pieces above 2 GiB.
 
-So an install downloads the platform assets plus one profile, 0.9–2.7 GiB in total. You do not need every file on the Releases page. Each profile's bundle manifests ship as one `manifests-<profile>.tar.zst`. `unpack-release.sh` checks what you downloaded against `RELEASE-SHA256SUMS`, merges split pieces, decompresses the images, and unpacks the manifests and `root-install/`. What each file is: [Artifacts and pipeline](docs/artifacts.md#release-发布).
+An archive holds the platform images, that profile's `root-install/`, the component manifests, the flash scripts, and the boot tools. An install downloads one profile: about 2.1 GiB for GNOME, about 1 GiB for niri. The archive's own `SHA256SUMS` lists only the files it holds, so both verification commands run clean. What each file is: [Artifacts and pipeline](docs/artifacts.md#release-发布).
 
 ## Documentation
 

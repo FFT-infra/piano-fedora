@@ -1,4 +1,5 @@
 name: build-bundle
+run-name: build-bundle ${{ inputs.desktop }}
 
 # 只使用同一次集成产生的 root/image/initramfs，按其 source-runs.json 取内核。
 on:
@@ -274,7 +275,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: deploy-bundle
+          name: deploy-bundle-${{ inputs.desktop }}
           path: bundle/
           if-no-files-found: error
           retention-days: 14

@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""离线回归：Release 资产的两条分类规则保持一致。
+"""离线回归：Release 每档一个归档，命名与成员表只有一处定义。
 
-四档镜像共用同一个 ESP、内核与 initramfs，差的是 root 文件系统。发布时：
+发布布局：
 
-- 平台资产只上传一份，名字不带后缀，各档必须逐字节相同；
-- 桌面资产每档各一份，在第一处 `.` 前插入 `-<desktop>`。
+    piano-<tag>-<desktop>.tar.zst[.part-NN]   这一档的自包含归档
+    piano-<tag>-<desktop>.sha256              这一档已上传分片的摘要
+    RELEASE-SHA256SUMS                        全部资产的摘要，attestation 的输入
 
-规则只在 `scripts/release-assets.py` 与 `scripts/unpack-release.sh` 各写一次。
-这里逐项比对两条实现，并检查发布工作流真的按分类走。
+名字由 `scripts/release-assets.py` 算，`unpack-release.sh` 从 sidecar 名反推
+归档名（去掉 `.sha256` 换 `.tar.zst`），不写第二份规则。这里比对两边，并
+检查发布工作流真的按成员表装配归档。
 """
 
 import importlib.machinery
@@ -33,190 +35,138 @@ def load():
 release_assets = load()
 
 
-def shell_published_name(name, desktop):
-    """直接跑 unpack-release.sh 里的 published_name()。"""
-    function = subprocess.run(
-        ["sed", "-n", "/^published_name() {/,/^}/p", str(UNPACK)],
-        check=True, stdout=subprocess.PIPE, text=True).stdout
-    assert function.strip(), "unpack-release.sh has no published_name()"
+def run(*args):
+    return subprocess.run(["python3", str(ASSETS), *args], check=True,
+                          stdout=subprocess.PIPE, text=True).stdout.split()
+
+
+def test_names_follow_one_rule():
+    for desktop in ("gnome", "kde", "niri", "hyprland"):
+        archive = release_assets.archive_name("v44.5", desktop)
+        assert archive == f"piano-v44.5-{desktop}.tar.zst", archive
+        assert release_assets.sidecar_name("v44.5", desktop) == \
+            f"piano-v44.5-{desktop}.sha256"
+        # 归档名去掉 .tar.zst 就是 sidecar 的 stem：unpack-release.sh 靠这一条
+        # 从 sidecar 反推归档名，不需要第二份命名规则。
+        assert archive.removesuffix(".tar.zst") == \
+            release_assets.sidecar_name("v44.5", desktop).removesuffix(".sha256")
+    for bad in ("", "v 44", "-v44", "v44/../x"):
+        try:
+            release_assets.archive_name(bad, "gnome")
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted an invalid tag: {bad!r}")
+
+
+def test_unpack_derives_the_archive_name_from_the_sidecar():
+    text = UNPACK.read_text()
+    assert 'archive=${sidecar%.sha256}.tar.zst' in text, (
+        "unpack-release.sh must take the archive name from the sidecar name")
+    # 归档里的清单只列真实存在的文件，脚本直接整份校验。
+    assert "sha256sum -c SHA256SUMS" in text
+    assert "(cd root-install && sha256sum -c SHA256SUMS)" in text
+
+
+def test_bundle_members_and_exclusions_are_disjoint():
+    bundled = set(release_assets.BUNDLE_MEMBERS)
+    excluded = set(release_assets.EXCLUDED_BUNDLE_FILES)
+    assert not bundled & excluded, sorted(bundled & excluded)
+    # 三份镜像必须进归档：装机要刷其中两份，首装要校验第三份。
+    for name in ("sunuefi_esp.img", "boot_sunuefi.img", "PianoUEFI-product.img"):
+        assert name in bundled, name
+    # 两份 root 与两个构建中间件不进归档。
+    for name in ("pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img",
+                 "initramfs.tar.zst", "diagnostic-abl-storage.tar.zst"):
+        assert name in excluded, name
+    # bundle 自己的 SHA256SUMS 也不进：归档里的那份按目录内容重新生成。
+    assert "SHA256SUMS" in excluded
+
+
+def test_archive_members_cover_the_staging_tree():
+    members = set(release_assets.members())
+    for name in release_assets.BUNDLE_MEMBERS:
+        assert name in members, name
+    for name in ("README-INSTALL.txt", "SHA256SUMS", "flash-linux.sh",
+                 "flash-linux.bat", "make-device-boot.sh"):
+        assert name in members, name
+    for name in ("boot-tools", "host-boot-tool", "root-install", "scripts"):
+        assert name in members, name
+    assert release_assets.verify_name("root-install/SHA256SUMS") == "archive"
+    assert release_assets.verify_name("pianoroot.f2fs.sparse.img") == "excluded"
+
+
+def test_check_bundle_rejects_unknown_files():
     with tempfile.TemporaryDirectory() as directory:
-        script = Path(directory) / "probe.sh"
-        script.write_text("#!/usr/bin/env bash\nset -euo pipefail\n" + function
-                          + f'\npublished_name "{name}" "{desktop}"\n')
-        return subprocess.run(["bash", str(script)], check=True,
-                              stdout=subprocess.PIPE, text=True).stdout
+        root = Path(directory)
+        for name in release_assets.BUNDLE_MEMBERS + release_assets.EXCLUDED_BUNDLE_FILES:
+            (root / name).write_text("x\n")
+        assert release_assets.check_bundle(root) == ([], [])
+        (root / "surprise.bin").write_text("x\n")
+        missing, unknown = release_assets.check_bundle(root)
+        assert not missing and unknown == ["surprise.bin"], (missing, unknown)
+        (root / "surprise.bin").unlink()
+        (root / "uefi-source.json").unlink()
+        missing, unknown = release_assets.check_bundle(root)
+        assert missing == ["uefi-source.json"] and not unknown, (missing, unknown)
 
 
-def test_published_name_inserts_before_the_first_dot():
-    cases = {
-        ("pianoroot.f2fs.img.zst", "gnome"): "pianoroot-gnome.f2fs.img.zst",
-        ("pianoroot.f2fs.sparse.img.zst", "kde"): "pianoroot-kde.f2fs.sparse.img.zst",
-        ("root-install-pianoroot.f2fs.sparse.img.zst", "niri"):
-            "root-install-pianoroot-niri.f2fs.sparse.img.zst",
-        ("root-install-manifest.json", "hyprland"):
-            "root-install-manifest-hyprland.json",
-        # 没有扩展名时整段当 stem，后缀接在末尾。
-        ("root-install-SHA256SUMS", "gnome"): "root-install-SHA256SUMS-gnome",
-    }
-    for (name, desktop), expected in cases.items():
-        assert release_assets.published_name(name, desktop) == expected, (name, desktop)
-        assert shell_published_name(name, desktop).strip() == expected, (name, desktop)
-    try:
-        release_assets.published_name("root-install-SHA256SUMS", "")
-    except ValueError as error:
-        assert "desktop is required" in str(error), error
-    else:
-        raise AssertionError("an empty desktop name produced a published asset name")
+def test_write_sums_lists_only_present_files():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / "root-install").mkdir()
+        (root / "one.img").write_bytes(b"one\n")
+        (root / "root-install" / "two.json").write_text("{}\n")
+        assert release_assets.write_sums(root) == 2
+        rows = (root / "SHA256SUMS").read_text().splitlines()
+        assert sorted(row.split("  ", 1)[1] for row in rows) == \
+            ["one.img", "root-install/two.json"], rows
+        # 清单不列自己，且按路径排序。
+        assert not any(row.endswith("  SHA256SUMS") for row in rows)
+        # 生成的清单必须能直接喂给 sha256sum -c。
+        subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=root, check=True,
+                       stdout=subprocess.PIPE)
 
 
-def test_the_two_implementations_agree_on_every_bundle_file():
-    """覆盖 bundle 真实会出现的每个名字，桌面档取四档。"""
-    names = sorted(set(release_assets.PLATFORM_ASSETS)
-                   | set(release_assets.DESKTOP_INSTALL_ASSETS)
-                   | {"pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img",
-                      "bundle-manifest.json", "root-image-manifest.json",
-                      "rootfs-manifest.json", "source-runs.json", "esp-manifest.json",
-                      "SHA256SUMS"})
-    for name in names:
-        for desktop in ("gnome", "kde", "niri", "hyprland"):
-            assert release_assets.published_name(name, desktop) == \
-                shell_published_name(name, desktop).strip(), (name, desktop)
-
-
-def test_platform_assets_are_identical_across_desktops():
-    """平台集合里的每份资产都必须是"桌面无关"的：不能随桌面变化的 manifest。
-
-    `esp-manifest.json` 的 `files` 一节记录输出目录里的 `root.tar.zst`，
-    四档大小与摘要不同，所以它不能进平台集合。
-    """
-    platform = set(release_assets.PLATFORM_ASSETS)
-    for name in ("bundle-manifest.json", "root-image-manifest.json", "rootfs-manifest.json",
-                 "source-runs.json", "SHA256SUMS", "esp-manifest.json",
-                 "pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img"):
-        assert name not in platform, f"{name} differs per desktop but is published once"
-    # 桌面维度真正差的资产：root 传输镜像单独发，清单与摘要进归档。
-    assert "root-install-pianoroot.f2fs.sparse.img.zst" in release_assets.DESKTOP_INSTALL_ASSETS
-    for name in release_assets.ROOT_INSTALL_MEMBERS:
-        assert name not in platform, name
-        assert name not in release_assets.DESKTOP_INSTALL_ASSETS, (
-            f"{name} ships inside the manifests archive, not as its own asset")
-
-
-def test_classify_defaults_to_desktop():
-    """未知文件名按桌面资产处理：新资产不会被悄悄当成平台共用件。"""
-    assert release_assets.classify("PianoUEFI-product.img") == "platform"
-    assert release_assets.classify("kernel-manifest.json") == "platform"
-    assert release_assets.classify("brand-new-file.bin") == "desktop"
-    assert release_assets.classify("root-install-manifest.json") == "desktop"
-    # 每档各写各的 manifest 打成一个 tar，不进平台集合，也不逐个发。
-    for name in release_assets.MANIFEST_MEMBERS:
-        assert release_assets.classify(name) == "manifest-archive", name
-    # 不再随 Release 发布的两份中间产物与调试件。
-    for name in ("initramfs.tar.zst", "diagnostic-abl-storage.tar.zst"):
-        assert name not in release_assets.PLATFORM_ASSETS, name
-
-
-def test_manifest_archive_is_one_definition():
-    """归档成员只有一处定义：release.yml 与 unpack-release.sh 都从它取值。"""
+def test_workflow_uses_the_member_table():
     text = WORKFLOW.read_text()
-    assert "scripts/release-assets.py archive-members" in text, (
-        "release.yml must read the archive members instead of hard-coding them")
-    assert "manifests.tar.zst" in text
-    # 打包必须可复现：四档用同一套 tar 参数，重复跑出同样的字节。
+    assert "scripts/release-assets.py bundled" in text, (
+        "release.yml must take the copied bundle files from release-assets.py")
+    assert "scripts/release-assets.py check-bundle" in text, (
+        "release.yml must refuse a deploy-bundle with unclassified files")
+    assert "scripts/release-assets.py write-sums" in text, (
+        "release.yml must regenerate the archive's SHA256SUMS from what it wrote")
+    assert "scripts/release-assets.py archive-name" in text
+    assert "scripts/release-assets.py sidecar-name" in text
+    # 归档必须可复现：固定 mtime、owner 与排序。
     for flag in ("--sort=name", "--mtime=@0", "--owner=0", "--group=0", "--numeric-owner"):
-        assert flag in text, f"release.yml manifest tar lacks {flag}"
-    unpack = UNPACK.read_text()
-    assert "manifests.tar.zst" in unpack
-    for name in ("bundle-manifest.json", "root-image-manifest.json", "source-runs.json"):
-        assert name in unpack, f"unpack-release.sh never checks for {name}"
-    # root-install 的清单与摘要也在归档里，解包后落在 root-install/ 下。
-    for name in release_assets.ROOT_INSTALL_MEMBERS:
-        assert f'root-install/{name}' in unpack or name in unpack, name
-
-
-def test_platform_images_ship_compressed():
-    """三份平台镜像压缩发布，其余平台资产原名发布。
-
-    ESP 是 512 MiB 的 ext4，绝大部分扇区是零；不压缩时每个用户白下 510 MiB。
-    """
-    compressed = set(release_assets.PLATFORM_COMPRESSED)
-    assert compressed == {"PianoUEFI-product.img", "sunuefi_esp.img", "boot_sunuefi.img"}
-    # 只压大镜像。清单类 JSON 只有几 KiB，压了反而多一层解压步骤。
-    for name in release_assets.PLATFORM_ASSETS:
-        if name in compressed:
-            assert release_assets.platform_published_name(name) == f"{name}.zst", name
-        else:
-            assert release_assets.platform_published_name(name) == name, name
-    assert compressed <= set(release_assets.PLATFORM_ASSETS), (
-        "PLATFORM_COMPRESSED must only name platform assets")
-
-
-def test_workflow_compresses_platform_images():
-    """release.yml 用 release-assets.py 算发布名，并验证压缩可逆。"""
-    text = WORKFLOW.read_text()
-    assert "release_upload_platform" in text, (
-        "release.yml uploads platform images raw; they must go through the "
-        "compressing helper")
-    upload = (ROOT / "scripts/release-upload.sh").read_text()
-    assert "platform-name" in upload, (
-        "release-upload.sh must take the published name from release-assets.py")
-    assert "does not round-trip" in upload, (
-        "release-upload.sh must prove the compressed asset decompresses to the "
-        "bundle's bytes before uploading it")
-    unpack = UNPACK.read_text()
-    for name in release_assets.PLATFORM_COMPRESSED:
-        assert name in unpack, f"unpack-release.sh never restores {name}"
-    assert '"$name.zst"' in unpack and "zstd -dc" in unpack, (
-        "unpack-release.sh must decompress the platform images it downloads")
-
-
-def test_workflow_uses_the_classification():
-    text = WORKFLOW.read_text()
-    # 平台资产由 release-assets.py platform 列出，不手写第二份名单。
-    assert "scripts/release-assets.py platform" in text
-    assert "scripts/release-assets.py classify" in text
-    assert "scripts/release-assets.py name" in text
-    # 平台资产逐字节比对。
-    assert "cmp -s" in text
-    # 桌面资产的发布名不能是手写的字面量。
-    for literal in ('"pianoroot-gnome.f2fs.img.zst"', '"root-install-manifest-gnome.json"'):
-        assert literal not in text, f"release.yml hard-codes a desktop asset name: {literal}"
+        assert flag in text, f"release.yml archive tar lacks {flag}"
+    # 旧的扁平布局不能留任何残余。`unpack-release.sh` 本身仍然存在，只是
+    # 不再是一个独立资产：release notes 教用户跑它，宿主机上从仓库取。
+    for gone in ("manifests.tar.zst", "piano-installer-", "unpack-release.sh \"$STAGE",
+                 "PLATFORM_COMPRESSED", "release_upload_platform", "tags: ["):
+        assert gone not in text, f"release.yml still carries the flat layout: {gone}"
 
 
 def test_cli_surface():
-    for args, expected in (
-            (["classify", "pianoroot.f2fs.sparse.img"], "desktop"),
-            (["classify", "sunuefi_esp.img"], "platform"),
-            (["classify", "bundle-manifest.json"], "manifest-archive"),
-            (["name", "root-install-manifest.json", "kde"], "root-install-manifest-kde.json"),
-            (["name", "manifests.tar.zst", "kde"], "manifests-kde.tar.zst"),
-            (["platform-name", "sunuefi_esp.img"], "sunuefi_esp.img.zst"),
-            (["platform-name", "kernel-manifest.json"], "kernel-manifest.json")):
-        result = subprocess.run(["python3", str(ASSETS), *args], check=True,
-                                stdout=subprocess.PIPE, text=True)
-        assert result.stdout.strip() == expected, (args, result.stdout)
-    result = subprocess.run(["python3", str(ASSETS), "platform"], check=True,
-                            stdout=subprocess.PIPE, text=True)
-    assert result.stdout.split() == list(release_assets.PLATFORM_ASSETS)
-    result = subprocess.run(["python3", str(ASSETS), "manifest-members"], check=True,
-                            stdout=subprocess.PIPE, text=True)
-    assert result.stdout.split() == list(release_assets.MANIFEST_MEMBERS)
-    result = subprocess.run(["python3", str(ASSETS), "platform-compressed"], check=True,
-                            stdout=subprocess.PIPE, text=True)
-    assert result.stdout.split() == list(release_assets.PLATFORM_COMPRESSED)
+    assert run("archive-name", "v44.5", "kde") == ["piano-v44.5-kde.tar.zst"]
+    assert run("sidecar-name", "v44.5", "kde") == ["piano-v44.5-kde.sha256"]
+    assert run("bundled") == list(release_assets.BUNDLE_MEMBERS)
+    assert run("excluded") == list(release_assets.EXCLUDED_BUNDLE_FILES)
+    assert run("members") == release_assets.members()
+    assert run("verify-name", "root-install/SHA256SUMS") == ["archive"]
+    assert run("verify-name", "pianoroot.f2fs.img.zst") == ["excluded"]
 
 
 def main():
-    test_published_name_inserts_before_the_first_dot()
-    test_the_two_implementations_agree_on_every_bundle_file()
-    test_platform_assets_are_identical_across_desktops()
-    test_classify_defaults_to_desktop()
-    test_manifest_archive_is_one_definition()
-    test_platform_images_ship_compressed()
-    test_workflow_compresses_platform_images()
-    test_workflow_uses_the_classification()
+    test_names_follow_one_rule()
+    test_unpack_derives_the_archive_name_from_the_sidecar()
+    test_bundle_members_and_exclusions_are_disjoint()
+    test_archive_members_cover_the_staging_tree()
+    test_check_bundle_rejects_unknown_files()
+    test_write_sums_lists_only_present_files()
+    test_workflow_uses_the_member_table()
     test_cli_surface()
-    print("OK: 平台资产只发一份、桌面资产按 -<desktop> 命名，两条实现逐项一致")
+    print("OK: 每档一个自包含归档，命名与成员表只有一处定义")
 
 
 if __name__ == "__main__":

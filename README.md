@@ -49,9 +49,8 @@
 （`greeter` 而非 Fedora 建立的 `greetd`），显示管理器起不来。修复已在源码里，
 这两档的发布镜像需要重建后才不需要手工干预。
 
-下载时用 `bash unpack-release.sh --desktop <档位>` 选档，不传参数时取 Release
-里唯一的那一档。每档的登录、电源行为、旋转能力与已知缺口见
-[桌面档](docs/desktops.md)。
+每档一个自包含归档，装哪一档就下哪一档。每档的登录、电源行为、旋转能力与已知
+缺口见[桌面档](docs/desktops.md)。
 
 ## 安装
 
@@ -59,8 +58,16 @@
 
 1. 解锁 Bootloader，准备好 `fastboot`。
 2. 原始 GPT 的设备先按[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)分区、擦除 `userdata`、让 Android 首次开机。**没有这一步，一键脚本不能运行。**
-3. 从 [Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载平台资产与自己那一档的 `root-install-*`（其他档位的 root 不必下），放进同一个空目录，运行 `bash unpack-release.sh --desktop <档位>`（只有一档时可省略）。脚本按 `RELEASE-SHA256SUMS` 校验下载到的资产、合并分片、解压镜像并解出 `root-install/`。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle` 与该 run 派生的 `prepare-install` 的 `root-install`，不要混用不同 run 的资产。
-4. 用 `piano-boot-tools-<tag>.tar.zst` 在本机生成一次 `device-boot/boot_linux.img`。它由这台平板自己的原厂 BOOT 重打包而成，通用产物的 `boot_sunuefi.img` 不能顶替。
+3. 从 [Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载自己那一档的 `piano-<tag>-<档位>.sha256` 与全部分片，放进同一个空目录，依次执行：
+
+   ```sh
+   sha256sum -c piano-<tag>-<档位>.sha256
+   cat piano-<tag>-<档位>.tar.zst.part-* | zstd -dc | tar -x
+   sha256sum -c SHA256SUMS
+   ```
+
+   其他档位是各自的归档，不必下载。解出来的目录就是暂存目录，刷写脚本、`root-install/` 与组件 manifest 都在里面。也可以执行 `bash scripts/unpack-release.sh --tag <tag> --desktop <档位>` 让脚本代做这三步。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle-<档位>` 与该 run 派生的 `prepare-install` 的 `root-install-<档位>`，不要混用不同 run 的资产。
+4. 在暂存目录执行 `./make-device-boot.sh`，生成 `device-boot/boot_linux.img`。它由这台平板自己的原厂 BOOT 重打包而成，通用产物的 `boot_sunuefi.img` 不能顶替。
 5. 关机后长按 `电源键 + 音量减键` 进入 Fastboot，确认 `fastboot getvar current-slot` 返回 `a`。然后按[手动刷写](docs/installation.md#五-手动刷写-linux)逐条执行：校验两份 `SHA256SUMS`、确认设备身份、依次写 `boot_a`、`sunuefi_esp`、`sunuefi_root`，再 `fastboot reboot`。
 
    想一次跑完时，在暂存目录执行 `./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub`（Linux / macOS），或双击 `flash-linux.bat`（Windows，不自动注入公钥）。脚本做与手动路径相同的写入，并在写入前多核对几项。
@@ -77,9 +84,9 @@
 
 ## 发布产物
 
-Release 由 tag 触发（形如 `v44.1`），只包含同一次 `build-bundle` 与它派生的 `prepare-install` 的已验证产物，不重新编译。一个 Release 带四档桌面。ESP、内核、initramfs 与 UEFI 四档逐字节相同，只发一份，压缩后约 68 MiB。root 每档一份，带 `-<档位>` 后缀，0.9–2.7 GiB。
+Release 由 tag 与手工 dispatch 共同确定，只包含同一次 `build-bundle` 与它派生的 `prepare-install` 的已验证产物，不重新编译。一个 Release 带四档桌面，每档一个自包含归档 `piano-<tag>-<档位>.tar.zst`，超过 2 GiB 时切成 `.part-NN`。
 
-所以装机下的是平台资产加自己那一档，合计 0.9–2.7 GiB，不必把 Releases 页上的文件下完。每档的 bundle manifest 打在一个 `manifests-<档位>.tar.zst` 里，`unpack-release.sh` 会按 `RELEASE-SHA256SUMS` 校验下载到的部分、合并分片、解压镜像、解出 manifest 与 `root-install/`。逐个文件的作用见[交付物与流水线](docs/artifacts.md#release-发布)。
+归档里有平台镜像、这一档的 `root-install/`、组件 manifest、刷写脚本与 boot-tools。装机只下自己那一档，GNOME 约 2.1 GiB，niri 约 1 GiB。归档自己的 `SHA256SUMS` 只列真实存在的文件，所以两条校验命令都能直接过。逐个文件的作用见[交付物与流水线](docs/artifacts.md#release-发布)。
 
 ## 文档
 

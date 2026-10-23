@@ -118,9 +118,10 @@
 | rootfs 目录 | `build/clean-distros/fedora-<rel>-<desktop>` |
 | rootfs artifact | `rootfs-<rel>-<desktop>` |
 | 镜像 artifact | `root-image-<rel>-<desktop>` |
-| bundle artifact | `deploy-bundle`（每档各一个 run，内部文件名不变） |
-| Release 桌面资产 | `root-install-pianoroot-<desktop>.f2fs.sparse.img.zst` 与 `manifests-<desktop>.tar.zst`，平台资产不带后缀 |
-| 本地还原 | `unpack-release.sh --desktop <档位>`，还原成上面这些规范名 |
+| bundle artifact | `deploy-bundle-<desktop>`（每档各一个 run，内部文件名不变） |
+| root-install artifact | `root-install-<desktop>` |
+| Release 资产 | `piano-<tag>-<desktop>.tar.zst`（超过 2 GiB 时切成 `.part-NN`）与 `piano-<tag>-<desktop>.sha256` |
+| 本地还原 | `scripts/unpack-release.sh --tag <tag> --desktop <档位>`，解出暂存目录 |
 
 查看当前矩阵与某一档的展开结果：
 

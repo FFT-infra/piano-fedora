@@ -45,11 +45,11 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 | `build-initramfs.yml` | 手动 | 独立 initramfs 构建与检查。正式 bundle 消费 build-image 的 initramfs |
 | `verify-f2fs.yml` | push / PR | 小 fixture 的 F2FS 元数据往返验证 |
 | `build-image.yml` | 手动 | 单档：同一次集成的设备 rootfs、initramfs、F2FS 镜像及相互绑定的 manifest，产物名 `root-image-<rel>-<desktop>` |
-| `build-bundle.yml` | 手动 | 汇总内核、UEFI、rootfs、镜像为部署包。每档一个 `deploy-bundle`，内部文件名不随桌面变 |
-| `prepare-install.yml` | 手动 | 按 bundle run 扩容 root、写入设备配置，产出 `root-install` 与 `boot-tools`。`root-install-manifest.json` 记录桌面档 |
-| `package-install.yml` | 手动 / `host-check` 调用 | 压缩已校验的 `root-install`，不重建文件系统 |
+| `build-bundle.yml` | 手动 | 汇总内核、UEFI、rootfs、镜像为部署包。每档一个 `deploy-bundle-<desktop>`，内部文件名不随桌面变 |
+| `prepare-install.yml` | 手动 | 按 bundle run 扩容 root、写入设备配置，产出 `root-install-<desktop>` 与 `boot-tools`。`root-install-manifest.json` 记录桌面档 |
+| `package-install.yml` | 手动 / `host-check` 调用 | 压缩已校验的 `root-install-<desktop>`，不重建文件系统 |
 | `publish-copr.yml` | 手动 | 从矩阵 SRPM 在 COPR 重建用户态包 |
-| `release.yml` | tag / 手动 | 单 Release 带一档或多档桌面：平台资产逐字节比对后只发一份，桌面资产按 `-<desktop>` 加后缀 |
+| `release.yml` | 手动 | 单 Release 带一档或多档桌面，每档一个自包含归档。不填 run id，按 tag commit 解析 |
 | `upstream-watch.yml` | 每周一 | 上游漂移看板，必要时开 draft PR 改 pin |
 
 上表只列构建与发布链。`host-check.yml` 也会在 push 与 PR 上跑 `make test`。
@@ -85,7 +85,7 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 取：
 
 - matrix job 扫配方文件展开，而不是扫脚本文件名。这里的配方是 `scripts/profiles/fedora-desktops.json`，workflow 不手写桌面列表。
-- 每个变体一个资产名，一个 Release 带齐全部桌面，下载页按桌面分组。这里只有 root 镜像与 `root-install/` 分档，ESP、内核、initramfs 四档共用一份。
+- 每个变体一个资产名，一个 Release 带齐全部桌面，下载页按桌面分组。这里是每档一个自包含归档，ESP、内核与 initramfs 在四档里各存一份，用户只下自己那一档。
 - 一个产品 README 加一张变体对照表。表格与入口结构已经落地，截图等四档上真机验收后再补。
 
 不取：

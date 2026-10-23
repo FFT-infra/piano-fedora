@@ -111,10 +111,10 @@ def extract_manual_chapter(text):
 def extract_checksum_blocks(text):
     """Return checksum commands from the asset-prep and manual chapters.
 
-    The file distinguishes deploy-bundle and root-install in two places. Both
+    The file distinguishes the archive and root-install in two places. Both
     need to execute against a realistic pair of artifact directories.
     """
-    start = text.index("### 6. 校验材料")
+    start = text.index("### 7. 校验材料")
     end = text.index("## 四、 从原始 GPT/UFS 开始的首次安装")
     return re.findall(r"```sh\n(.*?)```", text[start:end], re.DOTALL)
 

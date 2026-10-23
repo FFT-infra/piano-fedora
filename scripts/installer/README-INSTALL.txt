@@ -15,64 +15,77 @@ Requirements:
 2. Battery above 30%.
 3. Fastboot and ADB installed on PC.
 4. USB cable connected directly to tablet.
-5. mtools (mcopy), only when you install an SSH key with --ssh-key:
+5. zstd and tar, to unpack the archive. GNU tar's --zstd also runs an external
+   zstd binary, so zstd cannot be skipped.
+   Fedora "sudo dnf install zstd", Ubuntu/Debian "sudo apt install zstd",
+   macOS "brew install zstd".
+6. mtools (mcopy), only when you install an SSH key with --ssh-key:
    Fedora "sudo dnf install mtools", Ubuntu/Debian "sudo apt install mtools",
    macOS "brew install mtools".
 
 Using a GitHub Release:
-Download the platform assets plus the root-install-* files of the desktop you
-want into one empty folder (the other desktops' root-install-* files are not
-needed; each is 1-3 GiB), then:
-   bash unpack-release.sh --desktop <name>
-   unzip piano-installer-<tag>.zip
-A release can carry several desktops (gnome, kde, niri, hyprland). The ESP,
-kernel and initramfs are identical across them and are published once, zstd
-compressed; the root is published per desktop as
-root-install-pianoroot-<desktop>.f2fs.sparse.img.zst, and that desktop's
-manifests as manifests-<desktop>.tar.zst. --desktop picks which desktop's root
-goes into root-install/. It can be omitted when the release carries only one
-desktop; with several desktops the script lists them and stops. See
-docs/desktops.md for what each desktop provides.
-unpack-release.sh checks the assets you downloaded against
-RELEASE-SHA256SUMS, merges the >2 GiB pieces, decompresses the zstd images
-(sunuefi_esp.img.zst, boot_sunuefi.img.zst, PianoUEFI-product.img.zst and the
-root transport), unpacks the per-desktop manifests-<desktop>.tar.zst, and
-leaves the folder in the layout below. The boot tools asset
-(piano-boot-tools-<tag>.tar.zst) generates device-boot/boot_linux.img for this
-tablet; that image itself is never shipped in the release.
+Each desktop ships as one self-contained archive. Download the archive for the
+desktop you want plus its checksum file, nothing else:
+   piano-<tag>-<desktop>.sha256
+   piano-<tag>-<desktop>.tar.zst            (or every .part-NN piece)
+Put them in an empty folder and run, in this order:
+   sha256sum -c piano-<tag>-<desktop>.sha256
+   cat piano-<tag>-<desktop>.tar.zst.part-* | zstd -dc | tar -x
+   sha256sum -c SHA256SUMS
+Omit the .part-* glob when the archive is a single file:
+   zstd -dc piano-<tag>-<desktop>.tar.zst | tar -x
+The other desktops are separate archives and are not needed. A release can
+carry gnome, kde, niri and hyprland. See docs/desktops.md for what each one
+provides.
+Requires zstd and tar. GNU tar's --zstd also shells out to a zstd binary, so
+installing zstd is unavoidable.
+Windows: open the .tar.zst with 7-Zip. Join split pieces first:
+   copy /b piano-<tag>-<desktop>.tar.zst.part-00+piano-<tag>-<desktop>.tar.zst.part-01 piano-<tag>-<desktop>.tar.zst
+On Linux or macOS, unpack-release.sh performs the download, the two checksum
+passes and the extraction:
+   bash unpack-release.sh --tag <tag> --desktop <desktop> --dir piano-install
 
 Required Files in this Folder:
 - flash-linux.sh / flash-linux.bat (installer scripts)
 - README-INSTALL.txt               (this guide)
+- make-device-boot.sh              (builds device-boot/ from this tablet's BOOT)
 - boot_sunuefi.img                 (ESP-internal Linux payload; NOT a boot_a image)
-- device-boot/boot_linux.img       (boot_a image from prepare-device-boot.py)
 - sunuefi_esp.img                  (SunUEFI EFI System Partition)
 - PianoUEFI-product.img            (SunUEFI product firmware; first-install check)
 - uefi-source.json                 (UEFI source pin and patch digests)
-- SHA256SUMS                       (checksums of the files unpacked above)
+- SHA256SUMS                       (checksums of everything in this folder)
 - bundle-manifest.json             (binds root-install/ to this bundle)
 - root-image-manifest.json         (binds root-install/ to this root image)
 - source-runs.json                 (run ids behind this bundle; used by install-f2fs.py)
+- boot-tools/                      (Android-side selector module and repacker)
+- host-boot-tool/                  (x86-64 host repacker)
+- scripts/                         (prepare-device-boot.py and its helpers)
 - root-install/                    (complete prepare-install artifact)
   - pianoroot.f2fs.sparse.img      (prepared root transport for this tablet)
   - root-install-manifest.json
   - SHA256SUMS                     (root-install checksums)
+- device-boot/boot_linux.img       (generated here; not shipped)
 
-unpack-release.sh produces bundle-manifest.json, root-image-manifest.json,
-source-runs.json and SHA256SUMS from manifests-<desktop>.tar.zst, and unpacks
-that archive's root-install/ entries into root-install/; keep them next to the
-images.
+SHA256SUMS covers exactly the files above, so the check in Step 1 of "Manual
+Flashing" passes without editing it.
 
-The release does not ship the sealed 8 GiB build image
-(pianoroot.f2fs.img.zst) or the bundle's sparse copy: both hold the same root
-as root-install/ and neither is expanded to the tablet's sunuefi_root capacity
-or provisioned with this device's settings, so neither can be flashed. If you
-need one as an archive copy, run prepare-install.yml yourself or take it from
-the matching Actions artifact.
-If you are assembling from Actions instead of a release, run
-prepare-install.yml with the exact deploy-bundle run, download its
-root-install artifact, and keep the complete root-install directory here.
-Do not copy only the sparse image and do not merge the two SHA256SUMS files.
+Brand-new tablet: this archive does not create sunuefi_esp or sunuefi_root.
+Follow docs/installation.md section 4 first: it partitions, erases userdata,
+and lets Android boot once. Do not run install-f2fs.py or this installer on a
+stock GPT until that is done.
+
+Building from Actions instead of a release: unzip build-bundle's
+deploy-bundle-<desktop> artifact into this folder, unzip prepare-install's
+root-install-<desktop> artifact into root-install/, then copy flash-linux.sh,
+flash-linux.bat, make-device-boot.sh, scripts/prepare-device-boot.py,
+scripts/piano_artifacts.py and scripts/piano_sparse.py from the repository.
+Do not merge the two artifacts' SHA256SUMS and do not regenerate them.
+
+The archive does not ship the sealed build image or the bundle's own sparse
+copy: both hold the same root as root-install/ and neither carries this
+device's configuration, so neither can be flashed. If you need one as an
+archive copy, run prepare-install.yml yourself or take it from the matching
+Actions artifact.
 
 Flashing Instructions:
 1. Put tablet into Fastboot mode:
@@ -95,8 +108,7 @@ check passes, then flashes that image; piano-first-boot-ssh-key.service imports
 it into piano's authorized_keys on first boot and deletes the ESP copy. Without
 --ssh-key the documented password login is the only way in.
 The key changes the ESP image digest, so a later rerun needs a fresh unpack of
-the deploy-bundle, or you compare readbacks against the digest the installer
-printed. Windows users inject manually with mcopy before flashing; see the
+the archive, or you compare readbacks against the digest the installer printed. Windows users inject manually with mcopy before flashing; see the
 prompt in flash-linux.bat.
 
 Before step 3, confirm current-slot is "a". If it is "b", stop: this first-
@@ -117,7 +129,13 @@ Step 1 - Verify the downloaded files:
 
 Step 2 - Confirm the prepared root transport exists:
    test -f root-install/pianoroot.f2fs.sparse.img
-   Raw or compressed deploy-bundle roots cannot be flashed directly.
+   Raw or compressed bundle roots cannot be flashed directly.
+
+Step 2b - Build the boot_a image (needs adb with root on the tablet):
+   ./make-device-boot.sh
+   It reads this tablet's own boot_a through adb, refuses a read that is not
+   exactly 96 MiB or that differs from the tablet's own digest, then repacks
+   device-boot/boot_linux.img. Nothing is written to the tablet.
 
 Step 3 - Confirm the device before writing anything:
    fastboot devices
@@ -138,7 +156,8 @@ Step 4 - Flash, one command at a time (each must print OKAY):
    fastboot reboot
 
    boot_a takes device-boot/boot_linux.img, generated once by
-   scripts/prepare-device-boot.py from this tablet's stock BOOT. It keeps the
+   make-device-boot.sh (which calls scripts/prepare-device-boot.py) from this
+   tablet's stock BOOT. It keeps the
    upstream unsigned AVB NONE metadata; slot A's ABL boots it directly, the
    same way it boots the stock Android image. Do not add os_version or
    re-sign it: piano-boot-repack compares the wrapper header byte-for-byte,

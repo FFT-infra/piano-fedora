@@ -8,11 +8,20 @@ on:
         description: "已经成功的 prepare-install run"
         required: true
         type: string
+      desktop:
+        description: "该 run 的桌面档；root-install artifact 带这个后缀"
+        required: false
+        type: string
+        default: "gnome"
   workflow_dispatch:
     inputs:
       prepare_run:
         description: "已经成功的 prepare-install run"
         required: true
+      desktop:
+        description: "该 run 的桌面档；root-install artifact 带这个后缀"
+        required: false
+        default: "gnome"
 
 permissions:
   contents: read
@@ -28,13 +37,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PREPARE_RUN: ${{ inputs.prepare_run }}
+          DESKTOP: ${{ inputs.desktop }}
         run: |
           set -euo pipefail
           python3 scripts/resolve-artifact-run.py --workflow prepare-install.yml \
-            --artifact root-install --run-id "$PREPARE_RUN"
+            --artifact "root-install-${DESKTOP}" --run-id "$PREPARE_RUN"
       - uses: actions/download-artifact@v4
         with:
-          name: root-install
+          name: root-install-${{ inputs.desktop }}
           path: input
           run-id: ${{ inputs.prepare_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -54,7 +64,7 @@ jobs:
           (cd package && sha256sum pianoroot.f2fs.sparse.img.zst root-install-manifest.json original-SHA256SUMS > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: root-install-compressed
+          name: root-install-compressed-${{ inputs.desktop }}
           path: package/
           if-no-files-found: error
           retention-days: 14

@@ -139,11 +139,11 @@ def test_commit_scoped_selection_skips_other_commits():
         workflows={"build-bundle.yml": {"id": 100}},
         runs={200: run(id=200, workflow_id=100, head_sha="a" * 40),
               201: run(id=201, workflow_id=100, head_sha="b" * 40)},
-        artifacts={200: [artifact("deploy-bundle")],
-                   201: [artifact("deploy-bundle")]})
+        artifacts={200: [artifact("deploy-bundle-kde")],
+                   201: [artifact("deploy-bundle-kde")]})
     resolve_artifact_run.api = backend
     value = resolve_artifact_run.resolve(
-        "o/r", "build-bundle.yml", ["deploy-bundle"], commit="b" * 40)
+        "o/r", "build-bundle.yml", ["deploy-bundle-kde"], commit="b" * 40)
     assert value == "201", value
 
 
@@ -151,8 +151,8 @@ def test_explicit_run_id_rejects_commit_mismatch():
     backend = FakeGitHub(
         workflows={"build-bundle.yml": {"id": 100}},
         runs={200: run(id=200, workflow_id=100, head_sha="a" * 40)},
-        artifacts={200: [artifact("deploy-bundle")]})
-    expect_raises(backend, "build-bundle.yml", ["deploy-bundle"], "200",
+        artifacts={200: [artifact("deploy-bundle-kde")]})
+    expect_raises(backend, "build-bundle.yml", ["deploy-bundle-kde"], "200",
                   "belongs to commit", commit="b" * 40)
 
 
@@ -240,6 +240,66 @@ def test_every_resolved_workflow_is_registered_on_default_branch():
         raise AssertionError("; ".join(failures))
 
 
+def test_per_desktop_artifacts_do_not_match_each_other():
+    """四档各上传一份 artifact，档位写进名字里。
+
+    旧布局是四档共用一个名为 deploy-bundle 的 artifact，只能靠手填 run 区分。
+    现在名字带档位，解析就按名字走：只要 deploy-bundle 的 run 不能给 kde 用，
+    两个档位的 run 也不会互相顶替。
+    """
+    backend = FakeGitHub(
+        workflows={"build-bundle.yml": {"id": 100}},
+        runs={200: run(id=200, workflow_id=100, head_sha="a" * 40)},
+        artifacts={200: [artifact("deploy-bundle")]})
+    resolve_artifact_run.api = backend
+    try:
+        resolve_artifact_run.resolve(
+            "o/r", "build-bundle.yml", ["deploy-bundle-kde"], commit="a" * 40)
+    except ValueError as error:
+        assert "deploy-bundle-kde" in str(error), error
+    else:
+        raise AssertionError("an unsuffixed deploy-bundle satisfied a per-desktop lookup")
+
+    backend = FakeGitHub(
+        workflows={"build-bundle.yml": {"id": 100}},
+        runs={200: run(id=200, workflow_id=100, head_sha="a" * 40)},
+        artifacts={200: [artifact("deploy-bundle-kde")]})
+    resolve_artifact_run.api = backend
+    assert resolve_artifact_run.resolve(
+        "o/r", "build-bundle.yml", ["deploy-bundle-kde"], commit="a" * 40) == "200"
+    try:
+        resolve_artifact_run.resolve(
+            "o/r", "build-bundle.yml", ["deploy-bundle-gnome"], commit="a" * 40)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("the kde bundle satisfied a gnome lookup")
+
+
+def test_workflows_upload_and_download_per_desktop_artifacts():
+    """上传名与下载名必须一起改，只改一边会让下一步拿不到文件。"""
+    bundle = (ROOT / ".github/workflows/build-bundle.yml").read_text()
+    prepare = (ROOT / ".github/workflows/prepare-install.yml").read_text()
+    release = (ROOT / ".github/workflows/release.yml").read_text()
+    pkg = (ROOT / ".github/workflows/package-install.yml").read_text()
+    assert "name: deploy-bundle-${{ inputs.desktop }}" in bundle, (
+        "build-bundle.yml must name its artifact after the desktop")
+    assert "name: root-install-${{ inputs.desktop }}" in prepare
+    assert "name: deploy-bundle-${{ inputs.desktop }}" in prepare, (
+        "prepare-install.yml must download the per-desktop bundle")
+    assert '--name "deploy-bundle-${desktop}"' in release
+    assert '--name "root-install-${desktop}"' in release
+    assert "name: root-install-${{ inputs.desktop }}" in pkg
+    # run 标题带档位，Actions 列表与 gh run list 一眼能分出四档。
+    assert "run-name: build-bundle ${{ inputs.desktop }}" in bundle
+    assert "run-name: prepare-install ${{ inputs.desktop }}" in prepare
+    # 没有一处还按旧名下载。
+    for text, workflow in ((bundle, "build-bundle"), (prepare, "prepare-install"),
+                           (release, "release"), (pkg, "package-install")):
+        assert '--name deploy-bundle\n' not in text.replace(" ", " "), workflow
+        assert "name: deploy-bundle\n" not in text, workflow
+
+
 def main():
     for check in (test_wrong_workflow_same_artifact_is_rejected,
                   test_explicit_run_id_matching_workflow_returns_str,
@@ -250,6 +310,8 @@ def main():
                   test_commit_scoped_selection_skips_other_commits,
                   test_explicit_run_id_rejects_commit_mismatch,
                   test_cli_writes_output_key_and_prints_run_id,
+                  test_per_desktop_artifacts_do_not_match_each_other,
+                  test_workflows_upload_and_download_per_desktop_artifacts,
                   test_every_resolved_workflow_is_registered_on_default_branch):
         check()
     print("OK: artifact run resolution binds to the requested workflow and rejects bad inputs")

@@ -21,7 +21,7 @@ build-image
   └─ 核对 rootfs 模块树 == 封存内核 manifest
 
 build-bundle
-  └─ deploy-bundle/sunuefi_esp.img + boot_sunuefi.img
+  └─ sunuefi_esp.img + boot_sunuefi.img
 ```
 
 四步之间要显式传 run id，链路不会自己去找"最新的那个"：
@@ -39,7 +39,7 @@ build-bundle
 
 ## Actions 材料
 
-手动运行 `prepare-install` 是可选步骤：它把 root 镜像离线扩到指定容量并做读回校验。首装只求能刷上任意容量的设备时，跳过它，直接用 `deploy-bundle` 自带的 sparse，首启会自己长满分区。要跑时选择完整 deploy-bundle 的 run，首装固定 `android_slot=_a`。这一步不需要公钥：SSH 公钥在刷写时用 `--ssh-key` 注入，公钥和私钥都不进 Actions。三个 artifact 是：
+手动运行 `prepare-install` 是可选步骤：它把 root 镜像离线扩到指定容量并做读回校验。首装只求能刷上任意容量的设备时，跳过它，直接用归档里自带的 sparse，首启会自己长满分区。要跑时选择完整 bundle 的 run，首装固定 `android_slot=_a`。这一步不需要公钥：SSH 公钥在刷写时用 `--ssh-key` 注入，公钥和私钥都不进 Actions。三个 artifact 是：
 
 | artifact | 内容 |
 | --- | --- |
@@ -47,7 +47,7 @@ build-bundle
 | boot-tools | 同核心的 selector、Android 静态原生工具、产品固件、自包含安装入口 |
 | host-boot-tool | 静态宿主 BOOT 重打包工具及来源记录 |
 
-boot-tools 必须与所选 deploy-bundle 的 UEFI 产品镜像逐字节相同。安装入口在 boot-tools 的 `installer/scripts`。锁定的上游代码附带源码清单，不需要在设备主机上重编译。普通发行版主机需要 Python 3、adb、fastboot。BOOT 准备用 Actions 提供的宿主工具。
+boot-tools 必须与所选 bundle 的 UEFI 产品镜像逐字节相同。安装入口在 boot-tools 的 `installer/scripts`。锁定的上游代码附带源码清单，不需要在设备主机上重编译。普通发行版主机需要 Python 3、adb、fastboot。BOOT 准备用 Actions 提供的宿主工具。
 
 `host-check` 的 `package_prepare_run` 是另一个可选入口。填一个成功的 `prepare-install` run，`host-check` 调用 `package-install.yml` 把那份 `root-install` 压成 zstd。`package-install.yml` 只压缩已校验的产物，不重建文件系统。
 
@@ -111,18 +111,24 @@ build-kernel run
 host-check / build-piano-rpms run
 build-rootfs run（rootfs-<rel>-<desktop>）
 build-image run（root-image-<rel>-<desktop>）
-build-bundle run（deploy-bundle）
-prepare-install run（root-install，bundle_run 必须等于上面的 build-bundle run）
+build-bundle run（deploy-bundle-<desktop>）
+prepare-install run（root-install-<desktop>，bundle_run 必须等于上面的 build-bundle run）
 ```
 
-多档桌面时每档各有一对 build-bundle 与 prepare-install run，`release.yml` 的 `desktop_runs` 逐档登记：
+默认不填任何 run id，四档的 build-bundle 与 prepare-install 都按 tag 指向的 commit 解析：
+
+```sh
+gh workflow run release.yml -f tag=<tag> -f desktop=all
+```
+
+某个档位缺 run 时用 `desktop_runs` 只发其余档。条目可以只写档名，也可以固定一对 run：
 
 ```sh
 gh workflow run release.yml -f tag=<tag> \
-  -f desktop_runs="gnome=<bundle>:<prepare>,kde=<bundle>:<prepare>,niri=<bundle>:<prepare>,hyprland=<bundle>:<prepare>"
+  -f desktop_runs="gnome=<bundle>:<prepare>,kde=<bundle>:<prepare>,niri,hyprland"
 ```
 
-每档独立走身份、状态与提交绑定校验，平台资产四份逐字节比对后只发一份。不带 `desktop_runs` 时按 `desktop` 单档发布，行为与多桌面之前一致。单档验收也要确认 rootfs、镜像、bundle 与 root-install 四处的 desktop 字段一致，混档会在写设备之前被拒。
+每档独立走 artifact 身份、成功状态与提交绑定校验，平台镜像与 boot-tools 逐字节比对后复用第一档的副本。没有 commit 时 `release-desktops.py` 直接报错：`resolve-artifact-run.py` 在缺 commit 时会扫最近 50 个成功 run，发布不能走那条捷径。单档验收也要确认 rootfs、镜像、bundle 与 root-install 四处的 desktop 字段一致，混档会在写设备之前被拒。
 
 平板先完整启动到 Android，开启 USB 调试并确认 `sys.boot_completed=1`：
 
@@ -152,21 +158,16 @@ sha256sum stock-recovery/boot.img
 两条摘要必须相同，文件必须是 96 MiB（`stat -c%s`），否则执行器会拒绝。原厂 ROM 包里的 `images/boot.img` 也是 96 MiB，但只有设备还跑着那一版固件时才逐字节相同。用前先比摘要，不一致就以设备读出的为准。
 
 ```sh
-python3 boot-tools/installer/scripts/prepare-device-boot.py \
-  --stock-boot stock-recovery/boot.img \
-  --boot-tools boot-tools \
-  --host-tool host-boot-tool \
-  --bundle deploy-bundle \
-  --slot _a \
-  --source-sha256 <current-boot-sha256> \
-  --output device-boot
+./make-device-boot.sh --serial <serial>
 ```
+
+它用 `adb` 读 `boot_a`，核对 96 MiB 与设备侧摘要，再调 `scripts/prepare-device-boot.py`。手工调时参数是 `--stock-boot stock-recovery/boot.img --boot-tools boot-tools --host-tool host-boot-tool --bundle . --slot _a --source-sha256 <current-boot-sha256> --output device-boot`。
 
 ```sh
 python3 boot-tools/installer/scripts/install-f2fs.py plan \
   --sunuefi boot-tools/installer/sunuefi \
   --serial <serial> \
-  --bundle deploy-bundle \
+  --bundle . \
   --root-install root-install \
   --device-boot device-boot \
   --stock-boot stock-recovery/boot.img \
@@ -185,9 +186,9 @@ root 镜像与分区容量解耦。执行器要求 `expanded_bytes <= linux_root
 
 想把镜像预先扩到目标容量，`prepare-install` 的 `root_size_mib` 填目标 MiB 数，`prepare-root-capacity.py` 会离线扩容并读回校验。这不是必需步骤：`prepare-install` 留空时直接用封存镜像，传输文件由 `build-bundle` 提供。
 
-ESP 默认 512 MiB。ESP 分区必须和 `deploy-bundle/sunuefi_esp.img` 等大：镜像按 `product.json` 的 `esp_size_mib` 造出，执行器要求镜像字节数等于计划算出的 ESP 分区容量。两者不一致就停。改过 `esp_size_mib` 就重跑 `build-bundle`，再在 `plan` 与 `apply` 上加同一个 `--esp-mib`。只有 `--esp-mib` 而没有配套的重建镜像时，执行器会在写设备前拒绝。
+ESP 默认 512 MiB。ESP 分区必须和 `sunuefi_esp.img` 等大：镜像按 `product.json` 的 `esp_size_mib` 造出，执行器要求镜像字节数等于计划算出的 ESP 分区容量。两者不一致就停。改过 `esp_size_mib` 就重跑 `build-bundle`，再在 `plan` 与 `apply` 上加同一个 `--esp-mib`。只有 `--esp-mib` 而没有配套的重建镜像时，执行器会在写设备前拒绝。
 
-`device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_a`（跟随 `--slot`），`app_generation` 必须与 `deploy-bundle/PianoUEFI-product.img` 的 APPv1 载荷一致。
+`device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_a`（跟随 `--slot`），`app_generation` 必须与 `PianoUEFI-product.img` 的 APPv1 载荷一致。
 
 选择器读请求页的位置是“正在引导的那份镜像”末尾：ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装在 A 槽，Android 与 Linux 都从同一份 `boot_a` 启动，请求页因此指向 `boot_a`。系统不切槽，也不存在第二份需要同步的页。
 
@@ -203,7 +204,7 @@ ESP 默认 512 MiB。ESP 分区必须和 `deploy-bundle/sunuefi_esp.img` 等大�
 python3 boot-tools/installer/scripts/install-f2fs.py apply \
   --sunuefi boot-tools/installer/sunuefi \
   --serial <serial> \
-  --bundle deploy-bundle \
+  --bundle . \
   --root-install root-install \
   --device-boot device-boot \
   --stock-boot stock-recovery/boot.img \
@@ -221,7 +222,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py apply \
 ```
 
 执行器在 GPT 写入和擦除 userdata 之前就校验公钥，并确认 `mcopy` 可用。失败时
-不动设备。公钥写进会话目录里的一份 ESP 副本，`deploy-bundle/sunuefi_esp.img`
+不动设备。公钥写进会话目录里的一份 ESP 副本，`sunuefi_esp.img`
 保持原样。`result.json` 的 `ssh_key_injected` 与 `sunuefi_esp_sha256` 记录这次
 注入和实际刷入的摘要。不传 `--ssh-key` 时只保留口令登录。
 
@@ -250,7 +251,7 @@ chmod +x flash-linux.sh
 如果第 3 步已经用 `install-f2fs.py --ssh-key` 注入过，这里不必再传。重复注入
 只会覆盖同一个 `/piano-ssh-key.pub`。两条路径都要求本机有 `mcopy`（mtools）。
 
-脚本校验 deploy-bundle 与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 能装进实时 `sunuefi_root`。脚本只写 `boot_a`、`sunuefi_esp`、`sunuefi_root`，不切活动槽，拒绝 fastbootd、错误产品、多台设备和不完整材料。
+脚本校验归档与 root-install 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 能装进实时 `sunuefi_root`。脚本只写 `boot_a`、`sunuefi_esp`、`sunuefi_root`，不切活动槽，拒绝 fastbootd、错误产品、多台设备和不完整材料。
 
 首装路径拒绝 `--skip-checksum`。两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备从 Slot A 重启，请求页按 `device-boot/boot-request.json` 进入 Linux。
 
@@ -274,7 +275,7 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
 
 五项全部通过后，才能把 PR 标为设备验收通过：
 
-1. 同一次新流水线产出的 `deploy-bundle` 和 `root-install` 已记录 run ID 与摘要。
+1. 同一次新流水线产出的 `deploy-bundle-<desktop>` 和 `root-install-<desktop>` 已记录 run ID 与摘要。
 2. 从原始 GPT/UFS 开始完成首次分区、显式擦除 userdata、Android 首次开机。
 3. Slot A 冷启动进入所选桌面档（`gnome`、`kde`、`niri` 或 `hyprland`），不是热修复或历史镜像启动。
 4. 完整重启一次后仍能进入同一档，且 `systemctl --failed` 为空。

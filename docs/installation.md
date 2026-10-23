@@ -14,22 +14,25 @@
 
 首次分区要用 Android 的 root 权限读写块设备。获取 root 的方法不在本仓库范围内。
 
-### 电脑端可选工具
+### 电脑端工具
 
 | 工具 | 用途 | 缺少时的后果 |
 | --- | --- | --- |
-| `python3` | 一键脚本读 `root-install-manifest.json` | 脚本在校验摘要前停下，不写设备 |
+| `sha256sum`、`tar` | 校验与解开归档 | 无法开始 |
+| `zstd` | 解压归档 | 无法开始。GNU tar 的 `--zstd` 也是去调外部 `zstd`，没有内建支持 |
+| `python3` | 一键脚本读 `root-install-manifest.json`，`make-device-boot.sh` 重打包 BOOT | 脚本在校验摘要前停下，不写设备 |
+| `adb` | 读原厂 BOOT | `make-device-boot.sh` 无法生成 `device-boot/` |
 | `mtools`（`mcopy`、`mtype`） | 注入 SSH 公钥，核对 ESP 里的内核版本 | 只能做手动路径，且不能注入公钥 |
 
-Windows 的一键脚本用系统自带的 PowerShell，不需要 `python3`。安装命令：
+Windows 的一键脚本用系统自带的 PowerShell，不需要 `python3`。Windows 上解 `.tar.zst` 用 7-Zip。安装命令：
 
 ```sh
 # Fedora
-sudo dnf install python3 mtools
+sudo dnf install coreutils zstd python3 android-tools mtools
 # Ubuntu / Debian
-sudo apt install python3 mtools
+sudo apt install coreutils zstd python3 adb mtools
 # macOS
-brew install mtools        # python3 随 Command Line Tools 提供
+brew install zstd android-platform-tools mtools   # python3 随 Command Line Tools 提供
 ```
 
 ---
@@ -95,78 +98,114 @@ brew install mtools        # python3 随 Command Line Tools 提供
 
 ## 三、 准备安装材料
 
-两条安装路径使用同一套材料。本节说明从哪里取、怎么校验、怎么摆放。
+两条安装路径使用同一套材料。每档桌面一个自包含归档，只下自己那一档。
 
 ### 1. 取资产
 
-从 [GitHub Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 下载平台资产，再下载所选档位的 `root-install-*`。其他档位的 root 各 1–3 GiB，不必下载。
+在 [Releases 页面](https://github.com/FFT-infra/piano-fedora/releases) 选一个 tag，再选一个档位。需要下载的文件以 `piano-<tag>-<档位>` 开头：
 
-Release 由 tag 触发，内容是同一次 `build-bundle` 与它派生的 `prepare-install` 产物。不要在本地重新打包历史 `out/` 目录充当发布资产。
+- `piano-<tag>-<档位>.sha256`，这一档的摘要清单。
+- `piano-<tag>-<档位>.tar.zst`，或它的全部分片 `piano-<tag>-<档位>.tar.zst.part-NN`。
 
-Release 资产是扁平的。把下载到的文件放进同一个空目录，然后运行：
+归档超过 2 GiB 时按 1900 MiB 切片，所以 GNOME 与 KDE 通常有 `.part-00` 与 `.part-01` 两个分片，niri 与 Hyprland 只有一个文件。分片缺一个都解不开。
+
+别的档位是各自的归档，装机不需要。
+
+### 2. 解包
+
+把下载到的文件放进同一个空目录，按顺序执行三条命令：
 
 ```sh
-bash unpack-release.sh --desktop <档位>
+sha256sum -c piano-<tag>-<档位>.sha256
+cat piano-<tag>-<档位>.tar.zst.part-* | zstd -dc | tar -x
+sha256sum -c SHA256SUMS
 ```
 
-脚本按 `RELEASE-SHA256SUMS` 校验目录里已有的资产。它合并大于 2 GiB 的分片，解压 zstd 压缩的镜像，解开这一档的 `manifests-<档位>.tar.zst`，并把 `root-install/` 放回刷写脚本要求的布局。完成后这个目录就是暂存目录。
+第二行在没有分片时换成 `zstd -dc piano-<tag>-<档位>.tar.zst | tar -x`。两条命令都接受 `cat` 的通配，有分片时用分片那条。
 
-Release 里只有一档时 `--desktop` 可以省略。多档时不传参数会报错并列出可选项。各档有什么差别见[桌面档](desktops.md)。
+解完这个目录就是暂存目录，第五节与第七节的命令都在这里执行。再校验一次 prepared root：
 
-### 2. 资产用途
+```sh
+(cd root-install && sha256sum -c SHA256SUMS)
+```
 
-| 资产 | 用途 | 刷到哪 |
+也可以让仓库 `scripts/` 下的 `unpack-release.sh` 代做下载、校验与解包：
+
+```sh
+bash scripts/unpack-release.sh --tag <tag> --desktop <档位> --dir piano-install
+```
+
+脚本只拉这一档的文件，已经在盘上的跳过。它最后跑的校验与上面两条相同。
+
+Windows 上用 7-Zip 打开 `.tar.zst`。分片先合并：`copy /b piano-<tag>-<档位>.tar.zst.part-00+piano-<tag>-<档位>.tar.zst.part-01 piano-<tag>-<档位>.tar.zst`。
+
+### 3. 归档内容
+
+| 文件 | 用途 | 刷到哪 |
 | --- | --- | --- |
-| `sunuefi_esp.img.zst` | SunUEFI ESP 分区镜像，解包后是 `sunuefi_esp.img` | `sunuefi_esp` |
-| `root-install-pianoroot-<档位>.f2fs.sparse.img.zst` | 已写入设备配置的根文件系统，解包后是 `root-install/pianoroot.f2fs.sparse.img` | `sunuefi_root` |
-| `manifests-<档位>.tar.zst` | 这一档的 6 份 bundle manifest 与 `root-install/` 的清单、摘要 | 不刷入，供校验 |
-| `boot_sunuefi.img.zst` | ESP 内部的 Linux 载荷 | 不刷任何分区 |
-| `PianoUEFI-product.img.zst`、`uefi-source.json` | 产品固件与来源记录 | 不刷入，首装校验用 |
-| `piano-installer-<tag>.zip` | `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt`、`unpack-release.sh` | 不刷入 |
-| `piano-boot-tools-<tag>.tar.zst` | 生成设备专用 `device-boot/boot_linux.img` 的脚本与 x86-64 工具 | 不刷入 |
+| `sunuefi_esp.img` | SunUEFI ESP 分区镜像 | `sunuefi_esp` |
+| `root-install/pianoroot.f2fs.sparse.img` | 已写入设备配置的根文件系统 | `sunuefi_root` |
+| `boot_sunuefi.img` | ESP 内部的 Linux 载荷 | 不刷任何分区 |
+| `PianoUEFI-product.img`、`uefi-source.json` | 产品固件与来源记录 | 不刷入，首装校验用 |
+| `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` | 一键脚本与说明 | 不刷入 |
+| `make-device-boot.sh`、`boot-tools/`、`host-boot-tool/`、`scripts/` | 生成设备专用 BOOT | 不刷入 |
+| `SHA256SUMS` | 归档内全部文件的摘要 | 不刷入 |
+| bundle 与组件 manifest | 来源绑定与内核、运行时记录 | 不刷入，供校验 |
 
-三份平台镜像是 zstd 压缩的。ESP 是 512 MiB 的 ext4，绝大部分扇区是零，压完 34 MiB。三份合计从 585 MiB 降到 68 MiB。解压后的字节与 `SHA256SUMS` 一致。刷写脚本读的始终是解压后的规范名。
-
-完整镜像 `pianoroot-<档位>.f2fs.img.zst`、封存镜像 `pianoroot-<档位>.f2fs.sparse.img.zst`、`initramfs.tar.zst` 与 `diagnostic-abl-storage.tar.zst` 不随 Release 发布。需要时从对应的 workflow artifact 取。
-
-`root-install` 里的 sparse 镜像已写入设备配置并恢复 SELinux 标签。没有指定 `root_size_mib` 时它保持封存容量，首次启动再扩满 `sunuefi_root`。Release 固定使用 Android Slot A（`_a`）。B 槽设备要用同一次 bundle run 自己跑 `prepare-install.yml` 的 `_b`。
+`root-install/` 里的 sparse 镜像已写入设备配置并恢复 SELinux 标签。没有指定 `root_size_mib` 时它保持封存容量，首次启动再扩满 `sunuefi_root`。Release 固定使用 Android Slot A（`_a`）。B 槽设备要用同一次 bundle run 自己跑 `prepare-install.yml` 的 `_b`。
 
 镜像里没有 `authorized_keys`。管理公钥在刷写时用 `--ssh-key` 注入，手动路径见[第五节](#五-手动刷写-linux)，脚本路径见[第六节](#六-一键脚本)。
 
-### 3. 没有 Release 时
+完整镜像、封存镜像、`initramfs.tar.zst` 与 `diagnostic-abl-storage.tar.zst` 不进归档。前两份与 `root-install` 里的 root 内容相同，也不能直接刷；后两份只给构建链用。需要时从对应的 workflow artifact 取。
 
-用同一次成功 `build-bundle` run 的完整 deploy-bundle，以及这个 run 派生的 `prepare-install` 的 `root-install`：
+### 4. 没有 Release 时
 
-1. 把 `scripts/installer/` 里的 `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` 复制到暂存目录。
-2. 完整解压同一 run 的 `deploy-bundle/` 到同一层，保留其中全部普通文件。
-3. 完整解压同一 deploy-bundle run 派生的 `root-install/` 到这个目录下。
-4. 不要把两个 artifact 的 `SHA256SUMS` 合并、改名或重新生成。
+用同一次成功 `build-bundle` run 的 `deploy-bundle-<档位>`，以及这个 run 派生的 `prepare-install` 的 `root-install-<档位>`：
+
+1. 把同一 run 的 `deploy-bundle-<档位>` 全部普通文件解压到暂存目录。
+2. 把 `root-install-<档位>` 解到 `root-install/`。
+3. 从 `scripts/installer/` 复制 `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt`，从 `scripts/` 复制 `make-device-boot.sh`、`prepare-device-boot.py`、`piano_artifacts.py`、`piano_sparse.py`。
+4. 不要让两个 artifact 的 `SHA256SUMS` 互相覆盖。
 
 不要从不同 run 各取一部分。
 
-### 4. 生成设备专用 BOOT
+### 5. 生成设备专用 BOOT
 
-`device-boot/boot_linux.img` 由 `scripts/prepare-device-boot.py` 在本机生成。它用这台平板自己的原厂 BOOT 重打包，因此不在 deploy-bundle 里，也不在两份 `SHA256SUMS` 里。`piano-boot-tools-<tag>.tar.zst` 里有这个工具与 x86-64 宿主版本。
+归档里没有 `device-boot/boot_linux.img`。合体 BOOT 含这台平板当前的 Android 内核，只有本机能生成。
 
-不要用 deploy-bundle 里的 `boot_sunuefi.img` 顶替它。那份文件是 ESP 内部的 Linux 载荷，ABL 无法加载。
+归档里的 `make-device-boot.sh` 一次做完全部步骤：用 `adb` 读 `boot_a`、核对 96 MiB 与设备侧摘要、调 `scripts/prepare-device-boot.py` 重打包。
 
-### 5. 暂存目录
+```sh
+./make-device-boot.sh            # 只有一台设备连着时可以省略 --serial
+./make-device-boot.sh --serial <序列号>
+```
 
-最终目录必须长这样：
+脚本要求 Android 侧的 root ADB。读回不足 96 MiB 或两条摘要不一致时它不写任何东西。产出的 `device-boot/` 已有同名目录时也会拒绝覆盖。
+
+原厂 ABL 不实现 `fastboot fetch`，所以归档不教这条命令。它只会返回一个 0 字节文件。
+
+不要用 `boot_sunuefi.img` 顶替 `boot_linux.img`。前者是 ESP 内部的 Linux 载荷，ABL 无法加载。
+
+### 6. 暂存目录
+
+解包后的目录长这样：
 
 ```text
 piano-install/
-├── flash-linux.sh
-├── flash-linux.bat
 ├── README-INSTALL.txt
+├── SHA256SUMS
 ├── boot_sunuefi.img
 ├── sunuefi_esp.img
 ├── PianoUEFI-product.img
-├── uefi-source.json
-├── SHA256SUMS
+├── flash-linux.sh
+├── flash-linux.bat
+├── make-device-boot.sh
 ├── bundle-manifest.json
 ├── root-image-manifest.json
-├── device-boot/
+├── boot-tools/
+├── host-boot-tool/
+├── scripts/
+├── device-boot/              # make-device-boot.sh 生成
 │   ├── boot_linux.img
 │   └── boot-request.json
 └── root-install/
@@ -175,11 +214,11 @@ piano-install/
     └── SHA256SUMS
 ```
 
-用 Release 时，`unpack-release.sh` 已把 bundle 文件放在这一层，并解出 `root-install/` 与这一档的 6 份 manifest。再从 `piano-installer-<tag>.zip` 里取出三个刷写脚本放到同一层。其余几份组件 manifest（`kernel-manifest.json` 等）留着不动。
+组件 manifest（`kernel-manifest.json`、`esp-manifest.json` 等）与两个工具目录留在原位，刷写脚本读它们。
 
-`device-boot/` 不属于 deploy-bundle，脚本单独核对它的结构。
+`device-boot/` 不属于归档，脚本站单独核对它的结构。
 
-### 6. 校验材料
+### 7. 校验材料
 
 在暂存目录执行（macOS 把 `sha256sum` 换成 `shasum -a 256`）：
 
@@ -188,22 +227,11 @@ sha256sum -c SHA256SUMS
 (cd root-install && sha256sum -c SHA256SUMS)
 ```
 
-两份清单属于两个独立 artifact。任意一行 `FAILED` 都停止，不要继续。
+两份清单属于两个独立来源。任意一行 `FAILED` 都停止，不要继续。
 
-只核对要用到的三个文件时，直接算摘要：
+归档的 `SHA256SUMS` 只列归档里真实存在的文件，所以这份命令不需要挑行。`root-install/SHA256SUMS` 覆盖 sparse root 与 root-install manifest。
 
-```sh
-sha256sum boot_sunuefi.img sunuefi_esp.img
-(cd root-install && sha256sum pianoroot.f2fs.sparse.img)
-```
-
-把 BOOT/ESP 的输出与 deploy-bundle 的 `SHA256SUMS` 比对，把 sparse root 的输出与 root-install 的 `SHA256SUMS` 比对。三组哈希都必须一致。
-
-只复制几个文件会让清单校验失去意义。
-
-deploy-bundle 的 `SHA256SUMS` 覆盖 deploy-bundle 的全部文件。`root-install/SHA256SUMS` 覆盖 sparse root 与 root-install manifest。刷写脚本还核对 root-install 里的 bundle/root 清单摘要确实来自当前 deploy-bundle。
-
----
+刷写脚本还会核对 root-install manifest 里的 `source_bundle_manifest_sha256` 与 `source_root_manifest_sha256` 确实指向归档里的 `bundle-manifest.json` 与 `root-image-manifest.json`。三者对不上说明 root 来自别的构建。
 
 ## 四、 从原始 GPT/UFS 开始的首次安装
 
@@ -218,7 +246,7 @@ deploy-bundle 的 `SHA256SUMS` 覆盖 deploy-bundle 的全部文件。`root-inst
 ```sh
 python3 boot-tools/installer/scripts/install-f2fs.py plan \
   --sunuefi boot-tools/installer/sunuefi --serial <序列号> \
-  --bundle deploy-bundle --root-install root-install --device-boot device-boot \
+  --bundle . --root-install root-install --device-boot device-boot \
   --stock-boot stock-recovery/boot.img --plan first-install-plan.json
 ```
 
@@ -227,7 +255,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
 ```sh
 python3 boot-tools/installer/scripts/install-f2fs.py apply \
   --sunuefi boot-tools/installer/sunuefi --serial <序列号> \
-  --bundle deploy-bundle --root-install root-install --device-boot device-boot \
+  --bundle . --root-install root-install --device-boot device-boot \
   --stock-boot stock-recovery/boot.img --plan first-install-plan.json \
   --session sessions/first-install --execute --accept-data-loss
 ```
@@ -376,7 +404,7 @@ fastboot reboot
 
 ### 3. 请求页
 
-`device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_a`。`app_generation` 要与 `deploy-bundle/PianoUEFI-product.img` 里的 APPv1 载荷一致。
+`device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_a`。`app_generation` 要与归档里的 `PianoUEFI-product.img` 中的 APPv1 载荷一致。
 
 选择器在“正在引导的那份镜像”末尾读请求页。ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装进 A 槽，Linux 与 Android 都从同一份 `boot_a` 启动，请求页因此指向 `boot_a`。不切槽，也不存在第二份需要同步的页。
 
@@ -444,7 +472,7 @@ fastboot reboot
 
 每条命令都必须打印 `OKAY`。出现 `FAILED` 就停下，不要继续后面的步骤。
 
-`boot_a` 要写的是 `prepare-device-boot.py` 用本机原厂 BOOT 重打包出的 `device-boot/boot_linux.img`，不是 `deploy-bundle` 里的 `boot_sunuefi.img`。后者是 ESP 内部的 Linux 载荷（Header v2 容器，没有 `SUNUEFI-NEXTv1` 请求页），只有 SunUEFI 固件从 ESP 里加载。把它刷进 `boot_a`，ABL 会拒绝整条链，平板停在 Fastboot。
+`boot_a` 要写的是 `prepare-device-boot.py` 用本机原厂 BOOT 重打包出的 `device-boot/boot_linux.img`，不是归档里的 `boot_sunuefi.img`。后者是 ESP 内部的 Linux 载荷（Header v2 容器，没有 `SUNUEFI-NEXTv1` 请求页），只有 SunUEFI 固件从 ESP 里加载。把它刷进 `boot_a`，ABL 会拒绝整条链，平板停在 Fastboot。
 
 合体 BOOT 保持上游的 unsigned AVB NONE 元数据。`prepare-device-boot.py` 不补 `os_version`，也不重新签名。槽 A 的 ABL 直接加载这份镜像。同一份未签名镜像已在真机上完成 Android→Linux→Android 往返。不要自行补 `os_version` 或 RSA4096 footer：`piano-boot-repack` 的 probe/request/adopt 会把首块与包装器里保存的原厂头逐字节比较。改了偏移 16，Android 侧的引导助手就认不出当前 BOOT，`switch linux` 会直接失败。
 
@@ -479,7 +507,7 @@ sha256sum esp-readback-head.img sunuefi_esp.img
 
 这台平板的原厂 ABL 不实现 `fetch`。主机 fastboot 37.0.0 能识别这个子命令，设备会回 `Device does not support fetch command`，宿主上还会留下一个 0 字节的读回文件。遇到这条就跳过读回，改看下面的启动后验证。不要因此重刷。
 
-如果注入过 SSH 公钥，读回比对要用注入后重新算出的摘要，不能用 deploy-bundle `SHA256SUMS` 里的旧值。`mcopy` 就地改写 `sunuefi_esp.img`，两份摘要本来就不一样。搞错这一条会把正常的镜像判成损坏。
+如果注入过 SSH 公钥，读回比对要用注入后重新算出的摘要，不能用归档 `SHA256SUMS` 里的旧值。`mcopy` 就地改写 `sunuefi_esp.img`，两份摘要本来就不一样。搞错这一条会把正常的镜像判成损坏。
 
 启动后验证三项，三项都要满足：
 
@@ -555,7 +583,7 @@ Windows 主机直接双击运行 `flash-linux.bat`。
 
 `--ssh-key` 只接受单行 `ssh-ed25519` 或 `ssh-rsa` 公钥，绝不传私钥。脚本在两份 `SHA256SUMS`、bundle/root 来源、槽位和容量全部校验通过、且用户确认之后，才用 `mcopy -o -i sunuefi_esp.img <公钥> ::/piano-ssh-key.pub` 把公钥写进 ESP 镜像，然后重新计算 ESP 摘要并打印。
 
-注入会改变 `sunuefi_esp.img` 的字节，它和 deploy-bundle 的 `SHA256SUMS` 就不再一致。重跑前重新解压一份 deploy-bundle。刷写后读回核对时，用脚本打印的新摘要，不要用清单里的旧值。
+注入会改变 `sunuefi_esp.img` 的字节，它和归档的 `SHA256SUMS` 就不再一致。重跑前重新解一次归档。刷写后读回核对时，用脚本打印的新摘要，不要用清单里的旧值。
 
 Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工执行 `mcopy`。
 
@@ -563,7 +591,7 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 1. 检查 `fastboot` 是否可用、设备是否在线。
 2. 确认产品代号是 `piano`，防止误刷。
-3. 按 deploy-bundle 的 `SHA256SUMS` 与 `root-install/SHA256SUMS` 分别校验 BOOT/ESP 和 sparse root。
+3. 按归档的 `SHA256SUMS` 与 `root-install/SHA256SUMS` 分别校验 BOOT/ESP 和 sparse root。
 4. 打印安全告知，要求输入大写 `YES` 确认。
 5. 保持活动槽 A，不切槽。
 6. 刷入合体 BOOT：`fastboot flash boot_a device-boot/boot_linux.img`。
@@ -571,7 +599,7 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 8. 刷入系统根分区：`fastboot flash sunuefi_root pianoroot.f2fs.sparse.img`。
 9. 自动重启：`fastboot reboot`。
 
-`device-boot/boot_linux.img` 由 `scripts/prepare-device-boot.py` 用本机原厂 BOOT 重打包产生。它不在 deploy-bundle 里，必须自己生成一次。脚本按 `boot_linux.img`、`device-boot/boot_linux.img` 的顺序在暂存目录里找它，也可以用 `--boot` 指定。deploy-bundle 里的 `boot_sunuefi.img` 是 ESP 内部的 Linux 载荷，脚本会明确拒绝它。
+`device-boot/boot_linux.img` 由 `scripts/prepare-device-boot.py` 用本机原厂 BOOT 重打包产生。它不在归档里，必须自己生成一次。脚本按 `boot_linux.img`、`device-boot/boot_linux.img` 的顺序在暂存目录里找它，也可以用 `--boot` 指定。归档里的 `boot_sunuefi.img` 是 ESP 内部的 Linux 载荷，脚本会明确拒绝它。
 
 脚本不写 `dtbo_a`、`init_boot_a`、`vendor_boot_a`、`vbmeta_a`，也不擦除 `userdata`。
 
@@ -603,7 +631,7 @@ sha256sum stock-recovery/boot.img    # 与上一条相同
 ```sh
 python3 boot-tools/installer/scripts/update-f2fs.py plan \
   --sunuefi boot-tools/installer/sunuefi --serial <serial> \
-  --bundle deploy-bundle --root-install root-install \
+  --bundle . --root-install root-install \
   --device-boot device-boot --stock-boot stock-recovery/boot.img \
   --plan update-plan.json
 ```
@@ -613,7 +641,7 @@ python3 boot-tools/installer/scripts/update-f2fs.py plan \
 ```sh
 python3 boot-tools/installer/scripts/update-f2fs.py apply \
   --sunuefi boot-tools/installer/sunuefi --serial <serial> \
-  --bundle deploy-bundle --root-install root-install \
+  --bundle . --root-install root-install \
   --device-boot device-boot --stock-boot stock-recovery/boot.img \
   --plan update-plan.json --session update-session \
   --execute --accept-root-replacement

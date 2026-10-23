@@ -11,6 +11,10 @@ on:
         description: "可选：同时压缩该成功 prepare-install run 的材料"
         required: false
         default: ""
+      package_desktop:
+        description: "package_prepare_run 那一档；root-install artifact 带这个后缀"
+        required: false
+        default: "gnome"
       build_ffmpeg:
         description: "同时构建锁定 Fedora FFmpeg 与上游 BSP 补丁的原生 RPM"
         required: false
@@ -39,6 +43,7 @@ jobs:
     uses: ./.github/workflows/package-install.yml
     with:
       prepare_run: ${{ inputs.package_prepare_run }}
+      desktop: ${{ inputs.package_desktop }}
   piano-rpms:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_piano_rpms }}
     uses: ./.github/workflows/build-piano-rpms.yml
