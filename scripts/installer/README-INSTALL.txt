@@ -185,6 +185,7 @@ so the stock DTBO content must stay in place.
 Login Credentials:
 - Username: piano
 - Password: piano123456
+- Run "passwd" after the first login. The default password is public.
 
 Dual-Boot Switching:
 - Linux to Android : Click "Return to Android" in GNOME App Drawer.

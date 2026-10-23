@@ -133,9 +133,10 @@ make plan-desktop DESKTOP=niri RELEASEVER=44
 
 ## 已知缺口
 
-- **KDE、niri、Hyprland 都没有真机验收记录。** 装配后的
+- **上屏与旋转之外的行为没有真机验收记录。** niri 与 Hyprland 两档连上屏都还需要
+  重建镜像，见上面的表格。装配后的
   `validate_against_rootfs()` 只能证明登录单元、会话文件、会话二进制与电源
-  文件在树里，证明不了桌面上屏。
+  文件在树里，证明不了这些文件在设备上真的生效。
 - **niri / Hyprland 没有自动旋转**，见上一节。
 - **KDE 的自动旋转依赖 `qt6-qtsensors`**，这一条来自 Plasma 6 的已知行为，
   本轮没有在设备上验证。

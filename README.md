@@ -84,7 +84,7 @@
 
 ## 发布产物
 
-Release 由 tag 与手工 dispatch 共同确定，只包含同一次 `build-bundle` 与它派生的 `prepare-install` 的已验证产物，不重新编译。一个 Release 带四档桌面，每档一个自包含归档 `piano-<tag>-<档位>.tar.zst`，超过 2 GiB 时切成 `.part-NN`。
+Release 由维护者用 tag 手工 dispatch，tag push 不会触发发布。一个 Release 只包含同一次 `build-bundle` 与它派生的 `prepare-install` 的已验证产物，不重新编译。一个 Release 带四档桌面，每档一个自包含归档 `piano-<tag>-<档位>.tar.zst`，超过 2 GiB 时切成 `.part-NN`。
 
 归档里有平台镜像、这一档的 `root-install/`、组件 manifest、刷写脚本与 boot-tools。装机只下自己那一档，GNOME 约 2.1 GiB，niri 约 1 GiB。归档自己的 `SHA256SUMS` 只列真实存在的文件，所以两条校验命令都能直接过。逐个文件的作用见[交付物与流水线](docs/artifacts.md#release-发布)。
 

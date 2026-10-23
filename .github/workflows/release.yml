@@ -136,6 +136,10 @@ jobs:
 
           ### 怎么装
 
+          刷写会解锁 Bootloader、改写 GPT、替换 `boot_a` 的合体 BOOT 并重写 Linux
+          分区。先备份全部数据。`current-slot` 必须是 `a`，不要擦除 `dtbo_a` 或
+          `dtbo_b`。完整前提见 docs/installation.md。
+
           每一档一个归档，只下自己那一档，别的档不用下。以 ${example} 为例：
 
           1. 下载 \`piano-${TAG}-${example}.sha256\` 与 \`piano-${TAG}-${example}.tar.zst\` 的全部分片

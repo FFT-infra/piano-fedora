@@ -83,7 +83,7 @@ There are two paths. The manual path is the primary one: it gives each command, 
 
 ## Release artifacts
 
-A release is triggered by a tag and only ships verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Nothing is rebuilt. One release carries four desktops, each as one self-contained archive `piano-<tag>-<profile>.tar.zst`, split into `.part-NN` pieces above 2 GiB.
+A maintainer dispatches the release workflow with a tag; a tag push does not start a release. A release ships only verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from it. Nothing is rebuilt. One release carries four desktops, each as one self-contained archive `piano-<tag>-<profile>.tar.zst`, split into `.part-NN` pieces above 2 GiB.
 
 An archive holds the platform images, that profile's `root-install/`, the component manifests, the flash scripts, and the boot tools. An install downloads one profile: about 2.1 GiB for GNOME, about 1 GiB for niri. The archive's own `SHA256SUMS` lists only the files it holds, so both verification commands run clean. What each file is: [Artifacts and pipeline](docs/artifacts.md#release-发布).
 
