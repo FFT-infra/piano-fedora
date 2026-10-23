@@ -40,9 +40,14 @@ Images are built per desktop from the same release chain and differ only in the 
 | Profile | Session | Login | Auto-rotate | Acceptance |
 |---|---|---|---|---|
 | `gnome` | GNOME 50 (Workstation environment) | GDM autologin | Mutter | Desktop reached; rotation verified on device |
-| `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Not on device |
-| `niri` | niri | greetd + tuigreet | None; manual `transform` | Not on device |
-| `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None; manual rotate | Not on device |
+| `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Desktop reached; rotation verified. One brief flicker per rotation, see [known issues](docs/known-issues.md) |
+| `niri` | niri | greetd + tuigreet | None; manual `transform` | Desktop reached (image requires a rebuild before it works unaided) |
+| `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None; manual rotate | Desktop reached (image requires a rebuild before it works unaided) |
+
+On device, `niri` and `hyprland` hit a wrong greeter account name in greetd
+(`greeter` instead of the `greetd` account Fedora creates), so the display
+manager never starts. The source fix is in; both images need a rebuild before
+they work without manual intervention.
 
 Pick a profile at download time with `bash unpack-release.sh --desktop <profile>`. Without the flag the script takes the only profile in the release. Login, power behavior, rotation, and known gaps per profile are in [Desktops](docs/desktops.md).
 

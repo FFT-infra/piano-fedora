@@ -41,9 +41,13 @@
 | 档位 | 会话 | 登录 | 自动旋转 | 验收状态 |
 |---|---|---|---|---|
 | `gnome` | GNOME 50（Workstation 环境） | GDM 自动登录 | Mutter | 已登录桌面，旋转已实机验证 |
-| `kde` | KDE Plasma | plasma-login-manager 自动登录 | KWin，需 `qt6-qtsensors` | 未上真机 |
-| `niri` | niri | greetd + tuigreet | 无，手动 `transform` | 未上真机 |
-| `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无，手动 rotate | 未上真机 |
+| `kde` | KDE Plasma | plasma-login-manager 自动登录 | KWin，需 `qt6-qtsensors` | 已登录桌面，旋转已验；旋转瞬间有一次画面闪烁，见[已知问题](docs/known-issues.md) |
+| `niri` | niri | greetd + tuigreet | 无，手动 `transform` | 已登录桌面（镜像需重建后才开箱可用） |
+| `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无，手动 rotate | 已登录桌面（镜像需重建后才开箱可用） |
+
+`niri` 与 `hyprland` 两档在实机验收时遇到 greetd 的 greeter 账户名写错
+（`greeter` 而非 Fedora 建立的 `greetd`），显示管理器起不来。修复已在源码里，
+这两档的发布镜像需要重建后才不需要手工干预。
 
 下载时用 `bash unpack-release.sh --desktop <档位>` 选档，不传参数时取 Release
 里唯一的那一档。每档的登录、电源行为、旋转能力与已知缺口见

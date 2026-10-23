@@ -9,9 +9,9 @@
 | 档位 | 会话 | 登录 | 电源策略 | 自动旋转 | 验收状态 |
 |---|---|---|---|---|---|
 | `gnome` | GNOME 50（Workstation 环境） | GDM 自动登录 | dconf（`00-power`） | 走 Mutter，已实机验证 | 已登录桌面，旋转已验 |
-| `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，需 `qt6-qtsensors` | 未上真机 |
-| `niri` | niri | greetd `[initial_session]` | 仅 logind | 无，需手动 `transform` | 未上真机 |
-| `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 无，需手动 rotate | 未上真机 |
+| `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，需 `qt6-qtsensors` | 已登录桌面，旋转已验 |
+| `niri` | niri | greetd `[initial_session]` | 仅 logind | 无，需手动 `transform` | 已登录桌面，镜像需重建 |
+| `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 无，需手动 rotate | 已登录桌面，镜像需重建 |
 | `server` | 无 | 无 | 仅 logind | — | 只用于测试装配，不进 Release |
 
 ## 登录方式
@@ -31,6 +31,17 @@
 - **niri / Hyprland**：`/etc/greetd/config.toml` 的 `[initial_session]` 指向
   `niri-session` 或 `start-hyprland`，`[default_session]` 留 `tuigreet --time`
   兜底。会话崩溃或用户注销后回到 tuigreet 的文本选择界面，而不是黑屏 VT。
+
+  `[default_session]` 的 `user` 必须是 `greetd`，不是 `greeter`。这个账户由
+  `greetd` 包里的 sysusers 片段建立（`u greetd - "greetd daemon"`），名字写错时
+  greetd 每 1 秒重启一次，5 次后撞 `StartLimitBurst` 变成 failed，显示管理器整个
+  起不来，桌面也就进不去。现场核对：
+
+  ```sh
+  getent passwd greetd        # 应有一行，uid 994 左右
+  systemctl is-active greetd  # active
+  ```
+  日志里出现 `configured default session user 'greeter' not found` 即是这个问题。
 
 四个显示管理器都在 `piano-display.service` 之后启动（`Requires=` + `After=`
 的 drop-in），面板没就绪时不会先起桌面。
