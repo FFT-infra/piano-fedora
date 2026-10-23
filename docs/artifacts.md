@@ -159,7 +159,7 @@ deploy-bundle 里有四类文件不进归档。
 
 另外核对 root-install manifest 里 `source_bundle_manifest_sha256` 与 `source_root_manifest_sha256` 确实指当前 bundle 与其 root 镜像。Release 只收 `android_slot == "_a"`。`_b` 的 root-install 留给 B 槽设备自己生成。
 
-`RELEASE-SHA256SUMS` 覆盖实际发布的扁平资产，一份覆盖全部桌面。每档的 sidecar 从它切出来。
+`RELEASE-SHA256SUMS` 覆盖实际发布的全部资产，一份覆盖所有桌面。每档的 sidecar 从它切出来。
 
 发布前用 `actions/attest-build-provenance` 以 `RELEASE-SHA256SUMS` 为输入生成 provenance。它把该文件列出的每个资产都记成一条 subject，所以 `gh attestation verify <任一分片>` 都能验。`RELEASE-SHA256SUMS` 本身不在 subject 列表里，拿它去验会得到 404。
 
