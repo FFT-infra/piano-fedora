@@ -593,7 +593,7 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 2. 确认产品代号是 `piano`，防止误刷。
 3. 按归档的 `SHA256SUMS` 与 `root-install/SHA256SUMS` 分别校验 BOOT/ESP 和 sparse root。
 4. 打印安全告知，要求输入大写 `YES` 确认。
-5. 保持活动槽 A，不切槽。
+5. 保持 Slot A，不切槽。
 6. 刷入合体 BOOT：`fastboot flash boot_a device-boot/boot_linux.img`。
 7. 刷入 ESP 分区：`fastboot flash sunuefi_esp sunuefi_esp.img`。
 8. 刷入系统根分区：`fastboot flash sunuefi_root pianoroot.f2fs.sparse.img`。
