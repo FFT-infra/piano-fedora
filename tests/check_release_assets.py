@@ -94,11 +94,12 @@ def test_platform_assets_are_identical_across_desktops():
                  "source-runs.json", "SHA256SUMS", "esp-manifest.json",
                  "pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img"):
         assert name not in platform, f"{name} differs per desktop but is published once"
-    # 桌面维度真正差的资产都在桌面集合里。
-    for name in ("root-install-manifest.json", "root-install-SHA256SUMS",
-                 "root-install-pianoroot.f2fs.sparse.img.zst"):
-        assert name in release_assets.DESKTOP_INSTALL_ASSETS, name
+    # 桌面维度真正差的资产：root 传输镜像单独发，清单与摘要进归档。
+    assert "root-install-pianoroot.f2fs.sparse.img.zst" in release_assets.DESKTOP_INSTALL_ASSETS
+    for name in release_assets.ROOT_INSTALL_MEMBERS:
         assert name not in platform, name
+        assert name not in release_assets.DESKTOP_INSTALL_ASSETS, (
+            f"{name} ships inside the manifests archive, not as its own asset")
 
 
 def test_classify_defaults_to_desktop():
@@ -107,6 +108,66 @@ def test_classify_defaults_to_desktop():
     assert release_assets.classify("kernel-manifest.json") == "platform"
     assert release_assets.classify("brand-new-file.bin") == "desktop"
     assert release_assets.classify("root-install-manifest.json") == "desktop"
+    # 每档各写各的 manifest 打成一个 tar，不进平台集合，也不逐个发。
+    for name in release_assets.MANIFEST_MEMBERS:
+        assert release_assets.classify(name) == "manifest-archive", name
+    # 不再随 Release 发布的两份中间产物与调试件。
+    for name in ("initramfs.tar.zst", "diagnostic-abl-storage.tar.zst"):
+        assert name not in release_assets.PLATFORM_ASSETS, name
+
+
+def test_manifest_archive_is_one_definition():
+    """归档成员只有一处定义：release.yml 与 unpack-release.sh 都从它取值。"""
+    text = WORKFLOW.read_text()
+    assert "scripts/release-assets.py archive-members" in text, (
+        "release.yml must read the archive members instead of hard-coding them")
+    assert "manifests.tar.zst" in text
+    # 打包必须可复现：四档用同一套 tar 参数，重复跑出同样的字节。
+    for flag in ("--sort=name", "--mtime=@0", "--owner=0", "--group=0", "--numeric-owner"):
+        assert flag in text, f"release.yml manifest tar lacks {flag}"
+    unpack = UNPACK.read_text()
+    assert "manifests.tar.zst" in unpack
+    for name in ("bundle-manifest.json", "root-image-manifest.json", "source-runs.json"):
+        assert name in unpack, f"unpack-release.sh never checks for {name}"
+    # root-install 的清单与摘要也在归档里，解包后落在 root-install/ 下。
+    for name in release_assets.ROOT_INSTALL_MEMBERS:
+        assert f'root-install/{name}' in unpack or name in unpack, name
+
+
+def test_platform_images_ship_compressed():
+    """三份平台镜像压缩发布，其余平台资产原名发布。
+
+    ESP 是 512 MiB 的 ext4，绝大部分扇区是零；不压缩时每个用户白下 510 MiB。
+    """
+    compressed = set(release_assets.PLATFORM_COMPRESSED)
+    assert compressed == {"PianoUEFI-product.img", "sunuefi_esp.img", "boot_sunuefi.img"}
+    # 只压大镜像。清单类 JSON 只有几 KiB，压了反而多一层解压步骤。
+    for name in release_assets.PLATFORM_ASSETS:
+        if name in compressed:
+            assert release_assets.platform_published_name(name) == f"{name}.zst", name
+        else:
+            assert release_assets.platform_published_name(name) == name, name
+    assert compressed <= set(release_assets.PLATFORM_ASSETS), (
+        "PLATFORM_COMPRESSED must only name platform assets")
+
+
+def test_workflow_compresses_platform_images():
+    """release.yml 用 release-assets.py 算发布名，并验证压缩可逆。"""
+    text = WORKFLOW.read_text()
+    assert "release_upload_platform" in text, (
+        "release.yml uploads platform images raw; they must go through the "
+        "compressing helper")
+    upload = (ROOT / "scripts/release-upload.sh").read_text()
+    assert "platform-name" in upload, (
+        "release-upload.sh must take the published name from release-assets.py")
+    assert "does not round-trip" in upload, (
+        "release-upload.sh must prove the compressed asset decompresses to the "
+        "bundle's bytes before uploading it")
+    unpack = UNPACK.read_text()
+    for name in release_assets.PLATFORM_COMPRESSED:
+        assert name in unpack, f"unpack-release.sh never restores {name}"
+    assert '"$name.zst"' in unpack and "zstd -dc" in unpack, (
+        "unpack-release.sh must decompress the platform images it downloads")
 
 
 def test_workflow_uses_the_classification():
@@ -126,13 +187,23 @@ def test_cli_surface():
     for args, expected in (
             (["classify", "pianoroot.f2fs.sparse.img"], "desktop"),
             (["classify", "sunuefi_esp.img"], "platform"),
-            (["name", "root-install-manifest.json", "kde"], "root-install-manifest-kde.json")):
+            (["classify", "bundle-manifest.json"], "manifest-archive"),
+            (["name", "root-install-manifest.json", "kde"], "root-install-manifest-kde.json"),
+            (["name", "manifests.tar.zst", "kde"], "manifests-kde.tar.zst"),
+            (["platform-name", "sunuefi_esp.img"], "sunuefi_esp.img.zst"),
+            (["platform-name", "kernel-manifest.json"], "kernel-manifest.json")):
         result = subprocess.run(["python3", str(ASSETS), *args], check=True,
                                 stdout=subprocess.PIPE, text=True)
         assert result.stdout.strip() == expected, (args, result.stdout)
     result = subprocess.run(["python3", str(ASSETS), "platform"], check=True,
                             stdout=subprocess.PIPE, text=True)
     assert result.stdout.split() == list(release_assets.PLATFORM_ASSETS)
+    result = subprocess.run(["python3", str(ASSETS), "manifest-members"], check=True,
+                            stdout=subprocess.PIPE, text=True)
+    assert result.stdout.split() == list(release_assets.MANIFEST_MEMBERS)
+    result = subprocess.run(["python3", str(ASSETS), "platform-compressed"], check=True,
+                            stdout=subprocess.PIPE, text=True)
+    assert result.stdout.split() == list(release_assets.PLATFORM_COMPRESSED)
 
 
 def main():
@@ -140,6 +211,9 @@ def main():
     test_the_two_implementations_agree_on_every_bundle_file()
     test_platform_assets_are_identical_across_desktops()
     test_classify_defaults_to_desktop()
+    test_manifest_archive_is_one_definition()
+    test_platform_images_ship_compressed()
+    test_workflow_compresses_platform_images()
     test_workflow_uses_the_classification()
     test_cli_surface()
     print("OK: 平台资产只发一份、桌面资产按 -<desktop> 命名，两条实现逐项一致")

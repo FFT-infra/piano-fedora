@@ -20,20 +20,24 @@ Requirements:
    macOS "brew install mtools".
 
 Using a GitHub Release:
-Download every asset of the release into one empty folder, then:
-   sha256sum -c RELEASE-SHA256SUMS
+Download the platform assets plus the root-install-* files of the desktop you
+want into one empty folder (the other desktops' root-install-* files are not
+needed; each is 1-3 GiB), then:
    bash unpack-release.sh --desktop <name>
    unzip piano-installer-<tag>.zip
 A release can carry several desktops (gnome, kde, niri, hyprland). The ESP,
-kernel and initramfs are identical across them and are published once; the root
-image and root-install assets are published per desktop as
-pianoroot-<desktop>.f2fs.img.zst, root-install-manifest-<desktop>.json and so
-on. --desktop picks which desktop's root goes into root-install/. It can be
-omitted when the release carries only one desktop; with several desktops the
-script lists them and stops. See docs/desktops.md for what each desktop
-provides.
-unpack-release.sh merges the >2 GiB pieces, decompresses the zstd root
-transports, and leaves the folder in the layout below. The boot tools asset
+kernel and initramfs are identical across them and are published once, zstd
+compressed; the root is published per desktop as
+root-install-pianoroot-<desktop>.f2fs.sparse.img.zst, and that desktop's
+manifests as manifests-<desktop>.tar.zst. --desktop picks which desktop's root
+goes into root-install/. It can be omitted when the release carries only one
+desktop; with several desktops the script lists them and stops. See
+docs/desktops.md for what each desktop provides.
+unpack-release.sh checks the assets you downloaded against
+RELEASE-SHA256SUMS, merges the >2 GiB pieces, decompresses the zstd images
+(sunuefi_esp.img.zst, boot_sunuefi.img.zst, PianoUEFI-product.img.zst and the
+root transport), unpacks the per-desktop manifests-<desktop>.tar.zst, and
+leaves the folder in the layout below. The boot tools asset
 (piano-boot-tools-<tag>.tar.zst) generates device-boot/boot_linux.img for this
 tablet; that image itself is never shipped in the release.
 
@@ -43,21 +47,31 @@ Required Files in this Folder:
 - boot_sunuefi.img                 (ESP-internal Linux payload; NOT a boot_a image)
 - device-boot/boot_linux.img       (boot_a image from prepare-device-boot.py)
 - sunuefi_esp.img                  (SunUEFI EFI System Partition)
-- SHA256SUMS                       (deploy-bundle BOOT/ESP checksums)
-- bundle-manifest.json             (deploy-bundle provenance)
-- root-image-manifest.json         (deploy-bundle root provenance)
+- PianoUEFI-product.img            (SunUEFI product firmware; first-install check)
+- uefi-source.json                 (UEFI source pin and patch digests)
+- SHA256SUMS                       (checksums of the files unpacked above)
+- bundle-manifest.json             (binds root-install/ to this bundle)
+- root-image-manifest.json         (binds root-install/ to this root image)
+- source-runs.json                 (run ids behind this bundle; used by install-f2fs.py)
 - root-install/                    (complete prepare-install artifact)
   - pianoroot.f2fs.sparse.img      (prepared root transport for this tablet)
   - root-install-manifest.json
   - SHA256SUMS                     (root-install checksums)
 
-The deploy-bundle's pianoroot.f2fs.img.zst is the sealed 8 GiB build image.
-Do NOT decompress and flash it directly: it has not been expanded to the
-tablet's sunuefi_root capacity or provisioned with this device's settings.
-Release users already have root-install/ after unpack-release.sh. If you are
-assembling from Actions instead, run prepare-install.yml with the exact
-deploy-bundle run, download its root-install artifact, and keep the complete
-root-install directory here.
+unpack-release.sh produces bundle-manifest.json, root-image-manifest.json,
+source-runs.json and SHA256SUMS from manifests-<desktop>.tar.zst, and unpacks
+that archive's root-install/ entries into root-install/; keep them next to the
+images.
+
+The release does not ship the sealed 8 GiB build image
+(pianoroot.f2fs.img.zst) or the bundle's sparse copy: both hold the same root
+as root-install/ and neither is expanded to the tablet's sunuefi_root capacity
+or provisioned with this device's settings, so neither can be flashed. If you
+need one as an archive copy, run prepare-install.yml yourself or take it from
+the matching Actions artifact.
+If you are assembling from Actions instead of a release, run
+prepare-install.yml with the exact deploy-bundle run, download its
+root-install artifact, and keep the complete root-install directory here.
 Do not copy only the sparse image and do not merge the two SHA256SUMS files.
 
 Flashing Instructions:

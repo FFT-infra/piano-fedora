@@ -6,16 +6,18 @@
 #   root-install/       prepared root transport, manifest, checksums
 #
 # GitHub rejects files of 2 GiB or more, so the large images are shipped as
-# numbered pieces and the root transports are zstd-compressed. Run this script
-# from the directory that holds every downloaded asset:
+# numbered pieces and every large image is zstd-compressed. Each desktop's six
+# bundle manifests ship as one manifests-<desktop>.tar.zst. Run this script
+# from the directory that holds the assets you downloaded; it checks them
+# against RELEASE-SHA256SUMS itself:
 #
-#   sha256sum -c RELEASE-SHA256SUMS
 #   bash unpack-release.sh [--desktop <name>]
 #
 # A release may carry several desktops. ESP, kernel and initramfs are shared and
-# published once without a suffix; the root images and manifests are published as
-# `<stem>-<desktop>.<rest>` (see scripts/release-assets.py). With only one
-# desktop the flag can be left out; with several it is required.
+# published once without a suffix; the root image, its manifests and the
+# manifest archive are published as `<stem>-<desktop>.<rest>` (see
+# scripts/release-assets.py). With only one desktop the flag can be left out;
+# with several it is required.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -33,11 +35,11 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-for tool in sha256sum zstd; do
-    command -v "$tool" >/dev/null || die "missing $tool (Fedora: sudo dnf install coreutils zstd)"
+for tool in sha256sum zstd tar; do
+    command -v "$tool" >/dev/null || die "missing $tool (Fedora: sudo dnf install coreutils zstd tar)"
 done
 
-[ -f RELEASE-SHA256SUMS ] || die "RELEASE-SHA256SUMS is missing; download every asset of this release"
+[ -f RELEASE-SHA256SUMS ] || die "RELEASE-SHA256SUMS is missing; download the platform assets and one desktop's root-install"
 if [ -e root-install ]; then
     die "root-install/ already exists; unpack in a fresh directory"
 fi
@@ -56,18 +58,19 @@ published_name() {
     esac
 }
 
-# Desktop assets in this release, read from the one name that is unambiguous
-# (`root-install-manifest-<desktop>.json`). Legacy single-desktop releases
-# publish the unsuffixed names and keep working unchanged.
+# Desktop assets in this release, read from the one name that is unambiguous:
+# `manifests-<desktop>.tar.zst`. The root-install manifest lives inside that
+# archive, so the archive name is the only per-desktop marker left on disk.
+# Legacy single-desktop releases publish unsuffixed names and keep working.
 desktops=()
-for manifest in root-install-manifest-*.json; do
-    [ -f "$manifest" ] || continue
-    desktops+=("${manifest#root-install-manifest-}")
+for archive in manifests-*.tar.zst; do
+    [ -f "$archive" ] || continue
+    desktops+=("${archive#manifests-}")
 done
 for index in "${!desktops[@]}"; do
-    desktops[index]=${desktops[index]%.json}
+    desktops[index]=${desktops[index]%.tar.zst}
 done
-if [ "${#desktops[@]}" -eq 0 ] && [ -f root-install-manifest.json ]; then
+if [ "${#desktops[@]}" -eq 0 ] && [ -f manifests.tar.zst ]; then
     # 旧 Release：没有桌面后缀，也没有可选的档位。
     desktops=()
     DESKTOP=""
@@ -126,10 +129,24 @@ claim() {
 }
 
 say "[1/5] Verifying the downloaded assets..."
-sha256sum -c RELEASE-SHA256SUMS
+# RELEASE-SHA256SUMS 列的是这个 Release 的全部资产，四档桌面全在里面。装机只需要
+# 平台资产加自己所选那一档，另外三档的 root 各 1-3 GiB，没有理由让用户也下一遍。
+# 所以只对真的下载到磁盘上的行校验：缺的行过滤掉，但后面 claim 到缺失资产时会
+# 明确报 "missing release asset"。分片合并前磁盘上只有 part-*，同名整文件不存在，
+# 这两种情况都算已下载。只用 sha256sum 与 shell，不引入 python 依赖。
+: > .checksums.present
+while read -r sum name; do
+    [ -n "${name:-}" ] || continue
+    if [ -f "$name" ] || compgen -G "$name.part-*" >/dev/null; then
+        printf '%s  %s\n' "$sum" "$name" >> .checksums.present
+    fi
+done < RELEASE-SHA256SUMS
+[ -s .checksums.present ] || die "no release assets found here; download at least the platform assets and one desktop's root-install"
+sha256sum -c .checksums.present
+rm -f .checksums.present
 mkdir -p root-install
 
-say "[2/5] Rebuilding the sealed and prepared root images..."
+say "[2/5] Unpacking the prepared root image..."
 # stream_parts OUTPUT NAME: concatenate NAME.part-* (or keep NAME) as OUTPUT
 stream_parts() {
     local output=$1 name=$2 base source
@@ -153,28 +170,73 @@ unpack_zstd() {
         rm -f "$source"
     fi
 }
-stream_parts pianoroot.f2fs.img.zst pianoroot.f2fs.img.zst
-unpack_zstd pianoroot.f2fs.sparse.img.zst pianoroot.f2fs.sparse.img
+# 装机只需要 root-install 这一份。Release 不再发布完整镜像与封存镜像：它们和
+# 这份 root 内容相同，README 也写明不能直接刷，只是还原与检查用的存档副本。
+# 需要它们就自己跑 prepare-install，或从 workflow artifact 取。
 unpack_zstd root-install-pianoroot.f2fs.sparse.img.zst root-install/pianoroot.f2fs.sparse.img
 
 say "[3/5] Restoring the documented directory layout..."
-bundle_files=(
-    PianoUEFI-product.img SHA256SUMS boot_sunuefi.img bundle-manifest.json
-    diagnostic-abl-storage.tar.zst esp-manifest.json ffmpeg-manifest.json
-    initramfs-manifest.json initramfs.tar.zst kernel-manifest.json
-    mesa-manifest.json root-image-manifest.json rootfs-manifest.json
-    runtime-manifest.json source-runs.json sunuefi_esp.img uefi-source.json
+# 平台镜像以 zstd 压缩发布（`sunuefi_esp.img.zst` 等）：ESP 是 512 MiB 的
+# ext4，绝大部分扇区是零，压完只剩 36 MiB。装机脚本读的是规范名，所以这里
+# 解压还原。旧 Release 与从源码构建的 deploy-bundle 本来就是解压状态，直接跳过。
+# 这份名单与 scripts/release-assets.py 的 PLATFORM_COMPRESSED 一致，由
+# tests/check_release_assets.py 逐项比对。
+compressed_platform=(
+    PianoUEFI-product.img sunuefi_esp.img boot_sunuefi.img
 )
-for name in "${bundle_files[@]}"; do
-    claim "$name" || die "missing release asset: $name"
+for name in "${compressed_platform[@]}"; do
+    if [ -f "$name" ]; then
+        continue
+    fi
+    if compgen -G "$name.zst.part-*" >/dev/null; then
+        cat "$name".zst.part-* | zstd -dc > "$name"
+        rm -f "$name".zst.part-*
+    elif [ -f "$name.zst" ]; then
+        zstd -dc "$name.zst" > "$name"
+        rm -f "$name.zst"
+    else
+        die "missing release asset: $name.zst"
+    fi
 done
-claim root-install-manifest.json || die "missing release asset: root-install-manifest.json"
-claim root-install-SHA256SUMS || die "missing release asset: root-install-SHA256SUMS"
-mv root-install-manifest.json root-install/
-mv root-install-SHA256SUMS root-install/SHA256SUMS
+claim uefi-source.json || die "missing release asset: uefi-source.json"
+
+# 每档那 6 个 manifest 与这一档 root-install 的两份小文件打在一个 tar 里
+# （scripts/release-assets.py 的 archive-members）。装机脚本要读它们：
+# flash-linux.sh 用 bundle-manifest.json 与 root-image-manifest.json 证明
+# root-install 来自这个 bundle，install-f2fs.py 的首装还要读
+# source-runs.json。归档里 root-install/SHA256SUMS 带目录前缀，解出来直接
+# 落在脚本要求的位置。
+manifest_archive=$(resolve manifests.tar.zst) || die "missing manifests.tar.zst or its .part-* pieces"
+if compgen -G "$manifest_archive.part-*" >/dev/null; then
+    cat "$manifest_archive".part-* | zstd -dc | tar -xf - -C .
+    rm -f "$manifest_archive".part-*
+else
+    zstd -dc "$manifest_archive" | tar -xf - -C .
+    rm -f "$manifest_archive"
+fi
+for name in bundle-manifest.json root-image-manifest.json source-runs.json SHA256SUMS; do
+    [ -f "$name" ] || die "manifests archive did not contain $name"
+done
+[ -f root-install/root-install-manifest.json ] \
+    || die "manifests archive did not contain root-install/root-install-manifest.json"
+[ -f root-install/SHA256SUMS ] || die "manifests archive did not contain root-install/SHA256SUMS"
 
 say "[4/5] Checking the reassembled bundle against its own checksums..."
-sha256sum -c SHA256SUMS
+# 这份清单来自 build-bundle，列的是整个 deploy-bundle，里面有几份不随 Release
+# 分发的文件：完整镜像、封存镜像与五份溯源 manifest。缺的行跳过，只校验本
+# 目录里真有的文件。校验通过后把清单改写成这一个子集——手动刷机会在暂存目录
+# 里跑 `sha256sum -c SHA256SUMS`，留着一张列了不存在文件的清单只会让它失败。
+# 分片在[2/5]已经合并，这里只认真实存在的文件。
+: > .checksums.present
+while read -r sum name; do
+    [ -n "${name:-}" ] || continue
+    if [ -f "$name" ]; then
+        printf '%s  %s\n' "$sum" "$name" >> .checksums.present
+    fi
+done < SHA256SUMS
+[ -s .checksums.present ] || die "SHA256SUMS matched nothing in this directory"
+sha256sum -c .checksums.present
+mv .checksums.present SHA256SUMS
 
 say "[5/5] Checking the prepared root against its own checksums..."
 (cd root-install && sha256sum -c SHA256SUMS)
