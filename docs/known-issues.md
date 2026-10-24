@@ -48,10 +48,20 @@ probe。旋转时的 DSC flush 超时属于同一类时序余量不足，重试�
 UEFI 的两份面板描述文件、`PianoFactoryPanel.h` 的选择表一致。
 
 UEFI 按原厂 ABL 的 `msm_drm.dsi_display0` 改写面板 `compatible`，实机
-`/proc/device-tree` 读回是 `xiaomi,piano-csot-nt36532`，与上面相反。两份判据读的
-不是同一处信息：绑带电平由主板上的电阻决定，原厂标识来自本次启动的 ABL 参数。
-两者本应一致，不一致说明这一轮 UEFI 交接取到的 ABL 标识与绑带不符，**尚未查清**，
-按未定记录。屏幕显示正常。
+`/proc/device-tree` 读回是 `xiaomi,piano-csot-nt36532`。ESP 上的 `board.dtb` 出厂
+只有 `xiaomi,piano-boe-nt36532`，整份文件没有 `piano-csot` 字样，所以这个值是 UEFI
+写进去的。
+
+看似矛盾，实际不矛盾：内核面板驱动内部的两个函数名与 `of_match` 的对应关系是反的。
+`piano_csot_init_sequence` 发的是 `bc 77 07`、ESD `0x00`、先 `B2` 后 `B3`，按原厂
+命令特征那是 `35_02_0b`（BOE）的序列；`piano_boe_init_sequence` 发的才是
+`c4 82 …`、ESD `0x20`（`42_02_0a`）。上游 `linux-sm8750-piano` 的命名正好相反。
+所以 `xiaomi,piano-csot-nt36532` 实际加载的是 BOE 的命令流，与绑带读数一致，屏幕
+显示正常。
+
+这是命名缺陷，不是行为缺陷，目前不改：改 `of_match` 会让 compatible 与序列对调，
+而 UEFI 按 ABL 标识写的值已经是正确的供应商名。要统一命名得连 UEFI 的
+`PianoFactoryPanel.h` 一起动，属于跨仓库改动。
 
 原厂触控驱动只把 `lcd_id_value` 用来选
 `piano_nova_{csot,boe}_thp_config.ini`，从不据此翻转坐标。`panel_vendor` 因此不能
@@ -59,6 +69,44 @@ UEFI 按原厂 ABL 的 `msm_drm.dsi_display0` 改写面板 `compatible`，实机
 `tests/check_finger_orientation.py`。
 
 两个标识分别对应哪块屏、归属哪个供应商，见[上游跟踪的面板标识](upstream.md#两个原厂面板标识)。
+
+## 系统缓存（LLCC）没有生效
+
+内核编了 `CONFIG_QCOM_LLCC=y`，但驱动从未绑定任何设备，系统缓存因此没有配置，
+Adreno 在缺 LLCC slice 的状态下运行。设备上的证据：
+
+```
+$ ls /sys/bus/platform/drivers/qcom-llcc/
+bind  module  uevent  unbind      # 没有任何设备
+$ dmesg | grep -i llcc            # 空
+$ ls /sys/bus/platform/devices/ | grep llcc
+24095000.llcc-pmu                 # 只有 PMU 和两个 bwmon 子节点
+240b3400.qcom,bwmon-llcc-gold
+240b7400.qcom,bwmon-llcc-prime
+```
+
+原因是 compatible 与 `reg-names` 都对不上。设备树里是 SunUEFI 的
+`vendor/piano-linux/board.dtb` 提供的原厂节点：
+
+```
+compatible = "qcom,sun-llcc";
+reg-names  = "llcc0_base", "llcc1_base", "llcc2_base", "llcc3_base",
+             "llcc_broadcast_or_base", "llcc_broadcast_and_base";
+```
+
+而 7.3 的 `drivers/soc/qcom/llcc-qcom.c` 只认 `qcom,sm8750-llcc`，并且按名字取
+`llcc_broadcast_base`。`qcom_llcc_init_mmio()` 只按序号 ioremap、名字仅用于给
+regmap 命名，所以 `reg-names` 的差异本身不致命，致命的是 compatible 不匹配，
+probe 根本不会发生。
+
+上游 `yzddmr6/linux-sm8750-piano` 的 `fe98a3e` 记录了同一问题的另一半：它把
+`CONFIG_QCOM_LLCC` 从 `=m` 改成 `=y`，理由是内置的 `DRM_MSM=y` 无法满足
+`QCOM_LLCC` 的依赖。我们这边已经是 `=y`，但 `DRM_MSM=m`，依赖方向不同。它测到的
+收益是 Geekbench 6 单核 +0.9%、多核 +0.5%、Vulkan 计算 +2.7%，内存延迟类子项最高
++9.5%。
+
+修复要么改 DTB 的 compatible，要么在内核补丁里给 `sun-llcc` 加一条 match 项。前者
+动 ESP 上的板级输入，后者动 7.3 的封存序列。两者都还没做。
 
 ## 刷写与读回
 
