@@ -72,7 +72,7 @@
     "iris-vaapi": {
       "url": "https://github.com/radxa-pkg/libva-v4l2.git",
       "ref": "v1.0.0",
-      "commit": "0e4ce1e05da1d0a92b342efc2090b9e4987035e1",
+      "commit": "6d03c3f8fb19b86f84b2b6c60ff20d1402f0ac41",
       "role": "Qualcomm Iris stateful V4L2 VA-API 后端：H.264/HEVC 硬解与编码；phxinyang/qualcomm-iris-vaapi 只有解码 entrypoint，会覆盖它"
     },
     "piano-integration": {
