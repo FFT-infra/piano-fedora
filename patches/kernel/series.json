@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "target": "sunuefi",
+  "base": {
+    "sunuefi_commit": "2d4752a1455f6448ec0d300aece28ec6eb148b20"
+  },
+  "patches": [
+    {
+      "file": "0001-linux-73-series.patch",
+      "summary": "在 7.3 的封存 mail 序列里登记 Iris 解码顺序与去块、DPU 从通道延后清理、功放增益上限、触屏屏型与 THP 字符设备四条补丁，并把 series 与 config 的 target_tree 一起推进",
+      "targets": {
+        "config/release.json": "81c368eef0f8f66a384111a6e1a5216b7ae7ec5c3950748c9825e4a94b791713",
+        "patches/linux/7.3/series.json": "cdf523329e3b5d709a5fd734d875ddcda1d4444c3727bf5276324dc1c2dcdd48"
+      },
+      "creates": [
+        "patches/linux/7.3/0025-dpu-defer-slave-cleanup.patch",
+        "patches/linux/7.3/0026-media-iris-decode-order-and-deblocking.patch",
+        "patches/linux/7.3/0027-asoc-piano-speaker-gain-limit.patch",
+        "patches/linux/7.3/0028-input-nt36532e-panel-vendor-misc.patch"
+      ]
+    }
+  ]
+}

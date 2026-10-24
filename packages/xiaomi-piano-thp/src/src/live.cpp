@@ -47,7 +47,13 @@ int main(int argc, char **argv) {
     }
     int fd = -1, record_fd = -1;
     try {
-        const auto calibration = nvt::loadCalibration(argv[1]);
+        const auto file = nvt::readCalibrationFile(argv[1]);
+        const auto &calibration = file.calibration;
+        const auto panel_identity = nvt::readPanelVendor(argv[2]);
+        const auto vendor = panel_identity.vendor;
+        std::cerr << nvt::describePanel(panel_identity) << '\n';
+        if (const auto mismatch = nvt::calibrationMismatch(vendor, file.project_vendor_id))
+            std::cerr << "THP calibration error: " << *mismatch << '\n';
         if (argc == 5) {
             record_fd = open(argv[4], O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
             if (record_fd < 0)
@@ -57,7 +63,7 @@ int main(int argc, char **argv) {
         nvt::UInputTouch touch(panel.width, panel.height);
         std::vector<nvt::Slot> panel_slots;
         nvt::LivePipeline pipeline(calibration, [&](auto slots) {
-            nvt::panelSlots(slots, calibration, panel_slots);
+            nvt::panelSlots(slots, calibration, vendor, panel_slots);
             touch.report(panel_slots);
         });
         nvt::StreamReader reader;

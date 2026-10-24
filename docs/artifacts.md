@@ -20,7 +20,7 @@
 
 F2FS 镜像同时绑定 rootfs、内核、运行时、Mesa、FFmpeg 和 initramfs 六份清单的 SHA256。root 文件系统清单引用实际消费的运行时、Mesa 与 FFmpeg 清单，并记录实际 RPM 清单的摘要。
 
-组件分目录解包。基础树、内核、UEFI、运行时、Mesa、FFmpeg 和 initramfs 不共享 manifest 路径。跨 run 查找只接受成功且未过期的 artifact。内核只允许标准 `kernel-release-7.2.9`。SDK 是独立 artifact；SDK 与内核必须取自同一次成功 run。
+组件分目录解包。基础树、内核、UEFI、运行时、Mesa、FFmpeg 和 initramfs 不共享 manifest 路径。跨 run 查找只接受成功且未过期的 artifact。内核只允许标准 `kernel-release-7.3.0`。SDK 是独立 artifact；SDK 与内核必须取自同一次成功 run。
 
 镜像和 bundle 只解包准确命名的内核 archive，拒绝旧 `kernel-experimental-gunyah` 与 `piano-fedora-runtime-gunyah` 产物。Gunyah 已由标准内核和标准 runtime 消费，SDK 内携带源码派生证明。`source-runs.json` 记录 `kernel_run` 与 `kernel_artifact`，bundle 按记录下载并要求内核为标准档。
 
@@ -64,7 +64,7 @@ Linux boot.img 是 ESP 上的 Linux 载荷。合体 BOOT 含当前 Android 内�
 
 | 阶段 | 关键产物 |
 | --- | --- |
-| build-kernel | `kernel-release-7.2.9`、`kernel-sdk-7.2.9` |
+| build-kernel | `kernel-release-7.3.0`、`kernel-sdk-7.3.0` |
 | host-check（FFmpeg + RPM） | `piano-fedora-ffmpeg`、`piano-rpms` |
 | build-device-runtime | `piano-fedora-runtime` |
 | build-rootfs | `rootfs-<rel>-<档位>` |

@@ -1,109 +1,27 @@
-diff --git a/packaging/org.librevm.Daemon1.conf b/packaging/org.librevm.Daemon1.conf
---- a/packaging/org.librevm.Daemon1.conf
-+++ b/packaging/org.librevm.Daemon1.conf
-@@ -24,7 +24,6 @@
-   </policy>
- 
-   <policy group="librevm">
--    <allow own="org.librevm.Daemon1"/>
-     <allow send_destination="org.librevm.Daemon1"/>
-     <allow receive_sender="org.librevm.Daemon1"/>
-   </policy>
-diff --git a/packaging/librevm-daemon.service b/packaging/librevm-daemon.service
---- a/packaging/librevm-daemon.service
-+++ b/packaging/librevm-daemon.service
-@@ -2,6 +2,7 @@
- Description=librevm virtual machine manager
- Documentation=https://github.com/code002-2/librevm
- # The daemon talks to the system bus and needs /dev/gunyah, which the kernel creates.
-+ConditionPathExists=/dev/gunyah
- After=dbus.service
- Wants=dbus.service
- 
-@@ -36,7 +37,7 @@
- NoNewPrivileges=yes
- ProtectHome=read-only
- ProtectSystem=strict
--ReadWritePaths=/var/lib/librevm /run/librevm /var/log/librevm-gui.log /tmp
-+ReadWritePaths=/var/lib/librevm /run/librevm /var/log/librevm
- PrivateTmp=no
- ProtectKernelTunables=no
- ProtectControlGroups=yes
-diff --git a/scripts/librevm-gui-session b/scripts/librevm-gui-session
---- a/scripts/librevm-gui-session
-+++ b/scripts/librevm-gui-session
-@@ -21,8 +21,10 @@
- # Logging must never be able to kill the launch: the shell runs this as the desktop
- # user, and a root-owned log file cannot be appended to by that user. Test first,
- # and fall back to somewhere always writable.
--PREFERRED=/var/log/librevm-gui.log
--FALLBACK=/tmp/librevm-gui.log
-+STATE=${XDG_STATE_HOME:-$HOME/.local/state}/librevm
-+mkdir -p "$STATE" || exit 1
-+PREFERRED=$STATE/gui.log
-+FALLBACK=$STATE/gui-fallback.log
- 
- if ( : >> "$PREFERRED" ) 2>/dev/null; then
-     LOG=$PREFERRED
-diff --git a/crates/librevm-core/src/config.rs b/crates/librevm-core/src/config.rs
---- a/crates/librevm-core/src/config.rs
-+++ b/crates/librevm-core/src/config.rs
-@@ -90,7 +90,7 @@
- 
-     /// Run crosvm without its minijail sandbox. Needed on systems without a
-     /// usable `/var/empty`, and for the console to attach cleanly.
--    #[serde(default = "default_true")]
-+    #[serde(default)]
-     pub disable_sandbox: bool,
- }
- 
-@@ -110,7 +110,7 @@
-             protection: Protection::default(),
-             firmware: None,
-             crosvm: None,
--            disable_sandbox: true,
-+            disable_sandbox: false,
-         }
-     }
- }
-@@ -733,6 +733,11 @@
-                 cmdline: default_cmdline(),
-             },
-             console: ConsoleConfig::default(),
-+            serial: SerialConfig::default(),
-+            disks: Vec::new(),
-+            shared_dirs: Vec::new(),
-+            network: NetConfig::default(),
-+            gpu: GpuConfig::default(),
-             description: None,
-         }
-     }
 diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backend.rs
+index 10cd9c7..a28aef3 100644
 --- a/crates/librevm-core/src/backend.rs
 +++ b/crates/librevm-core/src/backend.rs
-@@ -85,31 +85,19 @@
-         .unwrap_or(false)
- }
+@@ -87,26 +87,20 @@ pub fn running_under_hypervisor() -> bool {
  
--/// Is Gunyah actually usable, as opposed to merely present?
--///
--/// `/dev/gunyah` on its own is not enough: a stale device node survives a module
--/// reload, and crosvm needs the resource manager behind it. The module list is the
--/// honest check, because the node only appears once the driver has bound.
-+/// A registered misc device works for both built-in and modular Gunyah.
-+/// Checking /proc/modules rejects the production built-in driver; a stale
-+/// /dev node alone must not report readiness after driver removal.
+ /// Is Gunyah actually usable, as opposed to merely present?
+ ///
+-/// `/dev/gunyah` alone is not enough: a stale device node can survive a module
+-/// reload. Qualcomm kernels expose the resource manager as `gh_rm_drv`; older
+-/// kernels use the legacy three-module stack.
++/// The module list is not the check here: the production kernel builds Gunyah
++/// in, so `/proc/modules` stays empty even though the driver is running. A
++/// registered misc device answers for both cases, while a stale `/dev` node
++/// left behind by a removed driver still fails because its registration is gone.
  pub fn gunyah_ready() -> bool {
 -    if !Path::new(GUNYAH_NODE).exists() {
 -        return false;
 -    }
--    modules_loaded(&[
--        "gunyah",
--        "gunyah_hypercall",
--        "gunyah_rsc_mgr",
--    ])
--}
--
+-    modules_loaded(&["gh_rm_drv"])
+-        || modules_loaded(&["gunyah", "gunyah_hypercall", "gunyah_rsc_mgr"])
++    gunyah_ready_at(Path::new(GUNYAH_NODE), Path::new("/sys/class/misc/gunyah"))
+ }
+ 
 -/// Read `/proc/modules` and report whether every name is loaded.
 -fn modules_loaded(names: &[&str]) -> bool {
 -    let Ok(text) = std::fs::read_to_string("/proc/modules") else {
@@ -113,9 +31,6 @@ diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backen
 -        text.lines()
 -            .any(|line| line.split_whitespace().next() == Some(*want))
 -    })
-+    gunyah_ready_at(Path::new(GUNYAH_NODE), Path::new("/sys/class/misc/gunyah"))
-+}
-+
 +fn gunyah_ready_at(node: &Path, registration: &Path) -> bool {
 +    use std::os::unix::fs::FileTypeExt;
 +    std::fs::metadata(node)
@@ -125,7 +40,18 @@ diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backen
  }
  
  /// Find a program that can install the Gunyah modules.
-@@ -625,6 +613,13 @@
+@@ -275,8 +269,8 @@ pub fn build_command(
+ 
+     args.push("--cpus".to_string());
+     args.push(vm.cpus.to_string());
+-
+-    if vm.hypervisor.disable_sandbox {
++    // The pinned Gunyah backend does not handle PAGE_FAULT exits (reason 3) on this target.
++    if vm.hypervisor.disable_sandbox || resolved.hypervisor == Hypervisor::Gunyah {
+         args.push("--disable-sandbox".to_string());
+     }
+ 
+@@ -629,6 +623,13 @@ mod tests {
      use super::*;
      use crate::config::*;
  
@@ -139,7 +65,7 @@ diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backen
      fn vm() -> VmConfig {
          VmConfig {
              name: "t".into(),
-@@ -637,6 +632,11 @@
+@@ -641,6 +642,11 @@ mod tests {
                  cmdline: "console=ttyS0 earlycon".into(),
              },
              console: ConsoleConfig::default(),
@@ -151,21 +77,9 @@ diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backen
              description: None,
          }
      }
-@@ -656,11 +656,6 @@
-             &det(),
+@@ -661,11 +667,6 @@ mod tests {
              Path::new("/usr/bin/crosvm"),
              &ConsoleSink::Stdout,
--            Path::new("/run/librevm"),
--            Path::new("/run/librevm"),
--            Path::new("/run/librevm"),
--            Path::new("/run/librevm"),
--            Path::new("/run/librevm"),
-             Path::new("/run/librevm"),
-         )
-         .unwrap();
-@@ -719,11 +714,6 @@
-             Path::new("/c"),
-             &ConsoleSink::UnixStream(PathBuf::from("/tmp/nope/x.sock")),
              Path::new("/run/librevm"),
 -            Path::new("/run/librevm"),
 -            Path::new("/run/librevm"),
@@ -175,45 +89,15 @@ diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backen
          )
          .unwrap();
          let joined = args.join(" ");
-diff --git a/crates/librevm-core/src/image.rs b/crates/librevm-core/src/image.rs
---- a/crates/librevm-core/src/image.rs
-+++ b/crates/librevm-core/src/image.rs
-@@ -1388,11 +1388,15 @@
-     #[test]
-     fn the_cache_path_comes_from_the_url() {
-         let dir = Path::new("/tmp/images");
--        let e = find("alpine-3.21").unwrap();
-+        let catalogue = vec![ImageEntry::from_url(
-+            "https://example.invalid/alpine-minirootfs-3.21.3-aarch64.tar.gz",
-+            Compression::Gzip,
-+        )];
-+        let e = find(&catalogue, "from-url").unwrap();
-         let p = cache_path(dir, e);
-         assert_eq!(
-             p.file_name().unwrap().to_str().unwrap(),
--            "alpine-minirootfs-3.21.3-aarch64.tar.gz"
-+            "from-url-alpine-minirootfs-3.21.3-aarch64.tar.gz"
-         );
-         assert!(p.starts_with(cache_dir(dir)));
-     }
-diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backend.rs
---- a/crates/librevm-core/src/backend.rs
-+++ b/crates/librevm-core/src/backend.rs
-@@ -275,4 +275,4 @@
-     args.push(vm.cpus.to_string());
--
--    if vm.hypervisor.disable_sandbox {
-+    // The pinned Gunyah backend does not handle PAGE_FAULT exits (reason 3) on this target.
-+    if vm.hypervisor.disable_sandbox || resolved.hypervisor == Hypervisor::Gunyah {
-         args.push("--disable-sandbox".to_string());
-@@ -671,2 +671,3 @@
+@@ -675,10 +676,26 @@ mod tests {
+         assert!(joined.contains("--mem 128"));
+         assert!(joined.contains("--swiotlb 64"));
          assert!(joined.contains("--cpus 2"));
 +        assert!(joined.contains("--disable-sandbox"));
          assert!(joined.contains("earlycon"));
-@@ -671,5 +672,20 @@
+         // the kernel path is positional and comes last
          assert_eq!(args.last().unwrap(), "/bin/sh");
      }
--
 +    #[test]
 +    fn kvm_keeps_the_sandbox_for_default_config() {
 +        let mut resolved = det();
@@ -229,19 +113,55 @@ diff --git a/crates/librevm-core/src/backend.rs b/crates/librevm-core/src/backen
 +        .unwrap();
 +        assert!(!args.iter().any(|arg| arg == "--disable-sandbox"));
 +    }
-+
+ 
      #[test]
      fn unprotected_omits_swiotlb() {
-diff --git a/crates/librevm-ctl/src/main.rs b/crates/librevm-ctl/src/main.rs
---- a/crates/librevm-ctl/src/main.rs
-+++ b/crates/librevm-ctl/src/main.rs
-@@ -1970,5 +1970,5 @@
-             protection,
-             firmware,
-             crosvm,
+@@ -723,11 +740,6 @@ mod tests {
+             Path::new("/c"),
+             &ConsoleSink::UnixStream(PathBuf::from("/tmp/nope/x.sock")),
+             Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+-            Path::new("/run/librevm"),
+         )
+         .unwrap();
+         let joined = args.join(" ");
+diff --git a/crates/librevm-core/src/config.rs b/crates/librevm-core/src/config.rs
+index 3743f74..0a347c4 100644
+--- a/crates/librevm-core/src/config.rs
++++ b/crates/librevm-core/src/config.rs
+@@ -90,7 +90,7 @@ pub struct HypervisorConfig {
+ 
+     /// Run crosvm without its minijail sandbox. Needed on systems without a
+     /// usable `/var/empty`, and for the console to attach cleanly.
+-    #[serde(default = "default_true")]
++    #[serde(default)]
+     pub disable_sandbox: bool,
+ }
+ 
+@@ -110,7 +110,7 @@ impl Default for HypervisorConfig {
+             protection: Protection::default(),
+             firmware: None,
+             crosvm: None,
 -            disable_sandbox: true,
 +            disable_sandbox: false,
-         },
+         }
+     }
+ }
+@@ -749,6 +749,11 @@ mod tests {
+                 cmdline: default_cmdline(),
+             },
+             console: ConsoleConfig::default(),
++            serial: SerialConfig::default(),
++            disks: Vec::new(),
++            shared_dirs: Vec::new(),
++            network: NetConfig::default(),
++            gpu: GpuConfig::default(),
+             description: None,
+         }
+     }
 diff --git a/crates/librevm-core/src/hub.rs b/crates/librevm-core/src/hub.rs
 index d970856..cc814f5 100644
 --- a/crates/librevm-core/src/hub.rs
@@ -302,3 +222,88 @@ index d970856..cc814f5 100644
      }
  
      let status = child.wait().ok();
+diff --git a/crates/librevm-core/src/image.rs b/crates/librevm-core/src/image.rs
+index 26b2b6b..b93653b 100644
+--- a/crates/librevm-core/src/image.rs
++++ b/crates/librevm-core/src/image.rs
+@@ -1231,11 +1231,15 @@ mod tests {
+     #[test]
+     fn the_cache_path_comes_from_the_url() {
+         let dir = Path::new("/tmp/images");
+-        let e = find("alpine-3.21").unwrap();
++        let catalogue = vec![ImageEntry::from_url(
++            "https://example.invalid/alpine-minirootfs-3.21.3-aarch64.tar.gz",
++            Compression::Gzip,
++        )];
++        let e = find(&catalogue, "from-url").unwrap();
+         let p = cache_path(dir, e);
+         assert_eq!(
+             p.file_name().unwrap().to_str().unwrap(),
+-            "alpine-minirootfs-3.21.3-aarch64.tar.gz"
++            "from-url-alpine-minirootfs-3.21.3-aarch64.tar.gz"
+         );
+         assert!(p.starts_with(cache_dir(dir)));
+     }
+diff --git a/crates/librevm-ctl/src/main.rs b/crates/librevm-ctl/src/main.rs
+index 8acf0ba..9812eb6 100644
+--- a/crates/librevm-ctl/src/main.rs
++++ b/crates/librevm-ctl/src/main.rs
+@@ -1969,7 +1969,7 @@ fn cmd_create(
+             protection,
+             firmware,
+             crosvm,
+-            disable_sandbox: true,
++            disable_sandbox: false,
+         },
+         boot: BootConfig {
+             kernel: kernel.clone(),
+diff --git a/packaging/librevm-daemon.service b/packaging/librevm-daemon.service
+index 58103f2..32ce6ad 100644
+--- a/packaging/librevm-daemon.service
++++ b/packaging/librevm-daemon.service
+@@ -2,6 +2,7 @@
+ Description=librevm virtual machine manager
+ Documentation=https://github.com/code002-2/librevm
+ # The daemon talks to the system bus and needs /dev/gunyah, which the kernel creates.
++ConditionPathExists=/dev/gunyah
+ After=dbus.service
+ Wants=dbus.service
+ 
+@@ -36,7 +37,7 @@ ExecStartPost=/bin/sh -c 'chgrp -R librevm /var/lib/librevm /run/librevm 2>/dev/
+ NoNewPrivileges=yes
+ ProtectHome=read-only
+ ProtectSystem=strict
+-ReadWritePaths=/var/lib/librevm /run/librevm /var/log/librevm-gui.log /tmp
++ReadWritePaths=/var/lib/librevm /run/librevm /var/log/librevm
+ PrivateTmp=no
+ ProtectKernelTunables=no
+ ProtectControlGroups=yes
+diff --git a/packaging/org.librevm.Daemon1.conf b/packaging/org.librevm.Daemon1.conf
+index 5a5ca86..1991185 100644
+--- a/packaging/org.librevm.Daemon1.conf
++++ b/packaging/org.librevm.Daemon1.conf
+@@ -24,7 +24,6 @@
+   </policy>
+ 
+   <policy group="librevm">
+-    <allow own="org.librevm.Daemon1"/>
+     <allow send_destination="org.librevm.Daemon1"/>
+     <allow receive_sender="org.librevm.Daemon1"/>
+   </policy>
+diff --git a/scripts/librevm-gui-session b/scripts/librevm-gui-session
+index 371b717..5f3ac3c 100644
+--- a/scripts/librevm-gui-session
++++ b/scripts/librevm-gui-session
+@@ -21,8 +21,10 @@
+ # Logging must never be able to kill the launch: the shell runs this as the desktop
+ # user, and a root-owned log file cannot be appended to by that user. Test first,
+ # and fall back to somewhere always writable.
+-PREFERRED=/var/log/librevm-gui.log
+-FALLBACK=/tmp/librevm-gui.log
++STATE=${XDG_STATE_HOME:-$HOME/.local/state}/librevm
++mkdir -p "$STATE" || exit 1
++PREFERRED=$STATE/gui.log
++FALLBACK=$STATE/gui-fallback.log
+ 
+ if ( : >> "$PREFERRED" ) 2>/dev/null; then
+     LOG=$PREFERRED

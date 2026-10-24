@@ -8,13 +8,13 @@
 # has to be regenerated.
 %global __strip /bin/true
 %global _build_id_links none
-%global KERNEL_VER 7.2.9
-%global KERNEL_TAG piano-7.2.9
+%global KERNEL_VER 7.3.0
+%global KERNEL_TAG piano-7.3.0
 %global DEVICE_NAME piano
 %global PLATFORM_NAME sm8750
 
 # The real payload is produced by the build-kernel pipeline (SunUEFI
-# artifacts/kernels/release-7.2.9), not by this spec. It is handed to rpmbuild as
+# artifacts/kernels/release), not by this spec. It is handed to rpmbuild as
 # a tar of the kernel tree: Image, System.map, config, dtb/ and lib/modules/.
 #
 # This used to be optional: `%install` only ran `touch` on empty files and the
@@ -25,7 +25,7 @@
 %global kernel_payload_tar kernel-payload-%{KERNEL_VER}.tar.zst
 
 Name:           kernel-piano
-Version:        7.2.9
+Version:        7.3.0
 Release:        3.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
@@ -96,7 +96,7 @@ if [ -f board.dtb ]; then
 fi
 test -s %{buildroot}/boot/dtb/qcom/sm8750-xiaomi-piano.dtb
 
-# Modules keep the kernel's own release string (7.2.9-piano-gnome-g<hash>); the
+# Modules keep the kernel's own release string (7.3.0-piano-sunuefi-cachy); the
 # RPM version alone would not match the modules' vermagic.
 cp -a lib/modules/. %{buildroot}%{_prefix}/lib/modules/
 test -s "$(find %{buildroot}%{_prefix}/lib/modules -name 'modules.dep' | head -n 1)"

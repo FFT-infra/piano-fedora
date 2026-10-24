@@ -18,14 +18,14 @@ before this function's own kernel/initrd/tree copies reuse that RAM, and
 anything absent, unreadable or implausible is refused with a logged
 reason, leaving the payload map in place.
 ---
- uefi/core/PianoRawLinuxBoot.c | 72 +++++++++++++++++++++++++++++++++++
+ uefi/core/PianoRawLinuxBoot.c |   72 +++++++++++++++++++++++++++++++++++++++++
  1 file changed, 72 insertions(+)
 
 diff --git a/uefi/core/PianoRawLinuxBoot.c b/uefi/core/PianoRawLinuxBoot.c
-index 3af5532..78a4b9c 100644
+index fad0772..09e5d12 100644
 --- a/uefi/core/PianoRawLinuxBoot.c
 +++ b/uefi/core/PianoRawLinuxBoot.c
-@@ -19,6 +19,9 @@
+@@ -20,6 +20,9 @@
  #define RAW_INITRD 0xB0200000ULL
  #define RAW_INITRD_MAX 0x1000000U
  #define RAW_DTB_MAX 0x200000U
@@ -35,7 +35,7 @@ index 3af5532..78a4b9c 100644
  typedef struct {
    EFI_HANDLE Image;EFI_SYSTEM_TABLE *SystemTable;EFI_LOADED_IMAGE_PROTOCOL *Identity,Loaded;
    BOOLEAN Registered,InTake,Captured,Prepared,Entered;
-@@ -182,6 +185,73 @@ STATIC BOOLEAN Destination(UINT64 A,UINT64 N){
+@@ -183,6 +186,73 @@ STATIC BOOLEAN Destination(UINT64 A,UINT64 N){
   return FALSE;
  }
  STATIC BOOLEAN Hash(CONST VOID *P,UINTN N,UINT8 Out[32]){return Sha256HashAll(P,N,Out);}
@@ -109,7 +109,7 @@ index 3af5532..78a4b9c 100644
  EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST PIANO_RAW_LINUX_REPORT **Out){
   if(!Out)return EFI_INVALID_PARAMETER;*Out=NULL;
   if(!mRaw.Captured||mRaw.Prepared||Image!=mRaw.Image||!Live()||!SameImage()||!Clean(O))return EFI_ACCESS_DENIED;
-@@ -205,10 +275,12 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST P
+@@ -206,10 +276,12 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST P
   PIANO_RAW_LINUX_REPORT R={.Revision=1,.Epoch=1,.Kernel=Address,.KernelBytes=P->Kernel.Bytes,.KernelSpan=Span,
   .Dtb=RAW_DTB,.Initrd=RAW_INITRD,.InitrdBytes=P->Ramdisk.Bytes,.Image=Image,.Identity=mRaw.Identity,.Token=mRaw.Token};
   if(!Hash(Kernel,(UINTN)P->Kernel.Bytes,R.KernelSha)||!Hash(Bytes+P->Ramdisk.Offset,(UINTN)P->Ramdisk.Bytes,R.InitrdSha))return EFI_DEVICE_ERROR;
@@ -120,8 +120,5 @@ index 3af5532..78a4b9c 100644
   VOID *Tree=(VOID *)(UINTN)RAW_DTB;if(FdtOpenInto(InputDtb,Tree,(INT32)Capacity))return EFI_COMPROMISED_DATA;
 + E=ApplyLiveMemory(Tree,&Live);if(E!=EFI_SUCCESS)return E;
   E=PianoPanelSelectDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
+  E=PianoProductBootObjectsApplyGunyah(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
   INT32 Chosen=FdtPathOffset(Tree,"/chosen");if(Chosen<0)return EFI_COMPROMISED_DATA;
-  UINT64 Start=SwapBytes64(RAW_INITRD),End=SwapBytes64(RAW_INITRD+P->Ramdisk.Bytes);
--- 
-2.54.0
-

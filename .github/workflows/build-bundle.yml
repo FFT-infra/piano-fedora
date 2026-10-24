@@ -126,9 +126,9 @@ jobs:
           # 镜像记录里写明了它消费的内核 artifact；旧记录没有这个字段时默认正式档。
           # 新交付只接受正式内核，拒绝旧实验构建。
           record=build/in/image/source-runs.json
-          kernel_artifact=$(python3 -c 'import json;print(json.load(open("'"$record"'")).get("kernel_artifact","kernel-release-7.2.9"))')
+          kernel_artifact=$(python3 -c 'import json;print(json.load(open("'"$record"'")).get("kernel_artifact","kernel-release-7.3.0"))')
           case "$kernel_artifact" in
-            kernel-release-7.2.9) ;;
+            kernel-release-7.3.0) ;;
             *) echo "recorded kernel_artifact is not allowed: $kernel_artifact" >&2; exit 2 ;;
           esac
           run=$(python3 -c 'import json;print(json.load(open("'"$record"'"))["kernel_run"])')

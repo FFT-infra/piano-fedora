@@ -13,7 +13,7 @@ int integer(const nlohmann::json &value) {
 }
 }
 
-Calibration loadCalibration(const std::filesystem::path &path) {
+CalibrationFile readCalibrationFile(const std::filesystem::path &path) {
     std::ifstream stream(path);
     if (!stream)
         throw std::runtime_error("cannot open calibration file");
@@ -38,6 +38,13 @@ Calibration loadCalibration(const std::filesystem::path &path) {
     calibration.edge_size = integer(config.at("edge_size"));
     calibration.edge_gain = integer(config.at("edge_gain"));
     calibration.validate();
-    return calibration;
+    std::optional<int> project_vendor_id;
+    if (document.contains("project_vendor_id"))
+        project_vendor_id = integer(document.at("project_vendor_id"));
+    return {calibration, project_vendor_id};
+}
+
+Calibration loadCalibration(const std::filesystem::path &path) {
+    return readCalibrationFile(path).calibration;
 }
 } // namespace nvt

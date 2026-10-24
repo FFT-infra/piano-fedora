@@ -3,14 +3,14 @@
   "target": "sunuefi",
   "note": "payload 的 board DTB 里，/hypervisor 下的资源管理器节点（compatible 为 \"gunyah-resource-manager\"）的 reg 是构建镜像时抓的那一对 TX/RX capability：高通 Gunyah 在每次启动时重新分配它们，并通过 ABL 下发的 inherited FDT 交给这一轮启动。这里只有值会变，节点名里的 unit-address 也跟着 bootloader 走，但驱动只按 compatible 匹配、再用 reg 里的两个 u64，所以真正必须换的是 reg 本身。\n\n不换的后果不是「Gunyah 不可用」这么轻：驱动探测照样成功，但第一次 RM 请求就用过期 id 调 HVC，hypervisor 返回 ARG_INVAL(1)，gunyah_rm_msgq_send 等的发送许可再也不回来，任何进程进入 gunyah_rm_call 就停在 D 状态，VM_START 因此永远起不来。2026-10-15 的真机现象、反汇编和当前 DT capability 诊断记录在 docs/device-acceptance-20261015.md。\n\n本补丁在把 DTB 交给内核之前，从产品自己已经校验过的继承 FDT（Owners.Config.Fdt，与 uefi-live-memory 同一来源）取该节点的 reg，写进目标 DTB。接受条件写死在路径里：两棵树都必须恰好有一个 compatible 命中节点，继承值必须正好 16 字节且两个 id 都非零；目标属性的形状必须是驱动读取的那种 16 字节，否则只报 shape-kept、保持 payload 原值。任何缺失、含歧义或读不动的输入都保留 payload 值并留下原因——这条路可以记录不匹配，但绝不能凭空造出一个 capability。\n\n边界，不要误读这条补丁的覆盖面：\n1. 上游没有这个实现。上游把 inherited FDT 当作只读输入，raw 交接路径里没有任何 gunyah 相关处理。\n2. 这里不动节点名。名字里的 unit-address 是构建期那对 id，Linux 侧不看它；把 reg 换成实时值之后 DT 自洽性只差一个装饰性名字，重命名要在结构块里原地改字符串，风险大于收益，故不做。\n3. 本补丁与 uefi-live-memory 改同一个文件，且 targets 的摘要是「已打上 uefi-live-memory 之后」的原文。apply-patches.py 按目录名顺序重放，uefi-live-memory 在前；单独应用本系列会被目标摘要拒绝，这是有意的依赖声明，不是可以跳过的顺序建议。\n4. 这只修 capability 交接。客体控制台、磁盘、网络与多轮生命周期仍要单独验收，见 docs/virtualization.md 的完成门槛。\n\n验证状态：host 侧已做补丁重放、带真实 libfdt 的策略/编译检查和真实抓取 DTB 对照；真机结果写回本文件与 docs/device-acceptance-20261015.md。日志锚点：SUNUEFI_RAW_LIVE_RM captured=1 tx=<id> rx=<id> 与 adopted=1 was=<旧>/<旧> now=<新>/<新>；异常时是 inherited=absent|no-resource-manager|ambiguous|implausible 或 target=no-resource-manager|ambiguous|shape-kept。\n\n升级上游时必须重放并复核：targets 里是应用前必须匹配的上游原文摘要，不匹配就人工 rebase 并更新摘要，不要静默跳过。本文件参与 uefi_patch_identities 的哈希（scripts/piano_artifacts.py），改动它会改变交付包的 project_source_sha256，已构建的 deploy-bundle 必须重新构建才能通过 verify_uefi_source。",
   "base": {
-    "sunuefi_commit": "065b192b863b6f99e12ba65d3cab27c0ddd6dca4"
+    "sunuefi_commit": "2d4752a1455f6448ec0d300aece28ec6eb148b20"
   },
   "patches": [
     {
       "file": "0001-adopt-live-resource-manager-caps.patch",
       "summary": "raw 交接前把 Gunyah RM 节点的 reg 换成继承 FDT 里这一轮启动的 TX/RX capability",
       "targets": {
-        "uefi/core/PianoRawLinuxBoot.c": "fdb28dd5d3f7e2fcc0792d473b2de60e9d3d636be30328decded857592bd5413"
+        "uefi/core/PianoRawLinuxBoot.c": "25486cef0d789ddc4cf38a3b0006309fc27581c656d89388a20697c858416635"
       },
       "creates": []
     }

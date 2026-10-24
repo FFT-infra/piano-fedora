@@ -138,7 +138,7 @@ def main():
     # 就是内核 release。piano-runtime 再产一份（历史上确实产过）会让 DNF 因为
     # 双所有者中止整个 rootfs 事务。这里的路径是合成的——release 字符串只有
     # 内核 manifest 知道，测试关心的是谁认领这棵树。
-    loopback = "/usr/lib/modules/7.2.9-piano/updates/v4l2loopback.ko"
+    loopback = "/usr/lib/modules/7.3.0-piano/updates/v4l2loopback.ko"
     loop_owners = claimed(loopback)
     if loop_owners != {"kernel-piano"}:
         failures.append(

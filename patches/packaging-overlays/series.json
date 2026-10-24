@@ -3,14 +3,14 @@
   "target": "sunuefi",
   "note": "覆盖层用锁定内核的 dt-bindings 预处理，保留标签目标及局部引用；打包需要 libfdt 1.8.1，避免旧版覆盖基树 phandle。",
   "base": {
-    "sunuefi_commit": "065b192b863b6f99e12ba65d3cab27c0ddd6dca4"
+    "sunuefi_commit": "2d4752a1455f6448ec0d300aece28ec6eb148b20"
   },
   "patches": [
     {
       "file": "0001-preprocess-and-resolve-label-targets.patch",
       "summary": "补齐笔座覆盖层的预处理与标签目标解析，失败时输出工具 stderr，并拒绝既有 phandle 被覆盖",
       "targets": {
-        "tools/package_release.py": "b251349070e6e0e9689cecaab90e63b2259d90b4b87079e2454cc27b266443a1"
+        "tools/package_release.py": "6d4b1ebf196a7c240dbe9181d62efc810fe4e1d0c4bfa5c37bd23ca4c75a864d"
       },
       "creates": []
     }

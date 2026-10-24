@@ -27,8 +27,10 @@ def build_touch(runtime, output, flags, uapi, touch, pen, source, run, sha256):
     cxx = [*pen["cxx_command"], "-std=c++20", "-I" + str(core / "src"),
            "-I" + str(ROOT / "runtime/touch")]
     objects = []
+    # panel.cpp carries readPanelVendor(), which the bridge uses to pick the
+    # processor-to-panel mapping; without it the link fails.
     for name in ("nvt_touch_core", "nvt_finger_filter", "frame", "processor",
-                 "calibration", "live_pipeline", "input", "piano-finger-bridge"):
+                 "calibration", "panel", "live_pipeline", "input", "piano-finger-bridge"):
         src = (ROOT / "runtime/touch" if name == "piano-finger-bridge" else core / "src") / (name + ".cpp")
         obj = folder / (name + ".o")
         run([*cxx, "-c", src, "-o", obj])

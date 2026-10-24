@@ -19,14 +19,14 @@ the driver reads, keeps the payload property and reports why. The node's
 unit-address keeps the build-time id because the driver matches on the
 compatible and reads the capability pair from reg.
 ---
- uefi/core/PianoRawLinuxBoot.c | 56 +++++++++++++++++++++++++++++++++++
+ uefi/core/PianoRawLinuxBoot.c |   56 +++++++++++++++++++++++++++++++++++++++++
  1 file changed, 56 insertions(+)
 
 diff --git a/uefi/core/PianoRawLinuxBoot.c b/uefi/core/PianoRawLinuxBoot.c
-index 78a4b9c..8d123a4 100644
+index 09e5d12..e3466c3 100644
 --- a/uefi/core/PianoRawLinuxBoot.c
 +++ b/uefi/core/PianoRawLinuxBoot.c
-@@ -22,6 +22,7 @@
+@@ -23,6 +23,7 @@
  #define RAW_MEMORY_REG_MAX 1024U
  #define RAW_DDR_REGIONS 4U
  #define RAW_DDR_REGION_MAX 64U
@@ -34,7 +34,7 @@ index 78a4b9c..8d123a4 100644
  typedef struct {
    EFI_HANDLE Image;EFI_SYSTEM_TABLE *SystemTable;EFI_LOADED_IMAGE_PROTOCOL *Identity,Loaded;
    BOOLEAN Registered,InTake,Captured,Prepared,Entered;
-@@ -252,6 +253,59 @@ STATIC EFI_STATUS ApplyLiveMemory(VOID *Tree,CONST LIVE_MEMORY *In){
+@@ -253,6 +254,59 @@ STATIC EFI_STATUS ApplyLiveMemory(VOID *Tree,CONST LIVE_MEMORY *In){
    DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_MEMORY adopted=1 was=%lu now=%lu banks=%u\n",Before,In->Total,In->Banks));
    return EFI_SUCCESS;
  }
@@ -94,7 +94,7 @@ index 78a4b9c..8d123a4 100644
  EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST PIANO_RAW_LINUX_REPORT **Out){
   if(!Out)return EFI_INVALID_PARAMETER;*Out=NULL;
   if(!mRaw.Captured||mRaw.Prepared||Image!=mRaw.Image||!Live()||!SameImage()||!Clean(O))return EFI_ACCESS_DENIED;
-@@ -276,11 +330,13 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST P
+@@ -277,11 +331,13 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST P
   .Dtb=RAW_DTB,.Initrd=RAW_INITRD,.InitrdBytes=P->Ramdisk.Bytes,.Image=Image,.Identity=mRaw.Identity,.Token=mRaw.Token};
   if(!Hash(Kernel,(UINTN)P->Kernel.Bytes,R.KernelSha)||!Hash(Bytes+P->Ramdisk.Offset,(UINTN)P->Ramdisk.Bytes,R.InitrdSha))return EFI_DEVICE_ERROR;
   LIVE_MEMORY Live;CaptureLiveMemory(&Live,O->Config.Fdt);
@@ -106,8 +106,5 @@ index 78a4b9c..8d123a4 100644
   E=ApplyLiveMemory(Tree,&Live);if(E!=EFI_SUCCESS)return E;
 + E=ApplyLiveRm(Tree,&Rm);if(E!=EFI_SUCCESS)return E;
   E=PianoPanelSelectDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
+  E=PianoProductBootObjectsApplyGunyah(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
   INT32 Chosen=FdtPathOffset(Tree,"/chosen");if(Chosen<0)return EFI_COMPROMISED_DATA;
-  UINT64 Start=SwapBytes64(RAW_INITRD),End=SwapBytes64(RAW_INITRD+P->Ramdisk.Bytes);
--- 
-2.54.0
-

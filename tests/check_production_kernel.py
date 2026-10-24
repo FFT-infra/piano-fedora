@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""正式源码准备无需预编译内核，并与 SDK 重放产生相同身份。"""
+"""正式源码准备只重放 7.3 的封存序列，不再导入第二份 Gunyah 驱动。"""
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / "scripts"), str(ROOT / "tests")]
-from check_gunyah_source import make_repo, git, SOURCE_FILES, INTEGRATION_FILES, DRIVER_EPOCH, SOURCE_EPOCH
 
 
 def load(name, file):
@@ -21,49 +21,37 @@ def load(name, file):
 
 def main():
     production = load("production", "prepare-production-kernel.py")
-    runtime = load("runtime", "prepare-runtime-kernel.py")
     with tempfile.TemporaryDirectory(prefix="production-kernel-") as folder:
         sun = Path(folder) / "sunuefi"
-        pin = make_repo(sun / "upstream/gunyah-driver", SOURCE_FILES, DRIVER_EPOCH)
-        source = sun / "build/kernel-worktrees/parent"
-        commit = make_repo(source, INTEGRATION_FILES, SOURCE_EPOCH)
-        parent = {"worktree": str(source), "actual_commit": commit,
-                  "actual_tree": git(["rev-parse", "HEAD^{tree}"], source).strip()}
-        directory = sun / "build/release-7.2.9"
-        directory.mkdir()
+        directory = sun / "build/release"
+        directory.mkdir(parents=True)
+        # 准备工具在这里只被 mock：本测试核对的是它之后那一步写什么。
+        parent = {"status": "SOURCE_PREPARED_NOT_BUILT", "actual_commit": "a" * 40,
+                  "actual_tree": "b" * 40, "worktree": str(sun / "build/kernel-worktrees/release-bbb"),
+                  "kernel_version": "7.3.0"}
         (directory / "source-manifest.json").write_text(json.dumps(parent))
-        original = Path.read_text
-        def read(path, *args, **kwargs):
-            if path == ROOT / "sources.lock.json":
-                return json.dumps({"sources": {"gunyah-driver": {"commit": pin}}})
-            return original(path, *args, **kwargs)
-        with patch.object(Path, "read_text", read), patch.object(production.subprocess, "run", wraps=production.subprocess.run) as run:
-            # Only mock upstream prep: the import and both git commits are real.
-            actual_run = run._mock_wraps
-            def dispatch(command, **kwargs):
-                if command[0] == "python3":
-                    return None
-                return actual_run(command, **kwargs)
-            run.side_effect = dispatch
+        with patch.object(production.subprocess, "run", return_value=None) as run:
             result = production.prepare(sun)
-            record = {"source_commit": result["actual_commit"], "source_tree": result["actual_tree"]}
-            replay = runtime.replay_gunyah_source(sun, parent, record,
-                        directory / "kernel-gunyah-source.json", sun / "build/runtime")
-            assert replay["actual_tree"] == result["actual_tree"]
-            assert replay["actual_commit"] == result["actual_commit"]
-            assert (directory / "production-source-manifest.json").is_file()
-            # Reruns must preserve the existing source and evidence.
-            try:
-                production.prepare(sun)
-            except ValueError as error:
-                assert "already exists" in str(error)
-            else:
-                raise AssertionError("existing production source was overwritten")
+        command = run.call_args.args[0]
+        assert command[0] == "python3" and str(command[1]).endswith("prepare_release_kernel.py"), command
+        # 派生树必须原样沿用准备工具的身份：这里不再有第二遍提交。
+        assert result["actual_commit"] == parent["actual_commit"]
+        assert result["actual_tree"] == parent["actual_tree"]
+        assert result["worktree"] == parent["worktree"]
+        assert not (directory / "kernel-gunyah-source.json").exists(), \
+            "7.3 embeds Gunyah in the sealed series; there is no second import to prove"
+        manifest = json.loads((directory / "production-source-manifest.json").read_text())
+        assert manifest == result
     workflow = (ROOT / ".github/workflows/build-kernel.yml").read_text()
     assert "prepare-production-kernel.py" in workflow
-    assert "kernel-gunyah-source.json" in workflow
+    # 序列自带 0006-gunyah，工作流不得再单独取厂商分支或搬运那份证明。
+    assert "gunyah-driver" not in workflow
+    assert "kernel-gunyah-source.json" not in workflow
     assert "experimental" not in workflow
-    print("OK: production import without a built kernel, SDK identity replay, output preservation")
+    lock = json.loads((ROOT / "sources.lock.json").read_text())["sources"]
+    assert "gunyah-driver" not in lock, "the Gunyah driver pin outlived its only consumer"
+    assert not (ROOT / "scripts/prepare-gunyah-source.py").exists()
+    print("OK: production source is the replayed 7.3 series, with no second Gunyah import")
 
 
 if __name__ == "__main__":

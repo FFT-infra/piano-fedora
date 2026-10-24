@@ -34,7 +34,6 @@ test:
 	python3 tests/check_uefi_live_rm.py
 	python3 tests/check_fedora_kernel.py
 	python3 tests/check_iris_source.py
-	python3 tests/check_gunyah_source.py
 	python3 tests/check_production_kernel.py
 	python3 tests/check_runtime_kernel_source.py
 	python3 tests/check_fastrpc_runtime.py

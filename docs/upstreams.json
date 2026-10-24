@@ -901,9 +901,8 @@
       "ref": "pr/gunyah",
       "category": "Gunyah 驱动",
       "role": "从 android17-6.18 导入并适配主线 7.2 的完整 /dev/gunyah 驱动，含 gh_vmtest 冒烟测试",
-      "decision": "consume",
-      "reason": "独立 Gunyah 实验内核的驱动来源；正式 Fedora 内核不自动导入",
-      "lock_key": "gunyah-driver",
+      "decision": "reference",
+      "reason": "7.3 的封存序列在 0006-gunyah.patch 里自带驱动，正式内核不再单独导入这一支；保留为驱动上游与历史对照",
       "reference_commit": "fd503a492d381687c143b7085ea79ebce58dcdc7",
       "reference_date": "2026-10-07"
     },

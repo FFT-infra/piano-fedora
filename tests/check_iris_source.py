@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-"""核对 Iris 补丁进入真实准备入口，且改写补丁内容会被摘要门槛拒绝。"""
+"""核对 Iris、DPU、功放与触屏补丁进入 7.3 的封存序列，且改动补丁字节会被摘要门槛拒绝。
+
+7.3 的正式内核不再合并 stable 分支：它从公开基线开始重放
+`patches/linux/7.3/series.json` 里的整条 mail 序列，最终树必须等于
+`target_tree`。因此这几条补丁必须作为序列的行存在，而不是往
+`merge_stable` 的元组里追加键。
+"""
+
 import argparse
-import ast
 import hashlib
 import importlib.util
 import json
@@ -12,88 +18,93 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def sequence(tree, name):
-    """取出函数里唯一元组循环的键序列；元素可能是纯字符串或 (键, 说明, 变量)。"""
-    function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
-    loops = [n for n in ast.walk(function) if isinstance(n, ast.For)
-             and isinstance(n.iter, ast.Tuple)]
-    assert len(loops) == 1, 'unexpected loop in ' + name
-    items = [ast.literal_eval(n) for n in loops[0].iter.elts]
-    return [item[0] if isinstance(item, tuple) else item for item in items]
+SERIES = Path("patches/linux/7.3/series.json")
+# 补丁文件名 -> 它必须改到的内核文件。
+EXPECTED = {
+    "0025-dpu-defer-slave-cleanup.patch": "drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c",
+    "0026-media-iris-decode-order-and-deblocking.patch":
+        "drivers/media/platform/qcom/iris/iris_hfi_gen2.c",
+    "0027-asoc-piano-speaker-gain-limit.patch": "sound/soc/qcom/sc8280xp.c",
+    "0028-input-nt36532e-panel-vendor-misc.patch":
+        "drivers/input/touchscreen/nt36532e/nt36xxx.c",
+}
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--sunuefi', type=Path)
+    parser.add_argument("--sunuefi", type=Path)
     args = parser.parse_args()
-    sun = args.sunuefi or Path(os.environ.get('PIANO_TEST_SUNUEFI', ROOT / 'build/test-sources/sunuefi'))
-    tool = sun / 'tools/prepare_release_kernel.py'
-    if not tool.is_file():
-        print('SKIP: Iris source consumption needs patched SunUEFI')
-        return
-    spec = importlib.util.spec_from_file_location('iris_prepare', tool)
+    sun = args.sunuefi or Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT / "build/test-sources/sunuefi"))
+    tool = sun / "tools/prepare_release_kernel.py"
+    manifest = sun / SERIES
+    if not tool.is_file() or not manifest.is_file():
+        print("SKIP: Iris source consumption needs a 7.3 SunUEFI checkout")
+        return 0
+
+    spec = importlib.util.spec_from_file_location("iris_prepare", tool)
     prepare = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(prepare)
+    # 准备工具自己加载并核对整条序列：行数、sha256、原始提交头、父子链、
+    # 提交日期与末尾树。这里借它的实现，不另写一套解析。
+    series, patches, _ = prepare.load_series(sun, prepare.DEFAULT_TARGET)
     policy = prepare.TARGETS[prepare.DEFAULT_TARGET]
-    keys = ('iris_decode_order_patch', 'iris_keyframe_patch', 'dpu_shutdown_patch', 'piano_amp_limit_patch')
-    references = (
-        '0035-media-iris-enable-decode-order-output-and-deblocking.patch',
-        '0037-media-iris-force-key-frame.patch',
-        '0038-dpu-defer-slave-cleanup.patch',
-        '0039-piano-speaker-gain-limit.patch',
-    )
-    assert all(key in policy for key in keys), 'Iris patches are archived but not consumed'
-    tree = ast.parse(tool.read_text())
-    applied = sequence(tree, 'merge_stable')
-    # 上游会继续往这个元组尾部追加补丁，所以按 key 定位而不是按末尾下标。
-    check = [key for key in applied if key in keys]
-    assert check == list(keys), 'Iris/display/audio patches missing from actual application sequence'
-    # 我们的补丁整行替换这两个序列时，漏掉一个上游键不会报错：prepare 静默跳过
-    # 那条补丁，派生树摘要也跟着自洽地错下去。拿 pin 上的原文件逐个比对。
-    pin = json.loads((ROOT / 'sources.lock.json').read_text(encoding='utf-8'))['sources']['sunuefi']['commit']
-    try:
-        pristine = subprocess.check_output(
-            ['git', '-C', str(sun), 'show', f'{pin}:tools/prepare_release_kernel.py'],
-            text=True, stderr=subprocess.DEVNULL)
-    except (OSError, subprocess.CalledProcessError):
-        print('SKIP: pristine prepare_release_kernel.py needs the pinned git checkout')
-    else:
-        upstream = ast.parse(pristine)
-        for name, ours in (('update_patches', sequence(tree, 'update_patches')),
-                           ('merge_stable', applied)):
-            expected = sequence(upstream, name)
-            missing = [key for key in expected if key not in ours]
-            assert not missing, f'{name} dropped upstream patches: {missing}'
-            assert [key for key in ours if key in set(expected)] == expected, \
-                f'{name} reordered the upstream patch sequence'
-    assert policy['target_tree'] != policy['stable_merged_tree'], 'derived tree is not sealed'
-    with tempfile.TemporaryDirectory(prefix='iris-source-') as directory:
+    names = [row["file"] for _, row in patches]
+    for name in EXPECTED:
+        assert name in names, f"{name} is archived but not in the sealed series"
+    # 补丁必须排在公开基线之后，且真的改到它该改的那个内核文件。
+    for path, row in patches:
+        if path.name not in EXPECTED:
+            continue
+        body = path.read_text()
+        target = EXPECTED[path.name]
+        assert f"diff --git a/{target} b/{target}" in body, \
+            f"{path.name} does not touch {target}"
+    # 7.3 没有 stable 合并：整条序列就是封存树，末行的树必须等于 target_tree。
+    assert "stable_merged_tree" not in policy, "7.3 policy still claims a stable merge"
+    assert patches[-1][1]["tree"] == policy["target_tree"], "series does not end at target_tree"
+    # 目录里的每条补丁都要能被准备工具接受；改动一个字节必须被拒绝。
+    # 父子链要求整条序列齐全，所以复制整个目录，不挑行。
+    with tempfile.TemporaryDirectory(prefix="iris-source-") as directory:
         root = Path(directory).resolve()
-        reduced = {key: policy[key] for key in keys}
-        for (key, row), reference in zip(reduced.items(), references):
-            path = root / row['file']
-            path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(sun / row['file'], path)
-            assert hashlib.sha256(path.read_bytes()).hexdigest() == row['sha256']
-            assert path.read_bytes() == (ROOT / 'patches/kernel' / reference).read_bytes(), \
-                'reference patch changed without updating the consumed integration patch'
-        result = prepare.update_patches(root, reduced)
-        assert set(result) == set(keys)
-        for key, row in reduced.items():
-            path = root / row['file']
+        destination = root / SERIES.parent
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(manifest.parent, destination)
+        shutil.copyfile(manifest, root / SERIES)
+        _, copied_rows, _ = prepare.load_series(root, prepare.DEFAULT_TARGET)
+        assert [row["file"] for _, row in copied_rows] == names
+        for name in EXPECTED:
+            path = root / SERIES.parent / name
             original = path.read_bytes()
-            path.write_bytes(original + b'\nchanged\n')
+            path.write_bytes(original + b"\nchanged\n")
             try:
-                prepare.update_patches(root, reduced)
+                prepare.load_series(root, prepare.DEFAULT_TARGET)
             except ValueError:
                 pass
             else:
-                raise AssertionError('modified Iris patch accepted: ' + key)
+                raise AssertionError("modified series patch accepted: " + name)
             path.write_bytes(original)
-    print('OK: both Iris patches consumed in order; upstream patch sequences intact; real hash validation rejects changed bytes')
+    # 与真实准备入口一致：kernel series 要在 apply-patches 里重放。补丁的
+    # 目标摘要钉的是上游原文，所以重放必须从 HEAD 的原文开始，而不是从
+    # 这个可能已经打过补丁的工作树开始。
+    series = json.loads((ROOT / "patches/kernel/series.json").read_text())
+    with tempfile.TemporaryDirectory(prefix="iris-apply-") as directory:
+        base = Path(directory).resolve()
+        (base / "build.sh").write_text("#!/bin/sh\n")
+        for row in series["patches"]:
+            for relative in list(row.get("targets", {})) + list(row.get("creates", [])):
+                original = subprocess.run(["git", "-C", str(sun), "show", f"HEAD:{relative}"],
+                                          capture_output=True)
+                if original.returncode == 0:
+                    (base / relative).parent.mkdir(parents=True, exist_ok=True)
+                    (base / relative).write_bytes(original.stdout)
+        verify = subprocess.run(
+            ["python3", str(ROOT / "scripts/apply-patches.py"), "--sunuefi", str(base),
+             "--check", "--only", "kernel"],
+            capture_output=True, text=True)
+        assert verify.returncode == 0, verify.stderr.strip()
+    print("OK: Iris/DPU/amplifier/touch patches are rows of the sealed 7.3 series; "
+          "byte changes and dropped rows are rejected")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-10-21",
+  "checked_date": "2026-10-24",
   "note": "只列构建实际消费的上游；研究与后端参考单独记录在 docs/upstreams.json。",
   "sources": {
     "dtc": {
@@ -12,7 +12,7 @@
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "065b192b863b6f99e12ba65d3cab27c0ddd6dca4",
+      "commit": "2d4752a1455f6448ec0d300aece28ec6eb148b20",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器"
     },
     "linux-piano": {
@@ -51,12 +51,6 @@
       "commit": "a75f8c5d5fa099d65c171ac839c2e3bb6c63ec45",
       "role": "Debian rootfs 与 boot 打包，作对照参考"
     },
-    "gunyah-driver": {
-      "url": "https://github.com/SuperTurtleDev/iceland-mainline-kernel-linux.git",
-      "ref": "pr/gunyah",
-      "commit": "fd503a492d381687c143b7085ea79ebce58dcdc7",
-      "role": "Fedora 正式内核的 Gunyah 驱动：从 android17-6.18 导入并已适配主线 7.2，按 commit 原样导入并核验"
-    },
     "fastrpc": {
       "url": "https://github.com/qualcomm/fastrpc.git",
       "ref": "v1.0.8",
@@ -66,13 +60,13 @@
     "librevm": {
       "url": "https://github.com/code002-2/librevm.git",
       "ref": "main",
-      "commit": "4be3e42b963e95a7753e600613a46059ebdfcd04",
+      "commit": "56918558e2c4303cda803a655ea716869c551b71",
       "role": "Gunyah 虚拟机管理器、守护进程和 GTK 前端"
     },
     "crosvm": {
       "url": "https://github.com/google/crosvm.git",
       "ref": "main",
-      "commit": "4c5aa700ed5293444c0aadd672dc009ed72463e3",
+      "commit": "11be6620423b56ea73960ac9d7310c3af565a314",
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {
@@ -84,7 +78,7 @@
     "piano-integration": {
       "url": "https://github.com/yzddmr6/xiaomipad-8pro-mainline.git",
       "ref": "main",
-      "commit": "1ab620f41730fd66732141d73d27d6ce93f8a92a",
+      "commit": "9b2e3541c50afed93078f52edeb57e3e51bba5f6",
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者"
     },
     "uperf": {

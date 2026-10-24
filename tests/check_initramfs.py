@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "scripts" / "build-initramfs.py"
 BOOTSTRAP = ROOT / "initramfs" / "f2fs-disk-bootstrap"
 
-RELEASE = "7.2.9-fixture"
+RELEASE = "7.3.0-fixture"
 
 
 def run(*args):
@@ -195,9 +195,9 @@ def build_installed_fixture(tmp, busybox):
     (modules / "updates").mkdir()
     (modules / "updates/v4l2loopback.ko").write_bytes(b"external-module\n")
     image = b"TEST-FIXTURE-NOT-A-BOOTABLE-KERNEL"
-    (installed / "boot" / "vmlinuz-7.2.9-1.piano.fc44").write_bytes(image)
+    (installed / "boot" / "vmlinuz-7.3.0-1.piano.fc44").write_bytes(image)
     (installed / "boot" / "vmlinuz-6.0-old").write_bytes(b"an older kernel")
-    (installed / "usr/share/piano/kernel-manifest-7.2.9-1.piano.fc44.json").write_text(json.dumps({
+    (installed / "usr/share/piano/kernel-manifest-7.3.0-1.piano.fc44.json").write_text(json.dumps({
         "status": "HOST_BUILT_FULL_CANDIDATE_NOT_HARDWARE_VERIFIED",
         "source_clean": True,
         "kernel_release": RELEASE,
@@ -423,8 +423,8 @@ def main():
             "installed mode must reject the ABL chain")
 
         # installonly 升级后盘上同时有两份 manifest。工具不能挑，必须点名。
-        old_manifest = installed / "usr/share/piano/kernel-manifest-7.2.9-0.piano.fc44.json"
-        shutil.copy2(installed / "usr/share/piano/kernel-manifest-7.2.9-1.piano.fc44.json",
+        old_manifest = installed / "usr/share/piano/kernel-manifest-7.3.0-0.piano.fc44.json"
+        shutil.copy2(installed / "usr/share/piano/kernel-manifest-7.3.0-1.piano.fc44.json",
                      old_manifest)
         check(subprocess.run(
             [sys.executable, str(package / "build-initramfs.py"), "--installed",

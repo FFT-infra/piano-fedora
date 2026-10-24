@@ -55,10 +55,9 @@ resolve_kernel_payload() {
     fi
     local candidate
     for candidate in \
-        "$REPO_ROOT/build/kernels/release-7.2.9" \
-        "$REPO_ROOT/out/artifacts/kernel-a485-38560291716/kernel-release-7.2.9/extracted" \
-        "$REPO_ROOT/out/artifacts/gunyah-a485-38568504093/extracted" \
-        "$REPO_ROOT/out/artifacts/kernel-38407594802"; do
+        "$REPO_ROOT/build/kernels/release" \
+        "$REPO_ROOT/out/artifacts/kernel-release-7.3.0/extracted" \
+        "$REPO_ROOT/build/kernel"; do
         if [ -s "$candidate/Image" ] && [ -d "$candidate/lib/modules" ]; then
             echo "$candidate"
             return 0

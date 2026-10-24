@@ -520,8 +520,8 @@ def check_kernel_install(root):
     sys.path.insert(0, str(ROOT / "tests"))
     from kernel_fixture import make_kernel
     root.mkdir()
-    kernel = make_kernel(root / "kernel", "7.2.9-fixture")
-    release = "7.2.9-fixture"
+    kernel = make_kernel(root / "kernel", "7.3.0-fixture")
+    release = "7.3.0-fixture"
     installed = root / "rootfs/usr/lib/modules" / release
     shutil.copytree(kernel / "modules/lib/modules" / release, installed)
     proof = finalizer.verify_kernel_install(root / "rootfs", kernel)
