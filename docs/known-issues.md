@@ -70,6 +70,20 @@ UEFI 按原厂 ABL 的 `msm_drm.dsi_display0` 改写面板 `compatible`，实机
 
 两个标识分别对应哪块屏、归属哪个供应商，见[上游跟踪的面板标识](upstream.md#两个原厂面板标识)。
 
+## GPI DMA 深度空闲
+
+触控中断挂在 `ac0000.qupv3_1_geni_se` 上，走 GPI DMA。SM8750 在 DMA 运行期间
+进入 system low power domain（PSCI `0x0200c354`，DT 里 4400 us 退出延迟），
+传输被卡住直到退出：5450 字节的读本该 2.0–2.7 ms，实测 2.46 ms 或恰好 4.85 ms。
+上游 `yzddmr6/linux-sm8750-piano` 的 `322fd1bfbda9` 用 ftrace 量过，2945 次慢读
+里有 2678 次正好落在 system domain 内；把 CPU 延迟上限压到 2000 us（高于
+cluster 状态的 1983 us）之后，每次读都在 2.0–2.7 ms。
+
+这条在本机是**已修未验**。补丁作为 0029 进了 7.3 封存序列，`target_tree` 推到
+`15e96fac`，重放通过；但还没有构建新内核、也没有在实机上量过读延迟。验收办法是
+在同一启动里对比 `/sys/kernel/debug/tracing` 的 `cpu_idle` 事件与新读耗时，
+或在触控固件扫描时看是否还有整屏泛白。
+
 ## 系统缓存（LLCC）没有生效
 
 内核编了 `CONFIG_QCOM_LLCC=y`，但驱动从未绑定任何设备，系统缓存因此没有配置，
