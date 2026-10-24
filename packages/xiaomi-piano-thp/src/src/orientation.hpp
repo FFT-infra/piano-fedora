@@ -7,16 +7,21 @@
 #include <vector>
 
 namespace nvt {
-// Piano panel orientation, measured with one-finger swipes on a CSOT unit held in
-// landscape with the USB port on the right: a swipe from the left edge to the right
-// edge increased processor X (electrode columns) at constant processor Y, and a swipe
+// Piano panel orientation, measured with one-finger swipes on the panel in landscape
+// with the USB port on the right: a swipe from the left edge to the right edge
+// increased processor X (electrode columns) at constant processor Y, and a swipe
 // from the top edge to the bottom edge decreased processor Y (rows) at constant
 // processor X. Processor X therefore spans the 3200-pixel width left to right and
-// processor Y the 2136-pixel height with the top edge high. The CSOT panel reports
+// processor Y the 2136-pixel height with the top edge high, so the panel reports
 // X = processor X (range 0..column_maximum - 1) and Y = reversed processor Y
-// (range 0..row_maximum - 1). On the BOE panel processor Y already grows from the top edge to the bottom edge:
-// liisoya/xiaomipad-8pro-mainline 8bbc68239c17 (MIT) validated its "flip-y" mode,
-// which applies no flip at all, on a BOE unit. BOE therefore reports Y = processor Y.
+// (range 0..row_maximum - 1). That measurement did not vary with the panel module,
+// so the reversal is unconditional.
+//
+// PanelVendor still reaches this function because the pinned upstream source passes
+// it, but it must not change the result. On the unit measured here the kernel's
+// panel_vendor reads "boe" (the lcd-id strap level) while the factory bootloader
+// selects the CSOT display profile, so treating that value as the panel identity
+// inverted the Y axis on hardware. Keep every call on the reversing branch.
 // Corrections happen here only.
 struct PanelAxes {
     int width;

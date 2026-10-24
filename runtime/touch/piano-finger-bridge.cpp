@@ -20,7 +20,6 @@ constexpr const char *nvtThpMiscPrefix = "nvt-thp-";
 std::unique_ptr<nvt::UInputTouch> input;
 std::unique_ptr<nvt::LivePipeline> pipeline;
 nvt::Calibration calibration;
-nvt::PanelVendor vendor = nvt::PanelVendor::Csot;
 std::vector<nvt::Slot> panel;
 
 template<class Function> int guarded(Function function) {
@@ -53,15 +52,18 @@ extern "C" int piano_finger_open(const char *path) {
         const auto axes = nvt::panelAxes(calibration);
         if (axes.width != 32000 || axes.height != 21360)
             throw std::runtime_error("unexpected Piano panel geometry");
-        // The panel decides the processor-to-panel mapping: on BOE the Y axis
-        // already runs top to bottom, so the CSOT reversal would flip it.
+        // The orientation comes from the one measurement taken on this panel with
+        // a real finger: a top-to-bottom swipe decreases processor Y, so Y is
+        // reversed. The kernel's panel_vendor does not decide it. That value is
+        // the lcd-id strap level, and on the unit measured here it reads high
+        // while the factory bootloader selected the CSOT panel profile, so the
+        // two disagree; following panel_vendor inverted the Y axis on hardware.
         const auto identity = nvt::readPanelVendor(thpMiscNode());
-        vendor = identity.vendor;
         std::fprintf(stderr, "%s\n", nvt::describePanel(identity).c_str());
         input = std::make_unique<nvt::UInputTouch>(axes.width, axes.height);
         pipeline = std::make_unique<nvt::LivePipeline>(calibration,
             [](std::span<const nvt::Slot> slots) {
-                nvt::panelSlots(slots, calibration, vendor, panel);
+                nvt::panelSlots(slots, calibration, nvt::PanelVendor::Csot, panel);
                 input->report(panel);
             });
         std::fprintf(stderr, "piano finger: calibrated 32000x21360, Kalman/jitter/axis filtering, %s\n",
