@@ -119,8 +119,25 @@ probe 根本不会发生。
 收益是 Geekbench 6 单核 +0.9%、多核 +0.5%、Vulkan 计算 +2.7%，内存延迟类子项最高
 +9.5%。
 
-修复要么改 DTB 的 compatible，要么在内核补丁里给 `sun-llcc` 加一条 match 项。前者
-动 ESP 上的板级输入，后者动 7.3 的封存序列。两者都还没做。
+2026-10-25 又核了一遍寄存器布局，两边的差别只剩 compatible 一个字符串：
+
+```
+本机 cache-controller@24800000        上游 sm8750.dtsi
+0x24800000 2 MiB                      0x24800000 2 MiB   llcc0_base
+0x25800000 2 MiB                      0x25800000 2 MiB   llcc1_base
+0x24c00000 2 MiB                      0x24c00000 2 MiB   llcc2_base
+0x25c00000 2 MiB                      0x25c00000 2 MiB   llcc3_base
+0x26800000 2 MiB                      0x26800000 2 MiB   broadcast
+0x26c00000 2 MiB                      0x26c00000 2 MiB   broadcast_and
+```
+
+顺序也一致。`num_banks` 由驱动从 `LLCC_COMMON_STATUS0` 读，不依赖 DTB 声明。所以
+给 `qcom_llcc_of_match` 加一条 `{ "qcom,sun-llcc", &sm8750_cfgs }` 就够，cfg 数据
+可以照用——`sun` 本来就是 SM8750 的代号。
+
+修复要么改 DTB 的 compatible，要么在内核补丁里加这条 match 项。前者动 ESP 上的
+板级输入，后者动 7.3 的封存序列。两者都还没做，因为验证需要刷内核，而收益只有
+Geekbench 个位数百分点。
 
 ## 刷写与读回
 
