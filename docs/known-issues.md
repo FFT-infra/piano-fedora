@@ -42,6 +42,20 @@ probe。旋转时的 DSC flush 超时属于同一类时序余量不足，重试�
 改大只会延长花屏持续时间。要真正消除得动 msm 驱动：在 transform-only 的提交里
 跳过 DSC flush，或在提交前显式等 DPU idle。这属于上游驱动的范围。
 
+这台设备的两处面板判据指向不同的面板。内核按 GPIO100 电平选固件，读出高电平，
+`panel_vendor` 为 `boe`，日志里加载的是 `novatek_nt36532_piano_fw_boe.bin`。UEFI
+按原厂 ABL 的 `msm_drm.dsi_display0` 改写面板 `compatible`，实机
+`/proc/device-tree` 读回是 `xiaomi,piano-csot-nt36532`。屏幕显示正常。
+
+两者读的不是同一处信息：绑带电平由主板上的电阻决定，原厂标识来自本次启动的 ABL
+参数。原厂触控驱动也只把 `lcd_id_value` 用来选
+`piano_nova_{csot,boe}_thp_config.ini`，从不据此翻转坐标。`panel_vendor` 因此不能
+当作面板身份使用，触控方向由实测决定，判据见
+`tests/check_finger_orientation.py`。这台设备到底装的是哪一块面板，要拆机核对
+物料才能确定。
+
+两个标识各属哪个供应商已由原厂 DTB 的供应商命令序列确认，见[上游跟踪的归属表](upstream.md#两个原厂面板标识的归属)。
+
 ## 刷写与读回
 
 写 `sunuefi_root`（6.1 GB sparse）之后，设备侧的 ABL 会挂死。`lsusb` 仍能
