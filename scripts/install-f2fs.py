@@ -283,7 +283,10 @@ def wait_factory(device, identity, attempts=90, delay=2):
         try:
             if device.fastboot_var(serial, "serialno") == serial:
                 return
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        # 上游 Device.call() 在 fastboot 非零退出时抛 ValueError（require()），
+        # 不是 CalledProcessError。漏掉它会让第一次枚举失败直接结束整个
+        # apply，而那一刻 GPT 已改写、userdata 还没擦除。
+        except (ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
             pass
         if attempt + 1 < attempts:
             time.sleep(delay)
@@ -307,13 +310,23 @@ def dd_available(device):
     Android toybox and Fedora coreutils both ship `dd`, but `conv=fsync,notrunc`
     is the part the write relies on. Checking it on a scratch file keeps a
     missing flag from surfacing after the destructive boundary.
+
+    The probe pre-sizes the file to two blocks and writes the second one. A dd
+    without `notrunc` truncates the file to one block, so the length check and
+    the untouched-first-block check both fail. Seeking past the end of a short
+    file would grow it instead, which proves nothing.
     """
     probe = "/data/local/tmp/piano-dd-probe-" + uuid.uuid4().hex
-    device.shell("printf 'piano' > " + shlex.quote(probe) +
-                 " && dd if=/dev/zero of=" + shlex.quote(probe) +
-                 " bs=4096 seek=1 count=1 conv=fsync,notrunc 2>/dev/null" +
-                 " && test \"$(stat -c %s " + shlex.quote(probe) + ")\" = 4096" +
-                 " && rm -f " + shlex.quote(probe))
+    probe_quoted = shlex.quote(probe)
+    device.shell(
+        "printf 'piano' > " + probe_quoted +
+        " && dd if=/dev/zero of=" + probe_quoted + " bs=4096 count=4 2>/dev/null"
+        " && printf 'keep' | dd of=" + probe_quoted + " bs=4096 seek=0 count=1 conv=notrunc 2>/dev/null"
+        " && dd if=/dev/zero of=" + probe_quoted +
+        " bs=4096 seek=1 count=1 conv=fsync,notrunc 2>/dev/null"
+        " && test \"$(stat -c %s " + probe_quoted + ")\" = 16384"
+        " && test \"$(dd if=" + probe_quoted + " bs=4096 count=1 2>/dev/null | head -c 4)\" = keep"
+        " && rm -f " + probe_quoted)
     return True
 
 
@@ -351,17 +364,6 @@ def restore_gpt_blobs(device, identity, session):
                  f"conv=fsync,notrunc")
     device.shell(f"dd if={remote}-head of={disk} bs={BLOCK} seek=0 conv=fsync,notrunc && sync")
     device.shell("rm -f " + remote + "-tail " + remote + "-head")
-
-
-
-    pending = path.with_suffix(".pending")
-    with pending.open("w") as stream:
-        json.dump(value, stream, indent=2)
-        stream.write("\n")
-        stream.flush()
-        os.fsync(stream.fileno())
-    pending.replace(path)
-    sync_dir(path.parent)
 
 
 SSH_KEY_GUEST_PATH = "/piano-ssh-key.pub"

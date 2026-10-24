@@ -227,8 +227,9 @@ if m:
 m = re.match(r'.*/actions/runs/(\d+)$', path)
 if m:
     rid = m.group(1)
+    shas = json.loads(os.environ.get('PIANO_GH_SHAS', '{}'))
     print(json.dumps({'id': int(rid), 'workflow_id': ids[runs[rid]], 'status': 'completed',
-                      'conclusion': 'success'})); sys.exit(0)
+                      'conclusion': 'success', 'head_sha': shas.get(rid, '')})); sys.exit(0)
 m = re.match(r'.*/actions/workflows/([^/]+)/runs', path)
 if m:
     wf = m.group(1)
@@ -263,13 +264,14 @@ def resolve_step_env(root, workflows, artifacts, runs):
 
 def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_run="",
                 rootfs_run="", mesa_run="", ffmpeg_run="", release_mode="false",
-                desktop="gnome", rootfs_artifact=None, size_mib=""):
+                desktop="gnome", rootfs_artifact=None, size_mib="", sha="", runs=None):
     workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
                  "build-mesa.yml", "host-check.yml"]
     artifacts = ["rootfs-44-gnome", "rootfs-44-kde", "kernel-release-7.2.9", "kernel-sdk-7.2.9",
                  "kernel-experimental-gunyah", "piano-fedora-runtime",
                  "piano-fedora-runtime-gunyah", "piano-fedora-mesa", "piano-fedora-ffmpeg"]
-    runs = {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml"}
+    if runs is None:
+        runs = {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml"}
     env, output = resolve_step_env(root, workflows, artifacts, runs)
     env.update(DESKTOP=desktop,
                ROOTFS_ARTIFACT="" if rootfs_artifact is None else rootfs_artifact,
@@ -277,11 +279,55 @@ def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_
                RUNTIME_ARTIFACT=runtime_artifact,
                KERNEL_RUN=kernel_run, RUNTIME_RUN=runtime_run,
                ROOTFS_RUN=rootfs_run, MESA_RUN=mesa_run,
-               FFMPEG_RUN=ffmpeg_run, RELEASE_MODE=release_mode)
+               FFMPEG_RUN=ffmpeg_run, RELEASE_MODE=release_mode,
+               GITHUB_SHA=sha, PIANO_GH_SHAS=json.dumps(
+                   {rid: sha for rid in runs} if sha else {}))
     result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
                              step_body(".github/workflows/build-image.yml", "Resolve successful input runs")],
                             cwd=ROOT, env=env, capture_output=True, text=True)
     return result, output.read_text()
+
+
+def check_release_mode_binds_every_input_run(root):
+    """release_mode 必须把每个输入 run 钉在本 workflow 的 commit 上。
+
+    release.yml 只核对 build-bundle 与 prepare-install 的 head_sha。固定下来的
+    rootfs / kernel / runtime / mesa / ffmpeg run 若不核对提交，镜像里混进的可以是
+    任意提交的产物，而发布说明写的是 tag 的 commit。这里跑真实的 resolve step：
+    同一提交必须通过，任一 run 来自别的提交必须失败。
+    """
+    workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
+                 "build-mesa.yml", "host-check.yml"]
+    artifacts = ["rootfs-44-gnome", "kernel-release-7.2.9", "kernel-sdk-7.2.9",
+                 "piano-fedora-runtime", "piano-fedora-mesa", "piano-fedora-ffmpeg"]
+    runs = {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml",
+            "7003": "build-rootfs.yml", "7004": "build-mesa.yml",
+            "7005": "host-check.yml"}
+    pin = dict(kernel_run="7001", runtime_run="7002", rootfs_run="7003",
+               mesa_run="7004", ffmpeg_run="7005", release_mode="true", runs=runs)
+    sha = "a" * 40
+    result, output = run_resolve(root / "same-commit", "kernel-release-7.2.9",
+                                 "piano-fedora-runtime", sha=sha, **pin)
+    assert result.returncode == 0, result.stderr
+    for key in ("rootfs_run=7003", "kernel_run=7001", "runtime_run=7002",
+                "mesa_run=7004", "ffmpeg_run=7005"):
+        assert key in output, (key, output)
+
+    # 只让 ffmpeg 的 run 落在别的提交：必须失败，否则"逐档核对"只是核对了两层。
+    env, _ = resolve_step_env(root / "other-commit", workflows, artifacts, runs)
+    env.update(DESKTOP="gnome", SIZE_MIB="", ROOTFS_ARTIFACT="",
+               KERNEL_ARTIFACT="kernel-release-7.2.9",
+               RUNTIME_ARTIFACT="piano-fedora-runtime",
+               KERNEL_RUN="7001", RUNTIME_RUN="7002", ROOTFS_RUN="7003",
+               MESA_RUN="7004", FFMPEG_RUN="7005", RELEASE_MODE="true",
+               GITHUB_SHA=sha,
+               PIANO_GH_SHAS=json.dumps({**{rid: sha for rid in runs}, "7005": "b" * 40}))
+    result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
+                             step_body(".github/workflows/build-image.yml",
+                                       "Resolve successful input runs")],
+                            cwd=ROOT, env=env, capture_output=True, text=True)
+    assert result.returncode != 0, "a pinned run from another commit was accepted in release_mode"
+    assert "7005" in result.stderr, result.stderr
 
 
 def check_image_kernel_tiers(root):
@@ -700,6 +746,7 @@ def main():
         check_bundle(root / "bundle")
         check_uefi_sealer(root / "uefi-source")
         check_image_kernel_tiers(root / "tiers")
+        check_release_mode_binds_every_input_run(root / "release-binding")
         check_bundle_kernel_resolution(root / "bundle-kernel")
         check_bundle_image_binding(root / "bundle-image-binding")
         check_image_artifact_follows_the_desktop()

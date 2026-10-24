@@ -141,6 +141,15 @@ jobs:
           if [ -n "$RUNTIME_RUN" ]; then runtime_args+=(--run-id "$RUNTIME_RUN"); fi
           if [ -n "$MESA_RUN" ]; then mesa_args+=(--run-id "$MESA_RUN"); fi
           if [ -n "$FFMPEG_RUN" ]; then ffmpeg_args+=(--run-id "$FFMPEG_RUN"); fi
+          # 发布构建的每个输入 run 都必须落在本 workflow 的 commit 上。release.yml
+          # 只核对 build-bundle 与 prepare-install 的 head_sha；没有这一条，被固定的
+          # 上游 run 可以来自任意提交，镜像与发布说明的源码提交对不上。
+          if [ "$RELEASE_MODE" = true ]; then
+            commit_args=(--commit "$GITHUB_SHA")
+            rootfs_args+=("${commit_args[@]}"); kernel_args+=("${commit_args[@]}")
+            runtime_args+=("${commit_args[@]}"); mesa_args+=("${commit_args[@]}")
+            ffmpeg_args+=("${commit_args[@]}")
+          fi
           python3 scripts/resolve-artifact-run.py --workflow build-rootfs.yml --artifact "$ROOTFS_ARTIFACT" --output-key rootfs_run "${rootfs_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml "${kernel_artifacts[@]}" --output-key kernel_run "${kernel_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-device-runtime.yml --artifact "$RUNTIME_ARTIFACT" --output-key runtime_run "${runtime_args[@]}"
