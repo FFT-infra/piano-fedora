@@ -18,6 +18,17 @@
         "patches/linux/7.3/0027-asoc-piano-speaker-gain-limit.patch",
         "patches/linux/7.3/0028-input-nt36532e-panel-vendor-misc.patch"
       ]
+    },
+    {
+      "file": "0002-linux-73-gpi-dma-deep-idle.patch",
+      "summary": "把 GPI DMA 深度空闲修复加进 7.3 封存序列，0029 之后 target_tree 推进到 15e96fac；同时把 series 与 config 的 target_tree 一起改",
+      "targets": {
+        "config/release.json": "fd3ed0e453f7d7bf3331b8a350d94cc86a3a34223ccfc43ad353cf18e2e88b16",
+        "patches/linux/7.3/series.json": "c04284428fa936d77899dfea3e142b970b1416fdc898d56260f9a264383ba901"
+      },
+      "creates": [
+        "patches/linux/7.3/0029-spi-geni-gpi-dma-deep-idle.patch"
+      ]
     }
   ]
 }
