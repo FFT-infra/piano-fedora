@@ -66,7 +66,7 @@
     "crosvm": {
       "url": "https://github.com/google/crosvm.git",
       "ref": "main",
-      "commit": "11be6620423b56ea73960ac9d7310c3af565a314",
+      "commit": "a13fd7e9b7706bf2b3bab7bbe3bfcbf534cee947",
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {
@@ -78,7 +78,7 @@
     "piano-integration": {
       "url": "https://github.com/yzddmr6/xiaomipad-8pro-mainline.git",
       "ref": "main",
-      "commit": "9b2e3541c50afed93078f52edeb57e3e51bba5f6",
+      "commit": "6da53c93c76767c30c0b52d4425a47f9a7474518",
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者"
     },
     "uperf": {
