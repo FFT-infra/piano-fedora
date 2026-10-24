@@ -16,6 +16,17 @@
 
 漂移判断只看 pin，不看 `docs/upstreams.json` 的 `reference_commit`。`reference_commit` 是人工基线，只在 `--record-baseline` 时推进。拿 `reference_commit` 判断，会把没有位移的上游报成更新。
 
+自动跟踪只覆盖 14 个消费上游。`docs/upstreams.json` 里的 82 个对照仓库不进 `upstream-watch`：它们没有 `lock_key`，`scripts/upstream-watch.py` 只处理带 `lock_key` 的行。这些仓库要人工复核，用下面两条命令：
+
+```sh
+python3 scripts/audit-upstreams.py --execute --output build/upstream-audit.json
+python3 scripts/audit-upstreams.py --execute --record-baseline --output build/upstream-audit.json
+```
+
+第一条列出谁比基线新，第二条把核到的提交写成新基线。第二条会改 `docs/upstreams.json`，只在确认复核过之后跑。
+
+登记表的价值在于「谁值得看」，不在于「谁被自动盯着」。把仓库目录整个抄进来会淹没真正要跟的那几行，所以未登记不等于遗漏。
+
 ## 每次跟进上游
 
 1. 读取远端 main 的完整提交号。比对当前 pin 与远端的提交、文件和实际代码。发布说明只当索引用。
