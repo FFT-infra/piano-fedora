@@ -46,7 +46,7 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 原厂 ABL 用 `msm_drm.dsi_display0` 的值说明这台设备装的是哪块面板，UEFI 据此改写交接 DTB 的面板 `compatible`。
 
-已确证的只有一层：DTB 里的两个 profile 与原厂 UEFI 的两份面板描述文件一一对应。用原厂固件 `RawFiles/Panel_P81_*_dualdsi_dsc_vid.xml` 对比 `qcom,mdss-dsi-on-command` 可以验：
+DTB 里的两个 profile 与原厂 UEFI 的两份面板描述文件一一对应。用原厂固件 `RawFiles/Panel_P81_*_dualdsi_dsc_vid.xml` 对比 `qcom,mdss-dsi-on-command` 可以验：
 
 | 原厂标识 | 该 profile 的命令特征 | 对应原厂 XML |
 | --- | --- | --- |
@@ -55,10 +55,17 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 `35_02_0b` 那份 XML 的 `<PanelDescription>` 误写成 "P81 42 02 0a"，是原厂复制文件留下的错误，不能拿它判断归属；要看文件自己的命令块和 `PanelBuildIDReadBack`。
 
-哪个 profile 属于哪个供应商，目前没有能一锤定音的原厂证据，只有一条指向性线索：HyperOS 的校准文件 `qdcm_calib_data_xiaomi_p81_35_02_0b_...json` 在原厂显示分析里被称为 CSOT 配置，据此 `35_02_0b`=CSOT、`42_02_0a`=BOE。这与当前 `PianoFactoryPanel.h` 和上游 `docs/devel/panel-selection.md` 的表一致。
+供应商归属由原厂触控驱动自己定：`nt36xxx.c` 的 `lcd_id_value` 注释写明 0 是 CSOT、1 是 BOE，同一处用这个值选 `piano_nova_{csot,boe}_thp_config.ini`。据此
 
-不能拿主线驱动的函数名当证据。驱动里 `piano_boe_*` 与 `piano_csot_*` 的名字来自这套移植本身，上游 `linux-sm8750-piano` 在 2026-10-22 又把两者对调过一次，两次都没有改变任何字节。名字换来换去是循环论证，判据只能来自原厂侧。
+| `lcd_id` | 供应商 | 面板 profile | 命令特征 |
+| --- | --- | --- | --- |
+| 0 | CSOT | `qcom,mdss_dsi_p81_42_02_0a_dualdsi_dsc_vid` | `c4 82 … c4 06` |
+| 1 | BOE | `qcom,mdss_dsi_p81_35_02_0b_dualdsi_dsc_vid` | `bc 77 07` |
 
-核对时注意两个 profile 在 DTB 里的写法不同：`35_02_0b` 用 `[...]` 字节数组，`42_02_0a` 用 `<0x39000040 0x2ff 0x27 …>` 打包字，dtc 打印时还会省略前导零。只认字节数组的解析器会漏掉后者，从而得出相反的结论。这个坑在 2026-10-24 实际踩过一次。
+这与 `PianoFactoryPanel.h`、上游 `docs/devel/panel-selection.md` 的表一致，也与原厂 UEFI 的两份面板描述文件一一对应。本机 `lcd_id: 1`，所以是 BOE 模块，UEFI 读到的 `dsi_display0` 应当指向 `35_02_0b`。
+
+2026-10-24 的文档曾把这一格写反（判成 `35_02_0b`=CSOT）。错在拿主线驱动的函数名当证据：驱动里 `piano_boe_*` 与 `piano_csot_*` 的名字来自移植本身，上游 `linux-sm8750-piano` 在 2026-10-22 把两者对调过一次，两次都没有改变任何字节。名字换来换去是循环论证，判据只能来自原厂侧。当前内核补丁里的函数名与上表相反，但发给面板的字节序列相同，功能上等价。
+
+核对时注意两个 profile 在 DTB 里的写法不同：`35_02_0b` 用 `[...]` 字节数组，`42_02_0a` 用 `<0x39000040 0x2ff 0x27 …>` 打包字，dtc 打印时还会省略前导零。只认字节数组的解析器会漏掉后者。这个坑在 2026-10-24 实际踩过一次。
 
 来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/devel/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/uefi/core/PianoRawLinuxBoot.c)。
