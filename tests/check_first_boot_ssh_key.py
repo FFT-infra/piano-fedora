@@ -200,9 +200,11 @@ if "--version" in args:
     sys.exit(0)
 cmd = None
 i = 0
+# -s/-S 都带一个取值；把 -S 的 128M 当子命令会让桩拒绝真实安装器的调用。
+VALUED = {"-s", "-S", "--slot", "-p", "-b", "-c"}
 while i < len(args):
     a = args[i]
-    if a == "-s":
+    if a in VALUED:
         i += 2
         continue
     if a.startswith("-"):
@@ -476,7 +478,8 @@ def check_python_installer(root, failures):
     # the manifest checks and before the flash loop.
     inject_at = source.index("inject_ssh_key(bundle / \"sunuefi_esp.img\"")
     erase_at = source.index('device.call(["fastboot", "-s", identity["factory_serial"], "erase", "userdata"]')
-    flash_at = source.index('device.call(["fastboot", "-s", identity["factory_serial"], "flash", name, str(image)]')
+    flash_at = source.index('"fastboot", "-s", identity["factory_serial"], "-S", "128M",\n'
+                            '                         "flash", name, str(image)')
     require_at = source.index('require(before == expected_hashes[name]')
     check(erase_at < inject_at < require_at < flash_at,
           "inject_ssh_key must run after the manifest checks and before the flash loop")

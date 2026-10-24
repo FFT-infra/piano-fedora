@@ -43,8 +43,11 @@ DESTRUCTIVE = re.compile(
     r"|" + FB + r"\s+(?:-\S+\s+)*-w\b"
     r"|" + FB + r"\s+(?:-\S+\s+)*flashing\s+(?:lock|unlock)\b")
 
-# `fastboot flash <partition>` / `fb flash <partition> "$VAR"`.
-FLASH_CALL = re.compile(FB + r"\s+(?:-\S+\s+)*flash\s+([A-Za-z0-9_]+)")
+# `fastboot flash <partition>` / `fb -S 128M flash <partition> "$VAR"`. An
+# option may carry a value (`-S 128M`, `-s SERIAL`); the value never looks like
+# the `flash` subcommand, so it is matched explicitly.
+FLASH_CALL = re.compile(
+    FB + r"\s+(?:-\S+(?:\s+[A-Za-z0-9][^\s-]*)?\s+)*flash\s+([A-Za-z0-9_]+)")
 
 
 def strip_comments(text, suffix):
@@ -102,7 +105,7 @@ def check_script(path):
         if "mtools" not in code:
             failures.append(f"{path.name}: missing-mcopy error does not name mtools")
         inject = code.find("inject_ssh_key \"$SSH_KEY\"")
-        flash_esp = code.find('fb flash sunuefi_esp "$ESP_IMG"')
+        flash_esp = code.find('fb -S 128M flash sunuefi_esp "$ESP_IMG"')
         checksum = code.find('check_manifest_image "$ESP_IMG"')
         if min(inject, flash_esp, checksum) < 0:
             failures.append(f"{path.name}: SSH key injection or ESP flash step is missing")

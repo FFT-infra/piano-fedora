@@ -508,7 +508,10 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
         for name, image in images.items():
             before = sha256(image)
             require(before == expected_hashes[name], "input image hash differs from validated manifest: " + name)
-            device.call(["fastboot", "-s", identity["factory_serial"], "flash", name, str(image)], timeout=3600)
+            # 钢琴 ABL 对单次 512 MiB 的裸 ESP 写入会停止响应。`-S 128M` 让标准
+            # fastboot 把镜像切成有界传输，上游 install_piano.py 的 flash() 也这么发。
+            device.call(["fastboot", "-s", identity["factory_serial"], "-S", "128M",
+                         "flash", name, str(image)], timeout=3600)
             require(sha256(image) == before, "input image changed during transfer")
             stage("factory_fastboot_accepted_" + name)
         journal.update(status="IMAGES_TRANSFERRED_FIRST_BOOT_PENDING",
