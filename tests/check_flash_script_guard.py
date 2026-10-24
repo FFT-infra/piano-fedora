@@ -156,10 +156,11 @@ def check_boot_image_selection():
             "SHA256SUMS; that image is device-specific and is not listed there")
 
     # ZIP 内的 README 要写清 boot_a 该用哪个文件，并明确禁止 boot_sunuefi.img。
-    if "fastboot flash boot_a device-boot/boot_linux.img" not in readme:
+    # 手动命令与一键脚本一样必须带 `-S 128M`：裸写 512 MiB ESP 会让 ABL 停响应。
+    if "fastboot -S 128M flash boot_a device-boot/boot_linux.img" not in readme:
         failures.append(
             "README-INSTALL.txt: manual flash still does not write "
-            "device-boot/boot_linux.img to boot_a")
+            "device-boot/boot_linux.img to boot_a with -S 128M")
     if "fastboot flash boot_a boot_sunuefi.img" in readme:
         failures.append(
             "README-INSTALL.txt: manual flash still writes boot_sunuefi.img to boot_a")
@@ -167,6 +168,12 @@ def check_boot_image_selection():
         failures.append(
             "README-INSTALL.txt: does not warn that boot_sunuefi.img is not a "
             "boot_a image")
+    # 每条手动 flash 命令都要带 -S；漏一条就够让用户踩到挂死。
+    for lineno, line in enumerate(readme.splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith("fastboot flash ") and "boot_sunuefi.img" not in stripped:
+            failures.append(
+                f"README-INSTALL.txt:{lineno}: manual flash without -S 128M: {stripped}")
 
     return failures
 
@@ -218,12 +225,25 @@ def check_docs():
             failures.append(
                 f"docs/installation.md:{lineno}: still instructs 'fastboot erase dtbo_b'")
 
-    # The manual flash chapter must exist and cover the required ground.
-    required = ("手动刷写", "SHA256SUMS", "sha256sum -c", "fastboot flash boot_a",
-                "fastboot flash sunuefi_esp", "fastboot flash sunuefi_root")
+    # The manual flash chapter must exist and cover the required ground. Each
+    # flash command carries `-S 128M`; a bare 512 MiB ESP write hangs the ABL.
+    required = ("手动刷写", "SHA256SUMS", "sha256sum -c",
+                "fastboot -S 128M flash boot_a",
+                "fastboot -S 128M flash sunuefi_esp",
+                "fastboot -S 128M flash sunuefi_root")
     for token in required:
         if token not in doc:
             failures.append(f"docs/installation.md: manual-flash chapter missing {token!r}")
+    # 文档里任何一条写大分区的 flash 命令都要带 -S，避免只在某一处补上。
+    # 回滚那一条写的是 96 MiB 的原厂 boot.img，远小于 128 MiB，不在挂死的
+    # 范围里，所以不要求。
+    for lineno, line in enumerate(doc.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped.startswith("fastboot flash "):
+            continue
+        if "sunuefi_esp" in stripped or "sunuefi_root" in stripped or "device-boot/" in stripped:
+            failures.append(
+                f"docs/installation.md:{lineno}: flash command without -S 128M: {stripped}")
     for name in ("flash-linux.sh", "flash-linux.bat", "README-INSTALL.txt"):
         text = (ROOT / "scripts/installer" / name).read_text(encoding="utf-8")
         if "pianoroot.f2fs.sparse.img" not in text:

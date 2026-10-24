@@ -458,17 +458,19 @@ sha256sum sunuefi_esp.img      # 记下新摘要，读回校验用这个值
 
 ```sh
 # 1. 合体 BOOT -> boot_a（活动槽保持 A，不切槽）
-fastboot flash boot_a device-boot/boot_linux.img
+fastboot -S 128M flash boot_a device-boot/boot_linux.img
 
 # 2. ESP -> sunuefi_esp
-fastboot flash sunuefi_esp sunuefi_esp.img
+fastboot -S 128M flash sunuefi_esp sunuefi_esp.img
 
 # 3. 根文件系统 -> sunuefi_root（sparse 只传有效块，需要几分钟）
-fastboot flash sunuefi_root root-install/pianoroot.f2fs.sparse.img
+fastboot -S 128M flash sunuefi_root root-install/pianoroot.f2fs.sparse.img
 
 # 4. 重启进系统
 fastboot reboot
 ```
+
+`-S 128M` 让 fastboot 把每次传输切到不超过 128 MiB。钢琴 ABL 对单次 512 MiB 的裸 ESP 写入会停止响应，只能断电重来。三条 flash 命令都不要省这个参数。
 
 每条命令都必须打印 `OKAY`。出现 `FAILED`，立刻停下，不要继续后面的步骤。
 
@@ -594,9 +596,9 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 3. 按归档的 `SHA256SUMS` 与 `root-install/SHA256SUMS` 分别校验 BOOT/ESP 和 sparse root。
 4. 打印安全告知，要求输入大写 `YES` 确认。
 5. 保持 Slot A，不切槽。
-6. 刷入合体 BOOT：`fastboot flash boot_a device-boot/boot_linux.img`。
-7. 刷入 ESP 分区：`fastboot flash sunuefi_esp sunuefi_esp.img`。
-8. 刷入系统根分区：`fastboot flash sunuefi_root pianoroot.f2fs.sparse.img`。
+6. 刷入合体 BOOT：`fastboot -S 128M flash boot_a device-boot/boot_linux.img`。
+7. 刷入 ESP 分区：`fastboot -S 128M flash sunuefi_esp sunuefi_esp.img`。
+8. 刷入系统根分区：`fastboot -S 128M flash sunuefi_root pianoroot.f2fs.sparse.img`。
 9. 自动重启：`fastboot reboot`。
 
 `device-boot/boot_linux.img` 由 `scripts/prepare-device-boot.py` 用本机原厂 BOOT 重打包产生。`device-boot/boot_linux.img` 不在归档里，必须自己生成一次。一键脚本按 `boot_linux.img`、`device-boot/boot_linux.img` 的顺序在暂存目录里找它，也可以用 `--boot` 指定。归档里的 `boot_sunuefi.img` 是 ESP 内部的 Linux 载荷，一键脚本会明确拒绝它。

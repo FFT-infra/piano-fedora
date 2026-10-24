@@ -339,6 +339,22 @@ def main():
             if re.search(rf"\b{forbidden.strip()}\b", text_calls):
                 failures.append(f"manual flow issued forbidden command: {forbidden}")
 
+        # 文档里的三条大分区 flash 必须带 -S 128M：裸写 512 MiB ESP 会让 ABL
+        # 停响应。这里看的是真执行记录，不是文档文本。回滚那一条写的是 96 MiB
+        # 的原厂 boot.img，远小于单次上限，不在此列。
+        for args in calls:
+            if "flash" not in args:
+                continue
+            index = args.index("flash")
+            partition = args[index + 1] if index + 1 < len(args) else ""
+            if partition not in ("sunuefi_esp", "sunuefi_root", "boot_a"):
+                continue
+            target = args[index + 2] if index + 2 < len(args) else ""
+            if partition == "boot_a" and "stock-recovery" in target:
+                continue
+            if "-S" not in args or args[args.index("-S") + 1] != "128M":
+                failures.append(f"documented flash of {partition} lacks -S 128M: {' '.join(args)}")
+
         # The readback step must be present and must be shown to be conditional.
         if "fastboot fetch" not in chapter:
             failures.append("manual chapter has no readback step")
@@ -372,7 +388,7 @@ def main():
         if "mcopy" not in chapter:
             failures.append("manual chapter does not show the ESP key injection")
         key_step = chapter.find("mcopy")
-        esp_flash = chapter.find("fastboot flash sunuefi_esp")
+        esp_flash = chapter.find("fastboot -S 128M flash sunuefi_esp")
         if key_step < 0 or esp_flash < 0 or key_step > esp_flash:
             failures.append("manual chapter injects the SSH key after the ESP flash")
 
