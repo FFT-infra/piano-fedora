@@ -31,17 +31,23 @@
 
 上线后的只读更新计划要验两件事：Linux 描述的 RAM 是当次 Android FDT 的子集，固定保留区与 Linux RAM 相交的部分仍受保护。比较失败就拒绝更新。不要猜扩容后的地址，也不要放宽内存门槛。比较通过也不证明物理 DDR 所有权，也不证明完整 24 GB 可用。
 
-### 两个原厂面板标识的归属
+### 两个原厂面板标识
 
-原厂 ABL 用 `msm_drm.dsi_display0` 的值说明这台设备装的是哪块面板，UEFI 据此改写交接 DTB 的面板 `compatible`。两个标识归属哪个供应商，看原厂 DTB 里该 profile 的 `qcom,mdss-dsi-on-command`，不看注释：
+原厂 ABL 用 `msm_drm.dsi_display0` 的值说明这台设备装的是哪块面板，UEFI 据此改写交接 DTB 的面板 `compatible`。
 
-| 原厂标识 | 该 profile 的供应商命令 | 归属 |
+已确证的只有一层：DTB 里的两个 profile 与原厂 UEFI 的两份面板描述文件一一对应。用原厂固件 `RawFiles/Panel_P81_*_dualdsi_dsc_vid.xml` 对比 `qcom,mdss-dsi-on-command` 可以验：
+
+| 原厂标识 | 该 profile 的命令特征 | 对应原厂 XML |
 | --- | --- | --- |
-| `qcom,mdss_dsi_p81_42_02_0a_dualdsi_dsc_vid` | `c4 82 / ff 26 / fb 01 / 3b 06 / 4b 06 / ff 22 / fb 01 / c4 06` | BOE |
-| `qcom,mdss_dsi_p81_35_02_0b_dualdsi_dsc_vid` | `bc 77 07` | CSOT |
+| `qcom,mdss_dsi_p81_42_02_0a_dualdsi_dsc_vid` | `c4 82 … c4 06` 块、`D1 20`、先 `B3` 后 `B2` | `Panel_P81_42_02_0a_...xml` |
+| `qcom,mdss_dsi_p81_35_02_0b_dualdsi_dsc_vid` | `bc 77 07`、`D1 00`、先 `B2` 后 `B3` | `Panel_P81_35_02_0b_...xml` |
 
-两条序列与主线驱动里的 `piano_boe_vendor_sequence` 和 `piano_csot_vendor_sequence` 逐条相同。`PianoFactoryPanel.h` 与上游 `docs/devel/panel-selection.md` 的表和这里一致。上游 `linux-sm8750-piano` 的 `sm8750-xiaomi-piano.dts` 把两者写反了，以命令序列为准。
+`35_02_0b` 那份 XML 的 `<PanelDescription>` 误写成 "P81 42 02 0a"，是原厂复制文件留下的错误，不能拿它判断归属；要看文件自己的命令块和 `PanelBuildIDReadBack`。
 
-核对时注意两个 profile 在 DTB 里的写法不同：`35_02_0b` 用 `[...]` 字节数组，`42_02_0a` 用 `<0x39000040 0x2ff 0x27 …>` 打包字，dtc 打印时还会省略前导零。只认字节数组的解析器会漏掉后者，得出相反的结论。
+哪个 profile 属于哪个供应商，目前没有能一锤定音的原厂证据，只有一条指向性线索：HyperOS 的校准文件 `qdcm_calib_data_xiaomi_p81_35_02_0b_...json` 在原厂显示分析里被称为 CSOT 配置，据此 `35_02_0b`=CSOT、`42_02_0a`=BOE。这与当前 `PianoFactoryPanel.h` 和上游 `docs/devel/panel-selection.md` 的表一致。
+
+不能拿主线驱动的函数名当证据。驱动里 `piano_boe_*` 与 `piano_csot_*` 的名字来自这套移植本身，上游 `linux-sm8750-piano` 在 2026-10-22 又把两者对调过一次，两次都没有改变任何字节。名字换来换去是循环论证，判据只能来自原厂侧。
+
+核对时注意两个 profile 在 DTB 里的写法不同：`35_02_0b` 用 `[...]` 字节数组，`42_02_0a` 用 `<0x39000040 0x2ff 0x27 …>` 打包字，dtc 打印时还会省略前导零。只认字节数组的解析器会漏掉后者，从而得出相反的结论。这个坑在 2026-10-24 实际踩过一次。
 
 来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/devel/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/uefi/core/PianoRawLinuxBoot.c)。
