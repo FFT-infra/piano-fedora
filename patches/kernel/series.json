@@ -45,6 +45,17 @@
         "patches/linux/7.3/0034-ath12k-power-soc-usb.patch",
         "patches/linux/7.3/0035-asoc-tx-macro-channel-mask.patch"
       ]
+    },
+    {
+      "file": "0004-linux-73-rpmsg-glink.patch",
+      "summary": "把 GLINK 暂存回调就绪前到达消息的修复加进 7.3 封存序列，修 QRTR 名字服务 HELLO 在冷启动时被丢弃导致音频/充电/传感器服务全连不上，target_tree 推进到 40444276",
+      "targets": {
+        "config/release.json": "9799457d81b759aaa908613ad2cc2b469fcc0ba4f93a955d936fec1ef6d31092",
+        "patches/linux/7.3/series.json": "33e8831148e97fa4074f9ac3d021635caed8fb04bd1ab1973dd85ff4bfb00110"
+      },
+      "creates": [
+        "patches/linux/7.3/0036-rpmsg-glink-hold-early-messages.patch"
+      ]
     }
   ]
 }
