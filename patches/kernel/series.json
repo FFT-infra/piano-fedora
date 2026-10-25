@@ -84,6 +84,17 @@
         "patches/linux/7.3/0053-clk-rpm-enable-before-orphans.patch",
         "patches/linux/7.3/0054-phy-qmp-combo-typec-mux-committed.patch"
       ]
+    },
+    {
+      "file": "0006-linux-73-iris-irq-wait.patch",
+      "summary": "补上上游 0adb163ceb：iris 关电前等线程化 IRQ 退出，用 iris_acquire/release_core_lock 取代本树在 iris_core_deinit 里的自制绕行，target_tree 推进到 81983254",
+      "targets": {
+        "config/release.json": "4061ef4fc16fcb7f134267b0e7e4e95b47eaf87a71c9b9304ec0f4b2c24bdbf4",
+        "patches/linux/7.3/series.json": "6d82fa8cadc6ce41be3be7ad2a1c2bcbfaaa4fd6883162a7b2f8f292c8fac9c5"
+      },
+      "creates": [
+        "patches/linux/7.3/0055-iris-wait-threaded-irq-on-poweroff.patch"
+      ]
     }
   ]
 }
