@@ -206,8 +206,9 @@ piano-install/
 ├── host-boot-tool/
 ├── scripts/
 ├── device-boot/              # make-device-boot.sh 生成
+│   ├── boot_android.img
 │   ├── boot_linux.img
-│   └── boot-request.json
+│   └── device-boot-manifest.json
 └── root-install/
     ├── pianoroot.f2fs.sparse.img
     ├── root-install-manifest.json
@@ -404,11 +405,11 @@ fastboot reboot
 
 ### 3. 请求页
 
-`device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_a`。`app_generation` 必须与归档里的 `PianoUEFI-product.img` 中的 APPv1 载荷一致。
+`device-boot-manifest.json` 的 `active_slot` 是 `_a`，`app_generation` 必须与归档里的 `PianoUEFI-product.img` 中的 APPv1 载荷一致。
 
 3 秒选择器在“正在引导的那份镜像”末尾读请求页。ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装进 Slot A，Linux 与 Android 都从同一份 `boot_a` 启动，请求页因此指向 `boot_a`。不切槽，也不存在第二份需要同步的页。
 
-带了 `root-install` 时，root 文件系统里的 `etc/piano/boot-request.json` 就是这条配置。不带时 root 文件系统里没有这个文件，首启的 `piano-boot-request-autoconfig.service` 按当前槽重建。首启后不要猜设备名或改槽，否则“返回 Android”和后续启动请求都会失败。
+活动槽不写进镜像，也不写进 ESP：`piano-next-boot-helper` 每次请求时只读主备 GPT 和高通 A/B 属性现算，再读那份 BOOT 的实际 generation。所以换槽、OTA 之后都不需要重新配置，也不存在“猜错设备名”这条失败路径。
 
 ---
 

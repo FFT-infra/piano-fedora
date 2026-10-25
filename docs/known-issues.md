@@ -79,10 +79,10 @@ UEFI 按原厂 ABL 的 `msm_drm.dsi_display0` 改写面板 `compatible`，实机
 里有 2678 次正好落在 system domain 内；把 CPU 延迟上限压到 2000 us（高于
 cluster 状态的 1983 us）之后，每次读都在 2.0–2.7 ms。
 
-这条在本机是**已修未验**。补丁作为 0029 进了 7.3 封存序列，`target_tree` 推到
-`15e96fac`，重放通过；但还没有构建新内核、也没有在实机上量过读延迟。验收办法是
-在同一启动里对比 `/sys/kernel/debug/tracing` 的 `cpu_idle` 事件与新读耗时，
-或在触控固件扫描时看是否还有整屏泛白。
+补丁作为 0029 进了 7.3 封存序列，`target_tree` 为 `81983254f51a`。2026-10-26
+`kernel-piano-7.3.0-4` 已装进真机并启动，0029 在里面，但读延迟本身还没量过。
+验收办法是在同一启动里对比 `/sys/kernel/debug/tracing` 的 `cpu_idle` 事件与新读
+耗时，或在触控固件扫描时看是否还有整屏泛白。
 
 ## 系统缓存（LLCC）没有生效
 
@@ -202,9 +202,12 @@ userdata。安装脚本目前只做擦除，操作者要在现场执行这一步
 - 请求页偏移 37490688（0x23C1000），magic `SUNUEFI-NEXTv1`，两页相隔 4096
   字节滚动写入。
 
-helper 优先读 Android 安装器维护的 ESP 记录
-`/boot/efi/EFI/SunUEFI/boot-request.json`，Android 侧在 OTA 换槽后刷新这条记录。
-`/etc/piano/boot-request.json` 只在早于共享槽位追踪的旧安装上回退使用。
+helper 不再读任何槽位配置文件。上游 7dbabdc 之后它只读主备 GPT（两份头与条目 CRC
+都校验）和高通 A/B 属性（priority48..49、active50、retries51..53、successful54、
+unbootable55）定位活动槽，再读那份 BOOT 的实际 generation。本机实测
+`boot_a` 属性 `0x0077…`（priority 3、active、successful）、`boot_b` `0x0072…`
+（priority 2、非 active），helper 选出的就是 `boot_a`，与旧配置一致。
+换槽或 OTA 之后不需要重新配置。
 
 旧的 B 槽布局（Linux 写进 `boot_b`、`set_active b`）不再使用。以下是一条历史排障记录：qbootctl 的 `set_active` 只改活动标志，不交换槽位 type GUID。A 活动
 时执行 `qbootctl -s b` 会留下“B 活动 + generic GUID”的表，ABL 的
@@ -214,8 +217,8 @@ helper 优先读 Android 安装器维护的 ESP 记录
 时主表和备份表要一起写，两份 CRC 都要重算。
 
 仍停在旧 B 槽布局的设备按这条路径迁移：把 `device-boot/boot_android.img` 写进
-`boot_a`，把 `/etc/piano/boot-request.json` 的 `boot_device` 改成 `boot_a`，
-再用 `fastboot set_active a` 切回 A（B→A 方向 qbootctl 也安全）。
+`boot_a`，再用 `fastboot set_active a` 切回 A（B→A 方向 qbootctl 也安全）。
+旧安装上的 `/etc/piano/boot-request.json` 可以直接删掉，新 helper 不读它。
 
 ## Android 侧
 

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-10-24",
+  "checked_date": "2026-10-26",
   "note": "只列构建实际消费的上游；研究与后端参考单独记录在 docs/upstreams.json。",
   "sources": {
     "dtc": {
@@ -12,7 +12,7 @@
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "2d4752a1455f6448ec0d300aece28ec6eb148b20",
+      "commit": "0a8ec14340c02d0c1febb25f1bb3af830485545e",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器"
     },
     "linux-piano": {
@@ -71,14 +71,14 @@
     },
     "iris-vaapi": {
       "url": "https://github.com/radxa-pkg/libva-v4l2.git",
-      "ref": "v1.0.0",
+      "ref": "master",
       "commit": "6d03c3f8fb19b86f84b2b6c60ff20d1402f0ac41",
       "role": "Qualcomm Iris stateful V4L2 VA-API 后端：H.264/HEVC 硬解与编码；phxinyang/qualcomm-iris-vaapi 只有解码 entrypoint，会覆盖它"
     },
     "piano-integration": {
       "url": "https://github.com/yzddmr6/xiaomipad-8pro-mainline.git",
       "ref": "main",
-      "commit": "6da53c93c76767c30c0b52d4425a47f9a7474518",
+      "commit": "61cb8fb7fd64b74e16941a50740a0ebc2f5369d8",
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者"
     },
     "uperf": {

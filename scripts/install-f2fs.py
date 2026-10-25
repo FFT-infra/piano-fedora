@@ -180,10 +180,8 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     for asset, packaged in BUNDLE_ASSETS.items():
         checked(bundle / asset, generic["files"][packaged])
     # root-install 只是把同一份封存镜像预先扩到目标容量的可选产物。带了它就要
-    # 与这份 bundle 逐项对上；没带就直接用 bundle 自带的 sparse，此时镜像里
-    # 没有 /etc/piano/boot-request.json，由首启的
-    # piano-boot-request-autoconfig.service 按 qbootctl 读到的当前槽重建（首装后
-    # 是 boot_a），再与 device-boot 记录的同一条配置对上。
+    # 与这份 bundle 逐项对上；没带就直接用 bundle 自带的 sparse。两条路径都不再
+    # 往镜像里写槽位配置——上游 7dbabdc 之后活动槽由 GPT 与高通 A/B 属性判定。
     if root:
         require(root.get("status") == "ROOT_CAPACITY_VERIFIED_NOT_DEVICE_VERIFIED"
                 and root["source_bundle_manifest_sha256"] == sha256(bundle / "bundle-manifest.json")
@@ -199,7 +197,7 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
                           "hardlink_groups_checked", "mtime_checked", "xattr_checked"):
                 require(root.get("metadata_verification", {}).get(field) is True,
                         "root metadata proof missing: " + field)
-        require(root["device_configuration"]["boot_request"] == combined["boot_request"]
+        require(root["device_configuration"]["app_generation"] == combined["app_generation"]
                 and root["device_configuration"]["android_slot"] == slot
                 and root["device_configuration"].get("ssh_public_key_in_image") is False,
                 "root device configuration differs from BOOT")
@@ -230,14 +228,13 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     require(combined.get("status") == "DEVICE_BOOT_FILE_VERIFIED_NOT_DEVICE_BOOTED"
             and combined["byte_equal_restoration"] is True and combined["active_slot"] == slot,
             "combined BOOT does not match the current slot or lacks lossless restore proof")
-    # 请求页只在当前引导的那份 BOOT 里被读到；合体 BOOT 与请求配置都在
-    # Android 的当前槽，所以配置必须指向 boot<当前槽>。
-    expected_boot_device = "/dev/disk/by-partlabel/boot" + slot
-    require(combined["boot_request"].get("boot_device") == expected_boot_device,
-            "device-boot records the boot request for "
-            f"{combined['boot_request'].get('boot_device')!r}; it must be {expected_boot_device}")
+    # 请求页只在当前引导的那份 BOOT 里被读到；合体 BOOT 装进 Android 的当前槽。
+    # 上游 7dbabdc 之后 Linux 侧不再有槽位配置文件，活动槽由 GPT 与高通 A/B
+    # 属性判定，所以这里只核对 BOOT 清单声明的槽与设备当前槽一致。
+    require(combined["active_slot"] == slot,
+            f"device-boot wrapped slot {combined['active_slot']!r}; it must be {slot!r}")
     require(combined["uefi_product_sha256"] == sha256(bundle / "PianoUEFI-product.img"), "BOOT and ESP use different UEFI cores")
-    for name in ("boot_android.img", "boot_linux.img", "boot-request.json"):
+    for name in ("boot_android.img", "boot_linux.img"):
         checked(boot / name, combined["files"][name])
     current_boot = device.text("sha256sum /dev/block/by-name/boot" + slot).split()[0]
     require(current_boot == combined["source_boot_sha256"], "current Android BOOT changed since packaging")
@@ -258,8 +255,8 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
                        "root_manifest_sha256": sha256(prepared_manifest) if prepared_manifest.is_file() else None,
                        "boot_manifest_sha256": sha256(boot / "device-boot-manifest.json")},
             "android_data_preserved": existing, "root_capacity": capacity,
-            "boot_request": {"device": combined["boot_request"]["boot_device"],
-                             "source": "root-install" if root else "first-boot-autoconfig"},
+            "boot_request": {"device": "/dev/disk/by-partlabel/boot" + slot,
+                             "source": "read-only Qualcomm GPT A/B attributes"},
             "device_writes": False}, snapshot
 
 

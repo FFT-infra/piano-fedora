@@ -128,7 +128,7 @@ def check_runtime_does_not_rebuild_camerad():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sunuefi", type=Path, default=Path(os.environ.get(
-        "PIANO_TEST_SUNUEFI", ROOT / "build/test-sunuefi")))
+        "PIANO_TEST_SUNUEFI", ROOT / "build/test-sources/sunuefi")))
     args = ap.parse_args()
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)

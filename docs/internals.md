@@ -90,7 +90,7 @@ slot 与相邻跳变分位数。速率按 SYN 报文统计，不按 ABS 事件�
 
 ## 本机 BOOT
 
-生成设备 BOOT 之前，先确认当前原 BOOT 的完整摘要、Slot A 槽位与系统版本。`prepare-device-boot.py` 用这些输入和同核心的 Actions 工具生成 `boot_android.img`、`boot_linux.img` 与 `boot-request.json`。默认目标是普通 Android。
+生成设备 BOOT 之前，先确认当前原 BOOT 的完整摘要、Slot A 槽位与系统版本。`prepare-device-boot.py` 用这些输入和同核心的 Actions 工具生成 `boot_android.img` 与 `boot_linux.img`，并在清单里记下 `active_slot` 与 `app_generation`。默认目标是普通 Android。
 
 包装后恢复必须得到完整原 BOOT 的同一 SHA256。Linux 持久请求、只读预览和改回 Android 后的再次完整恢复都要成功。文件检查替代不了真机旁路和 Recovery 验收。
 
@@ -188,13 +188,13 @@ root 文件系统与分区容量解耦。执行器要求 `expanded_bytes <= linu
 
 ESP 默认 512 MiB。ESP 分区必须和 `sunuefi_esp.img` 等大：镜像按 `product.json` 的 `esp_size_mib` 造出，执行器要求镜像字节数等于计划算出的 ESP 分区容量。两者不一致就停下。改过 `esp_size_mib` 就重跑 `build-bundle`，再在 `plan` 与 `apply` 上加同一个 `--esp-mib`。只有 `--esp-mib` 而没有配套的重建镜像时，执行器会在写设备前拒绝。
 
-`device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_a`（跟随 `--slot`），`app_generation` 必须与 `PianoUEFI-product.img` 的 APPv1 载荷一致。
+`device-boot-manifest.json` 的 `active_slot` 必须等于 `--slot`，`app_generation` 必须与 `PianoUEFI-product.img` 的 APPv1 载荷一致。上游 7dbabdc 之后不再有 `boot-request.json`：Linux 侧的活动槽由只读主备 GPT 与高通 A/B 属性判定，`piano-next-boot-helper` 读那份 BOOT 的实际 generation 后写请求页。
 
 3 秒选择器读请求页的位置是“正在引导的那份镜像”末尾：ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装在 Slot A，Android 与 Linux 都从同一份 `boot_a` 启动，请求页因此指向 `boot_a`。系统不切槽，也不存在第二份需要同步的页。
 
 合体 BOOT 方案不切槽，因此不触发 GPT 的槽位约束。槽位 type GUID 与 `qbootctl -s` 的坑见[已知问题](known-issues.md#双系统切换)。手工重建 GPT 时，主表和备份表要一起写。两份 CRC 都要重算。
 
-带了 `root-install` 时，镜像里的 `etc/piano/boot-request.json` 就是这条配置，`plan` 会逐字段核对。不带时镜像里没有这个文件，首启的 `piano-boot-request-autoconfig.service` 用 `qbootctl -c` 找到当前槽（首装后是 `_a`）后由 `piano-next-boot-configure` 重建。`plan` 的 `boot_request.source` 记下这次用的是哪一条。首启后不要猜测设备名或改槽。改错之后 Linux 的“返回 Android”和后续启动请求会失败。
+`plan` 把这次判定的依据写进 `boot_request.source`，值是 `read-only Qualcomm GPT A/B attributes`：活动槽在每次请求时由只读 GPT 现算，镜像里不再存槽位记录，所以不存在“配置与设备对不上”这条失败路径。`root-install` 只核对 `app_generation` 与 `android_slot`，不再往里写配置文件。
 
 ### 3. 执行破坏性首次分区并初始化 Android userdata
 
@@ -253,7 +253,7 @@ chmod +x flash-linux.sh
 
 脚本校验归档与 `root-install` 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 能装进实时 `sunuefi_root`。脚本拒绝 fastbootd、错误产品、多台设备和不完整材料。脚本只写 `boot_a`、`sunuefi_esp`、`sunuefi_root`，不切活动槽。
 
-首次安装拒绝 `--skip-checksum`。两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备从 Slot A 重启，请求页按 `device-boot/boot-request.json` 进入 Linux。
+首次安装拒绝 `--skip-checksum`。两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备从 Slot A 重启，选择器按 `boot_linux.img` 里的请求页进入 Linux。
 
 Windows 一键脚本用系统自带的 Windows PowerShell 读 JSON 清单。槽位与容量核对走 `ConvertFrom-Json`，找不到 `powershell` 就直接停下。
 

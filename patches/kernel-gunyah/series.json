@@ -3,7 +3,7 @@
   "target": "sunuefi",
   "note": "Fedora 正式内核默认包含完整 built-in Gunyah；驱动按锁定 commit 原样导入，源码清单供 SDK 重放核验。",
   "base": {
-    "sunuefi_commit": "2d4752a1455f6448ec0d300aece28ec6eb148b20"
+    "sunuefi_commit": "0a8ec14340c02d0c1febb25f1bb3af830485545e"
   },
   "patches": [
     {

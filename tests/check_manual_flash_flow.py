@@ -372,12 +372,17 @@ def main():
             failures.append("manual chapter does not verify the prepared root capacity")
         if "expanded_bytes" not in chapter:
             failures.append("manual chapter does not bind root capacity to the manifest")
-        # 请求页在"正在引导的那份镜像"末尾；合体 BOOT 装进当前槽 A，
-        # 所以 boot-request 必须指向 boot_a。
-        if "/dev/disk/by-partlabel/boot_a`" not in document:
-            failures.append("first-install boot request is not documented as boot_a")
+        # 请求页在"正在引导的那份镜像"末尾；合体 BOOT 装进当前槽 A。
+        # 上游 7dbabdc 之后不再有 boot-request.json，活动槽由只读 GPT 与
+        # 高通 A/B 属性判定，文档要写这条判定依据而不是旧配置文件。
+        if "`boot_a`" not in document:
+            failures.append("first-install slot is not documented as boot_a")
         if "/dev/disk/by-partlabel/boot_b`" in document:
             failures.append("first-install boot request is still documented as boot_b")
+        if "高通 A/B 属性" not in document:
+            failures.append("installation guide does not document how the active slot is chosen")
+        if "boot-request.json" in document:
+            failures.append("installation guide still documents the removed boot-request.json")
 
         # The install-time SSH key is documented in both paths: the one-click
         # installer takes --ssh-key, and the manual path writes the key with

@@ -23,7 +23,7 @@ TOOL = ROOT / "scripts" / "stage-rootfs-payload.py"
 RELEASE = "7.3.0-fixture"
 
 # 与研究仓库同级；不存在时只跳过需要真实 SunUEFI 的用例。
-SUNUEFI = Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT / "build/test-sunuefi"))
+SUNUEFI = Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT / "build/test-sources/sunuefi"))
 
 
 def run(*args):

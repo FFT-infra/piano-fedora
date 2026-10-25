@@ -25,10 +25,14 @@ BOOT_PARTITION_BYTES = 96 * 1024**2
 # probe/request/adopt 会把首块与包装器里保存的原厂头逐字节比较，改偏移 16
 # 会让 Android 侧的引导助手认不出当前 BOOT，切 Linux 直接失败。
 #
-# boot-request.json 记录 Linux 的 helper 去哪张分区读写请求页。ABL 只加载当前槽
-# 的 BOOT，选择器在 BootSelect.c 里按 Base + align(original_image_size) 在“正在
-# 引导的那份镜像”末尾取请求页。合体 BOOT 装进 Android 的当前槽（首装是 A），
-# 运行 Linux 时被读到的就是这张分区的页；不再切活动槽，配置因此跟着 --slot 走。
+# ABL 只加载当前槽的 BOOT，选择器在 BootSelect.c 里按
+# Base + align(original_image_size) 在“正在引导的那份镜像”末尾取请求页。
+# 合体 BOOT 装进 Android 的当前槽（首装是 A），运行 Linux 时被读到的就是
+# 这张分区的页；不再切活动槽，包装因此跟着 --slot 走。
+#
+# 上游 7dbabdc 之后，Linux 侧不再有 boot-request.json：piano-next-boot-helper
+# 直接读主备 GPT 与高通 A/B 属性定位活动槽，再读那份 BOOT 的实际 generation。
+# 所以这里只产出镜像与清单，不生成配置文件。
 
 
 def checked_file(path, record):
@@ -120,20 +124,24 @@ def prepare(stock, tools, host_tool, bundle, slot, source_sha, output):
 
     # 上一步的 request 已经把 linux 请求页写进 boot_linux.img；镜像保持
     # piano-boot-repack 的 unsigned NONE 元数据，不再补签名或 os_version。
-    config = {"version": 1, "boot_device": "/dev/disk/by-partlabel/boot" + slot,
-              "app_generation": app_sha[:32]}
-    (output / "boot-request.json").write_text(json.dumps(config, indent=2) + "\n")
+    #
+    # 上游 7dbabdc 删掉了 /etc/piano/boot-request.json：Linux 侧的
+    # piano-next-boot-helper 改为直接读主备 GPT 与高通 A/B 属性定位活动槽，
+    # 不再依赖 ESP 或 root 里的槽位记录。这里因此不再生成配置文件，只记录
+    # 这次包装针对哪个槽，供安装计划交叉核对。
     record = {"schema_version": 1, "status": "DEVICE_BOOT_FILE_VERIFIED_NOT_DEVICE_BOOTED",
-              "active_slot": slot, "source_boot_sha256": source_sha,
+              "active_slot": slot, "app_generation": app_sha[:32],
+              "source_boot_sha256": source_sha,
               "uefi_product_sha256": sha256(product / "PianoUEFI-product.img"),
               "host_tool_sha256": sha256(native), "native_tool_sha256": sha256(tools / "native/piano-boot-repack"),
               "source_probe": source_probe, "repack": repack, "restore": restore,
               "requests": requests, "restore_after_request": restore_after_request,
-              "byte_equal_restoration": True, "boot_request": config,
+              "byte_equal_restoration": True,
+              "boot_device_detection": "read-only Qualcomm GPT A/B attributes",
               "device_passthrough_verified": False, "standard_recovery_verified": False,
               "device_operation_performed": False,
               "files": {name: {"bytes": (output / name).stat().st_size, "sha256": sha256(output / name)}
-                        for name in ("boot_android.img", "boot_linux.img", "boot-request.json")}}
+                        for name in ("boot_android.img", "boot_linux.img")}}
     manifest = output / "device-boot-manifest.json"
     manifest.write_text(json.dumps(record, indent=2) + "\n")
     (output / "SHA256SUMS").write_text("".join(sha256(p) + "  " + p.name + "\n"
@@ -154,7 +162,8 @@ def main():
     args = ap.parse_args()
     result = prepare(args.stock_boot, args.boot_tools, args.host_tool, args.bundle,
                      args.slot, args.source_sha256, args.output)
-    print(json.dumps({"status": result["status"], "boot_request": result["boot_request"]}))
+    print(json.dumps({"status": result["status"], "active_slot": result["active_slot"],
+                      "boot_device_detection": result["boot_device_detection"]}))
 
 
 if __name__ == "__main__":

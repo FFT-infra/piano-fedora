@@ -83,6 +83,7 @@ resolve_board_dtb() {
     local candidate
     for candidate in \
         "$REPO_ROOT/out/esp-files-a485-20261015/board.dtb" \
+        "$REPO_ROOT/build/test-sources/sunuefi/vendor/piano-linux/board.dtb" \
         "$REPO_ROOT/build/test-sunuefi/vendor/piano-linux/board.dtb" \
         "$REPO_ROOT/build/sources/sunuefi/vendor/piano-linux/board.dtb"; do
         if [ -s "$candidate" ]; then
@@ -232,6 +233,7 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
             TAR_NAME="${pkg}-${PKG_VERSION}.tar.gz"
             echo "--> Archiving local package sources to $TAR_NAME..."
             tar -czf "$BUILD_TMP/SOURCES/$TAR_NAME" \
+                --exclude='__pycache__' --exclude='*.pyc' \
                 --transform "s,^\.,${pkg}-${PKG_VERSION}," \
                 -C "$PACKAGES_DIR/$pkg" .
         fi
