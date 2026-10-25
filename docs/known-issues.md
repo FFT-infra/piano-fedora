@@ -439,6 +439,19 @@ event buffer 页）——本驱动的页选择在 `nvt_set_page()` 里按需做�
 `piano_defconfig` + `linux/configs/*.config`，没有消费上游的片段，所以这些要单独
 决定加不加。
 
+搬进来的驱动改动里有两条在本机是**未生效路径**，不能算成修复：
+
+- `media: i2c: dw9768` 的 GT9764 序列按 `giantec,gt9764` 选择。本机 `board.dtb`
+  的对焦执行器是 `giantec,gt9769`，上游自己的
+  `sm8750-xiaomi-piano-camera.dtsi` 里那个节点也是 `status = "disabled"`。代码编进
+  去了，但没有设备会匹配它。
+- `usb: typec: mux: fsa4480` 的 DIO4485 支持按 `dioo,dio4485` 选择。本机
+  `board.dtb` 的 `fsa4480@42` 是原厂 compatible `qcom,fsa4480-i2c`，驱动的
+  `of_match` 不认，所以这个节点根本没绑定过。
+
+要让这两条真正生效，得先改板级 DTB 的 compatible，属于设备树来源的问题，和上面
+那 63 条 DTS 提交是同一个前提。
+
 ## 仓库整理
 
 - `README.md` 与 `README.en.md` 的骨架由 `tests/check_readme_parity.py` 锁定：
