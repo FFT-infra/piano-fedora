@@ -401,6 +401,44 @@ manifest 按 NVRA 命名（`/usr/share/piano/kernel-manifest-<version>-<release>
 固定名字会让两个版本争同一个路径，rpm 直接中止升级事务——这条在设备上撞过
 一次，症状是 `file ... conflicts with file from package`。
 
+## 上游修复的可移植边界
+
+2026-10-25 把 `yzddmr6/linux-sm8750-piano` 的 `piano/dev`（`ba725ea02c`）逐条对照了
+一遍：237 个非合并提交，按当前 7.3 树分类，47 条已在本树、10 条可直接应用、24 条
+三方合并可解、156 条被挡。挡住的按原因分：
+
+| 条数 | 原因 |
+| --- | --- |
+| 63 | 改 `sm8750-xiaomi-piano.dts`。本机 DTB 不来自内核 DTS，见下 |
+| 26 | 只改上游自己的 config 片段（`piano-persistent`/`piano-release` 等），我们不消费 |
+| 20 | `nt36532e-thp` 重写版驱动。本机用原厂 `nt36xxx.c` 移植，见下 |
+| 17 | 面板驱动模块选择、ktz8866、ath12k 等已在或已单独处理 |
+| 14 | `xiaomi_mca`/`sc8541` 驱动，本树没有这两个文件 |
+| 10 | `Revert "..."`，被 revert 的提交从来不在本树 |
+| 6 | `hid-nanosic` 重写版 |
+
+两类结构性原因值得单独记：
+
+**本机设备树不是内核 DTS。** `build.sh` 打包时用
+`--dtb vendor/piano-linux/board.dtb`，再加 `config/release.json` 的 15 个
+`.dtso`。内核 `arch/arm64/boot/dts/qcom/sm8750-xiaomi-piano.dts` 不参与设备启动。
+所以上游所有 `arm64: dts: qcom: sm8750-xiaomi-piano: ...` 提交都搬不过来；要搬
+得先换 DTB 来源，那是另一件事。LLCC 的 compatible 不匹配也出自同一处。
+
+**触控是两套驱动。** 上游把触控重写成 `drivers/input/touchscreen/nt36532e-thp/`
+（`core.c` 等），本机是原厂 `nt36xxx.c` 的 2696 行移植。逐条核过三条修正在本驱动
+里不成立：`11b207f747`（不要求 `actual_length`）——本驱动的 `spi_read_write()`
+不读这个字段；`e6c332c614`（容忍一次帧读失败）——本驱动帧读失败只记一条
+`CTP_SPI_READ failed` 就返回 `IRQ_HANDLED`，不会停流；`ba725ea02c`（每流只选一次
+event buffer 页）——本驱动的页选择在 `nvt_set_page()` 里按需做。要拿这些收益得先
+把驱动换成上游那套。
+
+上游 `piano-persistent.config` 里有一批本机没开的选项，属于真实缺口但都不影响
+当前可用性：`CONFIG_PSI`（systemd-oomd 依赖）、`FW_LOADER_COMPRESS_{XZ,ZSTD}`、
+`USB_UAS`、`EXFAT_FS`、`WIREGUARD`、`SECURITY_YAMA`、`BPF_LSM`。我们的配置来自
+`piano_defconfig` + `linux/configs/*.config`，没有消费上游的片段，所以这些要单独
+决定加不加。
+
 ## 仓库整理
 
 - `README.md` 与 `README.en.md` 的骨架由 `tests/check_readme_parity.py` 锁定：
