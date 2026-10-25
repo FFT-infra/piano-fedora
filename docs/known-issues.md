@@ -403,19 +403,37 @@ manifest 按 NVRA 命名（`/usr/share/piano/kernel-manifest-<version>-<release>
 
 ## 上游修复的可移植边界
 
-2026-10-25 把 `yzddmr6/linux-sm8750-piano` 的 `piano/dev`（`ba725ea02c`）逐条对照了
-一遍：237 个非合并提交，按当前 7.3 树分类，47 条已在本树、10 条可直接应用、24 条
-三方合并可解、156 条被挡。挡住的按原因分：
+2026-10-25 把 `yzddmr6/linux-sm8750-piano` 的 `piano/dev`（`235ab34e2`）逐条对照了
+一遍。基线取 `v7.2.6`（`500df175a`），到分支末端共 1011 个非合并提交，按当前 7.3 树
+分类：643 条已在本树、29 条可直接应用、339 条被挡。
+
+上一轮只按 `--author=yzddmr6` 过滤，漏掉了上游从主线 cherry-pick 进来的整批提交
+（带 `(cherry picked from commit ...)` 的行），那批有 18 条真修复。按作者过滤不能
+当判据。
+
+29 条可直接应用的里 18 条已收成封存序列 `0037`–`0054`。挡住的 339 条按原因分：
 
 | 条数 | 原因 |
 | --- | --- |
-| 63 | 改 `sm8750-xiaomi-piano.dts`。本机 DTB 不来自内核 DTS，见下 |
-| 26 | 只改上游自己的 config 片段（`piano-persistent`/`piano-release` 等），我们不消费 |
+| 178 | 上下文冲突。绝大多数是 7.2.10 的 stable 回填，7.3 里已有更新版本；少数是上游自己的改动与 7.3 基线不同 |
+| 77 | 改 `arch/arm64/boot/dts/qcom/` 下的内核 DTS。本机 DTB 不来自内核 DTS，见下 |
+| 28 | 只改上游自己的 config 片段（`piano-persistent`/`piano-release` 等），我们不消费 |
 | 20 | `nt36532e-thp` 重写版驱动。本机用原厂 `nt36xxx.c` 移植，见下 |
-| 17 | 面板驱动模块选择、ktz8866、ath12k 等已在或已单独处理 |
-| 14 | `xiaomi_mca`/`sc8541` 驱动，本树没有这两个文件 |
-| 10 | `Revert "..."`，被 revert 的提交从来不在本树 |
-| 6 | `hid-nanosic` 重写版 |
+| 15 | `xiaomi_mca`/`sc8541` 驱动，本树没有这两个文件 |
+| 11 | `Revert "..."`，被 revert 的提交从来不在本树 |
+| 9 | `hid-nanosic` 重写版 |
+| 1 | 目标文件在本树不存在 |
+
+另外 11 条能干净应用但没取，各有具体原因：
+
+| 提交 | 不取的原因 |
+| --- | --- |
+| `1e23b49b80`、`48879e6e07`、`1d02527d1d`、`f35c680290` | 上游自己 revert 了；GPU 那两条由 `cbb3f4900b`（已取，`0040`）替代 |
+| `ecb9d2588b`、`c78194b27b`、`ec181b09d9` | 改 `sm8750.dtsi`，本机 DTB 不来自内核 DTS |
+| `7cfa3bd691` | revert Adreno 830 支持，会删掉我们移植的 288 行 catalog |
+| `ac637afc63` | 把功放上限放宽到 231，我们保留 215 |
+| `925bbbba6e` | 7.3 的 `rpmhpd_update_level_mapping()` 已全局跳过 retention，无 per-PD 字段 |
+| `8c4edb0399` | revert DPU 清理顺序，与我们自己的 `0025` 冲突；上游随后用 `c55958fa0` 重落了同一件事 |
 
 两类结构性原因值得单独记：
 
@@ -434,17 +452,22 @@ event buffer 页）——本驱动的页选择在 `nvt_set_page()` 里按需做�
 把驱动换成上游那套。
 
 搬进来的部分按子系统收成 6 个 commit，追加在封存序列 `0029` 之后
-（`0030`–`0035`），`target_tree` 推进到 `0af8bebf4bd6`。有六处没有照抄上游：
+（`0030`–`0035`），另有 `0036`（GLINK 暂存早期消息）和 `0037`–`0054`（18 条主线
+cherry-pick）。有六处没有照抄上游：
 
 - `ktz8866` 的 `DEFAULT_BRIGHTNESS` 保持 1500。上游那条会把开机亮度一起改掉，
   不在这次范围里。同一文件的可读寄存器表、`FLAG` 读后清零、HWEN 上电时序和
   错误上报是本轮自己写的，不是上游原文。
-- 功放增益上限保持 215。上游把它放宽到 231，同时自己注明那不是验证过的安全上限。
+- 功放增益上限保持 215。上游 `ac637afc63` 把它放宽到 231，同时自己注明那不是
+  验证过的安全上限。
 - `7cfa3bd691` 会删掉我们移植的 A830 支持，整条不要。
 - `69421e5de9` 把 fs19xx 的真 bug 修和默认音量改动混在一起，只取前者。
 - `925bbbba6e` 在 7.3 是空操作：7.3 的 `rpmhpd_update_level_mapping()` 已经全局
   跳过 `RPMH_REGULATOR_LEVEL_RETENTION`，没有 per-PD 的 `skip_retention_level` 字段。
 - `clk_test.c` 保留本树的 `HZ_PER_MHZ` 写法，只取上游新增的孤儿时钟接管测试。
+- `8c4edb0399` 与我们的 `0025` 冲突：上游先 revert 了「清理放在停时序之前」，
+  又用 `c55958fa0` 重新落地 slave 清理。我们 `0025` 的写法与 `c55958fa0` 等价，
+  所以不跟这条 revert。
 
 上游 `piano-persistent.config` 里有一批本机没开的选项，属于真实缺口但都不影响
 当前可用性：`CONFIG_PSI`（systemd-oomd 依赖）、`FW_LOADER_COMPRESS_{XZ,ZSTD}`、
