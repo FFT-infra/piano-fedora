@@ -5,8 +5,8 @@
   "sources": {
     "dtc": {
       "url": "https://github.com/dgibson/dtc.git",
-      "ref": "v1.8.1",
-      "commit": "8f48565e5cfedc74d3f7512f1e0188e9d85dc1de",
+      "ref": "main",
+      "commit": "f99e3af0ecb67a9085478a9b8ddbcc25aa64931d",
       "role": "设备树打包工具：保留覆盖层目标节点已有 phandle 的 libfdt 1.8.1"
     },
     "sunuefi": {
@@ -53,8 +53,8 @@
     },
     "fastrpc": {
       "url": "https://github.com/qualcomm/fastrpc.git",
-      "ref": "v1.0.8",
-      "commit": "d247519650fe5cb16de6c78edaa95bcc4be25073",
+      "ref": "development",
+      "commit": "a56e9d4de3614a8d8f4b0e15ff561350c4b686e3",
       "role": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd"
     },
     "librevm": {

@@ -42,7 +42,7 @@ def put(source, destination, executable=False):
         destination.chmod(0o755 if executable else 0o644)
 
 
-def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0", license_expression="MIT AND Apache-2.0 AND BSD-2-Clause-Patent AND BSD-3-Clause AND GPL-2.0-only"):
+def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0", release="1", license_expression="MIT AND Apache-2.0 AND BSD-2-Clause-Patent AND BSD-3-Clause AND GPL-2.0-only"):
     """自有 RPM 只拥有实际载荷文件，不声明拥有整个 /usr 或系统目录。"""
     top = output / (name + "-rpmbuild")
     for folder in ("BUILD", "BUILDROOT", "SPECS", "SOURCES", "RPMS", "SRPMS"):
@@ -56,7 +56,7 @@ def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0"
     spec.write_text(
         "%global __os_install_post %{nil}\n"
         "%global debug_package %{nil}\n%global _build_id_links none\n"
-        f"Name: {name}\nVersion: {version}\nRelease: 1%{{?dist}}\n"
+        f"Name: {name}\nVersion: {version}\nRelease: {release}%{{?dist}}\n"
         "Summary: Piano native runtime built from locked sources\n"
         f"License: {license_expression}\n"
         f"Source0: {name}-{version}.tar.gz\n"
@@ -247,9 +247,14 @@ def build(args):
     for name in ("adsprpcd-sensorspd.service", "piano-sensors-import.service"):
         put(integration / "debian" / ("piano-sensors." + name), payload / "usr/lib/systemd/system" / name)
     # Fedora merged-usr 的 canonical 路径；不要依赖 Debian 的 /usr/sbin 布局。
+    # RestartPreventExitStatus=32 是 fastrpc 上游 v1.0.8 之后那两条 EBUSY 修复
+    # 的另一半。dsprpcd.c 现在遇到 AEE_EITEMBUSY（AEE_EOFFSET + 0x20，非
+    # hexagon 下就是 32）会跳出重试循环退出；unit 这边如果只留 Restart=on-failure，
+    # systemd 会每 5 秒把它拉起来再撞一次同样的忙状态，变成无限重启。
     dropin = payload / "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf"
     dropin.parent.mkdir(parents=True, exist_ok=True)
-    dropin.write_text("[Service]\nExecStart=\nExecStart=/usr/bin/adsprpcd sensorspd\n")
+    dropin.write_text("[Service]\nExecStart=\nExecStart=/usr/bin/adsprpcd sensorspd\n"
+                      "RestartPreventExitStatus=32\n")
     fastrpc_proof["service_sha256"] = {
         name: sha256(payload / name) for name in (
             "usr/lib/systemd/system/adsprpcd-sensorspd.service",
@@ -274,7 +279,10 @@ def build(args):
     dest = payload / "usr/share/piano-provenance/fedora-runtime.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(provenance, indent=2) + "\n")
-    rpm_package("piano-runtime", payload, output, version="0.2.0",
+    # Release 2：adsprpcd 跟到 fastrpc `development`（v1.0.8 之后的两条 EBUSY
+    # 修复），dropin 加上 RestartPreventExitStatus=32。已装设备的 0.2.0-1 里
+    # dropin 没有这一行，同 NEVRA 不同字节会让 dnf 认成「已是最新」装不上。
+    rpm_package("piano-runtime", payload, output, version="0.2.0", release="2",
                 requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
                           "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils",
                           # piano-sensors-import reads the Android odm/vendor EROFS

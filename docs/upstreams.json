@@ -5,14 +5,14 @@
   "repositories": [
     {
       "repo": "dgibson/dtc",
-      "ref": "v1.8.1",
+      "ref": "main",
       "category": "build",
       "role": "设备树覆盖层打包工具",
       "decision": "consume",
       "lock_key": "dtc",
-      "reason": "libfdt 1.6.1 会覆盖触屏关联覆盖层目标节点的既有 phandle；锁定 1.8.1",
-      "reference_commit": "8f48565e5cfedc74d3f7512f1e0188e9d85dc1de",
-      "reference_date": "2026-05-28"
+      "reason": "libfdt 1.6.1 会覆盖触屏关联覆盖层目标节点的既有 phandle；1.8.1 之后仍无新 tag，跟 main",
+      "reference_commit": "f99e3af0ecb67a9085478a9b8ddbcc25aa64931d",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "CodeLinaro-mirror/linux-kernel_gunyah-linux",
@@ -684,14 +684,14 @@
     },
     {
       "repo": "qualcomm/fastrpc",
-      "ref": "v1.0.8",
+      "ref": "development",
       "category": "adsprpcd 源码",
       "role": "adsprpcd 源码",
       "decision": "consume",
-      "reason": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd",
+      "reason": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd。上游默认分支是 development，v1.0.8 之后的两条 EBUSY 退出修复只在那里",
       "lock_key": "fastrpc",
-      "reference_commit": "d247519650fe5cb16de6c78edaa95bcc4be25073",
-      "reference_date": "2026-09-11"
+      "reference_commit": "a56e9d4de3614a8d8f4b0e15ff561350c4b686e3",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "ravindu644/Droidspaces-OSS",
@@ -897,7 +897,7 @@
     },
     {
       "repo": "radxa-pkg/libva-v4l2",
-      "ref": "v1.0.0",
+      "ref": "master",
       "category": "Qualcomm Iris stateful V4L2 VA-API 后端（硬件解码 + H.264/HEVC 编码）",
       "role": "Qualcomm Iris stateful V4L2 VA-API 后端（硬件解码 + H.264/HEVC 编码）",
       "decision": "consume",
