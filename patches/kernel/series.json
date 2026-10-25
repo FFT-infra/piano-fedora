@@ -56,6 +56,34 @@
       "creates": [
         "patches/linux/7.3/0036-rpmsg-glink-hold-early-messages.patch"
       ]
+    },
+    {
+      "file": "0005-linux-73-mainline-cherry-picks.patch",
+      "summary": "把上游 piano/dev 里 18 条能干净落地的主线 cherry-pick 加进 7.3 封存序列（APR 回调时序、UFS 健康事件 quirk、ath12k 两条、GPU RPMH 依赖投票、mptcp、DPU 带宽与文档、Iris 三处、UCSI、DP 两条、tzmem、clk 孤儿、qmp-combo），target_tree 推进到 81c0383e",
+      "targets": {
+        "config/release.json": "9c5b54e2aff22bbd70cddb10bde4c7e8e86725c796b5eef39f22a8f5700eb5d5",
+        "patches/linux/7.3/series.json": "090810b47c74b7c0e7e4d7d14fa914dd24d076f9ab7aa7709193fc3189b7fad9"
+      },
+      "creates": [
+        "patches/linux/7.3/0037-soc-apr-gpr-callback-before-probe.patch",
+        "patches/linux/7.3/0038-scsi-ufs-skip-refused-health-critical.patch",
+        "patches/linux/7.3/0039-ath12k-wcn7860-disable-qdss-cfg-miss.patch",
+        "patches/linux/7.3/0040-drm-a6xx-rpmh-dependency-votes.patch",
+        "patches/linux/7.3/0041-ath12k-scan-during-recovery.patch",
+        "patches/linux/7.3/0042-mptcp-timer-ival-reset.patch",
+        "patches/linux/7.3/0043-drm-dpu-crtc-bandwidth-from-state.patch",
+        "patches/linux/7.3/0044-iris-guard-null-hfi-sys-ops.patch",
+        "patches/linux/7.3/0045-iris-cancel-sys-error-work.patch",
+        "patches/linux/7.3/0046-iris-disable-irq-nosync.patch",
+        "patches/linux/7.3/0047-drm-dpu-mdss-kernel-doc.patch",
+        "patches/linux/7.3/0048-dt-bindings-regdma-conditional.patch",
+        "patches/linux/7.3/0049-usb-ucsi-connector-before-notify.patch",
+        "patches/linux/7.3/0050-drm-dp-link-training-after-reinit.patch",
+        "patches/linux/7.3/0051-drm-dp-serialize-hpd-state.patch",
+        "patches/linux/7.3/0052-qcom-tzmem-do-once-sleepable.patch",
+        "patches/linux/7.3/0053-clk-rpm-enable-before-orphans.patch",
+        "patches/linux/7.3/0054-phy-qmp-combo-typec-mux-committed.patch"
+      ]
     }
   ]
 }
