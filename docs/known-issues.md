@@ -433,6 +433,19 @@ manifest 按 NVRA 命名（`/usr/share/piano/kernel-manifest-<version>-<release>
 event buffer 页）——本驱动的页选择在 `nvt_set_page()` 里按需做。要拿这些收益得先
 把驱动换成上游那套。
 
+搬进来的部分按子系统收成 6 个 commit，追加在封存序列 `0029` 之后
+（`0030`–`0035`），`target_tree` 推进到 `0af8bebf4bd6`。有六处没有照抄上游：
+
+- `ktz8866` 的 `DEFAULT_BRIGHTNESS` 保持 1500。上游那条会把开机亮度一起改掉，
+  不在这次范围里。同一文件的可读寄存器表、`FLAG` 读后清零、HWEN 上电时序和
+  错误上报是本轮自己写的，不是上游原文。
+- 功放增益上限保持 215。上游把它放宽到 231，同时自己注明那不是验证过的安全上限。
+- `7cfa3bd691` 会删掉我们移植的 A830 支持，整条不要。
+- `69421e5de9` 把 fs19xx 的真 bug 修和默认音量改动混在一起，只取前者。
+- `925bbbba6e` 在 7.3 是空操作：7.3 的 `rpmhpd_update_level_mapping()` 已经全局
+  跳过 `RPMH_REGULATOR_LEVEL_RETENTION`，没有 per-PD 的 `skip_retention_level` 字段。
+- `clk_test.c` 保留本树的 `HZ_PER_MHZ` 写法，只取上游新增的孤儿时钟接管测试。
+
 上游 `piano-persistent.config` 里有一批本机没开的选项，属于真实缺口但都不影响
 当前可用性：`CONFIG_PSI`（systemd-oomd 依赖）、`FW_LOADER_COMPRESS_{XZ,ZSTD}`、
 `USB_UAS`、`EXFAT_FS`、`WIREGUARD`、`SECURITY_YAMA`、`BPF_LSM`。我们的配置来自
