@@ -79,10 +79,22 @@ UEFI 按原厂 ABL 的 `msm_drm.dsi_display0` 改写面板 `compatible`，实机
 里有 2678 次正好落在 system domain 内；把 CPU 延迟上限压到 2000 us（高于
 cluster 状态的 1983 us）之后，每次读都在 2.0–2.7 ms。
 
-补丁作为 0029 进了 7.3 封存序列，`target_tree` 为 `81983254f51a`。2026-10-26
-`kernel-piano-7.3.0-4` 已装进真机并启动，0029 在里面，但读延迟本身还没量过。
-验收办法是在同一启动里对比 `/sys/kernel/debug/tracing` 的 `cpu_idle` 事件与新读
-耗时，或在触控固件扫描时看是否还有整屏泛白。
+补丁作为 0029 进了 7.3 封存序列，`target_tree` 为 `81983254f51a`。
+2026-10-26 `kernel-piano-7.3.0-4` 装进真机后量过，两件事都成立：
+
+```
+$ grep pm_qos_update_request /sys/kernel/tracing/trace | head -2
+ irq/215-NVT-ts--1100  pm_qos_update_request: CPU_DMA_LATENCY value=2000
+ irq/215-NVT-ts--1100  pm_qos_update_request: CPU_DMA_LATENCY value=-1
+```
+
+每次 SPI 消息都把 CPU 延迟上限压到 2000 us、用完恢复。配对这两条事件得到
+4799 次传输的耗时：p50 231 us、p95 2424 us、p99 2452 us、max 2513 us，
+**没有一次超过 3.5 ms**，4.85 ms 那簇不再出现。上游记的修复后区间是
+2.0–2.7 ms，量到的尾部与之吻合。
+
+这条不能靠「没看到整屏泛白」判定：没有对照内核时，泛白本身也不是每次都会
+出现。耗时分布才是判据。
 
 ## 系统缓存（LLCC）没有生效
 
