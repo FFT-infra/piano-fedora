@@ -29,6 +29,22 @@
       "creates": [
         "patches/linux/7.3/0029-spi-geni-gpi-dma-deep-idle.patch"
       ]
+    },
+    {
+      "file": "0003-linux-73-upstream-2026-10.patch",
+      "summary": "把 yzddmr6 上游 2026-10 的六组修复并进 7.3 封存序列（绑定与诊断配置、孤儿时钟接管与 SM8750 MDSS 域、REGDMA 拆除与 DSI FIFO 诊断、Iris 时间戳与 ktz8866 HWEN、ath12k/电源/PMIC GLINK、tx-macro 通道掩码），target_tree 推进到 0af8bebf",
+      "targets": {
+        "config/release.json": "3dbb3f7eec8938d5e284c89d6fd78fe03906bb838af86dc00f1dd0bd8b527da2",
+        "patches/linux/7.3/series.json": "8b4a9d8cb8f0286c71a0a8c36e4fb501614962990dcb485a2f0941b6438a9d7e"
+      },
+      "creates": [
+        "patches/linux/7.3/0030-bindings-and-diag-configs.patch",
+        "patches/linux/7.3/0031-clk-orphan-and-sm8750-mdss-domain.patch",
+        "patches/linux/7.3/0032-drm-regdma-and-dsi-diagnostics.patch",
+        "patches/linux/7.3/0033-iris-metadata-and-ktz8866-hwen.patch",
+        "patches/linux/7.3/0034-ath12k-power-soc-usb.patch",
+        "patches/linux/7.3/0035-asoc-tx-macro-channel-mask.patch"
+      ]
     }
   ]
 }
