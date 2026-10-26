@@ -429,7 +429,14 @@ manifest 按 NVRA 命名（`/usr/share/piano/kernel-manifest-<version>-<release>
 29 条可直接应用的里 18 条已收成封存序列 `0037`–`0054`，另有 `0055`（iris 关电等
 线程化 IRQ 退出）来自 339 条里的 `0adb163ceb`——它和已取的 `041e33ce19` 是同一组
 修复的两步，只取前一步会留下 `disable_irq_nosync` 后线程化 handler 访问已断电硬件
-的窗口。挡住的 339 条按原因分：
+的窗口。
+
+2026-10-26 上游 `piano/dev` 推进到 `9321086f2e2`（共 10 条新提交，2 条 merge + 8 条主题）：
+- UFS MCQ 多队列支持（`c155f0cfe97`、`d21a171ee48`，对应本序列 `0056`、`0057`）
+- PMIC5 Gen4 ADC、PMK8550 ADC 与 11 路板级测温传感器（`ff6018d383a`、`5812ec75bb0`、`fa38723bd8c`、`43dd63f2f45`、`898cec7421c`，对应本序列 `0058`–`0062`）
+已并入封存序列并重放，`target_tree` 推进到 `783e27278886`。唯一未取的是上游自己的 `bd273459857`（改 `piano-persistent.config`）：本树内核编译由 SunUEFI 的 `piano_defconfig` 与 `piano-platform.config` 管控，其中 `CONFIG_GENERIC_ADC_THERMAL=m` 已内建，ADC 驱动配置由平台层接管。
+
+挡住的 339 条按原因分：
 
 | 条数 | 原因 |
 | --- | --- |
