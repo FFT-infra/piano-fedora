@@ -3,7 +3,6 @@
 
 import argparse
 import difflib
-import importlib.util
 import json
 import shutil
 import subprocess
@@ -29,53 +28,20 @@ def run(command, **kw):
     subprocess.run([str(x) for x in command], check=True, **kw)
 
 
-def replay_gunyah_source(sun, prepared, record, proof_path, output):
-    """按同一锁定输入重放派生树，再与正式内核清单逐项比较。"""
-    proof = json.loads(proof_path.read_text())
-    lock = json.loads((Path(__file__).resolve().parents[1] / "sources.lock.json").read_text())
-    pin = lock["sources"]["gunyah-driver"]["commit"]
-    if (proof.get("schema_version") != 2
-            or proof.get("parent_kernel") != {"commit": prepared["actual_commit"],
-                                               "tree": prepared["actual_tree"]}
-            or proof.get("driver_source") != {"commit": pin}
-            or proof.get("derived") != {"commit": record["source_commit"],
-                                         "tree": record["source_tree"]}):
-        raise ValueError("Gunyah source proof differs from the locked inputs or sealed kernel")
-    path = Path(__file__).with_name("prepare-gunyah-source.py")
-    spec = importlib.util.spec_from_file_location("gunyah_source", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    parent = {"source_commit": prepared["actual_commit"], "source_tree": prepared["actual_tree"]}
-    plan = module.build_plan(parent, Path(prepared["worktree"]),
-                             sun / "upstream/gunyah-driver", output / "gunyah-source", pin)
-    replayed = module.execute_plan(plan)
-    if replayed != proof:
-        raise ValueError("replayed Gunyah source differs from the production build proof")
-    return {"worktree": plan["output"], "actual_commit": replayed["derived"]["commit"],
-            "actual_tree": replayed["derived"]["tree"]}
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     for name in ("sunuefi", "kernel", "sdk", "output"):
         ap.add_argument("--" + name, required=True, type=Path)
-    ap.add_argument("--gunyah-source-proof", type=Path,
-                    help="正式内核随附的源码派生清单；重放锁定驱动后才允许编译模块")
     args = ap.parse_args()
-    if args.gunyah_source_proof is None:
-        args.gunyah_source_proof = args.sdk / "kernel-gunyah-source.json"
-    if not args.gunyah_source_proof.is_file():
-        ap.error("production kernel SDK requires kernel-gunyah-source.json")
     sun, kernel, sdk, output = [getattr(args, name).resolve() for name in ("sunuefi", "kernel", "sdk", "output")]
     record, kernel_hash = inspect_kernel(kernel)
     if sha256(sdk / "kernel-sdk-manifest.json") != kernel_hash:
         raise ValueError("SDK does not belong to the selected sealed kernel")
     output.mkdir(parents=True, exist_ok=False)
     run(["python3", sun / "tools/prepare_release_kernel.py", "--refresh"], cwd=sun)
-    prepared = json.loads((sun / "build/release-7.2.9/source-manifest.json").read_text())
-    if args.gunyah_source_proof:
-        prepared = replay_gunyah_source(sun, prepared, record,
-                                        args.gunyah_source_proof.resolve(), output)
+    # 7.3 的封存序列自带 Gunyah 驱动（序列里的 0006），派生树就是准备工具
+    # 重放出来的那棵，不再有第二遍导入和对应的重放证明。
+    prepared = json.loads((sun / "build/release/source-manifest.json").read_text())
     if (prepared["actual_commit"], prepared["actual_tree"]) != (record["source_commit"], record["source_tree"]):
         raise ValueError("replayed kernel source differs from the artifact")
     archive = next(sdk.glob("kernel-sdk-*.tar.zst"))
@@ -90,8 +56,11 @@ def main():
     build.mkdir(parents=True)
     shutil.copy2(restored / ".config", build / ".config")
     shutil.copy2(restored / "Module.symvers", build / "Module.symvers")
+    # LOCALVERSION 必须显式置空：不置空时 setlocalversion 会给发布串补一个 "+"，
+    # 外部模块的 vermagic 就与封存内核对不上，而封存内核自身是以 LOCALVERSION=
+    # 构建的。
     command = ["make", "-C", prepared["worktree"], "O=" + str(build),
-               "ARCH=arm64", "LLVM=1", "LLVM_IAS=1"]
+               "ARCH=arm64", "LLVM=1", "LLVM_IAS=1", "LOCALVERSION="]
     run([*command, "-j4", "modules_prepare"])
     after_config = (build / ".config").read_text()
     if comparable_config(after_config) != comparable_config(sealed_config):
@@ -117,8 +86,6 @@ def main():
              "module_sha256": sha256(module), "vermagic": release.strip(),
              "sdk_config_sha256": sha256(build / ".config"),
              "module_symvers_sha256": sha256(build / "Module.symvers"), "device_tested": False}
-    if args.gunyah_source_proof:
-        proof["gunyah_source_proof_sha256"] = sha256(args.gunyah_source_proof)
     (output / "manifest.json").write_text(json.dumps(proof, indent=2) + "\n")
 
 

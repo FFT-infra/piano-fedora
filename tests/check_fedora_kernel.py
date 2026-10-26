@@ -15,10 +15,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tool", type=Path)
     args = ap.parse_args()
-    sunuefi = os.environ.get("PIANO_TEST_SUNUEFI")
+    sunuefi = os.environ.get("PIANO_TEST_SUNUEFI", ROOT / "build/test-sources/sunuefi")
     if args.tool:
         tool = args.tool
-    elif sunuefi:
+    elif Path(sunuefi).is_dir():
         tool = Path(sunuefi) / "tools/build_piano_full_kernel.py"
     else:
         print("SKIP: set PIANO_TEST_SUNUEFI to a patched checkout to inspect Fedora kernel policy")
@@ -39,41 +39,70 @@ def main():
                 "CONFIG_NFT_REJECT_INET", "CONFIG_NFT_FIB_INET", "CONFIG_NFT_FIB_IPV4",
                 "CONFIG_NFT_FIB_IPV6", "CONFIG_NFT_MASQ", "CONFIG_NFT_NAT", "CONFIG_NFT_REDIR"}
     policy = namespace["FEDORA_OVERRIDES"]
-    assert all(policy.get(symbol) == "y" for symbol in required), "Fedora nftables kernel options missing"
+    # 上游的共享平台片段已经拥有 nftables 这组开关本身，Fedora 策略只补它留在
+    # 默认值的几个。两边都设同一个符号时，覆盖校验会拒绝，所以这里要求
+    # 18 项由两份片段合起来覆盖，且任何一项都不被两边同时声明。
+    platform = namespace["PLATFORM_OVERRIDES"]
+    # NFT_FIB 在 Kconfig 里没有提示符，只由 NFT_FIB_IPV4/IPV6 选出来；片段
+    # 设不了它，所以它既不归平台片段也不归 Fedora 策略，值由 select 决定。
+    derived = {"CONFIG_NFT_FIB"}
+    declared = required - derived
+    both = {symbol for symbol in declared if symbol in policy and symbol in platform}
+    assert not both, "symbol declared by both fragments: " + repr(sorted(both))
+    missing = {symbol for symbol in declared if symbol not in policy and symbol not in platform}
+    assert not missing, "Fedora nftables kernel options missing: " + repr(sorted(missing))
+    assert not (derived & (set(policy) | set(platform))), "select-only symbol set by a fragment"
+    # 由共享片段提供的那几项保持上游选定的形态：NF_TABLES_INET 在 Kconfig 里
+    # 是 bool，其余是 tristate 且上游选了模块。Fedora 策略不得把它们改成内建。
+    for symbol in required:
+        if symbol not in platform:
+            continue
+        expected = "y" if symbol == "CONFIG_NF_TABLES_INET" else "m"
+        assert platform[symbol] == expected, f"platform nftables option changed: {symbol}"
+    assert all(policy.get(symbol) == "y"
+               for symbol in required if symbol in policy), "Fedora-only nftables options are not built in"
     validate = namespace["validate_module_overrides"]
     assert validate(policy) == policy
     incomplete = dict(policy)
-    incomplete.pop("CONFIG_NF_TABLES")
+    incomplete.pop("CONFIG_NF_CONNTRACK")
     try:
         validate(incomplete)
     except ValueError:
         pass
     else:
         raise AssertionError("incomplete Fedora policy accepted")
+    gunyah = namespace["GUNYAH_OVERRIDES"]
     # 直接走构建器用于 olddefconfig 结果的生产验证路径，逐项模拟被 Kconfig 丢弃。
     command = "piano.root=LABEL=PIANOROOT rootfstype=f2fs"
     configured = {"CONFIG_" + key: value for key, value in namespace["REQUIRED"].items()}
-    configured.update(policy)
+    # 生产路径把平台片段、Fedora 策略和 Gunyah profile 合成同一个 modules
+    # 字典再交给校验，所以这里也合并：只传其中一份会让另外两份提供的符号
+    # 回落到公开配置的值，丢掉它们不会被发现。平台片段自带 Gunyah 的四项，
+    # 只有配上完整 profile 才通过完整性门槛。
+    fragments = {**platform, **policy, **gunyah}
+    configured.update(fragments)
     configured["CONFIG_CMDLINE"] = json.dumps(command)
     serialize = lambda values: "".join(key + "=" + value + "\n" for key, value in values.items())
     validate_config = namespace["validate_config"]
-    validate_config(serialize(configured), "CONFIG_MODULES=y\n", command, policy)
-    for symbol in required:
+    validate_config(serialize(configured), "CONFIG_MODULES=y\n", command, fragments)
+    for symbol in required - derived:
         dropped = dict(configured)
         dropped.pop(symbol)
         try:
-            validate_config(serialize(dropped), "CONFIG_MODULES=y\n", command, policy)
+            validate_config(serialize(dropped), "CONFIG_MODULES=y\n", command, fragments)
         except ValueError as exc:
             assert symbol in str(exc), str(exc)
         else:
             raise AssertionError("olddefconfig dropped option accepted: " + symbol)
+    # select 出来的那项不属于任何片段：校验只要求片段里的符号保留，所以
+    # 它出现在最终配置里不需要被校验，缺了也不该报错。
+    assert "CONFIG_NFT_FIB" not in fragments, "select-only symbol set by a fragment"
     # main 的有效分支必须将 Fedora 策略交给配置构造器；ALLOWED_OVERRIDES 不算消费。
     main_node = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main")
     branches = [node for node in ast.walk(main_node) if isinstance(node, ast.If)
                 and isinstance(node.test, ast.Attribute) and node.test.attr == "fedora_policy"]
     assert len(branches) == 1 and any(isinstance(node, ast.Name) and node.id == "FEDORA_OVERRIDES"
                                     for node in ast.walk(branches[0])), "main does not consume Fedora policy"
-    gunyah = namespace["GUNYAH_OVERRIDES"]
     assert gunyah == {"CONFIG_GUNYAH": "y", "CONFIG_GUNYAH_HYPERCALLS": "y",
                       "CONFIG_GUNYAH_TIMER": "y", "CONFIG_GUNYAH_PLATFORM_HOOKS": "y",
                       "CONFIG_GUNYAH_QCOM_PLATFORM": "y", "CONFIG_GUNYAH_QCOM_TRUSTED_VM": "y",
@@ -104,7 +133,7 @@ def main():
     vm_branches = [node for node in ast.walk(main_node) if isinstance(node, ast.If)
                    and isinstance(node.test, ast.Attribute) and node.test.attr == "fedora_policy"]
     assert len(vm_branches) == 1 and any(isinstance(node, ast.Name) and node.id == "GUNYAH_OVERRIDES" for node in ast.walk(vm_branches[0])), "Fedora production policy must consume Gunyah"
-    print("OK: all 18 nftables options, actual configured-result rejection and policy consumption")
+    print("OK: 18 nftables options across both fragments, actual configured-result rejection and policy consumption")
     return 0
 
 

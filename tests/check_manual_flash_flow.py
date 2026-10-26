@@ -53,9 +53,11 @@ if "--version" in args:
 
 cmd = None
 i = 0
+# Options that take a value; -s/-S are the ones the installers send.
+VALUED = {"-s", "-S", "--slot", "-p", "-b", "-c"}
 while i < len(args):
     a = args[i]
-    if a == "-s":
+    if a in VALUED:
         i += 2
         continue
     if a.startswith("-"):
@@ -337,6 +339,22 @@ def main():
             if re.search(rf"\b{forbidden.strip()}\b", text_calls):
                 failures.append(f"manual flow issued forbidden command: {forbidden}")
 
+        # 文档里的三条大分区 flash 必须带 -S 128M：裸写 512 MiB ESP 会让 ABL
+        # 停响应。这里看的是真执行记录，不是文档文本。回滚那一条写的是 96 MiB
+        # 的原厂 boot.img，远小于单次上限，不在此列。
+        for args in calls:
+            if "flash" not in args:
+                continue
+            index = args.index("flash")
+            partition = args[index + 1] if index + 1 < len(args) else ""
+            if partition not in ("sunuefi_esp", "sunuefi_root", "boot_a"):
+                continue
+            target = args[index + 2] if index + 2 < len(args) else ""
+            if partition == "boot_a" and "stock-recovery" in target:
+                continue
+            if "-S" not in args or args[args.index("-S") + 1] != "128M":
+                failures.append(f"documented flash of {partition} lacks -S 128M: {' '.join(args)}")
+
         # The readback step must be present and must be shown to be conditional.
         if "fastboot fetch" not in chapter:
             failures.append("manual chapter has no readback step")
@@ -354,12 +372,17 @@ def main():
             failures.append("manual chapter does not verify the prepared root capacity")
         if "expanded_bytes" not in chapter:
             failures.append("manual chapter does not bind root capacity to the manifest")
-        # 请求页在"正在引导的那份镜像"末尾；合体 BOOT 装进当前槽 A，
-        # 所以 boot-request 必须指向 boot_a。
-        if "/dev/disk/by-partlabel/boot_a`" not in document:
-            failures.append("first-install boot request is not documented as boot_a")
+        # 请求页在"正在引导的那份镜像"末尾；合体 BOOT 装进当前槽 A。
+        # 上游 7dbabdc 之后不再有 boot-request.json，活动槽由只读 GPT 与
+        # 高通 A/B 属性判定，文档要写这条判定依据而不是旧配置文件。
+        if "`boot_a`" not in document:
+            failures.append("first-install slot is not documented as boot_a")
         if "/dev/disk/by-partlabel/boot_b`" in document:
             failures.append("first-install boot request is still documented as boot_b")
+        if "高通 A/B 属性" not in document:
+            failures.append("installation guide does not document how the active slot is chosen")
+        if "boot-request.json" in document:
+            failures.append("installation guide still documents the removed boot-request.json")
 
         # The install-time SSH key is documented in both paths: the one-click
         # installer takes --ssh-key, and the manual path writes the key with
@@ -370,7 +393,7 @@ def main():
         if "mcopy" not in chapter:
             failures.append("manual chapter does not show the ESP key injection")
         key_step = chapter.find("mcopy")
-        esp_flash = chapter.find("fastboot flash sunuefi_esp")
+        esp_flash = chapter.find("fastboot -S 128M flash sunuefi_esp")
         if key_step < 0 or esp_flash < 0 or key_step > esp_flash:
             failures.append("manual chapter injects the SSH key after the ESP flash")
 
@@ -530,6 +553,44 @@ def main():
         if good_verbs[:3] != [("flash", "boot_a"), ("flash", "sunuefi_esp"),
                               ("flash", "sunuefi_root")]:
             failures.append(f"successful install wrote {good_verbs}, expected boot_a/ESP/root")
+        # 钢琴 ABL 对单次 512 MiB 的裸 ESP 写入会停止响应，每次 flash 都必须带
+        # `-S 128M`，让 fastboot 切成有界传输。上游 install_piano.py 也这么发。
+        for line in good_log.read_text().splitlines():
+            args = line.split()
+            if "flash" in args and "-S" not in args:
+                failures.append(f"flash without -S 128M: {line}")
+            elif "flash" in args and args[args.index("-S") + 1] != "128M":
+                failures.append(f"flash with an unbounded -S value: {line}")
+
+        # boot_a is the one image that normally sits outside the staging
+        # directory, so the deploy-bundle SHA256SUMS does not cover it. Its own
+        # directory must carry a manifest; without one the installer used to
+        # skip the check entirely on the partition that decides whether the
+        # tablet boots.
+        loose_dir = work / "loose-boot"
+        loose_dir.mkdir()
+        loose = loose_dir / "boot_linux.img"
+        loose.write_bytes(device_boot.read_bytes())
+        loose_log = work / "loose.log"
+        result = invoke_installer(good_staging, {**good_env, "STUB_LOG": str(loose_log)},
+                                  boot=loose)
+        if result.returncode == 0:
+            failures.append("boot image without a SHA256SUMS was accepted")
+        if "SHA256SUMS" not in (result.stdout + result.stderr):
+            failures.append("missing-boot-manifest error does not name SHA256SUMS")
+        if not assert_no_device_write(loose_log):
+            failures.append("boot image without a SHA256SUMS reached the flash stage")
+
+        # The same image with a wrong digest in its own manifest must fail too;
+        # otherwise the manifest is present but unread.
+        (loose_dir / "SHA256SUMS").write_text(
+            f"{'0' * 64}  {loose.name}\n")
+        result = invoke_installer(good_staging, {**good_env, "STUB_LOG": str(loose_log)},
+                                  boot=loose)
+        if result.returncode == 0 or "SHA256 mismatch" not in (result.stdout + result.stderr):
+            failures.append("boot image with a stale digest was accepted")
+        if not assert_no_device_write(loose_log):
+            failures.append("stale boot digest reached the flash stage")
 
         # A re-signed image (non-zero AVB algorithm) must be rejected: the
         # signature patches the wrapper header and breaks the Android module.
@@ -540,6 +601,10 @@ def main():
         raw = bytearray(device_boot.read_bytes())
         struct_module.pack_into(">I", raw, 4096 + 28, 2)
         signed.write_bytes(bytes(raw))
+        # 这份镜像也要有自己的清单：boot_a 的目录缺 SHA256SUMS 会先在摘要门被拒，
+        # 就到不了 AVB 校验。给正确摘要，验证的是签名形状这一条。
+        (signed_dir / "SHA256SUMS").write_text(
+            f"{hashlib.sha256(signed.read_bytes()).hexdigest()}  {signed.name}\n")
         signed_log = work / "signed.log"
         result = invoke_installer(good_staging, {**good_env, "STUB_LOG": str(signed_log)},
                                   boot=signed)
@@ -553,6 +618,9 @@ def main():
     erase = 'device.call(["fastboot", "-s", identity["factory_serial"], "erase", "userdata"]'
     if erase not in installer:
         failures.append("first-install executor does not explicitly erase userdata")
+    # 首装执行器同样要带 -S 128M：它写的 ESP 与一键脚本是同一张 512 MiB 镜像。
+    if '"fastboot", "-s", identity["factory_serial"], "-S", "128M"' not in installer:
+        failures.append("first-install executor flashes without -S 128M")
     if installer.index(erase) < installer.index("write_gpt_blobs(device, identity, session"):
         failures.append("first-install executor erases userdata before the GPT write")
     if 'journal["device_writes"] = True' not in installer[:installer.index(erase)]:

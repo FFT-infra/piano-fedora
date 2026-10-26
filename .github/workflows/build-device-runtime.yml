@@ -42,7 +42,7 @@ jobs:
           args=()
           if [ -n "$KERNEL_RUN" ]; then args+=(--run-id "$KERNEL_RUN"); fi
           python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml \
-            --artifact kernel-release-7.2.9 --artifact kernel-sdk-7.2.9 "${args[@]}"
+            --artifact kernel-release-7.3.0 --artifact kernel-sdk-7.3.0 "${args[@]}"
 
       - if: inputs.calibration_run_id != ''
         uses: actions/download-artifact@v4
@@ -76,14 +76,14 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: kernel-release-7.2.9
+          name: kernel-release-7.3.0
           path: build/in/kernel
           run-id: ${{ steps.kernel.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/download-artifact@v4
         with:
-          name: kernel-sdk-7.2.9
+          name: kernel-sdk-7.3.0
           path: build/in/sdk
           run-id: ${{ steps.kernel.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -92,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/checkout-sources.py --output build/sources --mode device --kernel
-          tar -I zstd -xf build/in/kernel/kernel-release-7.2.9.tar.zst -C build/in/kernel
+          tar -I zstd -xf build/in/kernel/kernel-release-7.3.0.tar.zst -C build/in/kernel
 
       - name: Compile the matching external module
         run: |

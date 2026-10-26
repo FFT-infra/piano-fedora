@@ -16,6 +16,17 @@
 
 漂移判断只看 pin，不看 `docs/upstreams.json` 的 `reference_commit`。`reference_commit` 是人工基线，只在 `--record-baseline` 时推进。拿 `reference_commit` 判断，会把没有位移的上游报成更新。
 
+自动跟踪只覆盖 14 个消费上游。`docs/upstreams.json` 里的 82 个对照仓库不进 `upstream-watch`：它们没有 `lock_key`，`scripts/upstream-watch.py` 只处理带 `lock_key` 的行。这些仓库要人工复核，用下面两条命令：
+
+```sh
+python3 scripts/audit-upstreams.py --execute --output build/upstream-audit.json
+python3 scripts/audit-upstreams.py --execute --record-baseline --output build/upstream-audit.json
+```
+
+第一条列出谁比基线新，第二条把核到的提交写成新基线。第二条会改 `docs/upstreams.json`，只在确认复核过之后跑。
+
+登记表的价值在于「谁值得看」，不在于「谁被自动盯着」。把仓库目录整个抄进来会淹没真正要跟的那几行，所以未登记不等于遗漏。
+
 ## 每次跟进上游
 
 1. 读取远端 main 的完整提交号。比对当前 pin 与远端的提交、文件和实际代码。发布说明只当索引用。
@@ -30,5 +41,31 @@
 当前 Linux DTB 的 16 个非零 RAM 区间合计 16,470,685,696 字节。Raw Linux 交接修改面板 compatible、启动参数和 initrd 地址。Raw Linux 交接保留输入的内存描述。自动选面板不会自动发现 RAM。
 
 上线后的只读更新计划要验两件事：Linux 描述的 RAM 是当次 Android FDT 的子集，固定保留区与 Linux RAM 相交的部分仍受保护。比较失败就拒绝更新。不要猜扩容后的地址，也不要放宽内存门槛。比较通过也不证明物理 DDR 所有权，也不证明完整 24 GB 可用。
+
+### 两个原厂面板标识
+
+原厂 ABL 用 `msm_drm.dsi_display0` 的值说明这台设备装的是哪块面板，UEFI 据此改写交接 DTB 的面板 `compatible`。
+
+DTB 里的两个 profile 与原厂 UEFI 的两份面板描述文件一一对应。用原厂固件 `RawFiles/Panel_P81_*_dualdsi_dsc_vid.xml` 对比 `qcom,mdss-dsi-on-command` 可以验：
+
+| 原厂标识 | 该 profile 的命令特征 | 对应原厂 XML |
+| --- | --- | --- |
+| `qcom,mdss_dsi_p81_42_02_0a_dualdsi_dsc_vid` | `c4 82 … c4 06` 块、`D1 20`、先 `B3` 后 `B2` | `Panel_P81_42_02_0a_...xml` |
+| `qcom,mdss_dsi_p81_35_02_0b_dualdsi_dsc_vid` | `bc 77 07`、`D1 00`、先 `B2` 后 `B3` | `Panel_P81_35_02_0b_...xml` |
+
+`35_02_0b` 那份 XML 的 `<PanelDescription>` 误写成 "P81 42 02 0a"，是原厂复制文件留下的错误，不能拿它判断归属；要看文件自己的命令块和 `PanelBuildIDReadBack`。
+
+供应商归属由原厂触控驱动自己定：`nt36xxx.c` 的 `lcd_id_value` 注释写明 0 是 CSOT、1 是 BOE，同一处用这个值选 `piano_nova_{csot,boe}_thp_config.ini`。据此
+
+| `lcd_id` | 供应商 | 面板 profile | 命令特征 |
+| --- | --- | --- | --- |
+| 0 | CSOT | `qcom,mdss_dsi_p81_42_02_0a_dualdsi_dsc_vid` | `c4 82 … c4 06` |
+| 1 | BOE | `qcom,mdss_dsi_p81_35_02_0b_dualdsi_dsc_vid` | `bc 77 07` |
+
+这与 `PianoFactoryPanel.h`、上游 `docs/devel/panel-selection.md` 的表一致，也与原厂 UEFI 的两份面板描述文件一一对应。本机 `lcd_id: 1`，所以是 BOE 模块，UEFI 读到的 `dsi_display0` 应当指向 `35_02_0b`。
+
+2026-10-24 的文档曾把这一格写反（判成 `35_02_0b`=CSOT）。错在拿主线驱动的函数名当证据：驱动里 `piano_boe_*` 与 `piano_csot_*` 的名字来自移植本身，上游 `linux-sm8750-piano` 在 2026-10-22 把两者对调过一次，两次都没有改变任何字节。名字换来换去是循环论证，判据只能来自原厂侧。当前内核补丁里的函数名与上表相反，但发给面板的字节序列相同，功能上等价。
+
+核对时注意两个 profile 在 DTB 里的写法不同：`35_02_0b` 用 `[...]` 字节数组，`42_02_0a` 用 `<0x39000040 0x2ff 0x27 …>` 打包字，dtc 打印时还会省略前导零。只认字节数组的解析器会漏掉后者。这个坑在 2026-10-24 实际踩过一次。
 
 来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/devel/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/uefi/core/PianoRawLinuxBoot.c)。

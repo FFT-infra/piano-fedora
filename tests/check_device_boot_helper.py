@@ -36,7 +36,7 @@ def test_reads_through_adb_not_fastboot_fetch():
     # 注释里必须写明为什么不这么做，否则下一个维护者还会把它加回去。
     assert "fastboot fetch" in text, (
         "the script must keep the note explaining why fastboot fetch is not used")
-    assert 'exec-out su -c "dd if=${partition} bs=1048576"' in code, (
+    assert 'exec-out su -c "dd if=${partition} bs=1048576 status=none 2>/dev/null"' in code, (
         "make-device-boot.sh must read the full 96 MiB partition through adb")
     assert "sha256sum ${partition}" in code, (
         "make-device-boot.sh must hash the partition on the device")

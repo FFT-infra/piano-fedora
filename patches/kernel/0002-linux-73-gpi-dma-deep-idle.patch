@@ -1,0 +1,132 @@
+From b3aa31113de2a931a2d08159cc3782e217c2bcba Mon Sep 17 00:00:00 2001
+From: piano-fedora <dev@piano.invalid>
+Date: Sun, 25 Oct 2026 04:10:00 +0800
+Subject: [PATCH] linux: carry the GPI DMA deep-idle fix into the 7.3 series
+
+The NT36532E touch controller is read over GENI SPI in GPI DMA mode. On
+SM8750 the system low power domain is entered while the DMA runs and
+stalls it, so 5450-byte reads take 2.46 ms or 4.85 ms instead of
+2.0-2.7 ms. The stalled transactions are the host-side cause of a
+whole-screen washout on the TDDI panel while the touch firmware scans.
+
+yzddmr6/linux-sm8750-piano 322fd1bfbda9 fixes this by holding a 2000 us
+CPU latency limit from prepare_message to unprepare_message in GPI mode
+only. It is rebased onto the 7.3 tree here: the only difference from
+upstream is hunk context, which this tree shifts by the extra
+struct geni_spi_desc block above spi_geni_master. The code is otherwise
+byte-identical.
+
+series.json and config/release.json move their target_tree together.
+---
+ config/release.json                              |   2 +-
+ .../7.3/0029-spi-geni-gpi-dma-deep-idle.patch    | Bin 0 -> 4523 bytes
+ patches/linux/7.3/series.json                    |  12 ++++++++++--
+ 3 files changed, 11 insertions(+), 3 deletions(-)
+ create mode 100644 patches/linux/7.3/0029-spi-geni-gpi-dma-deep-idle.patch
+
+diff --git a/config/release.json b/config/release.json
+index 991bf9d..fb9710c 100644
+--- a/config/release.json
++++ b/config/release.json
+@@ -7,7 +7,7 @@
+     "stable_source": "https://github.com/torvalds/linux.git",
+     "stable_commit": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
+     "stable_version": "7.3.0",
+-    "target_tree": "45528c432cd0767948a71a4086c1d4a36ef83583",
++    "target_tree": "15e96facb4c3197c4e41996b0a6325ad115b8a22",
+     "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
+     "additional_dtb_overlays": [
+       "linux/dts/piano-cma.dtso",
+diff --git a/patches/linux/7.3/0029-spi-geni-gpi-dma-deep-idle.patch b/patches/linux/7.3/0029-spi-geni-gpi-dma-deep-idle.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..a664f8468a894043c5b75e913f39dc0bf916218d
+GIT binary patch
+literal 4523
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
+index fa5172d..0da9c60 100644
+--- a/patches/linux/7.3/series.json
++++ b/patches/linux/7.3/series.json
+@@ -4,8 +4,8 @@
+   "kernel_version": "7.3.0",
+   "base_commit": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
+   "base_tree": "30fd2ef82912c26cf3a58ad0ba6afc375fa851ac",
+-  "target_tree": "45528c432cd0767948a71a4086c1d4a36ef83583",
+-  "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
++  "target_tree": "15e96facb4c3197c4e41996b0a6325ad115b8a22",
++  "original_target_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
+   "source_url": "https://github.com/torvalds/linux.git",
+   "patches": [
+     {
+@@ -231,6 +231,14 @@
+       "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
+       "committer_date": "2026-10-24T18:30:00+08:00",
+       "tree": "45528c432cd0767948a71a4086c1d4a36ef83583"
++    },
++    {
++      "file": "0029-spi-geni-gpi-dma-deep-idle.patch",
++      "sha256": "00ade037740de7d39bd76a86426701c9daf7a8f90119ea3d86496f94560d0950",
++      "original_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
++      "original_parent": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
++      "committer_date": "2026-10-25T03:50:00+08:00",
++      "tree": "15e96facb4c3197c4e41996b0a6325ad115b8a22"
+     }
+   ],
+   "provenance": {
+-- 
+2.54.0
+

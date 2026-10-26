@@ -160,7 +160,24 @@ if not exist "root-install\SHA256SUMS" (
 echo [INFO] Verifying deploy-bundle and root-install integrity...
 REM boot_linux.img is device-specific: prepare-device-boot.py produces it from
 REM this tablet's stock BOOT, so it is not in the deploy-bundle SHA256SUMS.
-REM Only the deploy-bundle's own boot_sunuefi.img is covered there.
+REM Only the deploy-bundle's own boot_sunuefi.img is covered there. It does get
+REM its own SHA256SUMS in device-boot\, and a missing one stops the installer:
+REM boot_a decides whether the tablet boots at all.
+for %%F in ("%BOOT_IMG%") do (
+    set "BOOT_DIR=%%~dpF"
+)
+if exist "%BOOT_DIR%SHA256SUMS" (
+    for %%F in ("%BOOT_IMG%") do (
+        call :verify_one "%%~nxF" "%%~fF" "%BOOT_DIR%SHA256SUMS"
+        if errorlevel 1 goto error
+    )
+) else (
+    echo [ERROR] No SHA256SUMS next to %BOOT_IMG%.
+    echo prepare-device-boot.py writes one into device-boot\. Regenerate the
+    echo image with make-device-boot.sh, or restore its SHA256SUMS.
+    pause
+    exit /b 1
+)
 for %%F in ("%ESP_IMG%") do (
     call :verify_one "%%~nxF" "%%~fF" "SHA256SUMS"
     if errorlevel 1 goto error
@@ -247,15 +264,15 @@ echo     Qualcomm ABL rejects an empty DTBO with "Device Error"; SunUEFI reads
 echo     its board DTB from vendor_boot plus the stock dtbo_a overlay.
 
 echo --^> Step 2/4: Flashing the device boot image to boot_a...
-%FASTBOOT% flash boot_a "%BOOT_IMG%"
+%FASTBOOT% -S 128M flash boot_a "%BOOT_IMG%"
 if %ERRORLEVEL% neq 0 goto error
 
 echo --^> Step 3/4: Flashing SunUEFI ESP to sunuefi_esp...
-%FASTBOOT% flash sunuefi_esp "%ESP_IMG%"
+%FASTBOOT% -S 128M flash sunuefi_esp "%ESP_IMG%"
 if %ERRORLEVEL% neq 0 goto error
 
 echo --^> Step 4/4: Flashing Fedora 44 RootFS to sunuefi_root...
-%FASTBOOT% flash sunuefi_root "%ROOT_IMG%"
+%FASTBOOT% -S 128M flash sunuefi_root "%ROOT_IMG%"
 if %ERRORLEVEL% neq 0 goto error
 
 echo.

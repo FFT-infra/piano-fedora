@@ -4,14 +4,141 @@
 import argparse
 import importlib.util
 from pathlib import Path
+import shutil
 import struct
+import subprocess
 import sys
+import tempfile
 from types import SimpleNamespace
 import uuid
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+
+
+class FakeDevice:
+    """Runs the installer's shell probe locally instead of on a tablet."""
+
+    serial = "SN-TEST-1"
+
+    def __init__(self, dd=None, fail_var=False, calls=None, scratch=None, disk=None):
+        self.dd = dd
+        self.fail_var = fail_var
+        self.calls = [] if calls is None else calls
+        self.shells = []
+        self.scratch = Path(scratch or tempfile.mkdtemp())
+        # 真设备写的是块设备；这里换成一个本机镜像文件。
+        self.disk = Path(disk or (self.scratch / "disk.img"))
+        self.disk.parent.mkdir(parents=True, exist_ok=True)
+        self.disk.touch()
+
+    def shell(self, command):
+        self.shells.append(command)
+        # 探针写在设备的 /data/local/tmp 下；这里换成本机临时目录。
+        command = command.replace("/data/local/tmp/", str(self.scratch) + "/")
+        command = command.replace("/dev/block/sda", str(self.disk))
+        if self.dd is not None:
+            command = command.replace("dd ", self.dd + " ")
+        result = subprocess.run(["sh", "-c", command], capture_output=True)
+        # 上游 shell() 走 call()，非零退出时 require() 抛 ValueError；桩也照做，
+        # 否则 dd_available 的返回值与真实设备上不一致。
+        if result.returncode != 0:
+            raise ValueError("Command failed: " + command[:80])
+        return result.stdout
+
+    def text(self, command):
+        return self.shell(command).decode().strip()
+
+    def call(self, argv, timeout=60):
+        self.calls.append(argv)
+        if argv[0] == "adb" and "push" in argv:
+            # 让暂存文件真实存在，后面的 dd 才有输入。
+            Path(argv[-1].replace("/data/local/tmp/", str(self.scratch) + "/")).write_bytes(
+                Path(argv[argv.index("push") + 1]).read_bytes())
+            return b"", b""
+
+    def fastboot_var(self, serial, name):
+        self.calls.append(["fastboot", serial, name])
+        if self.fail_var:
+            raise ValueError("Command failed: fastboot -s " + serial)
+        return serial
+
+
+def check_dd_probe(installer):
+    """dd_available 的探针必须真的区分有没有 notrunc。
+
+    旧探针在 5 字节文件上 seek=1 写一块，然后断言长度是 4096：不管 dd 认不认
+    `notrunc`，长度都会变成 8192，所以它恒假（或者说，断言本身永远不成立）。
+    这里用真 dd 跑一遍，再换一个剥掉 notrunc 的 dd，确认后者被拒绝。
+    """
+    if not shutil.which("dd"):
+        raise AssertionError("dd is required to exercise the probe")
+    assert installer.dd_available(FakeDevice()) is True
+
+    bindir = Path(tempfile.mkdtemp())
+    wrapper = bindir / "dd"
+    # 一个剥掉 conv 里 notrunc 的 dd：探针必须因此失败。
+    wrapper.write_text(
+        "#!/usr/bin/env python3\n"
+        "import subprocess, sys\n"
+        "args = [a.replace(',notrunc', '').replace('notrunc,', '') for a in sys.argv[1:]]\n"
+        "sys.exit(subprocess.run(['dd'] + args, stderr=subprocess.DEVNULL).returncode)\n")
+    wrapper.chmod(0o755)
+    try:
+        installer.dd_available(FakeDevice(dd=str(wrapper)))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("the probe passed for a dd that ignores notrunc")
+
+
+def check_wait_factory_survives_a_missing_serial(installer):
+    """第一次枚举失败不能结束整个 apply。
+
+    上游 Device.call() 用 require() 报错，抛的是 ValueError。旧代码只捕获
+    CalledProcessError，于是 GPT 刚改写、userdata 还没擦除时，第一次
+    `fastboot getvar serialno` 失败就会把 apply 整个掀掉。重试次数用尽后应抛
+    自己的 RuntimeError，而不是把 ValueError 透出去。
+    """
+    identity = {"factory_serial": "SN-TEST-1"}
+    device = FakeDevice(fail_var=True)
+    try:
+        installer.wait_factory(device, identity, attempts=3, delay=0)
+    except RuntimeError as error:
+        assert "SN-TEST-1" in str(error), error
+    else:
+        raise AssertionError("wait_factory returned without ever seeing the serial")
+    probes = [call for call in device.calls if call[0] == "fastboot"]
+    assert len(probes) == 3, f"the retries stopped early: {len(probes)} probes"
+
+    # 第 2 次才枚举到，也要能返回：这才证明失败是"继续等"而不是"立刻放弃"。
+    class SlowDevice(FakeDevice):
+        def fastboot_var(self, serial, name):
+            self.calls.append(["fastboot", serial, name])
+            if len([c for c in self.calls if c[0] == "fastboot"]) < 2:
+                raise ValueError("Command failed: fastboot -s " + serial)
+            return serial
+
+    installer.wait_factory(SlowDevice(), identity, attempts=5, delay=0)
+
+
+def check_restore_gpt_blobs_is_defined(installer):
+    """回滚路径不能引用未定义的变量。
+
+    这里曾粘着 save() 的一段尾巴（path / value），回滚时先抛 NameError，把真正
+    的 GPT 写入错误从 result.json 里盖掉。用假设备跑一遍，验证两段都写回原位置。
+    """
+    session = Path(tempfile.mkdtemp())
+    tail, head = session / "original-gpt-tail.bin", session / "original-gpt-head.bin"
+    tail.write_bytes(b"T" * 4096)
+    head.write_bytes(b"H" * 4096)
+    device = FakeDevice()
+    installer.restore_gpt_blobs(device, {"disk": "/dev/block/sda", "disk_bytes": 4096 * 16}, session)
+    dd_lines = [line for line in device.shells if line.startswith("dd ")]
+    assert len(dd_lines) == 2, dd_lines
+    assert "seek=15 " in dd_lines[0], "the backup copy must land on the last sector: " + dd_lines[0]
+    assert "seek=0 " in dd_lines[1], "the primary copy must land at LBA 0: " + dd_lines[1]
 
 
 def main():
@@ -186,8 +313,13 @@ def main():
         pass
     else:
         raise AssertionError("apply ignored the plan's ESP size")
+
+    check_dd_probe(installer)
+    check_wait_factory_survives_a_missing_serial(installer)
+    check_restore_gpt_blobs_is_defined(installer)
     print("OK: first GPT byte preservation, CRC, half capacity, Slot A contract, deterministic new entries, "
-          "explicit Android capacity, explicit ESP capacity and stale-plan rejection" +
+          "explicit Android capacity, explicit ESP capacity, stale-plan rejection, dd probe, "
+          "bootloader wait and GPT restore" +
           ("; actual pinned parser exercised" if args.sunuefi else "; byte oracle exercised"))
 
 

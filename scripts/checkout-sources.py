@@ -99,15 +99,6 @@ def main():
         checkout(entry["url"], entry["commit"], output / "piano-integration", sparse_paths=(
             "/device/piano-thp/", "/device/camera/", "/tools/extract-thp-calibration.py",
             "/LICENSES/", "/LICENSE", "/NOTICE"))
-    if args.kernel:
-        driver = lock["gunyah-driver"]
-        checkout(driver["url"], driver["commit"], sun / "upstream/gunyah-driver", sparse_paths=(
-            "/drivers/virt/gunyah/", "/arch/arm64/gunyah/",
-            "/arch/arm64/include/asm/gunyah.h", "/include/linux/gunyah.h",
-            "/include/linux/gunyah_qtvm.h", "/include/uapi/linux/gunyah.h",
-            "/tools/virt/gunyah/", "/Documentation/virt/gunyah/",
-            "/Documentation/devicetree/bindings/firmware/gunyah-cma-mem.yaml",
-            "/Documentation/devicetree/bindings/firmware/gunyah-hypervisor.yaml"))
     subprocess.run(["python3", str(ROOT / "scripts/apply-patches.py"), "--sunuefi", str(sun)], check=True)
     print(json.dumps({"sunuefi": str(sun), "dependencies": names, "pins": {
         name: upstream[name]["commit"] for name in names}}, indent=2))

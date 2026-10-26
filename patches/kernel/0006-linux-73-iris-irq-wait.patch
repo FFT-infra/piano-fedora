@@ -1,0 +1,127 @@
+diff --git a/config/release.json b/config/release.json
+index ab56352..821dfb4 100644
+--- a/config/release.json
++++ b/config/release.json
+@@ -7,7 +7,7 @@
+     "stable_source": "https://github.com/torvalds/linux.git",
+     "stable_commit": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
+     "stable_version": "7.3.0",
+-    "target_tree": "81c0383e73392c8ffb1a465a478455f3ee3c2cba",
++    "target_tree": "81983254f51aaba3822a7aee5f71702c7cd8bd9c",
+     "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
+     "additional_dtb_overlays": [
+       "linux/dts/piano-cma.dtso",
+diff --git a/patches/linux/7.3/0055-iris-wait-threaded-irq-on-poweroff.patch b/patches/linux/7.3/0055-iris-wait-threaded-irq-on-poweroff.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..71a54eeb66054ce3f9660bf2f7d4541392c15a90
+GIT binary patch
+literal 8763
+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
+AdH?_b
+
+literal 0
+HcmV?d00001
+
+diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
+index 7f4a1fa..e6b26c7 100644
+--- a/patches/linux/7.3/series.json
++++ b/patches/linux/7.3/series.json
+@@ -4,8 +4,8 @@
+   "kernel_version": "7.3.0",
+   "base_commit": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
+   "base_tree": "30fd2ef82912c26cf3a58ad0ba6afc375fa851ac",
+-  "target_tree": "81c0383e73392c8ffb1a465a478455f3ee3c2cba",
+-  "original_target_commit": "f8f655de8cd43ded8afacb38a04b67bf69595d47",
++  "target_tree": "81983254f51aaba3822a7aee5f71702c7cd8bd9c",
++  "original_target_commit": "99d7ec96e5360fa7b30e5236bd24e4bb043fe7c3",
+   "source_url": "https://github.com/torvalds/linux.git",
+   "patches": [
+     {
+@@ -439,6 +439,14 @@
+       "original_parent": "ac7353d78cc6b7e48683862e4cb6643be97267c5",
+       "committer_date": "2026-10-25T19:08:49+08:00",
+       "tree": "81c0383e73392c8ffb1a465a478455f3ee3c2cba"
++    },
++    {
++      "file": "0055-iris-wait-threaded-irq-on-poweroff.patch",
++      "sha256": "633c911e75d8a4d17f4d36e3123efdf0e29951afca9d58fcf1b13ceec692fb6e",
++      "original_commit": "99d7ec96e5360fa7b30e5236bd24e4bb043fe7c3",
++      "original_parent": "f8f655de8cd43ded8afacb38a04b67bf69595d47",
++      "committer_date": "2026-10-25T19:47:28+08:00",
++      "tree": "81983254f51aaba3822a7aee5f71702c7cd8bd9c"
+     }
+   ],
+   "provenance": {

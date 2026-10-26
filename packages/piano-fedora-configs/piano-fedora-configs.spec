@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        9%{?dist}
+Release:        10%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -88,7 +88,6 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_unitdir}/piano-clock-save.timer
 %{_unitdir}/piano-fake-tablet-mode.service
 %{_unitdir}/piano-physical-platform.service
-%{_unitdir}/piano-boot-request-autoconfig.service
 %{_unitdir}/piano-first-boot-ssh-key.service
 %{_unitdir}/xiaomi-charger-mode.service
 %{_prefix}/lib/systemd/system-shutdown/f2fs-root-shutdown
@@ -99,7 +98,6 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_libexecdir}/piano-clock-save
 %{_libexecdir}/piano-fake-tablet-mode
 %{_libexecdir}/piano-physical-platform
-%{_libexecdir}/piano-boot-request-autoconfig
 %{_libexecdir}/xiaomi-charger-mode
 %{_prefix}/lib/piano/power-button
 %{_prefix}/lib/piano/first-boot-ssh-key
@@ -111,7 +109,6 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 
 %{_bindir}/piano-collect-boot
 %{_bindir}/piano-next-boot
-%{_bindir}/piano-next-boot-configure
 %{_libexecdir}/piano-next-boot-helper
 /usr/local/bin/piano-debug-bootstrap
 /usr/local/bin/piano-debug-stage
@@ -126,23 +123,37 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_datadir}/polkit-1/rules.d/49-piano-boot-request.rules
 
 %post
-%systemd_post piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service
+%systemd_post piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 %systemd_user_post piano-power-button.service
-systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service qbootctl.service || :
+systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service qbootctl.service || :
 systemctl --global enable piano-power-button.service || :
 if [ -x %{_bindir}/dconf ]; then
     %{_bindir}/dconf update || :
 fi
 systemd-tmpfiles --create %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf %{_prefix}/lib/tmpfiles.d/cpufreq-schedutil.conf || :
+# 0.1.0-10 起不再有 piano-boot-request-autoconfig.service。rpm 只删
+# /usr/lib/systemd/system 下的 unit 文件，旧安装 enable 出来的
+# /etc/systemd/system/multi-user.target.wants 链接会留下，指向一个不存在的
+# unit。这段必须放在 %post：升级时 %preun 跑的是旧包的脚本，0.1.0-9 里没有
+# 清理逻辑。
+systemctl --no-reload disable piano-boot-request-autoconfig.service >/dev/null 2>&1 || :
+rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.service
 
 %preun
-%systemd_preun piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service
+%systemd_preun piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 %systemd_user_preun piano-power-button.service
 
 %postun
-%systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service piano-boot-request-autoconfig.service xiaomi-charger-mode.service
+%systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 
 %changelog
+* Mon Oct 26 2026 FFT-infra <dev@piano.invalid> - 0.1.0-10
+- 跟到 SunUEFI `0a8ec14`：上游在 `7dbabdc` 里删掉了 `/etc/piano/boot-request.json`
+  整套机制，活动槽改为只读主备 GPT（两份头与条目 CRC 都校验）加高通 A/B 属性
+  判定。`piano-next-boot` 与 `piano-next-boot-helper` 换成上游版本，
+  `piano-next-boot-configure`、`piano-boot-request-autoconfig` 及其 service 一并
+  删除。必须升 Release，否则 0.1.0-9 已装的设备不会失去这些文件
+
 * Thu Oct 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-9
 - udev 电源键规则改用真机上的盖子设备名：`hall_lid` 改成 `soc:piano-hall-ml`。
   旧名来自早期 DTS，规则从未匹配过任何设备，`event1` 因此没有 uaccess ACL；

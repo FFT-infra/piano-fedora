@@ -413,10 +413,22 @@ if [ "$SKIP_CHECKSUM" -eq 0 ]; then
         echo -e "  ${GREEN}✓${NC} ${target_name} checksum valid."
     }
 
-    if [ -n "$BOOT_IMG" ] && [ "$(dirname "$BOOT_IMG")" = "$WORK_DIR" ]; then
-        check_manifest_image "$BOOT_IMG" "$WORK_DIR/SHA256SUMS"
-    elif [ -n "$BOOT_IMG" ] && [ -f "$(dirname "$BOOT_IMG")/SHA256SUMS" ]; then
-        check_manifest_image "$BOOT_IMG" "$(dirname "$BOOT_IMG")/SHA256SUMS"
+    # boot_a is the one image that usually lives outside the staging directory:
+    # prepare-device-boot.py writes it to device-boot/ from this tablet's own
+    # stock BOOT. A missing manifest there must stop the installer, not skip the
+    # check, because this is the partition that decides whether the tablet boots.
+    if [ -n "$BOOT_IMG" ]; then
+        boot_dir=$(cd "$(dirname "$BOOT_IMG")" && pwd)
+        if [ "$boot_dir" = "$WORK_DIR" ]; then
+            check_manifest_image "$BOOT_IMG" "$WORK_DIR/SHA256SUMS"
+        elif [ -f "$boot_dir/SHA256SUMS" ]; then
+            check_manifest_image "$BOOT_IMG" "$boot_dir/SHA256SUMS"
+        else
+            echo -e "${RED}[ERROR] No SHA256SUMS next to $BOOT_IMG.${NC}"
+            echo "prepare-device-boot.py writes one into device-boot/. Regenerate the"
+            echo "image with ./make-device-boot.sh, or restore its SHA256SUMS."
+            exit 1
+        fi
     fi
     check_manifest_image "$ESP_IMG" "$WORK_DIR/SHA256SUMS"
     check_manifest_image "$ROOT_IMG" "$ROOT_SHA256SUMS"
@@ -630,21 +642,24 @@ fi
 # fragments, so the stock content must stay in place.
 echo -e "\n--> Skipping dtbo_a: keeping the stock DTBO for the active slot."
 
+# Piano ABL can stop responding to a single 512 MiB raw ESP write. `-S 128M`
+# makes fastboot split every image into bounded transfers; the upstream
+# install_piano.py flash() sends the same flag.
 if [ -n "$BOOT_IMG" ]; then
     echo -e "\n--> Step 2/4: Flashing device boot image to boot_a..."
-    fb flash boot_a "$BOOT_IMG"
+    fb -S 128M flash boot_a "$BOOT_IMG"
     echo -e "\n--> Step 3/4: Flashing SunUEFI ESP to sunuefi_esp..."
 else
     echo -e "\n--> Step 2/3: Flashing SunUEFI ESP to sunuefi_esp..."
 fi
-fb flash sunuefi_esp "$ESP_IMG"
+fb -S 128M flash sunuefi_esp "$ESP_IMG"
 
 if [ -n "$BOOT_IMG" ]; then
     echo -e "\n--> Step 4/4: Flashing Fedora 44 RootFS to sunuefi_root..."
 else
     echo -e "\n--> Step 3/3: Flashing Fedora 44 RootFS to sunuefi_root..."
 fi
-fb flash sunuefi_root "$ROOT_IMG"
+fb -S 128M flash sunuefi_root "$ROOT_IMG"
 
 echo -e "\n${GREEN}${BOLD}====================================================================${NC}"
 echo -e "${GREEN}${BOLD}             🎉 Flashing Completed Successfully! 🎉                 ${NC}"

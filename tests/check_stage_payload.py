@@ -20,10 +20,10 @@ from kernel_fixture import make_kernel as sealed_fixture
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 TOOL = ROOT / "scripts" / "stage-rootfs-payload.py"
-RELEASE = "7.2.9-fixture"
+RELEASE = "7.3.0-fixture"
 
 # 与研究仓库同级；不存在时只跳过需要真实 SunUEFI 的用例。
-SUNUEFI = Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT / "build/test-sunuefi"))
+SUNUEFI = Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT / "build/test-sources/sunuefi"))
 
 
 def run(*args):

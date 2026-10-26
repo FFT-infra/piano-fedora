@@ -227,8 +227,9 @@ if m:
 m = re.match(r'.*/actions/runs/(\d+)$', path)
 if m:
     rid = m.group(1)
+    shas = json.loads(os.environ.get('PIANO_GH_SHAS', '{}'))
     print(json.dumps({'id': int(rid), 'workflow_id': ids[runs[rid]], 'status': 'completed',
-                      'conclusion': 'success'})); sys.exit(0)
+                      'conclusion': 'success', 'head_sha': shas.get(rid, '')})); sys.exit(0)
 m = re.match(r'.*/actions/workflows/([^/]+)/runs', path)
 if m:
     wf = m.group(1)
@@ -263,13 +264,14 @@ def resolve_step_env(root, workflows, artifacts, runs):
 
 def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_run="",
                 rootfs_run="", mesa_run="", ffmpeg_run="", release_mode="false",
-                desktop="gnome", rootfs_artifact=None, size_mib=""):
+                desktop="gnome", rootfs_artifact=None, size_mib="", sha="", runs=None):
     workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
                  "build-mesa.yml", "host-check.yml"]
-    artifacts = ["rootfs-44-gnome", "rootfs-44-kde", "kernel-release-7.2.9", "kernel-sdk-7.2.9",
+    artifacts = ["rootfs-44-gnome", "rootfs-44-kde", "kernel-release-7.3.0", "kernel-sdk-7.3.0",
                  "kernel-experimental-gunyah", "piano-fedora-runtime",
                  "piano-fedora-runtime-gunyah", "piano-fedora-mesa", "piano-fedora-ffmpeg"]
-    runs = {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml"}
+    if runs is None:
+        runs = {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml"}
     env, output = resolve_step_env(root, workflows, artifacts, runs)
     env.update(DESKTOP=desktop,
                ROOTFS_ARTIFACT="" if rootfs_artifact is None else rootfs_artifact,
@@ -277,18 +279,62 @@ def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_
                RUNTIME_ARTIFACT=runtime_artifact,
                KERNEL_RUN=kernel_run, RUNTIME_RUN=runtime_run,
                ROOTFS_RUN=rootfs_run, MESA_RUN=mesa_run,
-               FFMPEG_RUN=ffmpeg_run, RELEASE_MODE=release_mode)
+               FFMPEG_RUN=ffmpeg_run, RELEASE_MODE=release_mode,
+               GITHUB_SHA=sha, PIANO_GH_SHAS=json.dumps(
+                   {rid: sha for rid in runs} if sha else {}))
     result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
                              step_body(".github/workflows/build-image.yml", "Resolve successful input runs")],
                             cwd=ROOT, env=env, capture_output=True, text=True)
     return result, output.read_text()
 
 
+def check_release_mode_binds_every_input_run(root):
+    """release_mode 必须把每个输入 run 钉在本 workflow 的 commit 上。
+
+    release.yml 只核对 build-bundle 与 prepare-install 的 head_sha。固定下来的
+    rootfs / kernel / runtime / mesa / ffmpeg run 若不核对提交，镜像里混进的可以是
+    任意提交的产物，而发布说明写的是 tag 的 commit。这里跑真实的 resolve step：
+    同一提交必须通过，任一 run 来自别的提交必须失败。
+    """
+    workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
+                 "build-mesa.yml", "host-check.yml"]
+    artifacts = ["rootfs-44-gnome", "kernel-release-7.3.0", "kernel-sdk-7.3.0",
+                 "piano-fedora-runtime", "piano-fedora-mesa", "piano-fedora-ffmpeg"]
+    runs = {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml",
+            "7003": "build-rootfs.yml", "7004": "build-mesa.yml",
+            "7005": "host-check.yml"}
+    pin = dict(kernel_run="7001", runtime_run="7002", rootfs_run="7003",
+               mesa_run="7004", ffmpeg_run="7005", release_mode="true", runs=runs)
+    sha = "a" * 40
+    result, output = run_resolve(root / "same-commit", "kernel-release-7.3.0",
+                                 "piano-fedora-runtime", sha=sha, **pin)
+    assert result.returncode == 0, result.stderr
+    for key in ("rootfs_run=7003", "kernel_run=7001", "runtime_run=7002",
+                "mesa_run=7004", "ffmpeg_run=7005"):
+        assert key in output, (key, output)
+
+    # 只让 ffmpeg 的 run 落在别的提交：必须失败，否则"逐档核对"只是核对了两层。
+    env, _ = resolve_step_env(root / "other-commit", workflows, artifacts, runs)
+    env.update(DESKTOP="gnome", SIZE_MIB="", ROOTFS_ARTIFACT="",
+               KERNEL_ARTIFACT="kernel-release-7.3.0",
+               RUNTIME_ARTIFACT="piano-fedora-runtime",
+               KERNEL_RUN="7001", RUNTIME_RUN="7002", ROOTFS_RUN="7003",
+               MESA_RUN="7004", FFMPEG_RUN="7005", RELEASE_MODE="true",
+               GITHUB_SHA=sha,
+               PIANO_GH_SHAS=json.dumps({**{rid: sha for rid in runs}, "7005": "b" * 40}))
+    result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
+                             step_body(".github/workflows/build-image.yml",
+                                       "Resolve successful input runs")],
+                            cwd=ROOT, env=env, capture_output=True, text=True)
+    assert result.returncode != 0, "a pinned run from another commit was accepted in release_mode"
+    assert "7005" in result.stderr, result.stderr
+
+
 def check_image_kernel_tiers(root):
     """实际跑 resolve step：正式档配对，旧实验选择必须拒绝。"""
     root.mkdir()
     # 正式档：不钉 run，动态解析；必须落 standard。
-    result, output = run_resolve(root / "std", "kernel-release-7.2.9", "piano-fedora-runtime")
+    result, output = run_resolve(root / "std", "kernel-release-7.3.0", "piano-fedora-runtime")
     assert result.returncode == 0, result.stderr
     assert "kernel_tier=standard" in output, output
     # 即使提供旧实验产物的完整 run，也不能混入正式构建。
@@ -300,7 +346,7 @@ def check_image_kernel_tiers(root):
                  "build-mesa.yml", "host-check.yml"]
     env, _ = resolve_step_env(root / "onlystd",
                               workflows,
-                              ["rootfs-44-gnome", "kernel-release-7.2.9", "kernel-sdk-7.2.9",
+                              ["rootfs-44-gnome", "kernel-release-7.3.0", "kernel-sdk-7.3.0",
                                "piano-fedora-runtime", "piano-fedora-mesa", "piano-fedora-ffmpeg"],
                               {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml"})
     env.update(DESKTOP="gnome", SIZE_MIB="",
@@ -314,24 +360,24 @@ def check_image_kernel_tiers(root):
     # 拒绝：未知 kernel_artifact、runtime 与档位不配对、实验缺 run id。
     for kernel, runtime, krun, rrun, why in (
             ("kernel-foo", "piano-fedora-runtime", "", "", "unknown kernel artifact"),
-            ("kernel-release-7.2.9", "piano-fedora-runtime-gunyah", "", "", "runtime/kernel tier mismatch"),
+            ("kernel-release-7.3.0", "piano-fedora-runtime-gunyah", "", "", "runtime/kernel tier mismatch"),
             ("kernel-experimental-gunyah", "piano-fedora-runtime-gunyah", "", "7002", "missing kernel run"),
             ("kernel-experimental-gunyah", "piano-fedora-runtime-gunyah", "7001", "", "missing runtime run")):
         result, _ = run_resolve(root / ("reject-" + why.replace(" ", "-")), kernel, runtime, krun, rrun)
         assert result.returncode != 0, "accepted a bad selection: " + why
     # `all` 只属于 build-rootfs 的矩阵；单档 workflow 必须拒绝，不能取第一行。
-    result, _ = run_resolve(root / "reject-all", "kernel-release-7.2.9",
+    result, _ = run_resolve(root / "reject-all", "kernel-release-7.3.0",
                             "piano-fedora-runtime", desktop="all")
     assert result.returncode != 0, "build-image expanded a whole desktop matrix"
     assert "name a single desktop" in result.stderr, result.stderr
     # 显式给别的桌面的 rootfs artifact 也必须拒绝。
-    result, _ = run_resolve(root / "reject-foreign", "kernel-release-7.2.9",
+    result, _ = run_resolve(root / "reject-foreign", "kernel-release-7.3.0",
                             "piano-fedora-runtime", desktop="kde",
                             rootfs_artifact="rootfs-44-gnome")
     assert result.returncode != 0, "build-image accepted another desktop's rootfs"
     assert "rootfs-44-kde" in result.stderr, result.stderr
     # 非 GNOME 档派生出自己的 artifact 与容量。
-    result, output = run_resolve(root / "kde", "kernel-release-7.2.9",
+    result, output = run_resolve(root / "kde", "kernel-release-7.3.0",
                                  "piano-fedora-runtime", desktop="kde")
     assert result.returncode == 0, result.stderr
     assert "rootfs_artifact=rootfs-44-kde" in output, output
@@ -359,7 +405,7 @@ def run_bundle_resolve(root, record):
     (root / "gh_stub.py").write_text(GH_STUB)
     (root / "workflows.json").write_text(json.dumps(["build-kernel.yml"]))
     (root / "artifacts.json").write_text(json.dumps(
-        ["kernel-release-7.2.9", "kernel-experimental-gunyah"]))
+        ["kernel-release-7.3.0", "kernel-experimental-gunyah"]))
     (root / "runs.json").write_text(json.dumps({"7001": "build-kernel.yml"}))
     output = root / "github-output"
     output.write_text("")
@@ -384,7 +430,7 @@ def check_bundle_kernel_resolution(root):
     # 旧记录没有 kernel_artifact：默认正式档，保持向后兼容。
     result, output = run_bundle_resolve(root / "legacy", {"kernel_run": "7001"})
     assert result.returncode == 0, result.stderr
-    assert "kernel_artifact=kernel-release-7.2.9" in output, output
+    assert "kernel_artifact=kernel-release-7.3.0" in output, output
     # 记录被改写成无关 artifact：必须拒绝，不能下载任意名字。
     result, _ = run_bundle_resolve(root / "bad", {"kernel_run": "7001", "kernel_artifact": "kernel-foo"})
     assert result.returncode != 0, "bundle accepted an out-of-allowlist kernel_artifact"
@@ -443,8 +489,8 @@ def check_kernel_unpack(root):
     (work / "build/in/runtime").mkdir(parents=True)
     (work / "build/in/mesa").mkdir(parents=True)
     (work / "build/in/ffmpeg").mkdir(parents=True)
-    make_tar(work / "build/in/kernel/kernel-release-7.2.9.tar.zst", "KERNEL-MARKER", "kernel")
-    make_tar(work / "build/in/kernel/kernel-sdk-7.2.9.tar.zst", "SDK-MARKER", "sdk")
+    make_tar(work / "build/in/kernel/kernel-release-7.3.0.tar.zst", "KERNEL-MARKER", "kernel")
+    make_tar(work / "build/in/kernel/kernel-sdk-7.3.0.tar.zst", "SDK-MARKER", "sdk")
     make_tar(work / "build/in/base/rootfs.tar.zst", "rootfs.txt", "root")
     make_tar(work / "build/in/runtime/runtime.tar.zst", "runtime.txt", "rt")
     make_tar(work / "build/in/mesa/mesa.tar.zst", "mesa.txt", "mesa")
@@ -458,7 +504,7 @@ def check_kernel_unpack(root):
                'exec "$PIANO_REAL_PYTHON" "$@"\n')
     env = {**os.environ, "PATH": str(binary) + os.pathsep + os.environ["PATH"],
            "PIANO_REAL_PYTHON": sys.executable,
-           "KERNEL_ARTIFACT": "kernel-release-7.2.9"}
+           "KERNEL_ARTIFACT": "kernel-release-7.3.0"}
     result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
                              step_body(".github/workflows/build-image.yml", "Unpack into separate component directories")],
                             cwd=work, env=env, capture_output=True, text=True)
@@ -700,6 +746,7 @@ def main():
         check_bundle(root / "bundle")
         check_uefi_sealer(root / "uefi-source")
         check_image_kernel_tiers(root / "tiers")
+        check_release_mode_binds_every_input_run(root / "release-binding")
         check_bundle_kernel_resolution(root / "bundle-kernel")
         check_bundle_image_binding(root / "bundle-image-binding")
         check_image_artifact_follows_the_desktop()

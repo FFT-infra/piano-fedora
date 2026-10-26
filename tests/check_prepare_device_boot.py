@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""本机 BOOT 包装的前置校验与 boot-request 生成，不接触设备。
+"""本机 BOOT 包装的前置校验，不接触设备。
 
 `scripts/prepare-device-boot.py` 的主体要调用上游 `piano-boot-repack`，离线跑不
 了。这个测试覆盖它之前和之后的纯 Python 契约：拒绝错误槽位、拒绝大小或摘要
-不符的 stock BOOT、拒绝已存在的输出目录、用新目录重建时生成正确的
-`boot-request.json` 与清单字段。上游二进制本身的行为由真机与 Actions 覆盖。
+不符的 stock BOOT、拒绝已存在的输出目录、用新目录重建时清单字段正确。上游
+二进制本身的行为由真机与 Actions 覆盖。
+
+上游 7dbabdc 之后不再生成 `boot-request.json`：活动槽由只读 GPT 与高通 A/B
+属性判定，所以这里改为断言三个生产者都不再写那份已删除的配置。
 """
 
 import hashlib
@@ -79,15 +82,22 @@ def main():
             assert forbidden not in source, f"prepare-device-boot signs the BOOT again: {forbidden}"
         assert device_boot.BOOT_PARTITION_BYTES == 96 * 1024 * 1024
 
-    # 请求页只在当前引导的那份镜像里被读到。合体 BOOT 装进 Android 的当前槽，
-    # 三个生产者写进 boot-request 的 boot_device 都必须由该槽推出，否则
-    # root-install 与 device-boot 的配置互相对不上，或者指向一张读了也没用的分区。
-    expected = '"/dev/disk/by-partlabel/boot" + slot'
+    # 请求页只在当前引导的那份镜像里被读到，合体 BOOT 装进 Android 的当前槽。
+    # 上游 7dbabdc 之后不再有 boot-request.json：活动槽由只读 GPT 与高通 A/B
+    # 属性判定，三个生产者都必须跟着 --android-slot 走，且不得写死某个槽。
     for name in ("prepare-device-boot", "install-f2fs", "prepare-root-capacity"):
         text = (ROOT / "scripts" / (name + ".py")).read_text()
-        assert expected in text, f"{name} does not derive boot_device from the active slot"
         assert "boot_b\"" not in text and "LINUX_BOOT_DEVICE" not in text, \
             f"{name} still hard-codes the Linux slot"
+        # 只允许在注释里提到这条已删除的路径，不能再写它。
+        for line in text.splitlines():
+            if "/etc/piano/boot-request.json" in line or '"boot-request.json"' in line:
+                assert line.lstrip().startswith("#"), \
+                    f"{name} still writes the removed boot-request.json: {line.strip()}"
+    # 安装计划仍要记下这次用的是哪条判定依据，供人工核对。
+    install = (ROOT / "scripts" / "install-f2fs.py").read_text()
+    assert '"read-only Qualcomm GPT A/B attributes"' in install, \
+        "install-f2fs does not record how the boot device was determined"
 
     print("OK: BOOT 包装拒绝错误槽位、截断镜像、摘要不符与已存在的输出目录")
     return 0

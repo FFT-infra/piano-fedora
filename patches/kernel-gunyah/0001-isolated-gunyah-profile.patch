@@ -1,10 +1,10 @@
 diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
-index aa224a5..e2d8315 100644
+index bbf641c..f85593f 100644
 --- a/tools/build_piano_full_kernel.py
 +++ b/tools/build_piano_full_kernel.py
-@@ -70,8 +70,13 @@ FEDORA_OVERRIDES.update({
-  'CONFIG_NFT_FIB_IPV4':'y','CONFIG_NFT_FIB_IPV6':'y','CONFIG_NFT_MASQ':'y',
-  'CONFIG_NFT_NAT':'y','CONFIG_NFT_REDIR':'y',
+@@ -93,8 +93,13 @@ FEDORA_OVERRIDES.update({
+  'CONFIG_NETFILTER':'y','CONFIG_NETFILTER_ADVANCED':'y',
+  'CONFIG_NF_CONNTRACK':'y','CONFIG_NF_NAT':'y',
  })
 +# The Fedora production kernel always includes the locked upstream Gunyah VMM.
 +GUNYAH_OVERRIDES={'CONFIG_GUNYAH':'y','CONFIG_GUNYAH_HYPERCALLS':'y',
@@ -17,7 +17,7 @@ index aa224a5..e2d8315 100644
  
  
  def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
-@@ -118,6 +123,8 @@ def validate_module_overrides(values):
+@@ -141,6 +146,8 @@ def validate_module_overrides(values):
      if flash and flash!=set(FLASH_OVERRIDES):raise ValueError('Flash requires all four reviewed options')
      fedora=set(values)&set(FEDORA_OVERRIDES)
      if fedora and fedora!=set(FEDORA_OVERRIDES):raise ValueError('Fedora requires the complete reviewed SELinux policy')
@@ -26,7 +26,7 @@ index aa224a5..e2d8315 100644
      return values
  
  
-@@ -229,7 +236,9 @@ def main():
+@@ -261,7 +268,9 @@ def main():
      args=parser.parse_args()
      if not 1<=args.jobs<=8:raise SystemExit('Full candidate jobs must be 1..8')
      work,out,artifacts=(path.resolve()for path in (args.worktree,args.build_dir,args.artifacts));commit=args.commit
@@ -37,7 +37,7 @@ index aa224a5..e2d8315 100644
          raise ValueError('Explicit full kernel paths must stay in the workspace build/artifact directories')
      compiler=ROOT/'build/kernel-worktrees'/(out.name+'-compiler-'+hashlib.sha256(str(out).encode()).hexdigest()[:12])
      if compiler==work or compiler.resolve()!=compiler:
-@@ -251,6 +260,9 @@ def main():
+@@ -283,6 +292,9 @@ def main():
               **module_overrides(f2fs.read_text(),'f2fs')}
      if args.fedora_policy:
          modules={**modules,**FEDORA_OVERRIDES}

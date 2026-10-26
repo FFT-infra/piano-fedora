@@ -850,7 +850,7 @@ def main():
                               "root_locked": password_locked(shadow_password(root, "root")),
                               "nopasswd": False, "autologin": True,
                               "device_login_tested": False},
-              "device_configuration_required": ["/etc/piano/boot-request.json", "active Android slot for sensors"],
+              "device_configuration_required": ["active Android slot for sensors"],
               "normalized_launcher_links": normalized_launchers,
               "removed_manpage_links": removed_manpages, "device_tested": False}
     result["boot_diagnostic_files"] = diagnostic_files

@@ -40,7 +40,7 @@ DECODERS = {"h264_v4l2m2m": "h263p", "hevc_v4l2m2m": "hdr"}
 # 缺 From: 时 git am 会以空作者失败。
 BSP_SERIES = "linux/bsp/patches/ffmpeg"
 BSP_VERSION = "7.1.5"
-BSP_REVISION = "sunuefi4"
+BSP_REVISION = "sunuefi5"
 PORT_MAIL_HEADER = "From: slwyts <slwyts@foxmail.com>\n"
 # FFmpeg 8 把 refstruct API 从 libavcodec 移到 libavutil 并改名为 av_refstruct_*，
 # v4l2_m2m_dec.c 里那行注释的拼写也在 8.x 修正。三处都是纯文本替换，无语义冲突：
@@ -60,6 +60,10 @@ PORT_SHA256 = {
         "9a90d78017753b1a9041ba011d3697f05ab1a81c1c40be91082fefa2388889e6",
     "0005-v4l2m2m-orphan-capture-ffmpeg7.patch":
         "43ee39ee05f18802851f109f17f8244f2f31cda372e166bf3f32855c6b825155",
+    # P010 只往 8.x 与 7.x 共有的两条 case 表里加行，不碰 refstruct 改名，
+    # 衍生文本与 BSP 原文逐字节相同。
+    "0006-v4l2m2m-p010-capture.patch":
+        "2eeca4bcb88a54819c8211703eb3b6461e00a4fd122d5c405ff2764c08381044",
 }
 # Fedora 的 %autosetup -S git_am 用 git am 提交补丁，需要 committer 身份；
 # Koji 构建机有完整域名可以自动推断，容器里没有，所以显式给出。

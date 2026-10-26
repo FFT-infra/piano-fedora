@@ -10,7 +10,7 @@ English | [简体中文](README.md)
 
 [![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
 
-Fedora 44 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 Elite SM8750), with GNOME as the default desktop. The boot chain is SunUEFI (EDK2). The kernel is a mainline Linux 7.2.9 port. The root filesystem is F2FS. The tablet dual-boots Linux and the stock HyperOS. A 3-second chooser in the combined BOOT and the Android boot-assistant module handle both directions without a host.
+Fedora 44 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 Elite SM8750), with GNOME as the default desktop. The boot chain is SunUEFI (EDK2). The kernel is a mainline Linux 7.3 port. The root filesystem is F2FS. The tablet dual-boots Linux and the stock HyperOS. A 3-second chooser in the combined BOOT and the Android boot-assistant module handle both directions without a host.
 
 ## Hardware status
 

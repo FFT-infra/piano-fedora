@@ -66,7 +66,7 @@ case "$device_digest" in
     [0-9a-f][0-9a-f]*) ;;
     *) die "could not read the digest of ${partition}; root adb is required" ;;
 esac
-adb "${adb_args[@]}" exec-out su -c "dd if=${partition} bs=1048576" \
+adb "${adb_args[@]}" exec-out su -c "dd if=${partition} bs=1048576 status=none 2>/dev/null" \
     > stock-recovery/boot.img
 
 size=$(wc -c < stock-recovery/boot.img | tr -d ' ')

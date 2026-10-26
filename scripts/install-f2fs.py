@@ -180,10 +180,8 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     for asset, packaged in BUNDLE_ASSETS.items():
         checked(bundle / asset, generic["files"][packaged])
     # root-install 只是把同一份封存镜像预先扩到目标容量的可选产物。带了它就要
-    # 与这份 bundle 逐项对上；没带就直接用 bundle 自带的 sparse，此时镜像里
-    # 没有 /etc/piano/boot-request.json，由首启的
-    # piano-boot-request-autoconfig.service 按 qbootctl 读到的当前槽重建（首装后
-    # 是 boot_a），再与 device-boot 记录的同一条配置对上。
+    # 与这份 bundle 逐项对上；没带就直接用 bundle 自带的 sparse。两条路径都不再
+    # 往镜像里写槽位配置——上游 7dbabdc 之后活动槽由 GPT 与高通 A/B 属性判定。
     if root:
         require(root.get("status") == "ROOT_CAPACITY_VERIFIED_NOT_DEVICE_VERIFIED"
                 and root["source_bundle_manifest_sha256"] == sha256(bundle / "bundle-manifest.json")
@@ -199,7 +197,7 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
                           "hardlink_groups_checked", "mtime_checked", "xattr_checked"):
                 require(root.get("metadata_verification", {}).get(field) is True,
                         "root metadata proof missing: " + field)
-        require(root["device_configuration"]["boot_request"] == combined["boot_request"]
+        require(root["device_configuration"]["app_generation"] == combined["app_generation"]
                 and root["device_configuration"]["android_slot"] == slot
                 and root["device_configuration"].get("ssh_public_key_in_image") is False,
                 "root device configuration differs from BOOT")
@@ -230,14 +228,13 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     require(combined.get("status") == "DEVICE_BOOT_FILE_VERIFIED_NOT_DEVICE_BOOTED"
             and combined["byte_equal_restoration"] is True and combined["active_slot"] == slot,
             "combined BOOT does not match the current slot or lacks lossless restore proof")
-    # 请求页只在当前引导的那份 BOOT 里被读到；合体 BOOT 与请求配置都在
-    # Android 的当前槽，所以配置必须指向 boot<当前槽>。
-    expected_boot_device = "/dev/disk/by-partlabel/boot" + slot
-    require(combined["boot_request"].get("boot_device") == expected_boot_device,
-            "device-boot records the boot request for "
-            f"{combined['boot_request'].get('boot_device')!r}; it must be {expected_boot_device}")
+    # 请求页只在当前引导的那份 BOOT 里被读到；合体 BOOT 装进 Android 的当前槽。
+    # 上游 7dbabdc 之后 Linux 侧不再有槽位配置文件，活动槽由 GPT 与高通 A/B
+    # 属性判定，所以这里只核对 BOOT 清单声明的槽与设备当前槽一致。
+    require(combined["active_slot"] == slot,
+            f"device-boot wrapped slot {combined['active_slot']!r}; it must be {slot!r}")
     require(combined["uefi_product_sha256"] == sha256(bundle / "PianoUEFI-product.img"), "BOOT and ESP use different UEFI cores")
-    for name in ("boot_android.img", "boot_linux.img", "boot-request.json"):
+    for name in ("boot_android.img", "boot_linux.img"):
         checked(boot / name, combined["files"][name])
     current_boot = device.text("sha256sum /dev/block/by-name/boot" + slot).split()[0]
     require(current_boot == combined["source_boot_sha256"], "current Android BOOT changed since packaging")
@@ -258,8 +255,8 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
                        "root_manifest_sha256": sha256(prepared_manifest) if prepared_manifest.is_file() else None,
                        "boot_manifest_sha256": sha256(boot / "device-boot-manifest.json")},
             "android_data_preserved": existing, "root_capacity": capacity,
-            "boot_request": {"device": combined["boot_request"]["boot_device"],
-                             "source": "root-install" if root else "first-boot-autoconfig"},
+            "boot_request": {"device": "/dev/disk/by-partlabel/boot" + slot,
+                             "source": "read-only Qualcomm GPT A/B attributes"},
             "device_writes": False}, snapshot
 
 
@@ -283,7 +280,10 @@ def wait_factory(device, identity, attempts=90, delay=2):
         try:
             if device.fastboot_var(serial, "serialno") == serial:
                 return
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        # 上游 Device.call() 在 fastboot 非零退出时抛 ValueError（require()），
+        # 不是 CalledProcessError。漏掉它会让第一次枚举失败直接结束整个
+        # apply，而那一刻 GPT 已改写、userdata 还没擦除。
+        except (ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
             pass
         if attempt + 1 < attempts:
             time.sleep(delay)
@@ -307,13 +307,23 @@ def dd_available(device):
     Android toybox and Fedora coreutils both ship `dd`, but `conv=fsync,notrunc`
     is the part the write relies on. Checking it on a scratch file keeps a
     missing flag from surfacing after the destructive boundary.
+
+    The probe pre-sizes the file to two blocks and writes the second one. A dd
+    without `notrunc` truncates the file to one block, so the length check and
+    the untouched-first-block check both fail. Seeking past the end of a short
+    file would grow it instead, which proves nothing.
     """
     probe = "/data/local/tmp/piano-dd-probe-" + uuid.uuid4().hex
-    device.shell("printf 'piano' > " + shlex.quote(probe) +
-                 " && dd if=/dev/zero of=" + shlex.quote(probe) +
-                 " bs=4096 seek=1 count=1 conv=fsync,notrunc 2>/dev/null" +
-                 " && test \"$(stat -c %s " + shlex.quote(probe) + ")\" = 4096" +
-                 " && rm -f " + shlex.quote(probe))
+    probe_quoted = shlex.quote(probe)
+    device.shell(
+        "printf 'piano' > " + probe_quoted +
+        " && dd if=/dev/zero of=" + probe_quoted + " bs=4096 count=4 2>/dev/null"
+        " && printf 'keep' | dd of=" + probe_quoted + " bs=4096 seek=0 count=1 conv=notrunc 2>/dev/null"
+        " && dd if=/dev/zero of=" + probe_quoted +
+        " bs=4096 seek=1 count=1 conv=fsync,notrunc 2>/dev/null"
+        " && test \"$(stat -c %s " + probe_quoted + ")\" = 16384"
+        " && test \"$(dd if=" + probe_quoted + " bs=4096 count=1 2>/dev/null | head -c 4)\" = keep"
+        " && rm -f " + probe_quoted)
     return True
 
 
@@ -351,17 +361,6 @@ def restore_gpt_blobs(device, identity, session):
                  f"conv=fsync,notrunc")
     device.shell(f"dd if={remote}-head of={disk} bs={BLOCK} seek=0 conv=fsync,notrunc && sync")
     device.shell("rm -f " + remote + "-tail " + remote + "-head")
-
-
-
-    pending = path.with_suffix(".pending")
-    with pending.open("w") as stream:
-        json.dump(value, stream, indent=2)
-        stream.write("\n")
-        stream.flush()
-        os.fsync(stream.fileno())
-    pending.replace(path)
-    sync_dir(path.parent)
 
 
 SSH_KEY_GUEST_PATH = "/piano-ssh-key.pub"
@@ -508,7 +507,10 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
         for name, image in images.items():
             before = sha256(image)
             require(before == expected_hashes[name], "input image hash differs from validated manifest: " + name)
-            device.call(["fastboot", "-s", identity["factory_serial"], "flash", name, str(image)], timeout=3600)
+            # 钢琴 ABL 对单次 512 MiB 的裸 ESP 写入会停止响应。`-S 128M` 让标准
+            # fastboot 把镜像切成有界传输，上游 install_piano.py 的 flash() 也这么发。
+            device.call(["fastboot", "-s", identity["factory_serial"], "-S", "128M",
+                         "flash", name, str(image)], timeout=3600)
             require(sha256(image) == before, "input image changed during transfer")
             stage("factory_fastboot_accepted_" + name)
         journal.update(status="IMAGES_TRANSFERRED_FIRST_BOOT_PENDING",

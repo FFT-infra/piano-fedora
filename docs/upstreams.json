@@ -5,12 +5,14 @@
   "repositories": [
     {
       "repo": "dgibson/dtc",
-      "ref": "v1.8.1",
+      "ref": "main",
       "category": "build",
       "role": "设备树覆盖层打包工具",
       "decision": "consume",
       "lock_key": "dtc",
-      "reason": "libfdt 1.6.1 会覆盖触屏关联覆盖层目标节点的既有 phandle；锁定 1.8.1"
+      "reason": "libfdt 1.6.1 会覆盖触屏关联覆盖层目标节点的既有 phandle；1.8.1 之后仍无新 tag，跟 main",
+      "reference_commit": "f99e3af0ecb67a9085478a9b8ddbcc25aa64931d",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "CodeLinaro-mirror/linux-kernel_gunyah-linux",
@@ -83,14 +85,14 @@
       "reference_date": "2026-08-20"
     },
     {
-      "repo": "ALXP-DANIEL/ANDROID_DEVICE_XIAOMI_PIANO",
-      "ref": "main",
+      "repo": "xiaomi-pad-8-pro-development/android_device_xiaomi_piano",
+      "ref": "seventeen",
       "category": "reference",
-      "role": "LineageOS 24/23 + TWRP + OrangeFox 设备树，分支最全，★10",
+      "role": "LineageOS 设备树与 proprietary-files 清单（原 ALXP-DANIEL/ANDROID_DEVICE_XIAOMI_PIANO，仓库已转移到该组织）",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "1b04acc120ce0151dc52452434aaa0b7f65aa646",
-      "reference_date": "2026-10-13"
+      "reference_commit": "4fddb8c2d13497cc61144333d33fdb397f341130",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "AnyLaySys/qemu-gunyah",
@@ -109,8 +111,8 @@
       "role": "固件",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "91392831029a0ad20b3dd1b2cd08235a9f523e44",
-      "reference_date": "2026-10-13"
+      "reference_commit": "9934dbd5541bb49e2063089437a981f752c87b7f",
+      "reference_date": "2026-10-24"
     },
     {
       "repo": "AviderMin/ofrp_device_xiaomi_piano",
@@ -151,14 +153,6 @@
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
       "reference_commit": "3d66a6e78d519dd050fbebde4db6c5ac933f9aa4",
       "reference_date": "2025-04-13"
-    },
-    {
-      "repo": "blu-sharky/CrabApple",
-      "ref": null,
-      "category": "历史 UEFI 子模块；可访问性必须重新核验",
-      "role": "历史 UEFI 子模块；可访问性必须重新核验",
-      "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
     },
     {
       "repo": "blu-sharky/debian-piano",
@@ -273,8 +267,8 @@
       "role": "Gunyah 虚拟机管理器与模块安装脚本",
       "decision": "consume",
       "reason": "正式 Fedora 运行时按构建锁消费",
-      "reference_commit": "9833d43c7caadfdfb8439306cd10641921d58e90",
-      "reference_date": "2026-10-13",
+      "reference_commit": "56918558e2c4303cda803a655ea716869c551b71",
+      "reference_date": "2026-10-15",
       "lock_key": "librevm"
     },
     {
@@ -304,8 +298,8 @@
       "role": "UEFI 基础 fork",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "23c9ee86f3735498c969131296433fea9537b69c",
-      "reference_date": "2026-07-07"
+      "reference_commit": "d743bc2290448c59079b1e7047a0e2dbc61b5fea",
+      "reference_date": "2026-10-16"
     },
     {
       "repo": "code002-2/piano-linux",
@@ -385,8 +379,8 @@
       "role": "上面 `cctv18/oppo_oplus_realme_sm8750` 的 fork",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "2837a957e8c2e570004e150536b159441cc5b02f",
-      "reference_date": "2026-10-12"
+      "reference_commit": "e6076f87c51d76685cc7795361a3fde7f8bd1219",
+      "reference_date": "2026-10-18"
     },
     {
       "repo": "GUF296/xiaomi-pad-8-pro-linux",
@@ -405,8 +399,8 @@
       "role": "笔",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "a45f65ef675bb6ff351c53c19c72625adb027078",
-      "reference_date": "2026-08-20"
+      "reference_commit": "c54b3b7aed08821668c234a24971162b6661e281",
+      "reference_date": "2026-10-20"
     },
     {
       "repo": "karim-manaouil/linux-next",
@@ -445,8 +439,8 @@
       "role": "音频拓扑",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "b4c1510fe6686ab8053715a02c34bec875ca5c6c",
-      "reference_date": "2026-09-30"
+      "reference_commit": "d6bb205aca5f4b8fa6b2f44cf8b5f6a081cbf037",
+      "reference_date": "2026-10-20"
     },
     {
       "repo": "Linuxoid-cn/Mi8E-Unlocker",
@@ -459,22 +453,14 @@
       "reference_date": "2026-07-12"
     },
     {
-      "repo": "llfzs/8pro",
-      "ref": "piano/ci-packaging",
-      "category": "reference",
-      "role": "中文 Linux 移植项目，有 `dt/sm8750-piano.dts` 和 device 配置，GPL-2.0",
-      "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
-    },
-    {
       "repo": "lxc/incus",
       "ref": "main",
       "category": "虚拟化",
       "role": "虚拟化",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "24a8bf273793f01e7665b9f5624b2ec8201bc11b",
-      "reference_date": "2026-10-12"
+      "reference_commit": "f1ff6bf157c2851d5376b72fbc0dca5318468aef",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "MiCode/kernel_build",
@@ -593,8 +579,8 @@
       "role": "Fedora 发行版配方参考",
       "decision": "reference",
       "reason": "Fedora 后端参考（sheng/SM8550，GPL-3.0）。提供 RPM spec、Actions 参数化、dual(linux) 分区模式。硬件与启动链不可复用",
-      "reference_commit": "641c991e4fa86067a4362da1c1ae76881eb6358f",
-      "reference_date": "2026-10-11"
+      "reference_commit": "520c26766f50f483f0d944ac23b3042fb08a854e",
+      "reference_date": "2026-10-23"
     },
     {
       "repo": "nekoztx/android_device_xiaomi_piano",
@@ -683,8 +669,8 @@
       "role": "UEFI 基础",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "3aa95a72d469234755e2bcf2841ec6c0e83863e9",
-      "reference_date": "2026-10-13"
+      "reference_commit": "4cba43c90e02cdbefbcd9fcdbda33d2328deaec0",
+      "reference_date": "2026-10-24"
     },
     {
       "repo": "qemu-gunyah/qemu-android-gunyah",
@@ -698,14 +684,14 @@
     },
     {
       "repo": "qualcomm/fastrpc",
-      "ref": "v1.0.8",
+      "ref": "development",
       "category": "adsprpcd 源码",
       "role": "adsprpcd 源码",
       "decision": "consume",
-      "reason": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd",
+      "reason": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd。上游默认分支是 development，v1.0.8 之后的两条 EBUSY 退出修复只在那里",
       "lock_key": "fastrpc",
-      "reference_commit": "d247519650fe5cb16de6c78edaa95bcc4be25073",
-      "reference_date": "2026-09-11"
+      "reference_commit": "a56e9d4de3614a8d8f4b0e15ff561350c4b686e3",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "ravindu644/Droidspaces-OSS",
@@ -714,8 +700,8 @@
       "role": "LXC 式容器运行时，★2288；社区设备表明确列 25091RP04C",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "51f16c2a3d9cc979023583b9c4eb9d1efeb5325e",
-      "reference_date": "2026-10-13"
+      "reference_commit": "64d53d17e765dad3028171204220f4d1134c7e37",
+      "reference_date": "2026-10-25"
     },
     {
       "repo": "renhiyama/pagani-linux",
@@ -726,14 +712,6 @@
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
       "reference_commit": "2635bc17978b5e0eaff7ad67cb85f3fa22d37d64",
       "reference_date": "2026-06-19"
-    },
-    {
-      "repo": "runesign/mipad-6s-pro-linux",
-      "ref": "main",
-      "category": "sheng 参考",
-      "role": "sheng 参考",
-      "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入"
     },
     {
       "repo": "skb8/linux-sm8750",
@@ -753,8 +731,8 @@
       "decision": "consume",
       "reason": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
       "lock_key": "sunuefi",
-      "reference_commit": "79417e7fc5b73e41e1fa9d70f69e7f906caa559d",
-      "reference_date": "2026-10-20"
+      "reference_commit": "0a8ec14340c02d0c1febb25f1bb3af830485545e",
+      "reference_date": "2026-10-25"
     },
     {
       "repo": "sm8750-mainline/linux",
@@ -803,8 +781,8 @@
       "role": "主线补丁吸收比较",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "24a19b953e2a3d0ea5a8c4951a0ab8f32720c907",
-      "reference_date": "2026-10-12"
+      "reference_commit": "6b4b543fa18757297ac756a6fe6e64f506b7844a",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "twrpdtgen/android_device_xiaomi_piano",
@@ -901,9 +879,8 @@
       "ref": "pr/gunyah",
       "category": "Gunyah 驱动",
       "role": "从 android17-6.18 导入并适配主线 7.2 的完整 /dev/gunyah 驱动，含 gh_vmtest 冒烟测试",
-      "decision": "consume",
-      "reason": "独立 Gunyah 实验内核的驱动来源；正式 Fedora 内核不自动导入",
-      "lock_key": "gunyah-driver",
+      "decision": "reference",
+      "reason": "7.3 的封存序列在 0006-gunyah.patch 里自带驱动，正式内核不再单独导入这一支；保留为驱动上游与历史对照",
       "reference_commit": "fd503a492d381687c143b7085ea79ebce58dcdc7",
       "reference_date": "2026-10-07"
     },
@@ -914,16 +891,20 @@
       "role": "带 Gunyah、virtio-net 后端的原生 VMM",
       "decision": "consume",
       "lock_key": "crosvm",
-      "reason": "正式 Fedora 运行时按构建锁消费"
+      "reason": "正式 Fedora 运行时按构建锁消费",
+      "reference_commit": "1784d938eb43bd8a0c4b62ec447c7330a6ecee20",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "radxa-pkg/libva-v4l2",
-      "ref": "v1.0.0",
+      "ref": "master",
       "category": "Qualcomm Iris stateful V4L2 VA-API 后端（硬件解码 + H.264/HEVC 编码）",
       "role": "Qualcomm Iris stateful V4L2 VA-API 后端（硬件解码 + H.264/HEVC 编码）",
       "decision": "consume",
       "lock_key": "iris-vaapi",
-      "reason": "正式 Fedora 运行时按构建锁消费；编码 entrypoint 只在这一支里，只有解码入口的 phxinyang 分支不得再覆盖它"
+      "reason": "正式 Fedora 运行时按构建锁消费；编码 entrypoint 只在这一支里，只有解码入口的 phxinyang 分支不得再覆盖它",
+      "reference_commit": "51df9a538a1e8ce7a02449d9bca32ecf621c76c5",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "yzddmr6/xiaomipad-8pro-mainline",
@@ -932,10 +913,70 @@
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者",
       "decision": "consume",
       "lock_key": "piano-integration",
-      "reference_commit": "1ab620f41730fd66732141d73d27d6ce93f8a92a",
-      "reference_date": "2026-10-15",
+      "reference_commit": "cede87ccee5b3041f9da47d0639644d1d69ca96b",
+      "reference_date": "2026-10-26",
       "reason": "正式 Fedora 运行时按固定源码构建并核验安装字节"
+    },
+    {
+      "repo": "yzddmr6/linux-sm8750-piano",
+      "ref": "piano/dev",
+      "category": "内核",
+      "role": "piano 主线内核树，独立于 blu-sharky/linux-piano 的另一条开发线",
+      "decision": "reference",
+      "reason": "面板模块 ID 选择、触控固件选择、geni-qcom 空闲、LLCC 驱动、CPU 热区等改动与本机正在处理的项重合；只作对照，不替换锁定的内核基线",
+      "reference_commit": "9321086f2e2234bfdf073ac3326bd88cb5053e4f",
+      "reference_date": "2026-10-25"
+    },
+    {
+      "repo": "llfzs/sm8750-linux",
+      "ref": "piano-7.2.9",
+      "category": "内核",
+      "role": "piano 主线内核分支，fork 自 code002-2/linux；原 llfzs/8pro 的 DTS 与 device 配置已并入这里",
+      "decision": "reference",
+      "reason": "与 code002-2/linux 同源的第三条线；对照相机 CAMSS/TFE 与配置打包差异",
+      "reference_commit": "628c0d9d719cecc2a358491c252f4d7eb1bdf0aa",
+      "reference_date": "2026-10-06"
+    },
+    {
+      "repo": "code002-2/UniXNU-piano",
+      "ref": "main",
+      "category": "参考",
+      "role": "UniXNU 设备仓库（piano）；含存储控制器与 MCQ 的取证文档",
+      "decision": "reference",
+      "reason": "记录了固件无法访问存储、临时引导路径的取证过程；排查启动与存储问题时可作对照",
+      "reference_commit": "98b3f94a067aff93a9296de7b80fdddc03dae380",
+      "reference_date": "2026-10-20"
+    },
+    {
+      "repo": "liisoya/ubuntu-piano",
+      "ref": "piano-rootfs-builder",
+      "category": "rootfs",
+      "role": "Debian rootfs 与 boot 镜像构建（piano）",
+      "decision": "reference",
+      "reason": "有 SDDM 登录页无键盘、首刷缺模块/固件、CI 产物未上传等实战修复，与 rootfs 装配问题同类",
+      "reference_commit": "e3628fc2fe2e1b9e0794d4c8f2adb7c700f92dd0",
+      "reference_date": "2026-10-14"
+    },
+    {
+      "repo": "code002-2/edk2-gunyah-librevm",
+      "ref": "librevm",
+      "category": "虚拟化",
+      "role": "在 Qualcomm Gunyah 里运行 UEFI 固件的 EDK2 构建",
+      "decision": "reference",
+      "reason": "与 librevm 虚拟机管理器配套；Gunyah 路线可行性判断的参考，不参与本机启动链",
+      "reference_commit": "90c4d52c7d11485318bbb4fb9291a15ea1550ab2",
+      "reference_date": "2026-10-10"
+    },
+    {
+      "repo": "phxinyang/xiaomi-sheng-thp",
+      "ref": "master",
+      "category": "sheng 参考",
+      "role": "小米 Pad 6S Pro（sheng）的 THP 触控实现",
+      "decision": "reference",
+      "reason": "同作者、同 NT36532 家族的触控实现，对照固件 epoch 与处理状态复位逻辑",
+      "reference_commit": "f13fb65c297f00030b10e602e4585fa1d8c5f3a5",
+      "reference_date": "2026-07-18"
     }
   ],
-  "checked_date": "2026-10-21"
+  "checked_date": "2026-10-26"
 }

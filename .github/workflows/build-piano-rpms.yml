@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       kernel_run_id:
-        description: "Successful build-kernel run with kernel-release-7.2.9 and kernel-sdk-7.2.9"
+        description: "Successful build-kernel run with kernel-release-7.3.0 and kernel-sdk-7.3.0"
         required: true
         default: ""
       releasever:
@@ -17,7 +17,7 @@ on:
   workflow_call:
     inputs:
       kernel_run_id:
-        description: "Successful build-kernel run with kernel-release-7.2.9 and kernel-sdk-7.2.9"
+        description: "Successful build-kernel run with kernel-release-7.3.0 and kernel-sdk-7.3.0"
         required: true
         type: string
       releasever:
@@ -58,21 +58,21 @@ jobs:
           test -n "$KERNEL_RUN"
           python3 scripts/resolve-artifact-run.py \
             --workflow build-kernel.yml \
-            --artifact kernel-release-7.2.9 \
-            --artifact kernel-sdk-7.2.9 \
+            --artifact kernel-release-7.3.0 \
+            --artifact kernel-sdk-7.3.0 \
             --run-id "$KERNEL_RUN" \
             --output-key run_id
 
       - uses: actions/download-artifact@v4
         with:
-          name: kernel-release-7.2.9
+          name: kernel-release-7.3.0
           path: build/in/kernel
           run-id: ${{ steps.kernel.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/download-artifact@v4
         with:
-          name: kernel-sdk-7.2.9
+          name: kernel-sdk-7.3.0
           path: build/in/sdk
           run-id: ${{ steps.kernel.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -90,7 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/kernel
-          tar -I zstd -xf build/in/kernel/kernel-release-7.2.9.tar.zst -C build/kernel
+          tar -I zstd -xf build/in/kernel/kernel-release-7.3.0.tar.zst -C build/kernel
           test -s build/kernel/Image
           test -s build/kernel/System.map
           test -s build/kernel/config
@@ -107,7 +107,6 @@ jobs:
             exit 1
           fi
           test -n "$(ls -A "$modules_dir")"
-          test -f build/in/sdk/kernel-gunyah-source.json
           kernel_release=$(python3 -c 'import json; print(json.load(open("build/kernel/manifest.json"))["kernel_release"])')
           test -n "$kernel_release"
           echo "kernel_release=$kernel_release" >> "$GITHUB_OUTPUT"
@@ -116,8 +115,9 @@ jobs:
         id: source
         run: |
           set -euo pipefail
-          # kernel-piano 拥有 v4l2loopback，所以矩阵也要编这份外部模块：源码、
-          # 内核源码树与 Gunyah 派生输入一起取，与 build-device-runtime 同一套。
+          # kernel-piano 拥有 v4l2loopback，所以矩阵也要编这份外部模块：源码与
+          # 内核源码树一起取，与 build-device-runtime 同一套。7.3 的封存序列
+          # 自带 Gunyah 驱动，不再有单独的派生输入。
           python3 scripts/checkout-sources.py --output build/sources --mode loopback --kernel
           test -s build/sources/sunuefi/vendor/piano-linux/board.dtb
           test -d build/sources/sunuefi/upstream/v4l2loopback
@@ -129,7 +129,7 @@ jobs:
           set -euo pipefail
           # 外部模块必须用这个内核的 SDK 编：vermagic 与 Module.symvers 都要
           # 对得上，否则装进 rootfs 之后 modprobe 直接拒绝。SDK 与源码的重放
-          # 由 prepare-runtime-kernel.py 完成，它同时校验 Gunyah 派生树。
+          # 由 prepare-runtime-kernel.py 完成。
           python3 scripts/prepare-runtime-kernel.py --sunuefi build/sources/sunuefi \
             --kernel build/kernel --sdk build/in/sdk --output build/kernel-runtime
           test -s build/kernel-runtime/v4l2loopback/v4l2loopback.ko

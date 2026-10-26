@@ -9,7 +9,6 @@
 /etc/uperf-linux/perapp_powermode
 /etc/uperf-linux/sm8550.json
 /usr/bin/piano-next-boot
-/usr/bin/piano-next-boot-configure
 /usr/lib/firmware/adsp.b00
 /usr/lib/firmware/adsp.b01
 /usr/lib/firmware/adsp.b02

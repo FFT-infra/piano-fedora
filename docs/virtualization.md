@@ -7,16 +7,16 @@ Gunyah 已进入标准 Fedora 内核构建链。构建链不再包含实验档�
 
 | 环节 | 入口与合同 |
 | --- | --- |
-| 固定驱动 | `sources.lock.json` 的 `gunyah-driver`，commit `fd503a492d381687c143b7085ea79ebce58dcdc7`。32 个文件原样导入 |
-| 源码准备 | `scripts/prepare-production-kernel.py` 重放 SunUEFI/Iris 后导入驱动。脚本不依赖已编译的基础内核 |
-| 来源证明 | `production-source-manifest.json` 记录最终源码身份。`kernel-gunyah-source.json` 记录父树、导入文件和派生树 |
-| 标准配置 | `--fedora-policy` 自动要求驱动源码并启用全部八项 Gunyah 配置。缺源码或配置不完整就失败 |
-| 内核与 SDK | `build-kernel.yml` 标准 job 先配置驱动并单独编译，再构建整核。标准 SDK 携带派生证明 |
-| 外部模块 | `prepare-runtime-kernel.py` 默认重放 Gunyah 派生证明，要求源码、配置、Module.symvers 与内核清单匹配 |
+| 驱动来源 | 7.3 的封存序列里 `0006-gunyah.patch` 自带驱动，来源 `code002-2/librevm` 的 `56918558e2c4`。不再单独取厂商分支 |
+| 源码准备 | `scripts/prepare-production-kernel.py` 只重放 `patches/linux/7.3/series.json`。脚本不依赖已编译的基础内核 |
+| 来源证明 | `production-source-manifest.json` 记录最终源码身份，逐行列出序列里每个补丁的提交与树 |
+| 标准配置 | `--fedora-policy` 启用全部八项 Gunyah 配置。配置不完整就失败 |
+| 内核与 SDK | `build-kernel.yml` 标准 job 先配置再构建整核。SDK 携带源码清单 |
+| 外部模块 | `prepare-runtime-kernel.py` 要求重放出的源码树、配置、Module.symvers 与内核清单匹配 |
 | 镜像与交付 | 只接受标准 kernel/runtime artifact。旧实验档一律拒绝，防止混装模块 |
 
 八项内置配置包括 `GUNYAH`、`GUNYAH_HYPERCALLS`、`GUNYAH_TIMER`、`GUNYAH_PLATFORM_HOOKS`、`GUNYAH_QCOM_PLATFORM`、`GUNYAH_QCOM_TRUSTED_VM`、`GUNYAH_IRQFD` 与 `GUNYAH_IOEVENTFD`。
-`check_gunyah_source.py`、`check_production_kernel.py` 与 `check_runtime_kernel_source.py` 校验固定源码、逐字节导入和重放一致性。三项脚本都纳入 `make test`。
+`check_production_kernel.py` 与 `check_runtime_kernel_source.py` 校验正式源码就是序列重放的结果、且没有第二份 Gunyah 导入。两项脚本都纳入 `make test`。
 
 补丁文件名 `0001-isolated-gunyah-profile.patch` 是历史名称。补丁内容已改为 Fedora 正式策略，不再包含 `--experimental-gunyah` 开关。
 
@@ -68,7 +68,7 @@ payload DTB 的 `/hypervisor/qcom,resource-manager-rpc@…` 节点 `reg` 记录�
 ## 实读来源
 
 - [Qualcomm v17 完整提案](https://lore.kernel.org/lkml/20240222-gunyah-v17-0-1e9da6763d38@quicinc.com/)
-- [已适配主线 7.2 的 Gunyah 驱动分支](https://github.com/SuperTurtleDev/iceland-mainline-kernel-linux/tree/fd503a492d381687c143b7085ea79ebce58dcdc7/drivers/virt/gunyah)
+- [7.3 序列里 Gunyah 补丁的上游来源](https://github.com/code002-2/librevm/tree/56918558e2c4303cda803a655ea716869c551b71)
 - [librevm 对 Gunyah 驱动的打包与移植说明](https://github.com/code002-2/librevm/tree/9833d43c7caadfdfb8439306cd10641921d58e90/packaging/gunyah-driver-7.2)
 - [小米 piano 官方 Gunyah 驱动](https://github.com/MiCode/Xiaomi_Kernel_OpenSource/tree/45fb9bd6ae5ba2942fc1d53e4b6b46ef76992f71/drivers/virt/gunyah)
 - [完整 VMM 源码树](https://github.com/CodeLinaro-mirror/linux-kernel_gunyah-linux/tree/a73f08e03671eed3c2e3917637eacff764feef90/drivers/virt/gunyah)

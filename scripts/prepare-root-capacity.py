@@ -107,16 +107,15 @@ def configure_source(source, bundle, slot, work):
     app = image[offset:offset + ramdisk]
     require(len(app) == ramdisk and len(app) >= 64 and app[:16] == b"SUNUEFI-APPv1\0".ljust(16, b"\0")
             and hashlib.sha256(app[64:]).digest() == app[32:64], "invalid sealed APPv1")
-    boot_request = {"version": 1, "boot_device": "/dev/disk/by-partlabel/boot" + slot,
-                    "app_generation": hashlib.sha256(app).hexdigest()[:32]}
+    # 上游 7dbabdc 删掉了 /etc/piano/boot-request.json：Linux 侧的
+    # piano-next-boot-helper 改为直接读主备 GPT 与高通 A/B 属性定位活动槽，
+    # 不再依赖镜像里的槽位记录。这里只保留生成 APP 摘要的校验，供安装计划
+    # 与 device-boot 清单交叉核对。
+    app_generation = hashlib.sha256(app).hexdigest()[:32]
     mount = work / "configure-mount"
     mount.mkdir()
     run("mount", "-t", "f2fs", "-o", "loop", source, mount)
     try:
-        config = safe_destination(mount, "etc/piano/boot-request.json")
-        config.parent.mkdir(parents=True, exist_ok=True)
-        config.write_text(json.dumps(boot_request, indent=2) + "\n")
-        config.chmod(0o644)
         sensors_name = "etc/systemd/system/piano-sensors-import.service.d/android-slot.conf"
         sensors = safe_destination(mount, sensors_name)
         sensors.parent.mkdir(parents=True, exist_ok=True)
@@ -139,13 +138,13 @@ def configure_source(source, bundle, slot, work):
         # 使用镜像内匹配的 Fedora 工具及规则，不猜测 SSH/home 的 SELinux 类型。
         run("chroot", mount, "/usr/sbin/setfiles", "-F",
             "/etc/selinux/targeted/contexts/files/file_contexts",
-            "/etc/piano", "/etc/systemd/system/piano-sensors-import.service.d")
-        for name in ("etc/piano/boot-request.json", sensors_name):
-            require(os.getxattr(mount / name, "security.selinux"), "device configuration lacks SELinux label")
+            "/etc/systemd/system/piano-sensors-import.service.d")
+        require(os.getxattr(mount / sensors_name, "security.selinux"),
+                "device configuration lacks SELinux label")
     finally:
         run("umount", mount)
         mount.rmdir()
-    return {"boot_request": boot_request, "android_slot": slot,
+    return {"app_generation": app_generation, "android_slot": slot,
             "sensor_logical_partitions": ["odm" + SENSOR_LOGICAL_SLOT, "vendor" + SENSOR_LOGICAL_SLOT],
             "sensor_logical_slot_source": "device-probed (super has _a only)",
             "ssh_public_key_in_image": False, "ssh_public_key_source": "installer --ssh-key to ESP",
@@ -180,7 +179,7 @@ def main():
     source, target = work / "source.raw", work / "expanded.raw"
     expand_zstd(bundle / "pianoroot.f2fs.img.zst", source, root_meta["bytes"], root_meta["sha256"])
     device_config = configure_source(source, bundle, args.android_slot, work) if args.android_slot else None
-    # configure_source 会改写镜像内容（写 boot-request 与 SELinux 标签），所以
+    # configure_source 会改写镜像内容（写传感器槽位 drop-in 与 SELinux 标签），所以
     # transport 只能与配置后的字节比较；没有设备配置时才等于封存摘要。
     source_sha256, source_bytes = sha256(source), source.stat().st_size
     require(source_bytes == root_meta["bytes"], "device configuration changed the image length")

@@ -2,11 +2,11 @@
 
 Name:           sm8750-video-accel
 Version:        1.0.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Qualcomm Iris (SM8750) V4L2 stateful VA-API driver backend
 License:        MIT
 URL:            https://github.com/radxa-pkg/libva-v4l2
-Source0:        https://github.com/radxa-pkg/libva-v4l2/archive/0e4ce1e05da1d0a92b342efc2090b9e4987035e1/libva-v4l2-0e4ce1e.tar.gz
+Source0:        https://github.com/radxa-pkg/libva-v4l2/archive/6d03c3f8fb19b86f84b2b6c60ff20d1402f0ac41/libva-v4l2-6d03c3f.tar.gz
 
 ExclusiveArch:  aarch64
 
@@ -38,7 +38,7 @@ entrypoints (H.264, HEVC Main, HEVC Main10, VP9) for Chromium, Firefox,
 ffmpeg, and Sunshine streaming on Xiaomi Pad 8 Pro (piano).
 
 %prep
-%autosetup -n libva-v4l2-0e4ce1e05da1d0a92b342efc2090b9e4987035e1
+%autosetup -n libva-v4l2-6d03c3f8fb19b86f84b2b6c60ff20d1402f0ac41
 
 %build
 # 交付的驱动必须自带编码入口。2026-10-15 装过一个只声明 VLD 的后端，ffmpeg

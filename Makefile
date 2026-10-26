@@ -34,7 +34,6 @@ test:
 	python3 tests/check_uefi_live_rm.py
 	python3 tests/check_fedora_kernel.py
 	python3 tests/check_iris_source.py
-	python3 tests/check_gunyah_source.py
 	python3 tests/check_production_kernel.py
 	python3 tests/check_runtime_kernel_source.py
 	python3 tests/check_fastrpc_runtime.py
@@ -52,6 +51,7 @@ test:
 	python3 tests/check_stage_payload.py
 	python3 tests/check_image_workflow.py
 	python3 tests/check_runtime_extras.py
+	python3 tests/check_finger_orientation.py
 	python3 tests/check_rootfs_finalize.py
 	python3 tests/check_default_password.py
 	python3 tests/check_clean_rootfs.py

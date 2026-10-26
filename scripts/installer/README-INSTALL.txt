@@ -156,10 +156,14 @@ Step 3 - Confirm the device before writing anything:
                                        grows to fill the partition on first boot
 
 Step 4 - Flash, one command at a time (each must print OKAY):
-   fastboot flash boot_a device-boot/boot_linux.img
-   fastboot flash sunuefi_esp sunuefi_esp.img
-   fastboot flash sunuefi_root root-install/pianoroot.f2fs.sparse.img
+   fastboot -S 128M flash boot_a device-boot/boot_linux.img
+   fastboot -S 128M flash sunuefi_esp sunuefi_esp.img
+   fastboot -S 128M flash sunuefi_root root-install/pianoroot.f2fs.sparse.img
    fastboot reboot
+
+   -S 128M splits every transfer into pieces of at most 128 MiB. The piano ABL
+   stops responding to a single 512 MiB raw ESP write, and the tablet then
+   needs a power cycle. Do not drop this flag.
 
    Flash boot_a with device-boot/boot_linux.img. Generate that file once by
    running make-device-boot.sh (which calls scripts/prepare-device-boot.py)

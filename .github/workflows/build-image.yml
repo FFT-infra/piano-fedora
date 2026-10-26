@@ -13,9 +13,9 @@ on:
         required: false
         default: ""
       kernel_artifact:
-        description: "正式内核 artifact（内建 Gunyah）：kernel-release-7.2.9"
+        description: "正式内核 artifact（内建 Gunyah）：kernel-release-7.3.0"
         required: true
-        default: "kernel-release-7.2.9"
+        default: "kernel-release-7.3.0"
       runtime_artifact:
         description: "正式设备 RPM：piano-fedora-runtime，必须匹配内核摘要"
         required: true
@@ -116,12 +116,12 @@ jobs:
             exit 2
           }
           # 正式产物统一包含 Gunyah；旧实验产物不进入新交付链。
-          test "$KERNEL_ARTIFACT" = kernel-release-7.2.9 || {
-            echo "only production kernel-release-7.2.9 is accepted" >&2; exit 2;
+          test "$KERNEL_ARTIFACT" = kernel-release-7.3.0 || {
+            echo "only production kernel-release-7.3.0 is accepted" >&2; exit 2;
           }
           KERNEL_TIER=standard
           EXPECTED_RUNTIME=piano-fedora-runtime
-          kernel_artifacts=(--artifact "$KERNEL_ARTIFACT" --artifact kernel-sdk-7.2.9)
+          kernel_artifacts=(--artifact "$KERNEL_ARTIFACT" --artifact kernel-sdk-7.3.0)
           test "$RUNTIME_ARTIFACT" = "$EXPECTED_RUNTIME" || {
             echo "runtime_artifact $RUNTIME_ARTIFACT does not match kernel tier $KERNEL_TIER (expected $EXPECTED_RUNTIME)" >&2
             exit 2
@@ -141,6 +141,15 @@ jobs:
           if [ -n "$RUNTIME_RUN" ]; then runtime_args+=(--run-id "$RUNTIME_RUN"); fi
           if [ -n "$MESA_RUN" ]; then mesa_args+=(--run-id "$MESA_RUN"); fi
           if [ -n "$FFMPEG_RUN" ]; then ffmpeg_args+=(--run-id "$FFMPEG_RUN"); fi
+          # 发布构建的每个输入 run 都必须落在本 workflow 的 commit 上。release.yml
+          # 只核对 build-bundle 与 prepare-install 的 head_sha；没有这一条，被固定的
+          # 上游 run 可以来自任意提交，镜像与发布说明的源码提交对不上。
+          if [ "$RELEASE_MODE" = true ]; then
+            commit_args=(--commit "$GITHUB_SHA")
+            rootfs_args+=("${commit_args[@]}"); kernel_args+=("${commit_args[@]}")
+            runtime_args+=("${commit_args[@]}"); mesa_args+=("${commit_args[@]}")
+            ffmpeg_args+=("${commit_args[@]}")
+          fi
           python3 scripts/resolve-artifact-run.py --workflow build-rootfs.yml --artifact "$ROOTFS_ARTIFACT" --output-key rootfs_run "${rootfs_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml "${kernel_artifacts[@]}" --output-key kernel_run "${kernel_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-device-runtime.yml --artifact "$RUNTIME_ARTIFACT" --output-key runtime_run "${runtime_args[@]}"

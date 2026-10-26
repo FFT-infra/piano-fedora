@@ -127,7 +127,6 @@ def build_inputs(work):
         folder.mkdir(parents=True, exist_ok=True)
     (bundle / "sunuefi_esp.img").write_bytes(b"\x00" * ESP_BYTES)
     (root_install / "pianoroot.f2fs.sparse.img").write_bytes(b"\x00" * ROOT_BYTES)
-    (boot / "boot-request.json").write_text("{}\n")
     stock_boot = work / "stock-boot.img"
     stock_boot.write_bytes(b"stock recovery fixture; plan validation is separately stubbed")
     esp_meta = {"bytes": ESP_BYTES, "sha256": sha256_file(bundle / "sunuefi_esp.img")}

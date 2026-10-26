@@ -55,10 +55,9 @@ resolve_kernel_payload() {
     fi
     local candidate
     for candidate in \
-        "$REPO_ROOT/build/kernels/release-7.2.9" \
-        "$REPO_ROOT/out/artifacts/kernel-a485-38560291716/kernel-release-7.2.9/extracted" \
-        "$REPO_ROOT/out/artifacts/gunyah-a485-38568504093/extracted" \
-        "$REPO_ROOT/out/artifacts/kernel-38407594802"; do
+        "$REPO_ROOT/build/kernels/release" \
+        "$REPO_ROOT/out/artifacts/kernel-release-7.3.0/extracted" \
+        "$REPO_ROOT/build/kernel"; do
         if [ -s "$candidate/Image" ] && [ -d "$candidate/lib/modules" ]; then
             echo "$candidate"
             return 0
@@ -84,6 +83,7 @@ resolve_board_dtb() {
     local candidate
     for candidate in \
         "$REPO_ROOT/out/esp-files-a485-20261015/board.dtb" \
+        "$REPO_ROOT/build/test-sources/sunuefi/vendor/piano-linux/board.dtb" \
         "$REPO_ROOT/build/test-sunuefi/vendor/piano-linux/board.dtb" \
         "$REPO_ROOT/build/sources/sunuefi/vendor/piano-linux/board.dtb"; do
         if [ -s "$candidate" ]; then
@@ -233,6 +233,7 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
             TAR_NAME="${pkg}-${PKG_VERSION}.tar.gz"
             echo "--> Archiving local package sources to $TAR_NAME..."
             tar -czf "$BUILD_TMP/SOURCES/$TAR_NAME" \
+                --exclude='__pycache__' --exclude='*.pyc' \
                 --transform "s,^\.,${pkg}-${PKG_VERSION}," \
                 -C "$PACKAGES_DIR/$pkg" .
         fi

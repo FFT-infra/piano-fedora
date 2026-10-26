@@ -217,7 +217,7 @@ def check_bsp_port(sunuefi):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--sunuefi", type=Path, default=Path(os.environ.get(
-        "PIANO_TEST_SUNUEFI", ROOT / "build/test-sunuefi")))
+        "PIANO_TEST_SUNUEFI", ROOT / "build/test-sources/sunuefi")))
     args = ap.parse_args()
     check_guards()
     check_decoders()

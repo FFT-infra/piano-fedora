@@ -18,15 +18,16 @@ fail with CHECK CONDITION: NOT READY (key=02 asc=04 ascq=00).
    descriptor status whenever current power mode is not Active.
 2. Add bounded retries with 50ms stall to REPORT_LUNS.
 3. Add bounded retries with 20ms stall to READ_CAPACITY_16.
+
 ---
  uefi/core/PianoUfsReadOnlyDma.c | 47 +++++++++++++++++++++------------
  1 file changed, 30 insertions(+), 17 deletions(-)
 
 diff --git a/uefi/core/PianoUfsReadOnlyDma.c b/uefi/core/PianoUfsReadOnlyDma.c
-index fc2b1d2..de3b650 100644
+index f867e5f..39a3080 100644
 --- a/uefi/core/PianoUfsReadOnlyDma.c
 +++ b/uefi/core/PianoUfsReadOnlyDma.c
-@@ -379,16 +379,27 @@ STATIC EFI_STATUS ReadLunCapacity(VOID) {
+@@ -426,16 +426,27 @@ STATIC EFI_STATUS ReadLunCapacity(VOID) {
  #endif
      &mData);if(EFI_ERROR(Status))return Status;
    Status=PianoDmaMap(&mData);if(EFI_ERROR(Status))return Status;
@@ -58,7 +59,7 @@ index fc2b1d2..de3b650 100644
      DEBUG((DEBUG_WARN,"SUNUEFI_UFS_CAPACITY lun=%u status=%r last_lba=%lx block_bytes=%u\n",Luns[I],Status,
        EFI_ERROR(Status)?0:Last,EFI_ERROR(Status)?0:Block));
      if(EFI_ERROR(Status))return Status;
-@@ -1017,22 +1028,24 @@ EFI_STATUS PianoUfsReadOnlyDmaExperiment(CONST VOID *Fdt) {
+@@ -1090,22 +1101,24 @@ EFI_STATUS PianoUfsReadOnlyDmaExperiment(CONST VOID *Fdt) {
      if(!EFI_ERROR(Status))Status=Submit("QUERY_READ_FULL_DEVICE_DESCRIPTOR",5,FALSE);
      DEBUG((DEBUG_WARN,"SUNUEFI_UFS_QUERY_FULL_RESULT %r\n",Status));
    }
@@ -76,7 +77,7 @@ index fc2b1d2..de3b650 100644
 -        if(!EFI_ERROR(Status))Status=Submit("QUERY_READ_CURRENT_POWER_MODE",8,FALSE);
 -        if(!EFI_ERROR(Status) && mPowerMode!=0x11 && mPowerMode!=0)Status=EFI_NOT_READY;
 +    DEBUG((DEBUG_WARN,"SUNUEFI_UFS_POWER_DIAGNOSTIC %r descriptor_status=%r power_mode=%x\n",Diagnostic,Status,mPowerMode));
-+    if(!EFI_ERROR(Diagnostic) && (mPowerMode==0x22 || mPowerMode==0x33 || mPowerMode!=0x11)) {
++    if(!EFI_ERROR(Diagnostic) && mPowerMode!=0x11) {
 +      EFI_STATUS Resume=PianoUfsBuildResumeActive(mTrl.Cpu,mTrl.Bytes,mUcd.Cpu,mUcd.Bytes,mUcd.DeviceAddress,7);
 +      if(!EFI_ERROR(Resume))Resume=Submit("RESUME_DEVICE_ACTIVE_NO_DATA",7,FALSE);
 +      DEBUG((DEBUG_WARN,"SUNUEFI_UFS_RESUME_ACTIVE_RESULT %r physical_ufs_writes=0\n",Resume));
@@ -95,7 +96,6 @@ index fc2b1d2..de3b650 100644
 -      DEBUG((DEBUG_WARN,"SUNUEFI_UFS_QUERY_AFTER_RESUME %r\n",Status));
      }
    }
-   if(!EFI_ERROR(Status))Status=ReadLunCapacity();
+   if(!EFI_ERROR(Status)){mStartupStage="UFS CAPACITY";Status=ReadLunCapacity();}
 -- 
 2.54.0
-

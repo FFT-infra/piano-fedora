@@ -43,7 +43,7 @@ ARCHIVE_FILES = {
     "esp-manifest.json": b'{"esp_files": []}\n',
     "ffmpeg-manifest.json": b'{"ffmpeg": true}\n',
     "initramfs-manifest.json": b'{"initramfs": true}\n',
-    "kernel-manifest.json": b'{"kernel_release": "7.2.9"}\n',
+    "kernel-manifest.json": b'{"kernel_release": "7.3.0"}\n',
     "mesa-manifest.json": b'{"mesa": true}\n',
     "root-image-manifest.json": b'{"desktop": "gnome"}\n',
     "rootfs-manifest.json": b'{"rootfs": true}\n',

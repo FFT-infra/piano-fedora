@@ -206,8 +206,9 @@ piano-install/
 ├── host-boot-tool/
 ├── scripts/
 ├── device-boot/              # make-device-boot.sh 生成
+│   ├── boot_android.img
 │   ├── boot_linux.img
-│   └── boot-request.json
+│   └── device-boot-manifest.json
 └── root-install/
     ├── pianoroot.f2fs.sparse.img
     ├── root-install-manifest.json
@@ -404,11 +405,11 @@ fastboot reboot
 
 ### 3. 请求页
 
-`device-boot/boot-request.json` 的 `boot_device` 是 `/dev/disk/by-partlabel/boot_a`。`app_generation` 必须与归档里的 `PianoUEFI-product.img` 中的 APPv1 载荷一致。
+`device-boot-manifest.json` 的 `active_slot` 是 `_a`，`app_generation` 必须与归档里的 `PianoUEFI-product.img` 中的 APPv1 载荷一致。
 
 3 秒选择器在“正在引导的那份镜像”末尾读请求页。ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装进 Slot A，Linux 与 Android 都从同一份 `boot_a` 启动，请求页因此指向 `boot_a`。不切槽，也不存在第二份需要同步的页。
 
-带了 `root-install` 时，root 文件系统里的 `etc/piano/boot-request.json` 就是这条配置。不带时 root 文件系统里没有这个文件，首启的 `piano-boot-request-autoconfig.service` 按当前槽重建。首启后不要猜设备名或改槽，否则“返回 Android”和后续启动请求都会失败。
+活动槽不写进镜像，也不写进 ESP：`piano-next-boot-helper` 每次请求时只读主备 GPT 和高通 A/B 属性现算，再读那份 BOOT 的实际 generation。所以换槽、OTA 之后都不需要重新配置，也不存在“猜错设备名”这条失败路径。
 
 ---
 
@@ -458,17 +459,19 @@ sha256sum sunuefi_esp.img      # 记下新摘要，读回校验用这个值
 
 ```sh
 # 1. 合体 BOOT -> boot_a（活动槽保持 A，不切槽）
-fastboot flash boot_a device-boot/boot_linux.img
+fastboot -S 128M flash boot_a device-boot/boot_linux.img
 
 # 2. ESP -> sunuefi_esp
-fastboot flash sunuefi_esp sunuefi_esp.img
+fastboot -S 128M flash sunuefi_esp sunuefi_esp.img
 
 # 3. 根文件系统 -> sunuefi_root（sparse 只传有效块，需要几分钟）
-fastboot flash sunuefi_root root-install/pianoroot.f2fs.sparse.img
+fastboot -S 128M flash sunuefi_root root-install/pianoroot.f2fs.sparse.img
 
 # 4. 重启进系统
 fastboot reboot
 ```
+
+`-S 128M` 让 fastboot 把每次传输切到不超过 128 MiB。钢琴 ABL 对单次 512 MiB 的裸 ESP 写入会停止响应，只能断电重来。三条 flash 命令都不要省这个参数。
 
 每条命令都必须打印 `OKAY`。出现 `FAILED`，立刻停下，不要继续后面的步骤。
 
@@ -594,9 +597,9 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 3. 按归档的 `SHA256SUMS` 与 `root-install/SHA256SUMS` 分别校验 BOOT/ESP 和 sparse root。
 4. 打印安全告知，要求输入大写 `YES` 确认。
 5. 保持 Slot A，不切槽。
-6. 刷入合体 BOOT：`fastboot flash boot_a device-boot/boot_linux.img`。
-7. 刷入 ESP 分区：`fastboot flash sunuefi_esp sunuefi_esp.img`。
-8. 刷入系统根分区：`fastboot flash sunuefi_root pianoroot.f2fs.sparse.img`。
+6. 刷入合体 BOOT：`fastboot -S 128M flash boot_a device-boot/boot_linux.img`。
+7. 刷入 ESP 分区：`fastboot -S 128M flash sunuefi_esp sunuefi_esp.img`。
+8. 刷入系统根分区：`fastboot -S 128M flash sunuefi_root pianoroot.f2fs.sparse.img`。
 9. 自动重启：`fastboot reboot`。
 
 `device-boot/boot_linux.img` 由 `scripts/prepare-device-boot.py` 用本机原厂 BOOT 重打包产生。`device-boot/boot_linux.img` 不在归档里，必须自己生成一次。一键脚本按 `boot_linux.img`、`device-boot/boot_linux.img` 的顺序在暂存目录里找它，也可以用 `--boot` 指定。归档里的 `boot_sunuefi.img` 是 ESP 内部的 Linux 载荷，一键脚本会明确拒绝它。

@@ -6,12 +6,17 @@
 #include "input.hpp"
 #include "live_pipeline.hpp"
 #include "orientation.hpp"
+#include "panel.hpp"
 #include <cerrno>
 #include <cstdio>
+#include <filesystem>
 #include <memory>
 #include <stdexcept>
 
 namespace {
+// Mirrors NVT_THP_MISC_PREFIX in the kernel touch driver.
+constexpr const char *nvtThpMiscPrefix = "nvt-thp-";
+
 std::unique_ptr<nvt::UInputTouch> input;
 std::unique_ptr<nvt::LivePipeline> pipeline;
 nvt::Calibration calibration;
@@ -24,6 +29,19 @@ template<class Function> int guarded(Function function) {
         return -EIO;
     }
 }
+
+// The reader opens /proc/nvt_thp_stream, which is not the misc node the
+// attribute hangs off. The kernel names the misc node nvt-thp-<SPI device>, so
+// the single nvt-thp-* entry under /sys/class/misc is this controller's.
+std::filesystem::path thpMiscNode() {
+    std::error_code error;
+    for (const auto &entry : std::filesystem::directory_iterator("/sys/class/misc", error)) {
+        const auto name = entry.path().filename().string();
+        if (name.rfind(nvtThpMiscPrefix, 0) == 0)
+            return entry.path();
+    }
+    return {};
+}
 }
 
 extern "C" int piano_finger_open(const char *path) {
@@ -34,10 +52,18 @@ extern "C" int piano_finger_open(const char *path) {
         const auto axes = nvt::panelAxes(calibration);
         if (axes.width != 32000 || axes.height != 21360)
             throw std::runtime_error("unexpected Piano panel geometry");
+        // The orientation comes from the one measurement taken on this panel with
+        // a real finger: a top-to-bottom swipe decreases processor Y, so Y is
+        // reversed. The kernel's panel_vendor does not decide it. That value is
+        // the lcd-id strap level, and on the unit measured here it reads high
+        // while the factory bootloader selected the CSOT panel profile, so the
+        // two disagree; following panel_vendor inverted the Y axis on hardware.
+        const auto identity = nvt::readPanelVendor(thpMiscNode());
+        std::fprintf(stderr, "%s\n", nvt::describePanel(identity).c_str());
         input = std::make_unique<nvt::UInputTouch>(axes.width, axes.height);
         pipeline = std::make_unique<nvt::LivePipeline>(calibration,
             [](std::span<const nvt::Slot> slots) {
-                nvt::panelSlots(slots, calibration, panel);
+                nvt::panelSlots(slots, calibration, nvt::PanelVendor::Csot, panel);
                 input->report(panel);
             });
         std::fprintf(stderr, "piano finger: calibrated 32000x21360, Kalman/jitter/axis filtering, %s\n",

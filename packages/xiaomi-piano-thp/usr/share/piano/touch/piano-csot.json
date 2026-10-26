@@ -4,6 +4,7 @@
   "columns": 60,
   "units_per_pixel": 10,
   "source_sha256": "32f59bf4d6410b72fc8671efaa2e60dd243c41e281c2f860db8f1ce019518274",
+  "project_vendor_id": 4,
   "scope": "Private extracted electrode calibration; does not establish physical touch support or orientation",
   "calibration": {
     "row_map": [

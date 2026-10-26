@@ -78,7 +78,6 @@ echo
 echo "=== 5. 关键文件 ==="
 for f in usr/lib/piano/piano-ram-hardware-prepare \
          usr/lib/piano/piano-disk-hardware-prepare \
-         usr/libexec/piano-boot-request-autoconfig \
          usr/bin/piano-next-boot; do
     if sudo -n test -e "$MNT/$f"; then note "$f" "present"; else bad "$f" "missing"; fi
 done

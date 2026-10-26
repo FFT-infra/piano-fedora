@@ -20,7 +20,7 @@ on:
       kernel_artifact:
         description: "内核 artifact 名"
         required: true
-        default: "kernel-release-7.2.9"
+        default: "kernel-release-7.3.0"
       root_image_run_id:
         description: "固定完整集成镜像 run，留空解析最新成功 run"
         required: false
