@@ -91,8 +91,8 @@
       "role": "LineageOS 设备树与 proprietary-files 清单（原 ALXP-DANIEL/ANDROID_DEVICE_XIAOMI_PIANO，仓库已转移到该组织）",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "189a9c14cb8b032d099d3a5bad6fa9c02e3fdf63",
-      "reference_date": "2026-10-25"
+      "reference_commit": "4fddb8c2d13497cc61144333d33fdb397f341130",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "AnyLaySys/qemu-gunyah",
@@ -459,8 +459,8 @@
       "role": "虚拟化",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "076c66ab8eed7d85ea2b5defcb45f50d83401818",
-      "reference_date": "2026-10-25"
+      "reference_commit": "f1ff6bf157c2851d5376b72fbc0dca5318468aef",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "MiCode/kernel_build",
@@ -781,8 +781,8 @@
       "role": "主线补丁吸收比较",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "21a7f44fd0765fcc5194130b28767786eba1d1e7",
-      "reference_date": "2026-10-25"
+      "reference_commit": "6b4b543fa18757297ac756a6fe6e64f506b7844a",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "twrpdtgen/android_device_xiaomi_piano",
@@ -892,8 +892,8 @@
       "decision": "consume",
       "lock_key": "crosvm",
       "reason": "正式 Fedora 运行时按构建锁消费",
-      "reference_commit": "a13fd7e9b7706bf2b3bab7bbe3bfcbf534cee947",
-      "reference_date": "2026-10-24"
+      "reference_commit": "1784d938eb43bd8a0c4b62ec447c7330a6ecee20",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "radxa-pkg/libva-v4l2",
@@ -903,8 +903,8 @@
       "decision": "consume",
       "lock_key": "iris-vaapi",
       "reason": "正式 Fedora 运行时按构建锁消费；编码 entrypoint 只在这一支里，只有解码入口的 phxinyang 分支不得再覆盖它",
-      "reference_commit": "6d03c3f8fb19b86f84b2b6c60ff20d1402f0ac41",
-      "reference_date": "2026-10-22"
+      "reference_commit": "51df9a538a1e8ce7a02449d9bca32ecf621c76c5",
+      "reference_date": "2026-10-26"
     },
     {
       "repo": "yzddmr6/xiaomipad-8pro-mainline",
@@ -913,8 +913,8 @@
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者",
       "decision": "consume",
       "lock_key": "piano-integration",
-      "reference_commit": "61cb8fb7fd64b74e16941a50740a0ebc2f5369d8",
-      "reference_date": "2026-10-25",
+      "reference_commit": "cede87ccee5b3041f9da47d0639644d1d69ca96b",
+      "reference_date": "2026-10-26",
       "reason": "正式 Fedora 运行时按固定源码构建并核验安装字节"
     },
     {
@@ -924,7 +924,7 @@
       "role": "piano 主线内核树，独立于 blu-sharky/linux-piano 的另一条开发线",
       "decision": "reference",
       "reason": "面板模块 ID 选择、触控固件选择、geni-qcom 空闲、LLCC 驱动、CPU 热区等改动与本机正在处理的项重合；只作对照，不替换锁定的内核基线",
-      "reference_commit": "235ab34e2a6e2434dacc2fad7c0c52ffd1b04589",
+      "reference_commit": "9321086f2e2234bfdf073ac3326bd88cb5053e4f",
       "reference_date": "2026-10-25"
     },
     {
