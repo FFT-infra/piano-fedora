@@ -41,13 +41,8 @@ Images are built per profile from the same release chain. They differ only in th
 |---|---|---|---|---|
 | `gnome` | GNOME 50 (Workstation environment) | GDM autologin | Mutter | Desktop reached. Rotation verified on device |
 | `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Desktop reached. Rotation verified. One brief flicker per rotation, see [known issues](docs/known-issues.md) |
-| `niri` | niri | greetd + tuigreet | None, manual `transform` | Desktop reached (image requires a rebuild before it works unaided) |
-| `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None, manual rotate | Desktop reached (image requires a rebuild before it works unaided) |
-
-On device, `niri` and `hyprland` use a wrong greeter account name in greetd
-(`greeter` instead of the `greetd` account Fedora creates). The display manager
-then does not start. The fix is in the source tree. Both images need a rebuild
-before they work without manual intervention.
+| `niri` | niri | greetd + tuigreet | None, manual `transform` | Desktop reached |
+| `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None, manual rotate | Desktop reached |
 
 Each profile ships as one archive. Download only the profile you install. Login, power behavior, rotation and known gaps per profile are in [Desktops](docs/desktops.md).
 
