@@ -66,13 +66,13 @@
     "librevm": {
       "url": "https://github.com/code002-2/librevm.git",
       "ref": "main",
-      "commit": "4be3e42b963e95a7753e600613a46059ebdfcd04",
+      "commit": "56918558e2c4303cda803a655ea716869c551b71",
       "role": "Gunyah 虚拟机管理器、守护进程和 GTK 前端"
     },
     "crosvm": {
       "url": "https://github.com/google/crosvm.git",
       "ref": "main",
-      "commit": "4c5aa700ed5293444c0aadd672dc009ed72463e3",
+      "commit": "1784d938eb43bd8a0c4b62ec447c7330a6ecee20",
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {
