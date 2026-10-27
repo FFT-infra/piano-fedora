@@ -45,14 +45,16 @@ Fedora 官方 COPR 实例没有启用二进制 RPM 上传。运行中实例的 A
 
 ## 发布流程（维护者）
 
-发布走 `publish-copr.yml`，需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`。先在 `main` 上跑一次带 `build_piano_rpms=true` 的 `host-check`，拿到 `piano-rpms` artifact。再用这个 run id 触发 `publish-copr.yml`：
+发布走 `publish-copr.yml`，需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`。先在 `main` 上跑一次带 `build_piano_rpms=true` 的 `host-check`，拿到 `piano-rpms` artifact；图形栈走 `build-mesa.yml` 与 `build-ffmpeg.yml`。再用这些 run id 触发 `publish-copr.yml`：
 
 ```bash
 gh workflow run publish-copr.yml --ref main \
-  -f rpms_run_id=<host-check run> -f kernel_run_id=<同一个内核 run> -f execute=false
+  -f rpms_run_id=<host-check run> -f kernel_run_id=<同一个内核 run> \
+  -f mesa_run_id=<build-mesa run> -f ffmpeg_run_id=<host-check run> \
+  -f execute=false
 ```
 
-`execute=false` 是 dry-run：核对 run 状态、每个 RPM 与 SRPM 的大小和摘要、清单里的包是否齐全。通过后把 `execute` 换成 `true` 真实提交。脚本幂等创建项目，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。
+`execute=false` 是 dry-run：核对 run 状态、每个 RPM 与 SRPM 的大小和摘要、清单里的包是否齐全，以及 Mesa 与 FFmpeg 的 Epoch 是否为 1。通过后把 `execute` 换成 `true` 真实提交。脚本幂等创建项目，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。
 
 CI 的 RPM 矩阵、COPR 的重建产物与 bundle 里的 RPM 版本号相同，但构建环境不同，不是逐字节同一份。要完全一致的二进制，就用 bundle 里的 RPM。
 
@@ -114,4 +116,4 @@ sudo dnf makecache
 
 ## 设备侧验证
 
-`verify-copr-device.py` 在平板上跑。只读模式核对四件事：仓库里的 10 个包名齐全、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。
+`verify-copr-device.py` 在平板上跑。只读模式核对：仓库里的 10 个矩阵包和 Mesa/FFmpeg 齐全、Mesa 与 FFmpeg 带有 Epoch 1（避免升级时被官方包覆盖）、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。

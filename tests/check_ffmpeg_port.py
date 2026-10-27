@@ -101,14 +101,22 @@ def check_spec():
     names = sorted("sunuefi-" + name for name in ffmpeg.PORT_SHA256)
     synthetic = ("Name:           ffmpeg\nVersion:        8.1.3\nRelease:        1%{?dist}\n"
                  "Patch11:        ffmpeg-foo.patch\n"
-                 "Patch1002:      ffmpeg-chromium.patch\n\n%autosetup -S git_am\n")
+                 "Patch1002:      ffmpeg-chromium.patch\n"
+                 "Requires:       libavcodec%{?pkg_suffix}%{_isa} = %{version}-%{release}\n"
+                 "\n%autosetup -S git_am\n")
     raw = synthetic.encode()
     with pinned("SPEC_SHA256", hashlib.sha256(raw).hexdigest()):
         adapted = ffmpeg.adapt_spec(raw, names)
     assert "Release:        1.piano1%{?dist}\n" in adapted
+    # 官方版本号一旦超过 8.1.3，只有 epoch 能让补丁版继续排在它之上。
+    assert f"Epoch:          {ffmpeg.EPOCH}\n" in adapted, adapted
+    # 加了 epoch 之后，包内精确版本依赖必须一起带前缀，否则子包互相装不上：
+    # rpm 认为 `= 8.1.3-1.piano1` 不等于 `= 1:8.1.3-1.piano1`。
+    assert ("Requires:       libavcodec%{?pkg_suffix}%{_isa} = "
+            "%{?epoch:%{epoch}:}%{version}-%{release}\n") in adapted, adapted
     # 编号必须排在 Fedora 现有的最大补丁号之后，%autopatch 才按顺序把 BSP 补丁放在最后。
     declared = "".join(f"Patch{2001 + index}:      {name}\n" for index, name in enumerate(names))
-    assert "Patch1002:      ffmpeg-chromium.patch\n" + declared + "\n%autosetup -S git_am\n" in adapted
+    assert "Patch1002:      ffmpeg-chromium.patch\n" + declared in adapted, adapted
     for broken in (synthetic.replace("Patch1002", "Patch1001"),
                    synthetic.replace("Release:        1%{?dist}\n", "")):
         try:

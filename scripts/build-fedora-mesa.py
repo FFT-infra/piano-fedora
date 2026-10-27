@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import struct
 import subprocess
@@ -24,6 +25,20 @@ PATCH_SHA256 = "01bc8e6b35019f7d6b84bc2d919a60686ffb1742d4df04467a89d3aac22a7380
 PACKAGES = {"mesa-filesystem", "mesa-libGL", "mesa-libEGL", "mesa-libgbm",
             "mesa-dri-drivers", "mesa-vulkan-drivers"}
 CHIP_ID = 0xffff44050001
+# 官方 Mesa 的版本号会一直往上走，仅靠 release 后缀的 piano1 压不住它：
+# 26.2.3-1.piano1 < 26.2.5-1。发布到 COPR 之后设备要做的是升级而不是
+# 重装，仓库 priority 只能让新装选对包，救不回已经被官方版覆盖的系统，
+# 所以这里抬高 epoch。Epoch 是版本序里最高的一档，1:26.2.3 大于 0:26.2.5。
+EPOCH = "1"
+# 加 epoch 之后，包内那些写成 `Requires: x = %{version}-%{release}` 的精确
+# 版本依赖会失配：rpm 认为 `= 26.2.3-1.piano1` 不等于 `= 1:26.2.3-1.piano1`。
+# Fedora 的 mesa spec 这 30 行都自带 %{?epoch:%{epoch}:}，所以 mesa 只需要
+# 插 Release 与 Epoch；FFmpeg 的 spec 一行都没写，那边必须连依赖一起改。
+# 这里断言"没有需要改的行"，上游一旦引入新的裸版本依赖就会立刻失败。
+BARE_VERSION_DEP = re.compile(
+    r"^(?:Requires|Provides|Conflicts|Obsoletes|Recommends|Suggests):"
+    r"(?!.*%\{\?epoch:).*?%\{version\}-%\{release\}",
+    re.M)
 
 
 def run(*command):
@@ -48,7 +63,14 @@ def adapt_spec(raw):
     old = "Release:        %autorelease\n"
     if text.count(old) != 1 or text.count("\n%description\n") != 1:
         raise ValueError("unexpected Fedora Mesa spec layout")
-    return text.replace(old, "Release:        %autorelease -e piano1\n").replace(
+    # Fedora 的 mesa 子包依赖已经统一写成 %{?epoch:%{epoch}:}%{version}-%{release}，
+    # 加 epoch 不需要动它们。真出现裸 %{version} 的精确依赖就停下重新审核，
+    # 而不是让构建产出一批装不上的包。
+    bare = BARE_VERSION_DEP.findall(text)
+    if bare:
+        raise ValueError("Fedora Mesa spec has versioned dependencies without an epoch "
+                         f"prefix: {bare[:3]}")
+    return text.replace(old, f"Release:        %autorelease -e piano1\nEpoch:          {EPOCH}\n").replace(
         "\n%description\n", "\nPatch999:       piano-a830v1.patch\n\n%description\n", 1)
 
 
@@ -96,9 +118,19 @@ def build(sun, output):
     shutil.copyfile(patch, top / "SOURCES/piano-a830v1.patch")
     # 复用 Fedora 的完整依赖和打包配方，不手列 Mesa 的大量构建依赖。
     install_build_dependencies(spec, srpm, top)
-    run("rpmbuild", "-bb", "--define", "_topdir " + str(top),
+    # -ba 同时产出二进制与源包。COPR 公开实例没有二进制上传入口，发布走
+    # 的是 SRPM 重建，只打 -bb 的话这个包在 COPR 上是发不出去的。
+    run("rpmbuild", "-ba", "--define", "_topdir " + str(top),
         "--define", "_smp_build_ncpus 4", "--define", "_smp_mflags -j4",
         "--define", "debug_package %{nil}", spec)
+    srpms = output / "srpms"
+    srpms.mkdir()
+    built = sorted((top / "SRPMS").glob("*.src.rpm"))
+    if len(built) != 1:
+        raise ValueError(f"expected one Mesa SRPM, found {[p.name for p in built]}")
+    if query("rpm", "-qp", "--qf", "%{EPOCHNUM} %{NAME}", built[0]) != EPOCH + " mesa":
+        raise ValueError("the Mesa SRPM does not carry the pinned epoch")
+    shutil.copyfile(built[0], srpms / built[0].name)
     rpms = output / "rpms"
     rpms.mkdir()
     selected = {}
@@ -123,13 +155,16 @@ def build(sun, output):
     packages = query("rpm", "-qa", "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n")
     (output / "builder-packages.tsv").write_text("\n".join(sorted(packages.splitlines())) + "\n")
     result = {"status": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED", "releasever": "44",
-              "arch": "aarch64", "chip_id": hex(CHIP_ID), "source_url": SOURCE_URL,
+              "arch": "aarch64", "chip_id": hex(CHIP_ID), "epoch": int(EPOCH),
+              "source_url": SOURCE_URL,
               "source_rpm_sha256": SOURCE_SHA256, "source_tarball_sha256": TARBALL_SHA256,
               "original_spec_sha256": SPEC_SHA256, "effective_spec_sha256": sha256(spec),
               "patch_commit": lock["commit"], "patch_sha256": PATCH_SHA256,
               "driver_files": drivers, "packages": selected,
               "rpms": {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
                        for p in sorted(rpms.glob("*.rpm"))},
+              "srpms": {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
+                        for p in sorted(srpms.glob("*.src.rpm"))},
               "builder_packages_sha256": sha256(output / "builder-packages.tsv"),
               "compiler": query("gcc", "--version").splitlines()[0], "device_tested": False}
     (output / "manifest.json").write_text(json.dumps(result, indent=2) + "\n")

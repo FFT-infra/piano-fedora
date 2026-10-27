@@ -36,7 +36,9 @@ jobs:
         run: |
           set -euo pipefail
           sudo chown -R "$(id -u):$(id -g)" build/mesa
-          tar -I 'zstd -6 -T0' -cf piano-fedora-mesa.tar.zst -C build/mesa manifest.json builder-packages.tsv rpms
+          # COPR rebuilds from the source RPM, so it ships beside the binaries.
+          tar -I 'zstd -6 -T0' -cf piano-fedora-mesa.tar.zst -C build/mesa \
+            manifest.json builder-packages.tsv rpms srpms
 
       - uses: actions/upload-artifact@v4
         with:

@@ -132,6 +132,29 @@ def repoquery_kernel(baseurl):
             "stderr": result.stderr.strip()[:2000]}
 
 
+def graphics_epochs(baseurl):
+    """确认仓库里 mesa / ffmpeg 的补丁版真的带 epoch。
+
+    没有 epoch 的话，`26.2.3-1.piano1` 在版本序上低于 Fedora updates 的
+    `26.2.5-1`，发布出去也压不住，设备 dnf upgrade 仍会退回官方版本。
+    """
+    result = run([
+        "dnf", "repoquery",
+        "--disablerepo=*", f"--repofrompath=coprcheck,{baseurl}",
+        f"--setopt=coprcheck.baseurl={baseurl}",
+        "--setopt=coprcheck.gpgcheck=1", "--setopt=coprcheck.repo_gpgcheck=0",
+        "--setopt=coprcheck.skip_if_unavailable=True",
+        "--qf", "%{name} %{epoch} %{version}-%{release}",
+        "mesa-dri-drivers", "ffmpeg-free",
+    ], check=False, timeout=180)
+    found = {}
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) == 3:
+            found[fields[0]] = {"epoch": fields[1], "evr": fields[2]}
+    return {"packages": found, "stderr": result.stderr.strip()[:2000]}
+
+
 def upgrade_dry_run():
     # --disablerepo='*' 会连本地仓库一起关掉，升级计划就永远为空；这里只
     # 关掉网络上的第三方仓库不够精确，所以保留默认启用集合，但给一个上限：
@@ -169,11 +192,16 @@ def main():
             "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
             "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
             "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
+            # 图形栈：这两个是本地重建的 Fedora 包，靠 epoch 压过官方版本。
+            # 仓库里没有它们，设备 dnf upgrade 就会被官方 mesa / ffmpeg 覆盖。
+            "mesa-dri-drivers", "ffmpeg-free",
         }
         missing = sorted(expected - set(names))
         if missing:
             problems.append("repository is missing: " + ", ".join(missing))
         record["missing_packages"] = missing
+        # epoch 是这两个包唯一能压过官方版的依据，缺了就等于没发。
+        record["graphics_epochs"] = graphics_epochs(baseurl)
     except (RuntimeError, OSError) as error:
         problems.append(f"cannot read repodata: {error}")
 
@@ -199,6 +227,16 @@ def main():
             problems.append("kernel-piano is not visible in the repository")
     except (RuntimeError, OSError) as error:
         problems.append(f"repoquery failed: {error}")
+
+    # 图形栈的补丁版必须带 epoch。发布记录里写了 epoch 不等于仓库里有：
+    # COPR 会忽略 SRPM 头里被 spec 覆盖的字段，唯一可信的是仓库自身。
+    for name in ("mesa-dri-drivers", "ffmpeg-free"):
+        row = record.get("graphics_epochs", {}).get("packages", {}).get(name)
+        if row is None:
+            continue  # 缺失已经在 missing_packages 里报过
+        if row["epoch"] in ("", "0", "(none)"):
+            problems.append(f"{name} in the repository carries no epoch; "
+                            "the official Fedora build still wins")
 
     if args.install_test:
         try:
