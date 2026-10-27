@@ -9,6 +9,7 @@
 import importlib.util
 import io
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -259,6 +260,93 @@ def test_build_failure_is_not_success(module):
         module.run_cli = original
 
 
+def make_graphics(directory, name, *, epoch=1, status=None, drop_srpm=False,
+                  corrupt=None):
+    """造一个图形栈 artifact：manifest + rpms/ + srpms/。
+
+    这两个包的发布前提是 epoch，没有它就压不住 Fedora 官方版本，所以
+    测试里把 epoch 也当作可篡改的字段。
+    """
+    import hashlib
+
+    directory = Path(directory)
+    (directory / "rpms").mkdir(parents=True, exist_ok=True)
+    (directory / "srpms").mkdir(parents=True, exist_ok=True)
+    status = status or {"mesa": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED",
+                        "ffmpeg": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED"}[name]
+    rpm_payload = f"{name} binary".encode()
+    rpm_name = f"{name}-1.0-1.piano1.fc44.aarch64.rpm"
+    (directory / "rpms" / rpm_name).write_bytes(rpm_payload)
+    srpm_payload = f"{name} source".encode()
+    srpm_name = f"{name}-1.0-1.piano1.fc44.src.rpm"
+    if not drop_srpm:
+        (directory / "srpms" / srpm_name).write_bytes(srpm_payload)
+    digest = lambda data: hashlib.sha256(data).hexdigest()
+    manifest = {
+        "status": status,
+        "epoch": epoch,
+        "rpms": {rpm_name: {"bytes": len(rpm_payload), "sha256": digest(rpm_payload)}},
+        "srpms": {srpm_name: {"bytes": len(srpm_payload), "sha256": digest(srpm_payload)}},
+    }
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    if corrupt:
+        (directory / corrupt).write_bytes(b"tampered")
+    return directory
+
+
+def test_graphics_require_epoch(module, tmp):
+    good = make_graphics(tmp / "graphics-ok", "mesa")
+    info = module.verify_graphics(good, "mesa")
+    assert info["epoch"] == 1 and info["srpm"].endswith(".src.rpm"), info
+    assert info["rpm_count"] == 1
+
+    # 没有 epoch 的产物不许发布：这正是本次事故的成因，发出去了也压不住
+    # Fedora updates 里的 26.2.5。
+    bare = make_graphics(tmp / "graphics-noepoch", "mesa", epoch=None)
+    expect_error(module, lambda: module.verify_graphics(bare, "mesa"), "epoch 1")
+
+
+def test_graphics_reject_tampered_and_incomplete(module, tmp):
+    corrupt = make_graphics(tmp / "graphics-tamper", "ffmpeg",
+                            corrupt="rpms/ffmpeg-1.0-1.piano1.fc44.aarch64.rpm")
+    expect_error(module, lambda: module.verify_graphics(corrupt, "ffmpeg"), "changed")
+    missing = make_graphics(tmp / "graphics-nosrpm", "ffmpeg", drop_srpm=True)
+    expect_error(module, lambda: module.verify_graphics(missing, "ffmpeg"), "SRPM")
+    wrong = make_graphics(tmp / "graphics-wrongstatus", "ffmpeg", status="BUILT")
+    expect_error(module, lambda: module.verify_graphics(wrong, "ffmpeg"), "status")
+
+
+def test_graphics_are_in_the_publish_order(module):
+    """图形栈必须在发布顺序里，且排在矩阵包之前。
+
+    mesa 与 ffmpeg 的包名不在 REQUIRED 里（它们来自各自的 artifact），
+    但漏掉就会回到"设备拿不到补丁版"的原点。
+    """
+    assert set(module.GRAPHICS_ORDER) == set(module.GRAPHICS), module.GRAPHICS_ORDER
+    assert module.GRAPHICS_ORDER == ("mesa", "ffmpeg"), module.GRAPHICS_ORDER
+    for name in module.GRAPHICS:
+        assert name not in module.REQUIRED, f"{name} 不该出现在 piano-rpms 的必需清单里"
+
+
+def test_build_scripts_ship_srpms():
+    """两个构建脚本必须打 -ba 并产出 srpms/，否则 COPR 无从重建。"""
+    for path in (ROOT / "scripts/build-fedora-mesa.py",
+                 ROOT / "scripts/build-fedora-ffmpeg.py"):
+        text = path.read_text()
+        assert '"-ba"' in text, f"{path.name} must build the SRPM as well"
+        assert '"-bb"' not in text, f"{path.name} still builds binaries only"
+        assert "srpms.mkdir()" in text, f"{path.name} must stage srpms/"
+        assert 'srpms":' in text, f"{path.name} must record the SRPM in its manifest"
+        # Epoch 必须是模块级常量并被写进 spec，而不是只出现在注释里。
+        assert re.search(r"^EPOCH = \"\d+\"$", text, re.M), f"{path.name} has no pinned epoch"
+        assert "Epoch:" in text, f"{path.name} never writes an Epoch into the spec"
+    # workflow 必须把 srpms 打进 artifact，否则上传的压缩包里没有源包。
+    for path in (ROOT / ".github/workflows/build-mesa.yml",
+                 ROOT / ".github/workflows/build-ffmpeg.yml"):
+        text = path.read_text()
+        assert "rpms srpms" in text, f"{path.name} does not package srpms"
+
+
 def test_repo_file_contract():
     text = REPO_FILE.read_text()
     assert "gpgcheck=1" in text
@@ -318,6 +406,10 @@ def test_device_verifier_contract():
     assert "kernel_visibility" in text
     assert "does not carry kernel-piano" in text
     assert "still excludes kernel-piano" in text
+    # 图形栈也在仓库里，且断言它们带 epoch（否则仍会被官方 updates 覆盖）。
+    assert "mesa-dri-drivers" in text and "ffmpeg-free" in text
+    assert "graphics_epochs" in text
+    assert "carries no epoch" in text
 
 
 def test_device_verifier_fetches_compressed_repodata():
@@ -384,6 +476,8 @@ def main():
         test_missing_rpm(module, tmp)
         test_missing_srpm(module, tmp)
         test_bad_kernel_run(module, tmp)
+        test_graphics_require_epoch(module, tmp)
+        test_graphics_reject_tampered_and_incomplete(module, tmp)
         test_copr_config_is_private_and_removed(module, tmp, _MonkeyPatch())
         test_project_create_is_idempotent(module, tmp)
         test_submit_parses_every_created_build(module, tmp)
@@ -392,6 +486,8 @@ def main():
     test_failed_run_rejected(module, _MonkeyPatch())
     test_missing_credentials(module, _MonkeyPatch())
     test_build_failure_is_not_success(module)
+    test_graphics_are_in_the_publish_order(module)
+    test_build_scripts_ship_srpms()
     test_repo_file_contract()
     test_workflow_contract()
     test_device_verifier_contract()

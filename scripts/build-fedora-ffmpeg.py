@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import urllib.request
@@ -29,6 +30,19 @@ SPEC_RELEASE_OLD = "Release:        1%{?dist}\n"
 SPEC_RELEASE_NEW = "Release:        1.piano1%{?dist}\n"
 SPEC_PATCH_ANCHOR = "Patch1002:      ffmpeg-chromium.patch\n"
 RELEASE = "1.piano1.fc44"
+# 同一个理由：官方版本号一旦走到 8.1.4，release 后缀的 piano1 就压不住了，
+# 发布到 COPR 之后要靠 epoch 让补丁版永远排在官方版之上。
+EPOCH = "1"
+EPOCH_LINE = f"Epoch:          {EPOCH}\n"
+# Fedora 的 ffmpeg spec 里 64 行包内精确依赖写成 `= %{version}-%{release}`，
+# 不带 epoch 前缀。加了 Epoch 之后这些依赖会失配（rpm 认为 `= 8.1.3-1.piano1`
+# 不等于 `= 1:8.1.3-1.piano1`），装包时直接 Failed dependencies。mesa 的 spec
+# 已经统一写成 %{?epoch:%{epoch}:}，ffmpeg 的没有，所以这里逐行补前缀。
+# 只改版本比较的右值，标签与包名不动；%autorelease/%autochangelog 不受影响。
+VERSIONED_DEP = re.compile(
+    r"^((?:Requires|Provides|Conflicts|Obsoletes|Recommends|Suggests):[^\n]*?)"
+    r"%\{version\}-%\{release\}",
+    re.M)
 # 只有运行时库和 CLI，-devel 与 freeworld 不装进设备镜像。
 PACKAGES = {"ffmpeg-free", "libavcodec-free", "libavdevice-free", "libavfilter-free",
             "libavformat-free", "libavutil-free", "libswresample-free", "libswscale-free"}
@@ -128,8 +142,13 @@ def adapt_spec(raw, names):
     if text.count(SPEC_RELEASE_OLD) != 1 or text.count(SPEC_PATCH_ANCHOR) != 1:
         raise ValueError("unexpected Fedora FFmpeg spec layout")
     declared = "".join(f"Patch{2001 + index}:      {name}\n" for index, name in enumerate(names))
-    return text.replace(SPEC_RELEASE_OLD, SPEC_RELEASE_NEW).replace(
+    text = text.replace(SPEC_RELEASE_OLD, SPEC_RELEASE_NEW + EPOCH_LINE).replace(
         SPEC_PATCH_ANCHOR, SPEC_PATCH_ANCHOR + declared, 1)
+    # 加 epoch 之后必须同步给包内精确版本依赖补前缀，否则子包互相装不上。
+    # SPEC_SHA256 已经钉住整份 spec，行数是确定的，不需要再数一遍。
+    text, _ = VERSIONED_DEP.subn(
+        lambda match: match.group(1) + "%{?epoch:%{epoch}:}%{version}-%{release}", text)
+    return text
 
 
 def decoder_proof(payload):
@@ -179,9 +198,18 @@ def build(sun, output):
         "--spec", spec, "--srpm", srpm)
     environment = {**os.environ, "GIT_COMMITTER_NAME": COMMITTER_NAME,
                    "GIT_COMMITTER_EMAIL": COMMITTER_EMAIL}
-    run("rpmbuild", "-bb", "--define", "_topdir " + str(top),
+    # -ba 同时产出二进制与源包：COPR 走 SRPM 重建，没有源包就发不出去。
+    run("rpmbuild", "-ba", "--define", "_topdir " + str(top),
         "--define", "_smp_build_ncpus 4", "--define", "_smp_mflags -j4",
         "--define", "debug_package %{nil}", spec, env=environment)
+    srpms = output / "srpms"
+    srpms.mkdir()
+    built = sorted((top / "SRPMS").glob("*.src.rpm"))
+    if len(built) != 1:
+        raise ValueError(f"expected one FFmpeg SRPM, found {[p.name for p in built]}")
+    if query("rpm", "-qp", "--qf", "%{EPOCHNUM} %{NAME}", built[0]) != EPOCH + " ffmpeg":
+        raise ValueError("the FFmpeg SRPM does not carry the pinned epoch")
+    shutil.copyfile(built[0], srpms / built[0].name)
     rpms = output / "rpms"
     rpms.mkdir()
     selected = {}
@@ -207,7 +235,8 @@ def build(sun, output):
                      "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n")
     (output / "installed-packages.tsv").write_text("\n".join(sorted(packages.splitlines())) + "\n")
     result = {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "releasever": "44",
-              "arch": "aarch64", "source_url": SOURCE_URL, "source_rpm_sha256": SOURCE_SHA256,
+              "arch": "aarch64", "epoch": int(EPOCH),
+              "source_url": SOURCE_URL, "source_rpm_sha256": SOURCE_SHA256,
               "source_tarball_sha256": TARBALL_SHA256, "original_spec_sha256": SPEC_SHA256,
               "effective_spec_sha256": sha256(spec),
               "enable_decoders_sha256": sha256(enable_list),
@@ -217,6 +246,8 @@ def build(sun, output):
               "decoders": decoders, "packages": selected,
               "rpms": {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
                        for p in sorted(rpms.glob("*.rpm"))},
+              "srpms": {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
+                        for p in sorted(srpms.glob("*.src.rpm"))},
               "installed_packages_sha256": sha256(output / "installed-packages.tsv"),
               "compiler": query("gcc", "--version").splitlines()[0], "device_tested": False}
     (output / "manifest.json").write_text(json.dumps(result, indent=2) + "\n")

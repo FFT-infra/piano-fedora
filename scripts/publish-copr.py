@@ -55,6 +55,18 @@ CHROOT = "fedora-44-aarch64"
 SUCCESS_STATES = {"succeeded", "skipped"}
 FAILURE_STATES = {"failed", "canceled", "cancelled"}
 
+# 图形栈的两个本地重建，来自各自的 workflow 与 artifact，不在 piano-rpms
+# 矩阵里：它们的源包是 Fedora 官方 SRPM 加补丁，不属于 packages/ 目录。
+# 两者的 version 永远低于官方（26.2.3 < 26.2.5、8.1.3 <= 8.1.4），所以
+# 必须带 epoch 才能在 COPR 仓库里排在官方版之上；发布前逐个核对。
+GRAPHICS = {
+    "mesa": {"manifest": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED"},
+    "ffmpeg": {"manifest": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED"},
+}
+# 先发图形栈：设备上 dnf upgrade 需要靠它们的 epoch 立刻压住官方版，
+# 而矩阵里的包名与它们不重叠，顺序只影响失败时先报哪一个。
+GRAPHICS_ORDER = ("mesa", "ffmpeg")
+
 
 class PublishError(Exception):
     pass
@@ -159,6 +171,52 @@ def verify_artifacts(rpms_dir, manifest, run):
     return names, str(kernel_run)
 
 
+def verify_graphics(directory, name):
+    """核对一个图形栈 artifact：状态、epoch、SRPM 与每个 RPM 的摘要。
+
+    这两个包必须带 epoch，否则发出去了也压不住官方版：COPR 仓库里
+    26.2.3-1.piano1 小于 Fedora updates 的 26.2.5。这里把 epoch 当作
+    发布前提直接断言，而不是相信构建脚本。
+    """
+    directory = Path(directory)
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.is_file():
+        raise PublishError(f"missing {manifest_path}")
+    manifest = json.loads(manifest_path.read_text())
+    expected = GRAPHICS[name]["manifest"]
+    problems = []
+    if manifest.get("status") != expected:
+        problems.append(f"{name}: unexpected manifest status {manifest.get('status')!r}")
+    if manifest.get("epoch") != 1:
+        problems.append(f"{name}: manifest does not record epoch 1")
+    for kind, key, subdir in (("RPM", "rpms", "rpms"), ("SRPM", "srpms", "srpms")):
+        recorded = manifest.get(key)
+        if not isinstance(recorded, dict) or not recorded:
+            problems.append(f"{name}: manifest has no {key}")
+            continue
+        directory_ = directory / subdir
+        for filename, row in sorted(recorded.items()):
+            path = directory_ / filename
+            if not path.is_file():
+                problems.append(f"{name}: missing {kind} {filename}")
+            elif path.stat().st_size != row.get("bytes"):
+                problems.append(f"{name}: {kind} {filename} size changed")
+            elif sha256(path) != row.get("sha256"):
+                problems.append(f"{name}: {kind} {filename} sha256 changed")
+    srpm_names = sorted(manifest.get("srpms", {}))
+    if len(srpm_names) != 1:
+        problems.append(f"{name}: expected exactly one SRPM, got {srpm_names}")
+    if problems:
+        raise PublishError("; ".join(problems))
+    return {
+        "status": manifest["status"],
+        "epoch": manifest["epoch"],
+        "srpm": srpm_names[0],
+        "rpm_count": len(manifest.get("rpms", {})),
+        "manifest_sha256": sha256(manifest_path),
+    }
+
+
 def copr_cli():
     binary = os.environ.get("COPR_CLI") or "copr-cli"
     try:
@@ -247,10 +305,17 @@ def parse_build_ids(stdout):
     return ids
 
 
-def submit(binary, config, project, srpm_dir, package):
-    matches = sorted(Path(srpm_dir).glob(package + "-*.src.rpm"))
-    if len(matches) != 1:
-        raise PublishError(f"expected one SRPM for {package}, found {len(matches)}")
+def submit(binary, config, project, srpm_dir, package, srpm_name=None):
+    """提交一个 SRPM。
+
+    srpm_name 给包名与源包名不一致的图形栈用：mesa 的源包产出六个二进制
+    包，按包名 glob 会找到多个；这里直接锁定 manifest 记录的那一个文件名。
+    """
+    matches = ([Path(srpm_dir) / srpm_name] if srpm_name
+               else sorted(Path(srpm_dir).glob(package + "-*.src.rpm")))
+    if len(matches) != 1 or not matches[0].is_file():
+        raise PublishError(f"expected one SRPM for {package}, found "
+                           f"{[p.name for p in matches if p.is_file()]}")
     result = run_cli(binary, config, [
         "build", project, str(matches[0]), "--chroot", CHROOT,
     ])
@@ -293,6 +358,10 @@ def main():
                         help="成功的 host-check run，必须带 piano-rpms artifact")
     parser.add_argument("--rpms", default="build/in/piano-rpms",
                         help="下载后的 piano-rpms artifact 目录")
+    parser.add_argument("--mesa", default="build/in/mesa",
+                        help="解包后的 piano-fedora-mesa artifact 目录")
+    parser.add_argument("--ffmpeg", default="build/in/ffmpeg",
+                        help="解包后的 piano-fedora-ffmpeg artifact 目录")
     parser.add_argument("--project", default="xinyang26/piano-fedora")
     parser.add_argument("--kernel-run-id", default="",
                         help="可选：要求 manifest 的内核 run 与此值一致")
@@ -308,6 +377,7 @@ def main():
     run = verify_run(args.run_id)
     manifest = load_manifest(args.rpms)
     packages, kernel_run = verify_artifacts(args.rpms, manifest, run)
+    graphics = {name: verify_graphics(getattr(args, name), name) for name in GRAPHICS}
     # 同一套 RPM 只能来自一次内核 run。manifest 的内核 run 必须和调用者
     # 声明的一致，否则说明 artifact 被换过或跨 run 混装。
     if args.kernel_run_id and str(args.kernel_run_id) != kernel_run:
@@ -323,6 +393,7 @@ def main():
         "kernel_release": manifest["kernel_release"],
         "sunuefi_commit": manifest["sunuefi_commit"],
         "packages": sorted(packages),
+        "graphics": graphics,
         "kernel_packages": list(KERNEL_PACKAGES),
         "manifest_sha256": sha256(Path(args.rpms) / "piano-rpms-manifest.json"),
     }
@@ -337,6 +408,15 @@ def main():
     try:
         record["project_state"] = ensure_project(binary, config, args.project)
         outputs, ids = {}, []
+        # 先发图形栈：它们的 epoch 让设备 dnf upgrade 立刻回到补丁版，
+        # 而矩阵包的包名与它们不重叠，顺序只决定失败时先报哪一个。
+        for name in GRAPHICS_ORDER:
+            srpm_dir = Path(getattr(args, name)) / "srpms"
+            output, build_id = submit(binary, config, args.project,
+                                      srpm_dir, name,
+                                      srpm_name=graphics[name]["srpm"])
+            outputs[name] = output
+            ids.append(build_id)
         for package in BUILD_ORDER:
             if package not in packages:
                 raise PublishError(f"{package} was not built by this run")

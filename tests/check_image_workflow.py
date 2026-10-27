@@ -40,6 +40,23 @@ def check_mesa(root):
         assert args[args.index("--spec") + 1] == str(spec), args
         assert args[args.index("--srpm") + 1] == str(srpm), args
         assert "_topdir " + str(top) in args, args
+    # 官方 mesa 版本号会一直往上走，只有 epoch 能让补丁版压过它。
+    synthetic = ("Name:           mesa\nVersion:        26.2.3\nRelease:        %autorelease\n"
+                 "Requires:       %{name}-libgbm%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}\n"
+                 "\n%description\nmesa\n")
+    with patch.object(mesa, "SPEC_SHA256", hashlib.sha256(synthetic.encode()).hexdigest()):
+        adapted = mesa.adapt_spec(synthetic.encode())
+    assert f"Epoch:          {mesa.EPOCH}\n" in adapted, adapted
+    # 裸 %{version}-%{release} 依赖加了 epoch 就失配，必须当布局变化拒绝，
+    # 而不是产出一批装不上的包。
+    bare = synthetic.replace("= %{?epoch:%{epoch}:}%{version}-%{release}", "= %{version}-%{release}")
+    try:
+        with patch.object(mesa, "SPEC_SHA256", hashlib.sha256(bare.encode()).hexdigest()):
+            mesa.adapt_spec(bare.encode())
+    except ValueError as error:
+        assert "epoch" in str(error), error
+    else:
+        raise AssertionError("a bare versioned dependency survived the epoch bump")
     header = bytearray(64)
     header[:5] = b"\x7fELF\x02"
     struct.pack_into("<H", header, 18, 183)

@@ -37,8 +37,9 @@ jobs:
         run: |
           set -euo pipefail
           sudo chown -R "$(id -u):$(id -g)" build/ffmpeg
+          # COPR rebuilds from the source RPM, so it ships beside the binaries.
           tar -I 'zstd -6 -T0' -cf piano-fedora-ffmpeg.tar.zst -C build/ffmpeg \
-            manifest.json installed-packages.tsv rpms
+            manifest.json installed-packages.tsv rpms srpms
 
       - uses: actions/upload-artifact@v4
         with:
