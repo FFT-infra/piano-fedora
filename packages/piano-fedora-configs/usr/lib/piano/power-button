@@ -54,6 +54,47 @@ def brightness(backlight):
         return int(stream.read())
 
 
+def max_brightness(backlight):
+    try:
+        with open(f'/sys/class/backlight/{backlight}/max_brightness') as stream:
+            return int(stream.read())
+    except (OSError, ValueError):
+        return 255
+
+
+def mutter_power_save_mode():
+    """获取 Mutter 当前的 PowerSaveMode（0=开, 3=关/黑屏, None=非 GNOME 或查询失败）。"""
+    try:
+        result = subprocess.run(
+            ['gdbus', 'call', '--session', '--dest', 'org.gnome.Mutter.DisplayConfig',
+             '--object-path', '/org/gnome/Mutter/DisplayConfig',
+             '--method', 'org.freedesktop.DBus.Properties.Get',
+             'org.gnome.Mutter.DisplayConfig', 'PowerSaveMode'],
+            capture_output=True, text=True, check=False, timeout=2)
+        if result.returncode == 0 and result.stdout:
+            words = result.stdout.replace('(', '').replace(')', '').replace('<', '').replace('>', '').replace(',', '').split()
+            if words:
+                return int(words[-1])
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def wake_desktop():
+    """通知会话桌面模拟用户活动以退出空闲节能，并在 GNOME 下恢复显示管线。"""
+    call(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.ScreenSaver',
+          '--object-path', '/org/freedesktop/ScreenSaver',
+          '--method', 'org.freedesktop.ScreenSaver.SimulateUserActivity'],
+         'SimulateUserActivity')
+    mode = mutter_power_save_mode()
+    if mode is not None and mode != 0:
+        call(['gdbus', 'call', '--session', '--dest', 'org.gnome.Mutter.DisplayConfig',
+              '--object-path', '/org/gnome/Mutter/DisplayConfig',
+              '--method', 'org.freedesktop.DBus.Properties.Set',
+              'org.gnome.Mutter.DisplayConfig', 'PowerSaveMode', '<int32 0>'],
+             'mutter PowerSaveMode on')
+
+
 def call(args, operation):
     try:
         result = subprocess.run(args, stdout=subprocess.DEVNULL, check=False, timeout=4)
@@ -106,25 +147,55 @@ class Screen:
         self.saved = None
         self.cover_closed = None
 
+    def is_blank(self):
+        if self.saved is not None:
+            return True
+        backlight = find_backlight()
+        if backlight is not None:
+            try:
+                if brightness(backlight) == 0:
+                    return True
+            except OSError:
+                pass
+        mode = mutter_power_save_mode()
+        if mode is not None and mode != 0:
+            return True
+        return False
+
     def blank(self):
         backlight = find_backlight()
-        if backlight is None or self.saved is not None:
+        if backlight is None:
             return
-        saved = brightness(backlight) or 1
-        if set_brightness(backlight, 0):
-            self.saved = (backlight, saved)
+        if self.saved is None:
+            try:
+                current = brightness(backlight)
+            except OSError:
+                current = 0
+            max_val = max_brightness(backlight)
+            self.saved = (backlight, current if current > 1 else max(1, max_val // 2))
+        set_brightness(backlight, 0)
 
     def wake(self):
+        backlight = find_backlight()
+        target_value = None
         if self.saved is not None:
-            backlight, value = self.saved
-            if set_brightness(backlight, value):
-                self.saved = None
+            saved_bl, saved_val = self.saved
+            self.saved = None
+            if backlight == saved_bl and saved_val > 0:
+                target_value = saved_val
+        if target_value is None and backlight is not None:
+            target_value = max(1, max_brightness(backlight) // 2)
+
+        if backlight is not None and target_value is not None:
+            set_brightness(backlight, target_value)
+
+        wake_desktop()
 
     def toggle(self):
-        if self.saved is None:
-            self.blank()
-        else:
+        if self.is_blank():
             self.wake()
+        else:
+            self.blank()
 
     def lid(self, closed):
         if closed == self.cover_closed:

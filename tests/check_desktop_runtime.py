@@ -132,6 +132,52 @@ def check_power_button_falls_back_across_desktops():
         assert needle in text, f"{needle} missing from the power button fallback chain"
 
 
+def check_power_button_wake_and_toggle_behavior():
+    """短按电源键在黑屏/息屏状态下必须执行唤醒，且唤醒时触发桌面活动模拟。"""
+    module = load_module("power_button", POWER_BUTTON)
+    calls = []
+    module.call = lambda args, operation: (calls.append((operation, args)), True)[1]
+    module.say = lambda _msg: None
+
+    module.find_backlight = lambda: "panel_backlight"
+    module.max_brightness = lambda _bl: 255
+
+    # 场景 1: 屏幕亮着（亮度 180，Mutter 为正常显示态）
+    module.brightness = lambda _bl: 180
+    module.mutter_power_save_mode = lambda: 0
+    screen = module.Screen()
+    assert screen.is_blank() is False
+
+    # 按电源键 -> 执行 blank()，保存当前亮度并设为 0
+    screen.toggle()
+    assert screen.saved == ("panel_backlight", 180)
+    assert any("SetBrightness" in " ".join(args) and " 0" in " ".join(args) for _, args in calls)
+
+    # 场景 2: 已处于黑屏态（is_blank 为真）
+    assert screen.is_blank() is True
+
+    # 再次按电源键 -> 必须执行 wake()，恢复背光并模拟活动唤醒屏幕
+    calls.clear()
+    screen.toggle()
+    assert screen.saved is None
+    assert any("SetBrightness" in " ".join(args) and " 180" in " ".join(args) for _, args in calls)
+    assert any("SimulateUserActivity" in " ".join(args) for _, args in calls)
+
+    # 场景 3: 系统空闲息屏（saved 为 None，但背光为 0 且 Mutter 为 3 熄屏）
+    calls.clear()
+    module.brightness = lambda _bl: 0
+    module.mutter_power_save_mode = lambda: 3
+    screen_idle = module.Screen()
+    assert screen_idle.saved is None
+    assert screen_idle.is_blank() is True
+
+    # 空闲黑屏后按电源键 -> 绝不二次关屏，无条件执行 wake() 并拉起 Mutter 管线
+    screen_idle.toggle()
+    assert any("SetBrightness" in " ".join(args) and " 127" in " ".join(args) for _, args in calls)
+    assert any("SimulateUserActivity" in " ".join(args) for _, args in calls)
+    assert any("PowerSaveMode" in " ".join(args) and "<int32 0>" in " ".join(args) for _, args in calls)
+
+
 def check_power_button_device_names_match_the_kernel():
     """服务按名字找设备，udev 规则也按名字授权；三处必须是同一个字符串。
 
@@ -358,6 +404,7 @@ def check_login_units_match_the_profiles():
 
 def main():
     check_power_button_falls_back_across_desktops()
+    check_power_button_wake_and_toggle_behavior()
     check_power_button_device_names_match_the_kernel()
     check_tablet_mode_asks_logind_for_a_user_session()
     check_collectors_cover_every_display_manager()
