@@ -69,8 +69,9 @@ with tempfile.TemporaryDirectory() as temporary:
                       "unverified": ["uperf"]}, result
 
     text = watch.render(None, rows, "2026-10-20T00:00:00+00:00")
-    assert "`crosvm`" in text and "自动升级 PR" in text
+    assert "`crosvm`" in text and "白名单，可自动改 pin" in text
     assert "`sunuefi`" in text and "人工评审" in text
+    assert "scripts/upstream-watch.py bump" in text, "自动改 pin 的命令要写在报告里"
     # markdown 表格里的竖线必须转义，否则一列提交主题会把表格拆散。
     assert "devices: fix \\| pipe" in text
     assert "未能核验" in text and "HTTP 503" in text

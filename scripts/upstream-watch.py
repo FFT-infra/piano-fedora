@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""把上游审计结果整理成跟踪 issue 和白名单升级分支。
+"""把上游审计结果整理成跟踪 issue，并在本地把白名单上游的 pin 写回锁文件。
 
 审计本身由 scripts/audit-upstreams.py --execute 完成（只读 GitHub API），
 这里只消费它的 JSON：
 
 - report：生成人看的 markdown + workflow 用的摘要（哪些漂移、哪些可自动升级）；
 - bump：只改白名单上游的 commit，其余字段逐字节保留。
+
+workflow 只调 report。仓库不允许 Actions 创建 PR，所以白名单的改 pin 由人跑
+bump 完成，报告里给出可复制的命令。
 
 判断"漂移"用 build_pin 与上游当前 ref 指向的 commit 比较。审计里的 updated
 依赖 docs/upstreams.json 的人工基线，基线过期就会误报，不能拿来做决定。
@@ -62,7 +65,7 @@ def load(audit_path, upstreams_path, lock_path):
 
 def disposition(row):
     if row["key"] in AUTO_BUMP:
-        return "自动升级 PR"
+        return "白名单，可自动改 pin"
     return "人工评审"
 
 
@@ -91,7 +94,19 @@ def render(audit, rows, today=None):
                 f"{(row['subject'] or '').replace('|', '\\|')} |")
         lines.append("")
     if auto:
-        lines += [f"白名单（可自动开 PR）：{', '.join('`' + row['key'] + '`' for row in auto)}", ""]
+        keys = ", ".join(f"`{row['key']}`" for row in auto)
+        lines += [
+            f"白名单（只差改 pin）：{keys}",
+            "",
+            "```sh",
+            "python3 scripts/upstream-watch.py bump --pr-body build/upstream-bump.md",
+            "make test",
+            "```",
+            "",
+            "改完把 `sources.lock.json` 和 `build/upstream-bump.md` 一起提交、开 PR。",
+            "workflow 不碰锁文件：仓库不允许 Actions 创建 PR。",
+            "",
+        ]
     if broken:
         lines += ["### 未能核验", ""]
         for row in broken:
@@ -135,8 +150,8 @@ def render_pull_request(rows, changed, today=None):
         "",
         "只改 `sources.lock.json` 的 commit，ref 不动。合并前请确认：",
         "",
-        "- 这个 PR 由 `GITHUB_TOKEN` 创建，GitHub 不会为它自动跑 workflow；需要手动 `gh workflow run host-check.yml` 或关掉重开。",
-        "- `make test` 里的补丁、清单与源码 pin 校验会拒绝任何不一致。",
+        "- 这个 PR 由人提交，CI 会正常跑；`make test` 里的补丁、清单与源码 pin 校验会拒绝任何不一致。",
+        "- 白名单上游的改动仍要按 `docs/upstreams.md` 重编受影响产物，只有离线检查不算验收。",
         "",
         "| 上游 | 旧 pin | 新 pin | 最近提交 |",
         "| --- | --- | --- | --- |",

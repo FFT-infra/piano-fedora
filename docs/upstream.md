@@ -11,7 +11,7 @@
 `.github/workflows/upstream-watch.yml` 每周一 03:23 UTC 运行一次 `scripts/audit-upstreams.py --execute`。`scripts/upstream-watch.py` 处理执行结果，按以下规则分流：
 
 - 锁定 ref 指向的提交与 `sources.lock.json` 的 pin 不同时，算作漂移。漂移汇总进一个 `upstream-drift` issue。下次运行若没有漂移，`scripts/upstream-watch.py` 关闭这个 issue。
-- 白名单（`crosvm`、`librevm`、`uperf`、`piano-mesa`、`piano-sensors`、`piano-mipps-auth`）里的漂移另开一个 draft PR。这个 PR 仅修改 `sources.lock.json` 的 `commit`。`ref` 保持不动。这些项目属于纯用户态上游。`make test` 与 CI 能够覆盖检查。PR 由 `GITHUB_TOKEN` 创建。GitHub 不会为这个 PR 自动运行 workflow。合并前必须手动触发一次 `host-check`。
+- 白名单（`crosvm`、`librevm`、`uperf`、`piano-mesa`、`piano-sensors`、`piano-mipps-auth`）里的漂移在 issue 里附带一条改 pin 命令。workflow 本身不碰锁文件，也不开 PR：仓库设置不允许 Actions 创建 PR。人跑 `scripts/upstream-watch.py bump` 改 `sources.lock.json` 的 `commit`，`ref` 保持不动。这些项目属于纯用户态上游，`make test` 与 CI 能够覆盖检查；受影响产物仍要按本页末节重编。
 - 内核、UEFI、相机/触控、固件和 debian-piano 只作报告。离线 CI 代替不了这些组件的真机验收。维护者按后文「每次跟进上游」的规则评审 pin。
 
 漂移判断只看 pin，不看 `docs/upstreams.json` 的 `reference_commit`。`reference_commit` 是人工基线，只在 `--record-baseline` 时推进。拿 `reference_commit` 判断，会把没有位移的上游报成更新。
