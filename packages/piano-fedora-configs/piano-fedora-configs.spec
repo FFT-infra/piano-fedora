@@ -33,7 +33,7 @@ for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
 - PMIC RTC software clock floor restore and periodic background save
 - Gunyah hypervisor DT node masking to restore GNOME battery & power panel
 - GNOME auto-rotation fake tablet mode daemon (SW_TABLET_MODE)
-- Power key and hall sensor udev, sleep, and user service rules
+- Power key and hall sensor udev, sleep, and system service rules
 - Interconnect bwmon and RPMh stats module auto-loading
 - Dual-boot SunUEFI / Android return launchers and polkit rules
 - CPU schedutil 2ms rate limit tuning for instantaneous touch response
@@ -92,7 +92,7 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_unitdir}/xiaomi-charger-mode.service
 %{_prefix}/lib/systemd/system-shutdown/f2fs-root-shutdown
 %{_unitdir}/piano-linux-debug.service
-%{_userunitdir}/piano-power-button.service
+%{_unitdir}/piano-power-button.service
 
 %{_libexecdir}/piano-clock-restore
 %{_libexecdir}/piano-clock-save
@@ -123,10 +123,12 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_datadir}/polkit-1/rules.d/49-piano-boot-request.rules
 
 %post
-%systemd_post piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
-%systemd_user_post piano-power-button.service
-systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service qbootctl.service || :
-systemctl --global enable piano-power-button.service || :
+%systemd_post piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service piano-power-button.service
+systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service piano-power-button.service qbootctl.service || :
+# 电源键服务现在是 system 单元。rpm 只会删 /usr/lib/systemd/system 下的
+# 文件，旧安装 enable 出来的 user 链接会指向一个不再存在的单元；这段必须
+# 留在 %post，因为升级时 %preun 跑的是旧包的脚本。
+rm -f /etc/systemd/user/graphical-session.target.wants/piano-power-button.service
 if [ -x %{_bindir}/dconf ]; then
     %{_bindir}/dconf update || :
 fi
@@ -140,11 +142,10 @@ systemctl --no-reload disable piano-boot-request-autoconfig.service >/dev/null 2
 rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.service
 
 %preun
-%systemd_preun piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
-%systemd_user_preun piano-power-button.service
+%systemd_preun piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service piano-power-button.service
 
 %postun
-%systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
+%systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service piano-power-button.service
 
 %changelog
 * Mon Oct 26 2026 FFT-infra <dev@piano.invalid> - 0.1.0-10

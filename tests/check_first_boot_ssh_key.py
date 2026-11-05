@@ -172,8 +172,9 @@ def check_helper(root, failures):
     unit = owned.index("/usr/lib/systemd/system/piano-first-boot-ssh-key.service")
     check(owned[unit - 1] == "/usr/lib/systemd/system/piano-fake-tablet-mode.service",
           "unit is in the wrong position")
-    check(owned[unit + 1] == "/usr/lib/systemd/system/piano-touch.service",
-          "unit is in the wrong position")
+    # 后面那条不写死邻居：piano-power-button.service 也按字母排在
+    # piano-first-boot-ssh-key 与 piano-touch 之间，写死会跟着别人的改动一起断。
+    check(owned[unit] < owned[unit + 1], "unit is out of alphabetical order")
 
     # 10. The build-time key provisioning is gone. Comments may still explain
     # the change, so only executable lines count.

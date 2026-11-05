@@ -208,7 +208,7 @@ def stage_boot_diagnostics(root, context):
             'SUBSYSTEM=="dma_heap", KERNEL=="system", GROUP="video", MODE="0660", TAG+="uaccess"\n',
         "etc/udev/rules.d/70-piano-power-button.rules":
             "# Let the active session user open the power key and the keyboard-cover\n"
-            "# lid switch: the piano-power-button user service owns both (see\n"
+            "# lid switch: the piano-power-button system service owns both (see\n"
             "# /usr/lib/piano/power-button).  The power key is grabbed; the lid switch\n"
             "# is only read, so its state stays visible to logind and GNOME.\n"
             'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="pmic_pwrkey", TAG+="uaccess"\n'
@@ -357,7 +357,7 @@ WantedBy=sysinit.target
 # piano_desktop.power_required() 提供（GNOME dconf / KDE powerdevilrc / 无）。
 POWER_OVERLAY_FILES = (
     "usr/lib/piano/power-button",
-    "usr/lib/systemd/user/piano-power-button.service",
+    "usr/lib/systemd/system/piano-power-button.service",
     "etc/udev/rules.d/70-piano-power-button.rules",
     "etc/systemd/logind.conf.d/piano.conf",
 )
@@ -465,7 +465,8 @@ def verify_power_overlay(root, context):
             "org/gnome/settings-daemon/plugins/media-keys": {"power-static": "['']"},
             "org/gnome/settings-daemon/plugins/power": {
                 "power-button-action": "'nothing'", "sleep-inactive-ac-type": "'nothing'",
-                "sleep-inactive-battery-type": "'nothing'"},
+                "sleep-inactive-battery-type": "'nothing'",
+                "ambient-enabled": "false", "idle-dim": "false"},
             "org/gnome/desktop/session": {"idle-delay": "uint32 300"},
             "org/gnome/desktop/screensaver": {"lock-enabled": "true", "lock-delay": "uint32 0"},
         }
@@ -767,9 +768,9 @@ def main():
                 "piano-clock-save.timer", "piano-selinux-policy.service",
                 "piano-first-boot-ssh-key.service",
                 "piano-pstore-save.service", "qbootctl.service",
+                "piano-power-button.service",
                 *piano_desktop.enable_units(context)]
     chroot(root, "systemctl", "enable", *services)
-    chroot(root, "systemctl", "--global", "enable", "piano-power-button.service")
     # dconf 编译只有 dconf 档需要：KDE 与无桌面档没有这个库，跑它会把一份
     # 空的系统库写进镜像。
     if piano_desktop.dconf_profile_required(context):
