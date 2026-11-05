@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-10-26",
+  "checked_date": "2026-11-06",
   "note": "只列构建实际消费的上游；研究与后端参考单独记录在 docs/upstreams.json。",
   "sources": {
     "dtc": {
       "url": "https://github.com/dgibson/dtc.git",
       "ref": "main",
-      "commit": "f99e3af0ecb67a9085478a9b8ddbcc25aa64931d",
+      "commit": "54e547173bf0f2a4cc35eba8b5738caf38b9230f",
       "role": "设备树打包工具：保留覆盖层目标节点已有 phandle 的 libfdt 1.8.1"
     },
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "0a8ec14340c02d0c1febb25f1bb3af830485545e",
+      "commit": "afe922bc0d9f230dd05dc0dc9435ae6d6322a31b",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器"
     },
     "linux-piano": {
@@ -66,19 +66,19 @@
     "crosvm": {
       "url": "https://github.com/google/crosvm.git",
       "ref": "main",
-      "commit": "1784d938eb43bd8a0c4b62ec447c7330a6ecee20",
+      "commit": "14a4f2cbb586ef9af33130e4aa6fd40ec387c8d3",
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {
       "url": "https://github.com/radxa-pkg/libva-v4l2.git",
       "ref": "master",
-      "commit": "51df9a538a1e8ce7a02449d9bca32ecf621c76c5",
-      "role": "Qualcomm Iris stateful V4L2 VA-API 后端：H.264/HEVC 硬解与编码；phxinyang/qualcomm-iris-vaapi 只有解码 entrypoint，会覆盖它"
+      "commit": "0980a1decf26d34c9aa71cd0a4a0d25703a7a17f",
+      "role": "Qualcomm Iris stateful V4L2 VA-API 后端（上游已改名 qcom-va-driver）：H.264/HEVC/AV1 硬解与编码；phxinyang/qualcomm-iris-vaapi 只有解码 entrypoint，会覆盖它"
     },
     "piano-integration": {
       "url": "https://github.com/yzddmr6/xiaomipad-8pro-mainline.git",
       "ref": "main",
-      "commit": "cede87ccee5b3041f9da47d0639644d1d69ca96b",
+      "commit": "5152d48f4153752abfa7bd1c8ff940a3a8f6dff8",
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者"
     },
     "uperf": {

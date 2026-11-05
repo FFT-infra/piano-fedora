@@ -40,9 +40,10 @@ with tempfile.TemporaryDirectory() as tmp:
     # longer builds a second VA-API backend at the same path.
     dri = root / "usr/lib64/dri"
     dri.mkdir(parents=True)
-    (dri / "v4l2_drv_video.so").write_text("fixture driver")
+    (dri / "qcom_drv_video.so").write_text("fixture driver")
+    (dri / "v4l2_drv_video.so").symlink_to("qcom_drv_video.so")
     alias = dri / "msm_drv_video.so"
-    alias.symlink_to("v4l2_drv_video.so")
+    alias.symlink_to("qcom_drv_video.so")
     proof = {"extras": extras}
     m.verify_runtime_extras(root, proof)
     # The clean matrix owns these files through separate specs. A manifest from
@@ -77,7 +78,7 @@ with tempfile.TemporaryDirectory() as tmp:
         p.write_bytes(data)
     alias.unlink()
     reject(proof)
-    alias.symlink_to("v4l2_drv_video.so")
+    alias.symlink_to("qcom_drv_video.so")
     m.verify_runtime_extras(root, proof)
 print("runtime extras: pinned sources, installed bytes, missing files and alias checked")
 with tempfile.TemporaryDirectory() as tmp:

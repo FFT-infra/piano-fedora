@@ -256,7 +256,7 @@ def audit_rootfs(rootfs_dir):
         "usr/lib/piano/piano-camerad",
         "usr/bin/uperf-linux",
         "usr/lib64/libssc.so",
-        "usr/lib64/dri/v4l2_drv_video.so",
+        "usr/lib64/dri/qcom_drv_video.so",
         "etc/systemd/system/qbootctl.service.d/piano.conf",
         # initramfs 在 chroot 之后立刻运行 piano-disk-hardware-prepare，
         # 它的 require_ram() 直接读 root-policy.json。缺这个文件，

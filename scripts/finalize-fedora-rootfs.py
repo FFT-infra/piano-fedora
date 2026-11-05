@@ -568,7 +568,7 @@ def verify_runtime_extras(root, runtime_meta):
         if not target.is_file() or sha256(target) != digest:
             raise ValueError("installed runtime extra differs: " + name)
     alias = guest_resolve(root, "/usr/lib64/dri") / "msm_drv_video.so"
-    if not alias.is_symlink() or str(alias.readlink()) != "v4l2_drv_video.so":
+    if not alias.is_symlink() or str(alias.readlink()) != "qcom_drv_video.so":
         raise ValueError("VA-API msm driver alias differs")
 
 

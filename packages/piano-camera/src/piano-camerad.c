@@ -12,6 +12,11 @@
  * ISP white balance gains, both from a sparse sample of the output frames,
  * and contrast-detect autofocus where the camera has a focus actuator.
  */
+/*
+ * 本仓库的偏离：output_bgrx 默认 true，PIANO_CAMERA_OUTPUT 的 bgrx 分支因此
+ * 成为空操作。其余内容照抄上游 device/camera/piano-camerad.c，pin 见
+ * sources.lock.json 的 piano-integration。同步上游时保留这两处，其余整份替换。
+ */
 #define _GNU_SOURCE
 #include <dirent.h>
 #include <errno.h>
@@ -49,6 +54,8 @@ struct v4l2_event_client_usage {
 #define NUM_BUFS	4
 #define AE_TARGET	112.0	/* mean luma, gamma encoded */
 #define AE_PERIOD	3	/* frames between control updates */
+#define AE_STARTUP_UPDATES 10	/* bounded acquisition, then steady tracking */
+#define AE_REACQUIRE	0.35	/* lasting luma error (log) to acquire again */
 #define DGAIN_UNITY	1024
 #define DGAIN_MAX	(8 * DGAIN_UNITY)
 #define WB_UNITY	1024
@@ -89,7 +96,7 @@ static const struct cam_cfg cam_cfgs[] = {
 		.csid = "msm_csid0", .vfe = "msm_vfe0_pix",
 		.video = "msm_vfe0_video3", .vcm = "dw9768",
 		.in_w = 4080, .in_h = 3072, .out_w = 1920, .out_h = 1440,
-		.vflip = true, .again_unit = 1, .fps = 30,
+		.vflip = true, .again_unit = 32, .fps = 30,
 		/* mean of the stock tuning matrices */
 		.ccm = { 1732, -667, -40, -230, 1337, -82, -93, -989, 2106 },
 	},
@@ -119,7 +126,8 @@ struct cam {
 	bool streaming;
 	int vid_fd, sensor_fd, vfe_fd, vcm_fd;
 	struct buf bufs[NUM_BUFS];
-	unsigned int bpl;
+	unsigned int bpl, sizeimage, nbufs;
+	size_t uv_offset, frame_span;
 	uint8_t *stage;		/* converted BGRx or repacked NV12 output */
 	unsigned long frames;
 	/* sensor control ranges */
@@ -128,6 +136,10 @@ struct cam {
 	int exposure, again, dgain;
 	double rgain, bgain;
 	bool have_state;
+	/* exposure statistics are fresh for each stream */
+	double ae_mean, ae_bright;
+	unsigned int ae_updates, ae_stable, ae_far;
+	bool ae_acquiring, ae_ready;
 	/* autofocus: lens position range, scan state */
 	int af_min, af_max, af_pos;
 	enum { AF_OFF, AF_WAIT, AF_SCAN, AF_FINE, AF_VERIFY, AF_LOCKED } af_state;
@@ -461,6 +473,21 @@ static size_t frame_size(const struct cam_cfg *cfg)
 	return output_bgrx ? pixels * 4 : pixels * 3 / 2;
 }
 
+static int loopback_write_frame(struct cam *c, const uint8_t *frame)
+{
+	size_t size = frame_size(c->cfg);
+	ssize_t written = write(c->loop_fd, frame, size);
+
+	if (written < 0)
+		return -1;
+	if ((size_t)written != size) {
+		logmsg(c, "short loopback frame: wrote %zd of %zu bytes", written, size);
+		errno = EIO;
+		return -1;
+	}
+	return 0;
+}
+
 static int loopback_black(struct cam *c)
 {
 	const struct cam_cfg *cfg = c->cfg;
@@ -473,7 +500,7 @@ static int loopback_black(struct cam *c)
 	memset(black, 0, size);
 	if (!output_bgrx)
 		memset(black + luma, 128, size - luma);
-	ret = write(c->loop_fd, black, size) < 0 ? -1 : 0;
+	ret = loopback_write_frame(c, black);
 	free(black);
 
 	return ret;
@@ -503,8 +530,17 @@ static int loopback_init(struct cam *c)
 	f.fmt.pix.sizeimage = size;
 	/* full range BT.601 YCbCr, sRGB transfer */
 	f.fmt.pix.colorspace = output_bgrx ? V4L2_COLORSPACE_SRGB : V4L2_COLORSPACE_JPEG;
-	if (xioctl(c->loop_fd, VIDIOC_S_FMT, &f) < 0) {
-		logmsg(c, "loopback S_FMT: %s", strerror(errno));
+	if (xioctl(c->loop_fd, VIDIOC_S_FMT, &f) < 0 ||
+	    xioctl(c->loop_fd, VIDIOC_G_FMT, &f) < 0) {
+		logmsg(c, "loopback format: %s", strerror(errno));
+		return -1;
+	}
+	if (f.fmt.pix.pixelformat != (output_bgrx ? V4L2_PIX_FMT_XBGR32 : V4L2_PIX_FMT_NV12) ||
+	    f.fmt.pix.width != cfg->out_w || f.fmt.pix.height != cfg->out_h ||
+	    f.fmt.pix.bytesperline != cfg->out_w * (output_bgrx ? 4 : 1) ||
+	    f.fmt.pix.sizeimage != size) {
+		logmsg(c, "loopback did not accept tightly packed %s %ux%u",
+		       output_bgrx ? "BGRx" : "NV12", cfg->out_w, cfg->out_h);
 		return -1;
 	}
 
@@ -570,6 +606,8 @@ static void cam_stop(struct cam *c)
 
 	memset(c->bufs, 0, sizeof(c->bufs));
 	c->stage = NULL;
+	c->nbufs = c->bpl = c->sizeimage = 0;
+	c->uv_offset = c->frame_span = 0;
 	c->vid_fd = c->sensor_fd = c->vfe_fd = c->vcm_fd = -1;
 	if (c->streaming)
 		logmsg(c, "stopped after %lu frames", c->frames);
@@ -647,10 +685,13 @@ static int cam_start(struct cam *c)
 			};
 
 			/* the climb starts where the lens rests */
-			if (xioctl(c->vcm_fd, VIDIOC_G_CTRL, &ctl) == 0)
+			if (xioctl(c->vcm_fd, VIDIOC_G_CTRL, &ctl) == 0) {
 				c->af_pos = ctl.value;
-			c->af_settle = 0;
-			c->af_state = AF_WAIT;
+				c->af_settle = 0;
+				c->af_state = AF_WAIT;
+			} else {
+				logmsg(c, "focus position: %s", strerror(errno));
+			}
 		}
 	}
 
@@ -691,23 +732,42 @@ static int cam_start(struct cam *c)
 	f.fmt.pix_mp.field = V4L2_FIELD_NONE;
 	f.fmt.pix_mp.num_planes = 1;
 	if (xioctl(c->vid_fd, VIDIOC_S_FMT, &f) < 0 ||
-	    f.fmt.pix_mp.width != cfg->out_w ||
-	    f.fmt.pix_mp.height != cfg->out_h) {
+	    xioctl(c->vid_fd, VIDIOC_G_FMT, &f) < 0) {
 		logmsg(c, "video format: %s", strerror(errno));
 		goto out;
 	}
+	if (f.fmt.pix_mp.pixelformat != V4L2_PIX_FMT_NV12 ||
+	    f.fmt.pix_mp.num_planes != 1 ||
+	    f.fmt.pix_mp.width != cfg->out_w ||
+	    f.fmt.pix_mp.height != cfg->out_h ||
+	    (cfg->out_w & 1) || (cfg->out_h & 1)) {
+		logmsg(c, "capture did not accept single-plane NV12 %ux%u", cfg->out_w,
+		       cfg->out_h);
+		goto out;
+	}
 	c->bpl = f.fmt.pix_mp.plane_fmt[0].bytesperline;
+	c->sizeimage = f.fmt.pix_mp.plane_fmt[0].sizeimage;
+	c->uv_offset = (size_t)c->bpl * cfg->out_h;
+	c->frame_span = c->uv_offset + (size_t)(cfg->out_h / 2 - 1) * c->bpl +
+			cfg->out_w;
+	if (c->bpl < cfg->out_w || c->sizeimage < c->frame_span) {
+		logmsg(c, "invalid NV12 layout: stride %u sizeimage %u span %zu", c->bpl,
+		       c->sizeimage, c->frame_span);
+		goto out;
+	}
 	if (output_bgrx || c->bpl != cfg->out_w) {
 		c->stage = malloc(frame_size(cfg));
 		if (!c->stage)
 			goto out;
 	}
 
-	if (xioctl(c->vid_fd, VIDIOC_REQBUFS, &rb) < 0 || rb.count < 2) {
-		logmsg(c, "REQBUFS: %s", strerror(errno));
+	if (xioctl(c->vid_fd, VIDIOC_REQBUFS, &rb) < 0 || rb.count < 2 ||
+	    rb.count > NUM_BUFS) {
+		logmsg(c, "REQBUFS: count %u, %s", rb.count, strerror(errno));
 		goto out;
 	}
-	for (unsigned int i = 0; i < rb.count && i < NUM_BUFS; i++) {
+	c->nbufs = rb.count;
+	for (unsigned int i = 0; i < c->nbufs; i++) {
 		struct v4l2_plane pl[VIDEO_MAX_PLANES] = { 0 };
 		struct v4l2_buffer b = {
 			.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
@@ -719,6 +779,11 @@ static int cam_start(struct cam *c)
 
 		if (xioctl(c->vid_fd, VIDIOC_QUERYBUF, &b) < 0)
 			goto out;
+		if (b.length != 1 || pl[0].length < c->sizeimage) {
+			logmsg(c, "invalid capture buffer %u: planes %u length %u", i,
+			       b.length, pl[0].length);
+			goto out;
+		}
 		c->bufs[i].len = pl[0].length;
 		c->bufs[i].ptr = mmap(NULL, pl[0].length, PROT_READ,
 				      MAP_SHARED, c->vid_fd,
@@ -795,6 +860,9 @@ static int cam_start(struct cam *c)
 
 	c->streaming = true;
 	c->frames = 0;
+	c->ae_updates = c->ae_stable = c->ae_far = 0;
+	c->ae_acquiring = true;
+	c->ae_ready = false;
 	logmsg(c, "streaming %ux%u -> %ux%u NV12 (bayer 0x%04x)", cfg->in_w,
 	       cfg->in_h, cfg->out_w, cfg->out_h, code);
 	ret = 0;
@@ -876,16 +944,31 @@ static double clampd(double v, double lo, double hi)
 static void control_update(struct cam *c, const struct stats *s)
 {
 	const struct cam_cfg *cfg = c->cfg;
-	double k, total, rem;
+	double k, total, rem, target, error, lo, hi;
 	int exp, ag;
+	bool acquire = c->ae_acquiring;
+	int old_exp = c->exposure, old_ag = c->again, old_dg = c->dgain;
 
-	/* exposure: luma is gamma encoded, so ~2.2 power for linear light */
-	k = pow(AE_TARGET / (s->mean < 1 ? 1 : s->mean), 2.2);
-	if (s->bright > 0.04)
-		k = fmin(k, 0.7);
-	k = clampd(pow(k, 0.6), 0.5, 2.0);
-
-	if (fabs(log(k)) > 0.04) {
+	/* Acquisition uses the current valid frame, not stale filtered luma. */
+	if (!c->ae_updates || acquire) {
+		c->ae_mean = s->mean;
+		c->ae_bright = s->bright;
+	} else {
+		c->ae_mean += 0.25 * (s->mean - c->ae_mean);
+		c->ae_bright += 0.25 * (s->bright - c->ae_bright);
+	}
+	/* A hard clipping cutoff alternated between gain-up and gain-down.
+	 * Reduce the luma target continuously instead of reversing the step.
+	 */
+	target = fmax(AE_TARGET * 0.65, AE_TARGET / (1.0 + 2.0 * c->ae_bright));
+	error = log(target / fmax(c->ae_mean, 1.0));
+	if (fabs(error) > 0.05) {
+		/* Only startup may take a larger step. The existing highlight target
+		 * remains, and the startup upper bound falls with clipped pixels.
+		 */
+		lo = acquire ? 0.75 : 0.94;
+		hi = acquire ? clampd(2.0 / (1.0 + 4.0 * s->bright), 1.06, 2.0) : 1.06;
+		k = clampd(pow(target / fmax(c->ae_mean, 1.0), 2.2 * 0.3), lo, hi);
 		total = (double)c->exposure * c->again / cfg->again_unit *
 			c->dgain / DGAIN_UNITY * k;
 
@@ -905,6 +988,38 @@ static void control_update(struct cam *c, const struct stats *s)
 		apply_exposure(c);
 	}
 
+	/* A bounded acquisition cannot declare readiness merely on timeout.
+	 * A target match, or unchanged controls at their limits, must persist
+	 * for two observations before the rear lens scan is allowed.
+	 */
+	if (fabs(error) <= 0.10 ||
+	    (c->ae_mean > 1.0 && old_exp == c->exposure &&
+	     old_ag == c->again && old_dg == c->dgain))
+		c->ae_stable++;
+	else
+		c->ae_stable = 0;
+	c->ae_ready = c->ae_stable >= 2;
+	if (c->ae_updates < AE_STARTUP_UPDATES)
+		c->ae_updates++;
+	if (c->ae_ready || c->ae_updates >= AE_STARTUP_UPDATES)
+		c->ae_acquiring = false;
+
+	/* A scene change leaves a large error that the steady rate needs
+	 * seconds to close: acquire again once the filtered error stays large
+	 * for two updates. Controls held at their limits cannot do better.
+	 */
+	if (!c->ae_acquiring && fabs(error) > AE_REACQUIRE &&
+	    (old_exp != c->exposure || old_ag != c->again ||
+	     old_dg != c->dgain)) {
+		if (++c->ae_far >= 2) {
+			c->ae_acquiring = true;
+			c->ae_ready = false;
+			c->ae_updates = c->ae_stable = c->ae_far = 0;
+		}
+	} else {
+		c->ae_far = 0;
+	}
+
 	/* gray world white balance on mid tones */
 	if (s->n_rgb > 200 && s->r > 0 && s->b > 0) {
 		double rr = s->g / s->r, bb = s->g / s->b;
@@ -917,8 +1032,8 @@ static void control_update(struct cam *c, const struct stats *s)
 	}
 
 	if (c->frames % (AE_PERIOD * 30) == 0)
-		logmsg(c, "mean %.0f bright %.2f exp %d again %d dgain %d wb r %.2f b %.2f",
-		       s->mean, s->bright, c->exposure, c->again, c->dgain,
+		logmsg(c, "mean %.0f bright %.2f ae %.0f target %.0f exp %d again %d dgain %d wb r %.2f b %.2f",
+		       s->mean, s->bright, c->ae_mean, target, c->exposure, c->again, c->dgain,
 		       c->rgain, c->bgain);
 }
 
@@ -967,14 +1082,19 @@ static int af_clamp(const struct cam *c, int pos)
 	return pos < c->af_min ? c->af_min : pos > c->af_max ? c->af_max : pos;
 }
 
-static void af_move(struct cam *c, int pos)
+static int af_move(struct cam *c, int pos)
 {
 	pos = af_clamp(c, pos);
 	if (pos != c->af_pos) {
+		if (ctrl_set(c->vcm_fd, V4L2_CID_FOCUS_ABSOLUTE, pos) < 0) {
+			logmsg(c, "focus control %d: %s", pos, strerror(errno));
+			c->af_state = AF_OFF;
+			return -1;
+		}
 		c->af_pos = pos;
-		ctrl_set(c->vcm_fd, V4L2_CID_FOCUS_ABSOLUTE, pos);
 		c->af_settle = af_settle_frames;
 	}
+	return 0;
 }
 
 static void af_scan(struct cam *c)
@@ -1088,12 +1208,14 @@ static void af_feed(struct cam *c, double sh)
 				continue;
 			next = c->af_fine[i];
 			c->af_fine[i] = -1;
-			af_move(c, next);
+			if (af_move(c, next) < 0)
+				return;
 			if (c->af_pos != next || c->af_settle)
 				return;
 			/* already there (clamped): sampled */
 		}
-		af_move(c, af_peak(c));
+		if (af_move(c, af_peak(c)) < 0)
+			return;
 		c->af_state = AF_VERIFY;
 		return;
 	}
@@ -1134,7 +1256,7 @@ static void af_update(struct cam *c, const uint8_t *y, unsigned int stride)
 	if (c->af_state == AF_OFF)
 		return;
 	if (c->af_state == AF_WAIT) {
-		if (c->frames >= AF_START)
+		if (c->frames >= AF_START && c->ae_ready)
 			af_scan(c);
 		return;
 	}
@@ -1142,6 +1264,8 @@ static void af_update(struct cam *c, const uint8_t *y, unsigned int stride)
 		c->af_settle--;
 		return;
 	}
+	if (!c->ae_ready)
+		return;
 	af_feed(c, af_sharpness(c, y, stride));
 }
 
@@ -1163,10 +1287,27 @@ static void cam_frame(struct cam *c)
 		return;
 	}
 
-	y = c->bufs[b.index].ptr;
-	uv = y + (size_t)c->bpl * cfg->out_h;
-
 	if (!(b.flags & V4L2_BUF_FLAG_ERROR)) {
+		const struct buf *mapped;
+		size_t offset = pl[0].data_offset, used = pl[0].bytesused;
+
+		if (b.index >= c->nbufs || b.length != 1) {
+			logmsg(c, "invalid capture frame: index %u planes %u", b.index,
+			       b.length);
+			goto requeue;
+		}
+		mapped = &c->bufs[b.index];
+		if (!mapped->ptr || pl[0].length > mapped->len ||
+		    pl[0].length < c->sizeimage || used > pl[0].length ||
+		    offset > used || c->frame_span > used - offset) {
+			logmsg(c, "incomplete capture frame: sequence %u index %u used %zu "
+			       "offset %zu length %u mapped %zu span %zu", b.sequence,
+			       b.index, used, offset, pl[0].length, mapped->len, c->frame_span);
+			goto requeue;
+		}
+		y = (const uint8_t *)mapped->ptr + offset;
+		uv = y + c->uv_offset;
+
 		if (++c->frames % AE_PERIOD == 0) {
 			struct stats s;
 
@@ -1187,11 +1328,13 @@ static void cam_frame(struct cam *c)
 				       y + (size_t)r * c->bpl, cfg->out_w);
 			out = c->stage;
 		}
-		if (write(c->loop_fd, out, frame_size(cfg)) < 0)
+		if (loopback_write_frame(c, out) < 0)
 			logmsg(c, "loopback write: %s", strerror(errno));
 	}
 
-	xioctl(c->vid_fd, VIDIOC_QBUF, &b);
+requeue:
+	if (xioctl(c->vid_fd, VIDIOC_QBUF, &b) < 0)
+		logmsg(c, "QBUF after frame %u: %s", b.sequence, strerror(errno));
 }
 
 static void loopback_event(struct cam *c)
