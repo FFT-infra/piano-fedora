@@ -220,7 +220,10 @@ def build(sun, output):
     payload = output / "payload"
     payload.mkdir()
     run("rpm", "--root", payload, "--dbpath", "/var/lib/rpm", "--initdb")
-    run("rpm", "--root", payload, "--dbpath", "/var/lib/rpm", "--nodeps", "--noscripts",
+    # Fedora 45 的 rpm 6 默认 %_pkgverify_level=all，本地编出来的包没有签名，
+    # 安装会以每个包都失败告终。这里装的是刚编出的载荷，来源已经核对过摘要。
+    run("rpm", "--root", payload, "--dbpath", "/var/lib/rpm",
+        "--define", "_pkgverify_level none", "--nodeps", "--noscripts",
         "-i", *sorted(rpms.glob("*.rpm")))
     decoders = decoder_proof(payload)
     packages = query("rpm", "-qa", "--root", payload, "--dbpath", "/var/lib/rpm",
