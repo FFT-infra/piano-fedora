@@ -24,7 +24,9 @@ jobs:
         run: |
           set -euo pipefail
           release=$(python3 -c 'import json; print(json.load(open("product.json"))["target"]["releasever"])')
-          test "$release" = 44
+          # 本脚本的 SRPM 与补丁基线写死在 Fedora 45；product.json 先动而脚本
+          # 没跟上的话，在这里失败，而不是在 dnf 里装错 SRPM。
+          test "$release" = 45
           sudo podman run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
             "registry.fedoraproject.org/fedora:$release" bash -euo pipefail -c '
               dnf -y install python3 rpm-build redhat-rpm-config dnf5-plugins git tar xz zstd

@@ -49,7 +49,7 @@ jobs:
     uses: ./.github/workflows/build-piano-rpms.yml
     with:
       kernel_run_id: ${{ inputs.kernel_run_id }}
-      releasever: "44"
+      releasever: "45"
   checks:
     env:
       PIANO_TEST_SUNUEFI: ${{ github.workspace }}/build/test-sources/sunuefi
@@ -72,7 +72,7 @@ jobs:
         run: |
           sudo podman run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
             --env PIANO_TEST_SUNUEFI=/workspace/build/test-sources/sunuefi \
-            registry.fedoraproject.org/fedora:44 bash -euo pipefail -c '
+            registry.fedoraproject.org/fedora:45 bash -euo pipefail -c '
               dnf -y install busybox binutils util-linux shadow-utils libxcrypt make git python3 gcc patch dtc logrotate glib2-devel f2fs-tools
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory /workspace/build/test-sources/sunuefi

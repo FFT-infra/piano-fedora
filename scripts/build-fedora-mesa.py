@@ -16,22 +16,23 @@ from pathlib import Path
 from piano_artifacts import sha256
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_URL = "https://kojipkgs.fedoraproject.org/packages/mesa/26.2.3/1.fc44/src/mesa-26.2.3-1.fc44.src.rpm"
-SOURCE_SHA256 = "f82d91e5f2b34665399e60664907d7e3d318ae4712b5fa60334e44b4ddce833b"
-SPEC_SHA256 = "a03631907c257a72a7a1dd169e4a097a2aaa37cedd6dc175b579a1c972de3212"
-TARBALL_SHA256 = "1628058a8d2c0615975de5a15ab7bbb9638c50000b5bed9456ff423ea034a81f"
+SOURCE_URL = "https://kojipkgs.fedoraproject.org/packages/mesa/26.2.6/1.fc45/src/mesa-26.2.6-1.fc45.src.rpm"
+SOURCE_SHA256 = "d7e1bfbfebac51b18a8b32b7453f8001d368ba7ab5aa347dc405bb20093665e1"
+SPEC_SHA256 = "b3988d190cc451f6984b7a768caa4105c59df22213b5341f4938b715bb4af286"
+TARBALL_SHA256 = "b9436b3e1a8be76fbd4823dc884f90596ab7c6ac5e1867a305e66ffccfb31a92"
 PATCH = "0001-freedreno-Add-chip-id-support-for-A830v1.patch"
 PATCH_SHA256 = "01bc8e6b35019f7d6b84bc2d919a60686ffb1742d4df04467a89d3aac22a7380"
 PACKAGES = {"mesa-filesystem", "mesa-libGL", "mesa-libEGL", "mesa-libgbm",
             "mesa-dri-drivers", "mesa-vulkan-drivers"}
 CHIP_ID = 0xffff44050001
+GALLIUM = "libgallium-26.2.6.so"
 # 官方 Mesa 的版本号会一直往上走，仅靠 release 后缀的 piano1 压不住它：
-# 26.2.3-1.piano1 < 26.2.5-1。发布到 COPR 之后设备要做的是升级而不是
+# 26.2.6-1.piano1 < 26.2.7-1。发布到 COPR 之后设备要做的是升级而不是
 # 重装，仓库 priority 只能让新装选对包，救不回已经被官方版覆盖的系统，
-# 所以这里抬高 epoch。Epoch 是版本序里最高的一档，1:26.2.3 大于 0:26.2.5。
+# 所以这里抬高 epoch。Epoch 是版本序里最高的一档，1:26.2.6 大于 0:26.2.7。
 EPOCH = "1"
 # 加 epoch 之后，包内那些写成 `Requires: x = %{version}-%{release}` 的精确
-# 版本依赖会失配：rpm 认为 `= 26.2.3-1.piano1` 不等于 `= 1:26.2.3-1.piano1`。
+# 版本依赖会失配：rpm 认为 `= 26.2.6-1.piano1` 不等于 `= 1:26.2.6-1.piano1`。
 # Fedora 的 mesa spec 这 30 行都自带 %{?epoch:%{epoch}:}，所以 mesa 只需要
 # 插 Release 与 Epoch；FFmpeg 的 spec 一行都没写，那边必须连依赖一起改。
 # 这里断言"没有需要改的行"，上游一旦引入新的裸版本依赖就会立刻失败。
@@ -76,7 +77,7 @@ def adapt_spec(raw):
 
 def driver_proof(root):
     proof = {}
-    for name in ("libgallium-26.2.3.so", "libvulkan_freedreno.so"):
+    for name in (GALLIUM, "libvulkan_freedreno.so"):
         relative = "usr/lib64/" + name
         path = root / relative
         data = path.read_bytes()
@@ -112,7 +113,7 @@ def build(sun, output):
     run("rpm", "-i", "--nodeps", "--define", "_topdir " + str(top), srpm)
     spec = top / "SPECS/mesa.spec"
     effective = adapt_spec(spec.read_bytes())
-    if sha256(top / "SOURCES/mesa-26.2.3.tar.xz") != TARBALL_SHA256:
+    if sha256(top / "SOURCES/mesa-26.2.6.tar.xz") != TARBALL_SHA256:
         raise ValueError("Mesa source tarball differs from the official release")
     spec.write_text(effective)
     shutil.copyfile(patch, top / "SOURCES/piano-a830v1.patch")
@@ -139,7 +140,7 @@ def build(sun, output):
             "rpm", "-qp", "--qf", "%{NAME} %{VERSION} %{RELEASE} %{ARCH}", path).split()
         if name not in PACKAGES:
             continue
-        if name in selected or (version, release, arch) != ("26.2.3", "1.piano1.fc44", "aarch64"):
+        if name in selected or (version, release, arch) != ("26.2.6", "1.piano1.fc45", "aarch64"):
             raise ValueError("unexpected Mesa RPM identity: " + path.name)
         shutil.copyfile(path, rpms / path.name)
         selected[name] = {"file": path.name, "nevra": f"{name}-{version}-{release}.{arch}"}
@@ -154,7 +155,7 @@ def build(sun, output):
     drivers = driver_proof(payload)
     packages = query("rpm", "-qa", "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n")
     (output / "builder-packages.tsv").write_text("\n".join(sorted(packages.splitlines())) + "\n")
-    result = {"status": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED", "releasever": "44",
+    result = {"status": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED", "releasever": "45",
               "arch": "aarch64", "chip_id": hex(CHIP_ID), "epoch": int(EPOCH),
               "source_url": SOURCE_URL,
               "source_rpm_sha256": SOURCE_SHA256, "source_tarball_sha256": TARBALL_SHA256,

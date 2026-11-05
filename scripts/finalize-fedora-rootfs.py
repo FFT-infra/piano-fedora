@@ -601,7 +601,7 @@ def verify_device_integration(root, runtime_meta):
         raise ValueError("finger pipeline adapter proof differs")
 
 
-def verify_ffmpeg_install(root, ffmpeg):
+def verify_ffmpeg_install(root, ffmpeg, releasever):
     """拒绝装成官方 ffmpeg-free 或漏装解码器的镜像。
 
     与 Mesa 一样，逐个核对已安装包的 NEVRA 是否就是本次重建的产物；再在目标树里
@@ -609,7 +609,7 @@ def verify_ffmpeg_install(root, ffmpeg):
     RPM 拷进去。官方 ffmpeg-free 的 release 更低，dnf 会把它升级成 piano1 产物。
     """
     if (ffmpeg.get("status"), ffmpeg.get("releasever"), ffmpeg.get("arch")) != (
-            "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "44", "aarch64"):
+            "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", str(releasever), "aarch64"):
         raise ValueError("FFmpeg is not the verified native piano build")
     expected_decoders = {"h264_v4l2m2m", "hevc_v4l2m2m"}
     if set(ffmpeg.get("decoders", {})) != expected_decoders:
@@ -703,7 +703,8 @@ def main():
     mesa_dir = args.mesa.resolve()
     mesa = json.loads((mesa_dir / "manifest.json").read_text())
     if (mesa.get("status"), mesa.get("releasever"), mesa.get("arch"), mesa.get("chip_id")) != (
-            "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED", "44", "aarch64", "0xffff44050001"):
+            "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED", str(context["releasever"]),
+            "aarch64", "0xffff44050001"):
         raise ValueError("Mesa is not the verified native piano build")
     for name, row in mesa["packages"].items():
         if chroot(root, "rpm", "-q", "--qf", "%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}", name).strip() != row["nevra"]:
@@ -713,7 +714,8 @@ def main():
         if sha256(guest_resolve(root, "/" + relative)) != digest:
             raise ValueError("installed A830v1 driver differs: " + relative)
     ffmpeg_dir = args.ffmpeg.resolve()
-    verify_ffmpeg_install(root, json.loads((ffmpeg_dir / "manifest.json").read_text()))
+    verify_ffmpeg_install(root, json.loads((ffmpeg_dir / "manifest.json").read_text()),
+                          context["releasever"])
     kernel_install = verify_kernel_install(root, kernel)
     for row in m["modules"]:
         path = root / "usr" / row["path"]

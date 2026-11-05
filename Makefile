@@ -72,7 +72,7 @@ test-device-media:
 	test -n "$(MEDIA_OUTPUT)" && test -n "$(MEDIA_HOST)"
 	bash scripts/run-device-media.sh "$(MEDIA_HOST)" "$(MEDIA_OUTPUT)" $(FIXTURE_DIR)
 
-RELEASEVER ?= 44
+RELEASEVER ?= $(shell python3 -c "import json; print(json.load(open('product.json'))['target']['releasever'])")
 DESKTOP ?= gnome
 plan:
 	python3 scripts/build-clean-rootfs.py --plan --releasever $(RELEASEVER)

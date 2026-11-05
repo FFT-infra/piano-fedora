@@ -168,6 +168,28 @@ def main():
             check(data_missing.get("repo_status", {}).get("valid") is False,
                   "empty rpms-dir must be reported as invalid")
 
+    # 4.1 dist tag 必须和 releasever 一致：fc44 的 RPM 不能混进 45 的 rootfs。
+    with tempfile.TemporaryDirectory() as stale_dir:
+        stale_path = Path(stale_dir)
+        (stale_path / "repodata").mkdir(parents=True, exist_ok=True)
+        (stale_path / "repodata" / "repomd.xml").write_text("<repomd/>\n", encoding="utf-8")
+        for pkg in EXPECTED_PIANO_PACKAGES | {EXPECTED_KERNEL_PACKAGE}:
+            (stale_path / f"{pkg}-0.1.0-1.fc44.noarch.rpm").touch()
+
+        res_stale = run("--plan", "--releasever", "45", "--rpms-dir", str(stale_path))
+        check(res_stale.returncode == 0,
+              f"plan should still render with a stale repo, got {res_stale.returncode}")
+        if res_stale.returncode == 0:
+            data_stale = json.loads(res_stale.stdout)
+            repo_stale = data_stale.get("repo_status", {})
+            check(repo_stale.get("valid") is False,
+                  "fc44 RPMs must not validate against releasever 45")
+            mismatches = repo_stale.get("dist_mismatch", [])
+            check(len(mismatches) == len(EXPECTED_PIANO_PACKAGES) + 1,
+                  f"every stale package must be listed, got {mismatches}")
+            check(all(item.get("expected") == "fc45" for item in mismatches),
+                  "the mismatch report must name the expected dist tag")
+
     # 5. 守护进程依赖校验：piano-ram-hardware-prepare 及其 DMA 模块必须内置于 piano-fedora-configs
     configs_pkg = ROOT / "packages" / "piano-fedora-configs"
     prepare_bin = configs_pkg / "usr" / "lib" / "piano" / "piano-ram-hardware-prepare"

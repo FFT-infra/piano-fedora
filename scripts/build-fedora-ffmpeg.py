@@ -5,6 +5,9 @@ Fedora 的 ffmpeg-free 用 `--disable-decoder="h264,hevc,vc1,vvc"` 关掉原生�
 且 enable_decoders 里没有 h264_v4l2m2m/hevc_v4l2m2m，所以官方包只有编码器没有
 硬件解码器。本脚本在原配方上做两件事：把两个 v4l2m2m 解码器加回解码器清单，
 并套上 SunUEFI BSP 的 stateful decoder 补丁（Iris 解码器需要它才能正常收尾）。
+
+补丁取自 BSP 自己的 `series-9.json`：上游已把 7.1.5 那套按 FFmpeg 9 重写，
+不再需要本仓库做 ff_refstruct 到 av_refstruct 的文本移植。
 """
 
 import argparse
@@ -21,22 +24,22 @@ from pathlib import Path
 from piano_artifacts import sha256
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_URL = "https://kojipkgs.fedoraproject.org/packages/ffmpeg/8.1.3/1.fc44/src/ffmpeg-8.1.3-1.fc44.src.rpm"
-SOURCE_SHA256 = "68d2b839582508b17218377481bef903a1de30e818118351b62dee9a5aa525ca"
-SPEC_SHA256 = "b140dab3173f8a7546f494dbdd813f5f97105e3eef0bb405bafda74c40af4244"
-TARBALL_SHA256 = "7138d28c96d9d3e3af4ee3d8cad72741f8ffb40da90c1112235dea3ecd3178a3"
+SOURCE_URL = "https://kojipkgs.fedoraproject.org/packages/ffmpeg/9.0.2/3.fc45/src/ffmpeg-9.0.2-3.fc45.src.rpm"
+SOURCE_SHA256 = "0fabe97324ebeda50b02b4e6303f3a09187a6a24907e9b679d045de2021507b3"
+SPEC_SHA256 = "ad2066c09c916e2942182770bdeb2c4f9dd7a235969ab827c10b45499691f687"
+TARBALL_SHA256 = "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
 ENABLE_DECODERS_SHA256 = "84ee7d0501f5c9d501f9518f5f9d2458f529ae519b51df0bd9751c66dfaa03b6"
-SPEC_RELEASE_OLD = "Release:        1%{?dist}\n"
-SPEC_RELEASE_NEW = "Release:        1.piano1%{?dist}\n"
+SPEC_RELEASE_OLD = "Release:        3%{?dist}\n"
+SPEC_RELEASE_NEW = "Release:        3.piano1%{?dist}\n"
 SPEC_PATCH_ANCHOR = "Patch1002:      ffmpeg-chromium.patch\n"
-RELEASE = "1.piano1.fc44"
-# 同一个理由：官方版本号一旦走到 8.1.4，release 后缀的 piano1 就压不住了，
+RELEASE = "3.piano1.fc45"
+# 同一个理由：官方版本号一旦走到 9.0.3，release 后缀的 piano1 就压不住了，
 # 发布到 COPR 之后要靠 epoch 让补丁版永远排在官方版之上。
 EPOCH = "1"
 EPOCH_LINE = f"Epoch:          {EPOCH}\n"
 # Fedora 的 ffmpeg spec 里 64 行包内精确依赖写成 `= %{version}-%{release}`，
-# 不带 epoch 前缀。加了 Epoch 之后这些依赖会失配（rpm 认为 `= 8.1.3-1.piano1`
-# 不等于 `= 1:8.1.3-1.piano1`），装包时直接 Failed dependencies。mesa 的 spec
+# 不带 epoch 前缀。加了 Epoch 之后这些依赖会失配（rpm 认为 `= 9.0.2-3.piano1`
+# 不等于 `= 1:9.0.2-3.piano1`），装包时直接 Failed dependencies。mesa 的 spec
 # 已经统一写成 %{?epoch:%{epoch}:}，ffmpeg 的没有，所以这里逐行补前缀。
 # 只改版本比较的右值，标签与包名不动；%autorelease/%autochangelog 不受影响。
 VERSIONED_DEP = re.compile(
@@ -49,33 +52,21 @@ PACKAGES = {"ffmpeg-free", "libavcodec-free", "libavdevice-free", "libavfilter-f
 # 解码器名 -> 在 enable_decoders 里插到哪一行之后（该文件按字母序排列）。
 DECODERS = {"h264_v4l2m2m": "h263p", "hevc_v4l2m2m": "hdr"}
 
-# BSP 补丁固定在 7.1.5/sunuefi3。作者取自 SunUEFI 仓库里这些补丁的提交者；
-# 补丁本身只有 Subject:，而 Fedora 的 %autosetup -S git_am 需要完整邮件头，
-# 缺 From: 时 git am 会以空作者失败。
+# BSP 补丁固定在 9.0.2/sunuefi3，这是上游为 FFmpeg 9 重写过的系列。
+# 补丁自带 From:，但 Fedora 的 %autosetup -S git_am 需要完整邮件头，
+# 新补丁漏了 From: 时 git am 会以空作者失败，所以缺了就补一条。
 BSP_SERIES = "linux/bsp/patches/ffmpeg"
-BSP_VERSION = "7.1.5"
-BSP_REVISION = "sunuefi5"
+BSP_SERIES_FILE = "series-9.json"
+BSP_VERSION = "9.0.2"
+BSP_REVISION = "sunuefi3"
 PORT_MAIL_HEADER = "From: slwyts <slwyts@foxmail.com>\n"
-# FFmpeg 8 把 refstruct API 从 libavcodec 移到 libavutil 并改名为 av_refstruct_*，
-# v4l2_m2m_dec.c 里那行注释的拼写也在 8.x 修正。三处都是纯文本替换，无语义冲突：
-# v4l2_context.c 在 7.1.5 与 8.1.3 之间逐字节相同，v4l2_m2m_dec.c 只差那行注释，
-# v4l2_buffers.c 只差改名。派生结果用 PORT_SHA256 钉住，规则被改动即失败。
-PORT_SUBSTITUTIONS = (
-    ("ff_refstruct_unref", "av_refstruct_unref"),
-    ("ff_refstruct_ref", "av_refstruct_ref"),
-    ("/* cant recover */", "/* can't recover */"),
-)
+# 每一条的 sha256 与 series-9.json 记录的一致。单独钉一份是为了在 upstream
+# 原地改写同一版本号时仍然失败，而不是安静地跟着换补丁。
 PORT_SHA256 = {
-    "0001-v4l2m2m-follow-stateful-source-change.patch":
-        "d6086642e7a54aa071625e8e1cf01ce826f609f2cb3e1c47aaedd23a7ee4c5f8",
-    "0002-v4l2m2m-accept-empty-event-queue.patch":
-        "256d3639ed669c6e1b2124ea27019b51a0534dcad4809914876df666bf097419",
-    "0003-v4l2m2m-preserve-encoder-drain-poll.patch":
-        "9a90d78017753b1a9041ba011d3697f05ab1a81c1c40be91082fefa2388889e6",
-    "0005-v4l2m2m-orphan-capture-ffmpeg7.patch":
-        "43ee39ee05f18802851f109f17f8244f2f31cda372e166bf3f32855c6b825155",
-    # P010 只往 8.x 与 7.x 共有的两条 case 表里加行，不碰 refstruct 改名，
-    # 衍生文本与 BSP 原文逐字节相同。
+    "0004-v4l2m2m-ffmpeg9-stateful.patch":
+        "ad7b86872378f38fbbdf8a24e31726f62a765869b6f910322be6a8d8695b1a3c",
+    "0005-v4l2m2m-orphan-capture-ffmpeg9.patch":
+        "b35c619d8467a15144db5ba58b4015884de71167f32b0c31fdb6f3b834e29bb3",
     "0006-v4l2m2m-p010-capture.patch":
         "2eeca4bcb88a54819c8211703eb3b6461e00a4fd122d5c405ff2764c08381044",
 }
@@ -94,24 +85,25 @@ def query(*command):
 
 
 def port_series(sun):
-    """从锁定的 BSP checkout 派生 8.1.3 补丁，逐条核对来源摘要。"""
+    """从锁定的 BSP checkout 取 FFmpeg 9 系列，逐条核对来源摘要。"""
     folder = sun / BSP_SERIES
-    bsp = json.loads((folder / "series.json").read_text())
+    bsp = json.loads((folder / BSP_SERIES_FILE).read_text())
     if (bsp.get("upstream_version"), bsp.get("local_revision")) != (BSP_VERSION, BSP_REVISION):
         raise ValueError("BSP FFmpeg series changed version; re-check the patches before porting")
+    # 系列是为哪个源码包写的，必须就是 Fedora SRPM 里那个 tar.xz。
+    source = bsp.get("source") or {}
+    if source.get("sha256") != TARBALL_SHA256:
+        raise ValueError("BSP FFmpeg series targets another source tarball than the Fedora SRPM")
     ported = {}
     for row in bsp["series"]:
         raw = (folder / row["path"]).read_bytes()
         if hashlib.sha256(raw).hexdigest() != row["sha256"]:
             raise ValueError("BSP patch differs from its recorded digest: " + row["path"])
-        # 补丁没有 From: 时 git am 无法确定作者，必须补上邮件头再套 8.x 的改名。
-        # 上游新补丁已自带 From:，重复的邮件头会让 git am 读到两个作者。
+        # 漏了 From: 的补丁补一条邮件头；已有的不能补第二次，否则 git am 读到两个作者。
         text = ("" if raw.startswith(b"From: ") else PORT_MAIL_HEADER) + raw.decode()
-        for old, new in PORT_SUBSTITUTIONS:
-            text = text.replace(old, new)
         digest = hashlib.sha256(text.encode()).hexdigest()
         if digest != PORT_SHA256.get(row["path"]):
-            raise ValueError("port rule no longer reproduces the reviewed patch: " + row["path"])
+            raise ValueError("BSP patch is not the reviewed FFmpeg 9 port: " + row["path"])
         ported["sunuefi-" + row["path"]] = {"text": text, "bsp_sha256": row["sha256"],
                                             "sha256": digest}
     if set(ported) != {"sunuefi-" + name for name in PORT_SHA256}:
@@ -186,7 +178,7 @@ def build(sun, output):
         (top / directory).mkdir(parents=True)
     run("rpm", "-i", "--nodeps", "--define", "_topdir " + str(top), srpm)
     spec = top / "SPECS/ffmpeg.spec"
-    if sha256(top / "SOURCES/ffmpeg-8.1.3.tar.xz") != TARBALL_SHA256:
+    if sha256(top / "SOURCES/ffmpeg-9.0.2.tar.xz") != TARBALL_SHA256:
         raise ValueError("FFmpeg tarball differs from the upstream release")
     spec.write_text(adapt_spec(spec.read_bytes(), ported))
     enable_list = top / "SOURCES/enable_decoders"
@@ -218,7 +210,7 @@ def build(sun, output):
             "rpm", "-qp", "--qf", "%{NAME} %{VERSION} %{RELEASE} %{ARCH}", path).split()
         if name not in PACKAGES:
             continue
-        if name in selected or (version, release, arch) != ("8.1.3", RELEASE, "aarch64"):
+        if name in selected or (version, release, arch) != ("9.0.2", RELEASE, "aarch64"):
             raise ValueError("unexpected FFmpeg RPM identity: " + path.name)
         shutil.copyfile(path, rpms / path.name)
         selected[name] = {"file": path.name, "nevra": f"{name}-{version}-{release}.{arch}"}
@@ -234,7 +226,7 @@ def build(sun, output):
     packages = query("rpm", "-qa", "--root", payload, "--dbpath", "/var/lib/rpm",
                      "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n")
     (output / "installed-packages.tsv").write_text("\n".join(sorted(packages.splitlines())) + "\n")
-    result = {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "releasever": "44",
+    result = {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "releasever": "45",
               "arch": "aarch64", "epoch": int(EPOCH),
               "source_url": SOURCE_URL, "source_rpm_sha256": SOURCE_SHA256,
               "source_tarball_sha256": TARBALL_SHA256, "original_spec_sha256": SPEC_SHA256,

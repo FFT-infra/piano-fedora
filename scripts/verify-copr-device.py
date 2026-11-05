@@ -135,8 +135,8 @@ def repoquery_kernel(baseurl):
 def graphics_epochs(baseurl):
     """确认仓库里 mesa / ffmpeg 的补丁版真的带 epoch。
 
-    没有 epoch 的话，`26.2.3-1.piano1` 在版本序上低于 Fedora updates 的
-    `26.2.5-1`，发布出去也压不住，设备 dnf upgrade 仍会退回官方版本。
+    没有 epoch 的话，`26.2.6-1.piano1` 在版本序上低于 Fedora updates 的
+    `26.2.7-1`，发布出去也压不住，设备 dnf upgrade 仍会退回官方版本。
     """
     result = run([
         "dnf", "repoquery",

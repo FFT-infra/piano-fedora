@@ -127,8 +127,9 @@ jobs:
           set -euo pipefail
           # 说明里的示例用实际发布的第一个档位，单档发布时不会教用户下 gnome。
           example=${DESKTOPS%% *}
+          release=$(python3 -c 'import json; print(json.load(open("product.json"))["target"]["releasever"])')
           cat > build/stage/notes.md <<EOF
-          ## piano Fedora 44 ${TAG}
+          ## piano Fedora ${release} ${TAG}
 
           - 源码提交: [${GITHUB_SHA}](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})
           - 档位: ${DESKTOPS}
@@ -166,7 +167,7 @@ jobs:
           校验构建来源: \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`
           EOF
           # 默认 draft：转公开要显式传 publish=true。
-          gh release create "$TAG" --draft --title "piano Fedora 44 ${TAG}" \
+          gh release create "$TAG" --draft --title "piano Fedora ${release} ${TAG}" \
             --notes-file build/stage/notes.md
 
       - name: Assemble one self-contained archive per desktop

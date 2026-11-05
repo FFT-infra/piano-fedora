@@ -68,9 +68,9 @@ def check_diagnostics_paths():
     assert patterns, "no BUILD diagnostics paths are declared"
     # 真实落点带一层 -build 目录；glob 必须匹配它，否则失败时不上传且不报错。
     real = {
-        "build/ffmpeg/rpmbuild/BUILD/ffmpeg-8.1.3-build/ffmpeg-8.1.3/ffbuild/config.log":
+        "build/ffmpeg/rpmbuild/BUILD/ffmpeg-9.0.2-build/ffmpeg-9.0.2/ffbuild/config.log":
             "build/ffmpeg/rpmbuild/BUILD/**/ffbuild/config.log",
-        "build/ffmpeg/rpmbuild/BUILD/ffmpeg-8.1.3-build/ffmpeg-8.1.3/config_components.h":
+        "build/ffmpeg/rpmbuild/BUILD/ffmpeg-9.0.2-build/ffmpeg-9.0.2/config_components.h":
             "build/ffmpeg/rpmbuild/BUILD/**/config_components.h",
     }
     for path, needed in real.items():
@@ -82,9 +82,9 @@ def check_diagnostics_paths():
 def manifest():
     names = ("ffmpeg-free", "libavcodec-free", "libavdevice-free", "libavfilter-free",
              "libavformat-free", "libavutil-free", "libswresample-free", "libswscale-free")
-    packages = {name: {"file": name + ".rpm", "nevra": f"{name}-8.1.3-1.piano1.fc44.aarch64"}
+    packages = {name: {"file": name + ".rpm", "nevra": f"{name}-9.0.2-3.piano1.fc45.aarch64"}
                 for name in names}
-    return {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "releasever": "44",
+    return {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "releasever": "45",
             "arch": "aarch64",
             "decoders": {"h264_v4l2m2m": " V..... h264_v4l2m2m",
                          "hevc_v4l2m2m": " V..... hevc_v4l2m2m"},
@@ -96,7 +96,7 @@ def fake_chroot(decoders="h264_v4l2m2m hevc_v4l2m2m", nevra_override=None):
     def chroot(root, *command):
         if command[0] == "rpm":
             name = command[-1]
-            return (nevra_override or {}).get(name, f"{name}-8.1.3-1.piano1.fc44.aarch64")
+            return (nevra_override or {}).get(name, f"{name}-9.0.2-3.piano1.fc45.aarch64")
         assert command[0].endswith("ffmpeg"), command
         return "\n".join(f" V..... {name}          wrapper" for name in decoders.split())
     return chroot
@@ -106,21 +106,21 @@ def check_install_verification():
     root = Path("/nonexistent-rootfs")
     good = manifest()
     with patch.object(finalizer, "chroot", fake_chroot()):
-        finalizer.verify_ffmpeg_install(root, good)
+        finalizer.verify_ffmpeg_install(root, good, "45")
     # 包集合必须恰好是那 8 个：空集合或漏包都不能靠 NEVRA 循环绕过。
     for bad in ({}, {"ffmpeg-free": good["packages"]["ffmpeg-free"]}):
         with patch.object(finalizer, "chroot", fake_chroot()):
             try:
-                finalizer.verify_ffmpeg_install(root, {**good, "packages": bad})
+                finalizer.verify_ffmpeg_install(root, {**good, "packages": bad}, "45")
             except ValueError as error:
                 assert "package set" in str(error), error
             else:
                 raise AssertionError("an incomplete FFmpeg package set was accepted")
     # 官方未改包（release 不是 piano1）必须停。
     with patch.object(finalizer, "chroot",
-                      fake_chroot(nevra_override={"ffmpeg-free": "ffmpeg-free-8.1.3-1.fc44.aarch64"})):
+                      fake_chroot(nevra_override={"ffmpeg-free": "ffmpeg-free-9.0.2-3.fc45.aarch64"})):
         try:
-            finalizer.verify_ffmpeg_install(root, good)
+            finalizer.verify_ffmpeg_install(root, good, "45")
         except ValueError as error:
             assert "differs" in str(error), error
         else:
@@ -128,7 +128,7 @@ def check_install_verification():
     # 缺解码器（例如 -decoders 里只有 h264）必须停。
     with patch.object(finalizer, "chroot", fake_chroot(decoders="h264_v4l2m2m")):
         try:
-            finalizer.verify_ffmpeg_install(root, good)
+            finalizer.verify_ffmpeg_install(root, good, "45")
         except ValueError as error:
             assert "decoders" in str(error), error
         else:
@@ -138,7 +138,7 @@ def check_install_verification():
                     {"arch": "x86_64"}):
         with patch.object(finalizer, "chroot", fake_chroot()):
             try:
-                finalizer.verify_ffmpeg_install(root, {**good, **changed})
+                finalizer.verify_ffmpeg_install(root, {**good, **changed}, "45")
             except ValueError:
                 pass
             else:

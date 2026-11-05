@@ -51,13 +51,15 @@ BUILD_ORDER = (
     "kernel-piano",
 )
 
-CHROOT = "fedora-44-aarch64"
+RELEASEVER = json.loads(
+    (PROJECT_ROOT / "product.json").read_text(encoding="utf-8"))["target"]["releasever"]
+CHROOT = f"fedora-{RELEASEVER}-aarch64"
 SUCCESS_STATES = {"succeeded", "skipped"}
 FAILURE_STATES = {"failed", "canceled", "cancelled"}
 
 # 图形栈的两个本地重建，来自各自的 workflow 与 artifact，不在 piano-rpms
 # 矩阵里：它们的源包是 Fedora 官方 SRPM 加补丁，不属于 packages/ 目录。
-# 两者的 version 永远低于官方（26.2.3 < 26.2.5、8.1.3 <= 8.1.4），所以
+# 两者的 version 永远低于官方（26.2.6 < 26.2.7、9.0.2 <= 9.0.3），所以
 # 必须带 epoch 才能在 COPR 仓库里排在官方版之上；发布前逐个核对。
 GRAPHICS = {
     "mesa": {"manifest": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED"},
@@ -175,7 +177,7 @@ def verify_graphics(directory, name):
     """核对一个图形栈 artifact：状态、epoch、SRPM 与每个 RPM 的摘要。
 
     这两个包必须带 epoch，否则发出去了也压不住官方版：COPR 仓库里
-    26.2.3-1.piano1 小于 Fedora updates 的 26.2.5。这里把 epoch 当作
+    26.2.6-1.piano1 小于 Fedora updates 的 26.2.7。这里把 epoch 当作
     发布前提直接断言，而不是相信构建脚本。
     """
     directory = Path(directory)
@@ -276,7 +278,8 @@ def ensure_project(binary, config, project):
         return "exists"
     created = run_cli(binary, config, [
         "create", project, "--chroot", CHROOT,
-        "--description", "Fedora 44 aarch64 packages for Xiaomi Pad 8 Pro (piano)",
+        "--description",
+        f"Fedora {RELEASEVER} aarch64 packages for Xiaomi Pad 8 Pro (piano)",
         "--instructions",
         "kernel-piano upgrades replace the Image in the ESP boot container: "
         "the package's %posttrans rebuilds the initramfs and repacks boot.img. "
