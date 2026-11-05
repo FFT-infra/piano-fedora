@@ -81,11 +81,22 @@ def mutter_power_save_mode():
 
 
 def wake_desktop():
-    """通知会话桌面模拟用户活动以退出空闲节能，并在 GNOME 下恢复显示管线。"""
-    call(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.ScreenSaver',
-          '--object-path', '/org/freedesktop/ScreenSaver',
-          '--method', 'org.freedesktop.ScreenSaver.SimulateUserActivity'],
-         'SimulateUserActivity')
+    """退出桌面的空闲节能，并在 GNOME 下恢复显示管线。
+
+    GNOME 的 `org.freedesktop.ScreenSaver` 没有 `SimulateUserActivity`，调用会
+    返回 `NotSupported`；GNOME 自己的 `org.gnome.ScreenSaver.SetActive(false)`
+    才是可用入口。KDE 实现的是 fd.o 那个方法。
+    """
+    if 'GNOME' in os.environ.get('XDG_CURRENT_DESKTOP', ''):
+        call(['gdbus', 'call', '--session', '--dest', 'org.gnome.ScreenSaver',
+              '--object-path', '/org/gnome/ScreenSaver',
+              '--method', 'org.gnome.ScreenSaver.SetActive', 'false'],
+             'GNOME screensaver off')
+    else:
+        call(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.ScreenSaver',
+              '--object-path', '/org/freedesktop/ScreenSaver',
+              '--method', 'org.freedesktop.ScreenSaver.SimulateUserActivity'],
+             'SimulateUserActivity')
     mode = mutter_power_save_mode()
     if mode is not None and mode != 0:
         call(['gdbus', 'call', '--session', '--dest', 'org.gnome.Mutter.DisplayConfig',

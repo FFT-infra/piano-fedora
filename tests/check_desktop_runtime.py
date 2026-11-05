@@ -178,6 +178,33 @@ def check_power_button_wake_and_toggle_behavior():
     assert any("PowerSaveMode" in " ".join(args) and "<int32 0>" in " ".join(args) for _, args in calls)
 
 
+def check_power_button_wake_uses_the_desktop_interface():
+    """GNOME 没有 fd.o 的 SimulateUserActivity，要走 org.gnome.ScreenSaver.SetActive。"""
+    module = load_module("power_button", POWER_BUTTON)
+    calls = []
+    module.call = lambda args, operation: (calls.append((operation, args)), True)[1]
+    module.mutter_power_save_mode = lambda: 0
+    original = os.environ.get("XDG_CURRENT_DESKTOP")
+    try:
+        os.environ["XDG_CURRENT_DESKTOP"] = "GNOME"
+        module.wake_desktop()
+        joined = [" ".join(args) for _, args in calls]
+        assert any("org.gnome.ScreenSaver.SetActive" in row for row in joined), calls
+        assert not any("SimulateUserActivity" in row for row in joined), calls
+
+        calls.clear()
+        os.environ["XDG_CURRENT_DESKTOP"] = "KDE"
+        module.wake_desktop()
+        joined = [" ".join(args) for _, args in calls]
+        assert any("SimulateUserActivity" in row for row in joined), calls
+        assert not any("org.gnome.ScreenSaver.SetActive" in row for row in joined), calls
+    finally:
+        if original is None:
+            os.environ.pop("XDG_CURRENT_DESKTOP", None)
+        else:
+            os.environ["XDG_CURRENT_DESKTOP"] = original
+
+
 def check_power_button_device_names_match_the_kernel():
     """服务按名字找设备，udev 规则也按名字授权；三处必须是同一个字符串。
 
@@ -405,6 +432,7 @@ def check_login_units_match_the_profiles():
 def main():
     check_power_button_falls_back_across_desktops()
     check_power_button_wake_and_toggle_behavior()
+    check_power_button_wake_uses_the_desktop_interface()
     check_power_button_device_names_match_the_kernel()
     check_tablet_mode_asks_logind_for_a_user_session()
     check_collectors_cover_every_display_manager()
