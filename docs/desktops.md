@@ -8,7 +8,7 @@
 
 | 档位 | 会话 | 登录 | 电源策略 | 自动旋转 | 验收状态 |
 |---|---|---|---|---|---|
-| `gnome` | GNOME 50（Workstation 环境） | GDM 自动登录 | dconf（`00-power`） | 走 Mutter，已实机验证 | 已登录桌面（实测），旋转已实测 |
+| `gnome` | GNOME 51（Workstation 环境） | GDM 自动登录 | dconf（`00-power`） | 走 Mutter，已实机验证 | 已登录桌面（实测），旋转已实测 |
 | `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，需 `qt6-qtsensors` | 已登录桌面（实测），旋转已实测 |
 | `niri` | niri | greetd `[initial_session]` | 仅 logind | 无，需手动 `transform` | 已登录桌面（实测），镜像需重建 |
 | `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 无，需手动 rotate | 已登录桌面（实测），镜像需重建 |
@@ -21,7 +21,7 @@
 
 - **GNOME**：`/etc/gdm/custom.conf` 写 `AutomaticLoginEnable=True` 与
   `AutomaticLogin=piano`，由 `gdm.service` 接管。
-- **KDE**：`/etc/plasmalogin.conf` 写 `Session=plasma`。Fedora 44 的
+- **KDE**：`/etc/plasmalogin.conf` 写 `Session=plasma`。Fedora 45 的
   `kde-desktop` 组把登录管理器换成了 `plasma-login-manager`（`plasmalogin.service`）。
   它是 SDDM 的衍生实现，`[Autologin]` 的键与按 `<session>.desktop` 查找会话的
   规则都沿用 SDDM。装配后 `validate_against_rootfs()` 确认
@@ -83,7 +83,7 @@
 - GNOME（Mutter）订阅 `iio-sensor-proxy` 的 `AccelerometerOrientation`，平板模式
   打开时自动旋转。已在真机验证：平板从平放转成 `left-up`，逻辑显示器的
   `transform` 从 0 变成 1，屏幕跟着转。
-- KDE（KWin）依赖 `qt6-qtsensors`。Fedora 44 的 `kwin` 包声明了
+- KDE（KWin）依赖 `qt6-qtsensors`。Fedora 45 的 `kwin` 包声明了
   `iio-sensor-proxy`，没声明 `qt6-qtsensors`。这个包不在位时，Plasma 6 不出现
   「自动」旋转选项。
 - niri 与 Hyprland 的合成器不读传感器。niri 要在 `output` 段里手动写
@@ -99,7 +99,7 @@
 ## 第三方软件源
 
 只有 Hyprland 档位启用第三方仓库 `copr-hyprland`
-（`download.copr.fedorainfracloud.org/results/lionheartp/Hyprland/`），Fedora 44
+（`download.copr.fedorainfracloud.org/results/lionheartp/Hyprland/`），Fedora 45
 官方仓库没有 Hyprland 及其配套组件。构建时：
 
 - 仓库以 `--repofrompath` 临时加入，不写进镜像的持久 `.repo`。
@@ -128,7 +128,7 @@
 ```sh
 python3 scripts/piano_desktop.py matrix
 python3 scripts/piano_desktop.py show --desktop hyprland
-make plan-desktop DESKTOP=niri RELEASEVER=44
+make plan-desktop DESKTOP=niri RELEASEVER=45
 ```
 
 ## 已知缺口

@@ -1,6 +1,6 @@
 # Xiaomi Pad 8 Pro (piano) 安装指南
 
-本指南说明如何在小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）上安装 Fedora 44，以及如何更新、切换系统与排查故障。默认档位是 GNOME。其他档位的差异见[桌面档](desktops.md)。
+本指南说明如何在小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）上安装 Fedora 45，以及如何更新、切换系统与排查故障。默认档位是 GNOME。其他档位的差异见[桌面档](desktops.md)。
 
 安装有两条路。手动路径逐条给出命令，每一步都能单独核对，是主路径。一键脚本把同一条路径包成一次执行，是可选路径。两条路写入的分区和字节数相同。
 
@@ -66,7 +66,7 @@ brew install zstd android-platform-tools mtools   # python3 随 Command Line Too
 ### 分区用途
 
 * `sunuefi_esp`（512 MiB，FAT32）：SunUEFI EDK2 固件、合并设备树（DTB）、Linux 7.2 适配内核与 initramfs。
-* `sunuefi_root`（F2FS）：Fedora 44 根文件系统。桌面按档位装配。F2FS 为闪存设计，能发挥 UFS 4.0 的顺序与随机读写性能。
+* `sunuefi_root`（F2FS）：Fedora 45 根文件系统。桌面按档位装配。F2FS 为闪存设计，能发挥 UFS 4.0 的顺序与随机读写性能。
 * `boot_a`：合体 BOOT。Linux 与 Android 都从这里启动。
 
 ### 引导稳定性
