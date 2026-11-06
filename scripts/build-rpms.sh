@@ -256,7 +256,8 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
                 fi
                 if "${RUN_AS[@]}" true 2>/dev/null; then
                     echo "--> Installing host prerequisite libssc for dependent builds..."
-                    "${RUN_AS[@]}" rpm -Uvh --force "$LIBSSC_RPM"
+                    "${RUN_AS[@]}" rpm --define "_pkgverify_level none" \
+                        -Uvh --force "$LIBSSC_RPM"
                 fi
             fi
         fi
