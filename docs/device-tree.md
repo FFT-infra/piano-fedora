@@ -69,7 +69,7 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 
 ## 16 个 overlay
 
-`config/release.json` 的 `kernel` 段列 `cpu_model_overlay` 一个，加 `additional_dtb_overlays` 十五个。`build-bundle.yml` 目前只传前八个加 cpu-model。
+`config/release.json` 的 `kernel` 段列 `cpu_model_overlay` 一个，加 `additional_dtb_overlays` 十五个。`build-bundle.yml` 按这个顺序全部传入，`tests/check_bundle_overlays.py` 断言两份清单逐条相等。
 
 | overlay | 目标节点 | 作用 |
 | --- | --- | --- |
@@ -90,7 +90,9 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 | `piano-cdsp-fastrpc` | cdsp 的 `qcom,fastrpc` | `qcom,non-secure-domain` 与 compute-cb |
 | `piano-fingerprint` | `/soc/rsc@16500000/regulators-4` | `piano_fp_vdd`（ldo9） |
 
-后七个没有传。`ufs-mcq` 对应封存序列里已经合入的 `0056`/`0057`，`dsp-resources`、`cdsp-fastrpc` 对应 FastRPC，`usb-typec` 对应充电与 OTG。没有 overlay，这些代码合了也不生效。
+后七个在 2026-11-08 才补进 `build-bundle.yml`。`ufs-mcq` 对应封存序列里已经合入的 `0056`/`0057`，`dsp-resources`、`cdsp-fastrpc` 对应 FastRPC，`usb-typec` 对应充电与 OTG。没有 overlay，这些代码合了也不生效。
+
+这七个的真机验收还没做。分批上的顺序、每项看什么、失败长什么样，写在扩展计划里；`piano-cma` 和 `piano-ufs-mcq` 一旦不合，表现为开不了机，回退靠刷回上一版 bundle 或恢复 ESP 备份。
 
 ## oracle 校验
 
