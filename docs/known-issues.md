@@ -286,6 +286,33 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 
 ## 触屏、网络、音频与相机
 
+### piano-usb.service 每次开机失败
+
+`piano-usb.service` 每次启动都落到 failed，`journalctl -u piano-usb` 只有一行
+`/usr/lib/piano/usb-network: line 46: /sys/kernel/config/usb_gadget/piano/idVendor: Permission denied`。
+
+原因是两个单元抢同一个 UDC。`piano-linux-debug.service` 先绑定
+`a600000.ssusb`，建的是 acm+ncm gadget，`usb0` 的 MAC
+`02:87:50:00:00:01` 与 `192.168.77.1/30` 都归它，NetworkManager 的
+`piano-debug-ncm` profile 也按这个 MAC 匹配。SunUEFI BSP 里的
+`piano-usb.service` 随后再往自己的 gadget 写描述符，configfs 在 gadget
+已绑定后拒绝修改，脚本拿到 `Permission denied`。
+
+排除了 SELinux：`/usr/lib/piano/usb-network` 是 `lib_t`，systemd 直接执行
+时停在 `init_t`，但把同样的写入放进 `bin_t` 的脚本里、或用 `sh` 显式启动，
+写 `idVendor` 都成功。失败的只有那个已绑定 gadget 的路径。
+
+这条不影响功能：`usb0` 正常起来，USB 网络与串口都在，只是每次开机留一个
+failed unit。改法是在装 BSP 树时跳过 `piano-usb.service`、`79-piano-usb.rules`
+与 `usb-network`，但**没有完成冷启动验证**：删掉这三个文件后那次重启，
+平板从构建机的 USB 总线上消失了，之后没有重连，无法确认改动本身没问题。
+所以改动已撤销，留作待办。
+
+判断平板是否还在 USB 上，只看 `lsusb` 里有没有 `idVendor=1209`、主机侧
+`usb1-port12/state`、以及 `dmesg` 里 `usb 1-12` 的事件。不要用
+`/dev/tcp/192.168.77.1/22` 判断：构建机上 clash 的 TUN 会接管这条路径，
+不存在的地址也返回 CONNECTED。
+
 - 触控：45 秒持续单指划动，SYN 报文 97 次/秒，43/45 秒有事件（两个空秒
   是换手间隙），NVT 中断同期增长 5425。X 覆盖 5395–28696、Y 覆盖
   4591–19408，全屏可达。多点 slot 0–5 都出现过。相邻坐标跳变的 p95 为 2770，
