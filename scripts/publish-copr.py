@@ -59,14 +59,16 @@ FAILURE_STATES = {"failed", "canceled", "cancelled"}
 
 # 图形栈的两个本地重建，来自各自的 workflow 与 artifact，不在 piano-rpms
 # 矩阵里：它们的源包是 Fedora 官方 SRPM 加补丁，不属于 packages/ 目录。
-# 两个都改了包名（mesa-piano-*、ffmpeg-piano / libavcodec-piano），并声明
-# 提供 Fedora 的原名、与原名冲突。设备上装的从来不是 Fedora 的包，所以
-# dnf upgrade 没有可覆盖的目标。发布前按源包名逐个核对。
+# 两个的二进制包都改了名（mesa-piano-*、ffmpeg-piano / libavcodec-piano），并
+# 声明提供 Fedora 的原名、与原名冲突。设备上装的从来不是 Fedora 的包，所以
+# dnf upgrade 没有可覆盖的目标。源包名只有 mesa 改了；ffmpeg 的配方把变体放在
+# `pkg_suffix` 里，源包仍叫 ffmpeg，靠 release 区分。发布前按源包名逐个核对，
+# 二进制包名另外要求全部带 -piano-。
 GRAPHICS = {
     "mesa": {"manifest": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED",
              "source": "mesa-piano"},
     "ffmpeg": {"manifest": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED",
-               "source": "ffmpeg-piano"},
+               "source": "ffmpeg"},
 }
 # 先发图形栈：设备上 dnf upgrade 要能看见改名后的包，
 # 而矩阵里的包名与它们不重叠，顺序只影响失败时先报哪一个。

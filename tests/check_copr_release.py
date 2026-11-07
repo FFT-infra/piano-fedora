@@ -260,13 +260,13 @@ def test_build_failure_is_not_success(module):
         module.run_cli = original
 
 
-def make_graphics(directory, name, *, source=None, status=None, drop_srpm=False,
-                  corrupt=None):
+def make_graphics(directory, name, *, source=None, variant=None, status=None,
+                  drop_srpm=False, corrupt=None):
     """造一个图形栈 artifact：manifest + rpms/ + srpms/。
 
-    这两个包的发布前提是改名：源包名写成 mesa-piano / ffmpeg-piano，构件
-    却还是 Fedora 的原名时，发出去设备照样会被官方版盖掉，所以测试里把
-    源包名也当作可篡改的字段。
+    这两个包的发布前提是改名：二进制包必须是 -piano 名字，否则设备上会被
+    Fedora 官方版盖掉。源包名只有 mesa 改了；ffmpeg 的变体由 pkg_suffix
+    决定，源包仍叫 ffmpeg，所以源包名与二进制包名分开可篡改。
     """
     import hashlib
 
@@ -275,9 +275,10 @@ def make_graphics(directory, name, *, source=None, status=None, drop_srpm=False,
     (directory / "srpms").mkdir(parents=True, exist_ok=True)
     status = status or {"mesa": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED",
                         "ffmpeg": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED"}[name]
-    source = source or {"mesa": "mesa-piano", "ffmpeg": "ffmpeg-piano"}[name]
+    source = source or {"mesa": "mesa-piano", "ffmpeg": "ffmpeg"}[name]
+    variant = variant or {"mesa": "mesa-piano", "ffmpeg": "ffmpeg-piano"}[name]
     rpm_payload = f"{name} binary".encode()
-    rpm_name = f"{source}-1.0-1.piano1.fc44.aarch64.rpm"
+    rpm_name = f"{variant}-1.0-1.piano1.fc44.aarch64.rpm"
     (directory / "rpms" / rpm_name).write_bytes(rpm_payload)
     srpm_payload = f"{name} source".encode()
     srpm_name = f"{source}-1.0-1.piano1.fc44.src.rpm"
@@ -307,6 +308,15 @@ def test_graphics_require_rename(module, tmp):
     original = make_graphics(tmp / "graphics-original", "mesa", source="mesa")
     expect_error(module, lambda: module.verify_graphics(original, "mesa"),
                  "source package")
+
+    # ffmpeg 的源包名就是 ffmpeg，合法；二进制包不叫 ffmpeg-piano 才拦。
+    ffmpeg = make_graphics(tmp / "graphics-ffmpeg", "ffmpeg")
+    info = module.verify_graphics(ffmpeg, "ffmpeg")
+    assert info["source_package"] == "ffmpeg", info
+    stock_ffmpeg = make_graphics(tmp / "graphics-ffmpeg-stock", "ffmpeg",
+                                 variant="ffmpeg-free")
+    expect_error(module, lambda: module.verify_graphics(stock_ffmpeg, "ffmpeg"),
+                 "not a renamed")
 
     # 源包名对了、二进制还是 Fedora 原名，同样不许发布。
     unrenamed = make_graphics(tmp / "graphics-rpmname", "mesa")
@@ -352,8 +362,12 @@ def test_build_scripts_ship_srpms():
         assert "srpms.mkdir()" in text, f"{path.name} must stage srpms/"
         assert 'srpms":' in text, f"{path.name} must record the SRPM in its manifest"
         # 改名必须是模块级常量，而且真的写进 spec 的 Name / pkg_suffix。
-        assert re.search(r"^SOURCE_PACKAGE = \"\w+-piano\"$", text, re.M), \
-            f"{path.name} has no renamed source package"
+        # mesa 改 Name，ffmpeg 只改 pkg_suffix，主二进制包名两者都带 -piano。
+        renamed = {"build-fedora-mesa.py": ["SOURCE_PACKAGE"],
+                   "build-fedora-ffmpeg.py": ["VARIANT_PACKAGE"]}[path.name]
+        for constant in renamed:
+            assert re.search(rf'^{constant} = "\w+-piano"$', text, re.M), \
+                f"{path.name} has no renamed package constant {constant}"
         assert "Conflicts:" in text, f"{path.name} never conflicts with the Fedora package"
         assert "Epoch:" not in text, f"{path.name} should not fall back to an epoch"
     # workflow 必须把 srpms 打进 artifact，否则上传的压缩包里没有源包。

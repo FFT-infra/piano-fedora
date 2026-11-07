@@ -35,7 +35,12 @@ RELEASE = "3.piano1.fc45"
 # 官方版本号一旦走到 9.0.3，release 后缀的 piano1 就压不住了。抬 epoch 能压住，
 # 但 epoch 卸不掉：补丁进了上游之后回不到 Fedora 的包。这里改用 RPM Fusion
 # 对同一个包的做法：换包名，声明它提供原名并与原名冲突。
-SOURCE_PACKAGE = "ffmpeg-piano"
+# Fedora 的配方只让变体走 `pkg_suffix`，`Name:` 仍是 ffmpeg，源包名因此还是
+# ffmpeg（RPM Fusion 的完整版也是这个名字）。改的是展开后的二进制包：主包是
+# `%{name}%{?pkg_suffix}` = ffmpeg-piano，另外七个 libav* 也带 -piano。
+# 设备上装的是这些二进制包，源包名不参与 dnf 的解析。
+SOURCE_PACKAGE = "ffmpeg"
+VARIANT_PACKAGE = "ffmpeg-piano"
 # Fedora 的 spec 用一个开关区分 free 与完整编解码器两版：`pkg_suffix` 默认
 # `-free`，所有 17 个子包名和 75 条依赖都跟着它走。把它改成 `-piano`，整份
 # 配方就变成改名版，不用逐行改依赖。
@@ -214,8 +219,11 @@ def build(sun, output):
     built = sorted((top / "SRPMS").glob("*.src.rpm"))
     if len(built) != 1:
         raise ValueError(f"expected one FFmpeg SRPM, found {[p.name for p in built]}")
-    if query("rpm", "-qp", "--qf", "%{NAME}", built[0]) != SOURCE_PACKAGE:
-        raise ValueError("the FFmpeg SRPM is not the renamed piano source package")
+    # 源包名与 Fedora 相同，靠 release 证明这是本配方打的包，而不是官方源包。
+    srpm_name, srpm_release = query("rpm", "-qp", "--qf", "%{NAME} %{RELEASE}",
+                                    built[0]).split()
+    if (srpm_name, srpm_release) != (SOURCE_PACKAGE, RELEASE):
+        raise ValueError("the FFmpeg SRPM is not this recipe's piano variant")
     shutil.copyfile(built[0], srpms / built[0].name)
     rpms = output / "rpms"
     rpms.mkdir()
@@ -246,6 +254,7 @@ def build(sun, output):
     (output / "installed-packages.tsv").write_text("\n".join(sorted(packages.splitlines())) + "\n")
     result = {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "releasever": "45",
               "arch": "aarch64", "source_package": SOURCE_PACKAGE,
+              "variant_package": VARIANT_PACKAGE,
               "replaces": list(REPLACES.values()), "source_url": SOURCE_URL, "source_rpm_sha256": SOURCE_SHA256,
               "source_tarball_sha256": TARBALL_SHA256, "original_spec_sha256": SPEC_SHA256,
               "effective_spec_sha256": sha256(spec),
