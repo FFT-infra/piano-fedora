@@ -142,7 +142,7 @@ def main():
              "",
              "按 basename 匹配。两边目录布局不同：厂商按 `proprietary/vendor/firmware` 与",
              "`proprietary/odm/firmware` 存放，出货树按 `/usr/lib/firmware` 展开。",
-             "厂商侧只有仓库里提交的 148 个固件文件，不是 vendor 分区的全集，",
+             f"厂商侧只有仓库里提交的 {len(vendor)} 个固件文件，不是 vendor 分区的全集，",
              "所以“厂商有、我们没有”只说明这份清单里没有，不说明设备上没有。",
              ""]
     if identical:
