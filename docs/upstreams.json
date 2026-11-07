@@ -65,16 +65,6 @@
       "reference_date": "2026-05-28"
     },
     {
-      "repo": "2278535805/MiPad8ProAudio",
-      "ref": "main",
-      "category": "音频",
-      "role": "音频",
-      "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "6f00c2a54e19adc50fb508929809387c63716ca1",
-      "reference_date": "2026-08-14"
-    },
-    {
       "repo": "404-GCross/Droidspaces_GKI_Buildin_Local",
       "ref": "main",
       "category": "reference",
@@ -175,6 +165,28 @@
       "lock_key": "linux-piano",
       "reference_commit": "453bb567f2fc12423ab3338953ca8938a2f06e16",
       "reference_date": "2026-10-08"
+    },
+    {
+      "repo": "xiaomi-pad-8-pro-development/android_kernel_xiaomi_piano",
+      "ref": "seventeen",
+      "category": "内核",
+      "role": "厂商 Android 下游内核的 DTS 源码（808 个 .dts/.dtsi）",
+      "decision": "consume",
+      "lock_key": "vendor-kernel",
+      "reason": "只作 overlay 与 DT 谱系的审阅基准：scripts/compare-vendor-dt.py 编译 sun.dts 与 piano-sm8750-overlay.dts，逐条核对 SunUEFI overlay 的目标节点。不进任何出货产物，任何出货路径引用它都视为违规",
+      "reference_commit": "ed494167a93f36b98a7a8db7e4106cd9f8d2bb12",
+      "reference_date": "2026-11-08"
+    },
+    {
+      "repo": "xiaomi-pad-8-pro-development/android_vendor_xiaomi_piano",
+      "ref": "seventeen",
+      "category": "固件",
+      "role": "厂商固件与传感器配置的 blob 树（2875 个文件）",
+      "decision": "consume",
+      "lock_key": "vendor-blobs",
+      "reason": "只作固件对照基准：scripts/compare-vendor-blobs.py 用 git blob 摘要比对，不下载内容，不进镜像",
+      "reference_commit": "c1e5a318cfe41b5c7cef74385b376fd0c2527c49",
+      "reference_date": "2026-11-08"
     },
     {
       "repo": "blu-sharky/piano-firmware",
@@ -714,16 +726,6 @@
       "reference_date": "2026-06-19"
     },
     {
-      "repo": "skb8/linux-sm8750",
-      "ref": "oneplus-13-sm8750-bringup-v2",
-      "category": "同 SoC 参考",
-      "role": "同 SoC 参考",
-      "decision": "reference",
-      "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "1bc596dc166f320c012e6f4883d7fba041e82504",
-      "reference_date": "2026-07-03"
-    },
-    {
       "repo": "slwyts/Project-SunUEFI",
       "ref": "main",
       "category": "引导整合",
@@ -896,13 +898,13 @@
       "reference_date": "2026-11-05"
     },
     {
-      "repo": "radxa-pkg/libva-v4l2",
+      "repo": "radxa-pkg/qcom-va-driver",
       "ref": "master",
       "category": "Qualcomm Iris stateful V4L2 VA-API 后端（硬件解码 + H.264/HEVC 编码）",
       "role": "Qualcomm Iris stateful V4L2 VA-API 后端（硬件解码 + H.264/HEVC 编码）",
       "decision": "consume",
       "lock_key": "iris-vaapi",
-      "reason": "正式 Fedora 运行时按构建锁消费；编码 entrypoint 只在这一支里，只有解码入口的 phxinyang 分支不得再覆盖它",
+      "reason": "正式 Fedora 运行时按构建锁消费；上游 2026-10 改名 qcom-va-driver，commit 未变。编码 entrypoint 只在这一支里，只有解码入口的 phxinyang 分支不得再覆盖它",
       "reference_commit": "0980a1decf26d34c9aa71cd0a4a0d25703a7a17f",
       "reference_date": "2026-10-28"
     },
@@ -938,16 +940,6 @@
       "reference_date": "2026-10-06"
     },
     {
-      "repo": "code002-2/UniXNU-piano",
-      "ref": "main",
-      "category": "参考",
-      "role": "UniXNU 设备仓库（piano）；含存储控制器与 MCQ 的取证文档",
-      "decision": "reference",
-      "reason": "记录了固件无法访问存储、临时引导路径的取证过程；排查启动与存储问题时可作对照",
-      "reference_commit": "98b3f94a067aff93a9296de7b80fdddc03dae380",
-      "reference_date": "2026-10-20"
-    },
-    {
       "repo": "liisoya/ubuntu-piano",
       "ref": "piano-rootfs-builder",
       "category": "rootfs",
@@ -976,7 +968,47 @@
       "reason": "同作者、同 NT36532 家族的触控实现，对照固件 epoch 与处理状态复位逻辑",
       "reference_commit": "f13fb65c297f00030b10e602e4585fa1d8c5f3a5",
       "reference_date": "2026-07-18"
+    },
+    {
+      "repo": "xiaomi-pad-8-pro-development/android_device_xiaomi_piano-uefi",
+      "ref": "seventeen",
+      "category": "reference",
+      "role": "Mu-Silicium 路线的 piano UEFI 与 Visor 启动菜单，含 linux/build-linux-dtb.sh 等参考脚本",
+      "decision": "reference",
+      "reason": "Linux (Arch) from Visor 尚未实现，替代不了当前 SunUEFI 链；只作架构参考",
+      "reference_commit": null,
+      "reference_date": "2026-11-08"
+    },
+    {
+      "repo": "xiaomi-pad-8-pro-development/android_device_xiaomi_piano-patches",
+      "ref": "seventeen",
+      "category": "reference",
+      "role": "piano 的 ROM 补丁集合",
+      "decision": "reference",
+      "reason": "Android ROM 侧修补，登记备查",
+      "reference_commit": null,
+      "reference_date": "2026-11-08"
+    },
+    {
+      "repo": "llfzs/piano-uefi-port",
+      "ref": "main",
+      "category": "打包",
+      "role": "消费 yzddmr6 的 Release 成品并做 UEFI 化的独立移植层仓库",
+      "decision": "reference",
+      "reason": "跟二进制发布而非源码 pin 的另一种维护模型，可对照本项目 14 个源码 pin 的成本；状态 PORT_READY_BUILT_NOT_FLASHED",
+      "reference_commit": null,
+      "reference_date": "2026-11-08"
+    },
+    {
+      "repo": "nadelacruz-00/erhai-charging-lab",
+      "ref": "main",
+      "category": "同 SoC 参考",
+      "role": "OnePlus Pad 3（erhai，SM8750）的充电测试台",
+      "decision": "reference",
+      "reason": "tests/ci/tablet/TODOS 的组织方式可借来测 piano 充电",
+      "reference_commit": null,
+      "reference_date": "2026-11-08"
     }
   ],
-  "checked_date": "2026-11-06"
+  "checked_date": "2026-11-08"
 }

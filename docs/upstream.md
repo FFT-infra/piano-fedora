@@ -6,6 +6,15 @@
 
 构建消费的上游以 `sources.lock.json` 为准，当前 pin 的 commit 写在 `sources.lock.json` 里。其他消费源的 commit 也记在 `sources.lock.json`。研究与对照仓库登记在 `upstreams.json`，不参与构建。本页的引用链接按当前 pin 固定到具体提交。
 
+### 对照基准
+
+`sources.lock.json` 里有两条 pin 只进对照任务、不进产物：
+
+- `vendor-kernel`：`android_kernel_xiaomi_piano` 的 DTS 源码，被 `scripts/compare-vendor-dt.py` 读取，用来核对 SunUEFI overlay 的目标节点在厂商硬件描述里是否存在。
+- `vendor-blobs`：`android_vendor_xiaomi_piano` 的固件与传感器配置，被 `scripts/compare-vendor-blobs.py` 按 git blob 摘要比对。只读文件清单，不下载内容，不进镜像。
+
+这两条属于消费上游，所以进 `upstream-watch` 的漂移报告，但白名单里没有它们：厂商树一更新就要人工看对照报告有没有新差异。任何出货路径引用 `vendor-kernel` 都算违规——它描述的是 Android 下游 DT，和启动用的 `board.dtb` 不是同一条血缘，见 `docs/device-tree.md`。
+
 ## 自动跟踪
 
 `.github/workflows/upstream-watch.yml` 每周一 03:23 UTC 运行一次 `scripts/audit-upstreams.py --execute`。`scripts/upstream-watch.py` 处理执行结果，按以下规则分流：
@@ -16,7 +25,7 @@
 
 漂移判断只看 pin，不看 `docs/upstreams.json` 的 `reference_commit`。`reference_commit` 是人工基线，只在 `--record-baseline` 时推进。拿 `reference_commit` 判断，会把没有位移的上游报成更新。
 
-自动跟踪只覆盖 14 个消费上游。`docs/upstreams.json` 里的 82 个对照仓库不进 `upstream-watch`：它们没有 `lock_key`，`scripts/upstream-watch.py` 只处理带 `lock_key` 的行。这些仓库要人工复核，用下面两条命令：
+自动跟踪只覆盖 16 个消费上游。`docs/upstreams.json` 里的 83 个对照仓库不进 `upstream-watch`：它们没有 `lock_key`，`scripts/upstream-watch.py` 只处理带 `lock_key` 的行。这些仓库要人工复核，用下面两条命令：
 
 ```sh
 python3 scripts/audit-upstreams.py --execute --output build/upstream-audit.json
