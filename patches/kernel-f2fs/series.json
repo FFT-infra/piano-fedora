@@ -35,7 +35,7 @@
     },
     {
       "file": "0005-fedora-nftables.patch",
-      "summary": "补齐 Fedora firewalld 与 libvirt 所需 nftables 内核接口，配置后逐项验证",
+      "summary": "补齐 Fedora firewalld 与 libvirt 所需 nftables 内核接口，并以模块形式提供 firewalld 自带的全部 conntrack helper，配置后逐项验证",
       "targets": {
         "tools/build_piano_full_kernel.py": "38da26185beac51a4804d32c7bcce29955c7627dded07b3dffa08266ab18bcaf"
       },

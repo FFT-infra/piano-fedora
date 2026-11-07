@@ -38,6 +38,13 @@ def main():
                 "CONFIG_NF_NAT", "CONFIG_NFT_CT", "CONFIG_NFT_LOG", "CONFIG_NFT_LIMIT",
                 "CONFIG_NFT_REJECT_INET", "CONFIG_NFT_FIB_INET", "CONFIG_NFT_FIB_IPV4",
                 "CONFIG_NFT_FIB_IPV6", "CONFIG_NFT_MASQ", "CONFIG_NFT_NAT", "CONFIG_NFT_REDIR"}
+    # firewalld 为它自带的每个 helper 建一个 nft ct helper 对象，nftables 后端
+    # 把这些对象和规则放在同一批提交：内核缺一个 helper，整批失败，firewalld
+    # 退回 stock 配置。Fedora 内核全部按模块提供，这里也必须是 m 而不是 y。
+    helpers = {"CONFIG_NF_CONNTRACK_AMANDA", "CONFIG_NF_CONNTRACK_FTP", "CONFIG_NF_CONNTRACK_H323",
+               "CONFIG_NF_CONNTRACK_IRC", "CONFIG_NF_CONNTRACK_NETBIOS_NS", "CONFIG_NF_CONNTRACK_PPTP",
+               "CONFIG_NF_CONNTRACK_SANE", "CONFIG_NF_CONNTRACK_SIP", "CONFIG_NF_CONNTRACK_SNMP",
+               "CONFIG_NF_CONNTRACK_TFTP"}
     policy = namespace["FEDORA_OVERRIDES"]
     # 上游的共享平台片段已经拥有 nftables 这组开关本身，Fedora 策略只补它留在
     # 默认值的几个。两边都设同一个符号时，覆盖校验会拒绝，所以这里要求
@@ -47,8 +54,10 @@ def main():
     # 设不了它，所以它既不归平台片段也不归 Fedora 策略，值由 select 决定。
     derived = {"CONFIG_NFT_FIB"}
     declared = required - derived
-    both = {symbol for symbol in declared if symbol in policy and symbol in platform}
+    both = {symbol for symbol in declared | helpers if symbol in policy and symbol in platform}
     assert not both, "symbol declared by both fragments: " + repr(sorted(both))
+    assert helpers <= set(policy), "firewalld conntrack helpers missing from Fedora policy"
+    assert all(policy[symbol] == "m" for symbol in helpers), "firewalld conntrack helpers must be modules"
     missing = {symbol for symbol in declared if symbol not in policy and symbol not in platform}
     assert not missing, "Fedora nftables kernel options missing: " + repr(sorted(missing))
     assert not (derived & (set(policy) | set(platform))), "select-only symbol set by a fragment"
@@ -85,7 +94,7 @@ def main():
     serialize = lambda values: "".join(key + "=" + value + "\n" for key, value in values.items())
     validate_config = namespace["validate_config"]
     validate_config(serialize(configured), "CONFIG_MODULES=y\n", command, fragments)
-    for symbol in required - derived:
+    for symbol in (required - derived) | helpers:
         dropped = dict(configured)
         dropped.pop(symbol)
         try:
@@ -133,7 +142,8 @@ def main():
     vm_branches = [node for node in ast.walk(main_node) if isinstance(node, ast.If)
                    and isinstance(node.test, ast.Attribute) and node.test.attr == "fedora_policy"]
     assert len(vm_branches) == 1 and any(isinstance(node, ast.Name) and node.id == "GUNYAH_OVERRIDES" for node in ast.walk(vm_branches[0])), "Fedora production policy must consume Gunyah"
-    print("OK: 18 nftables options across both fragments, actual configured-result rejection and policy consumption")
+    print("OK: 18 nftables options across both fragments plus 10 module conntrack helpers, "
+          "actual configured-result rejection and policy consumption")
     return 0
 
 
