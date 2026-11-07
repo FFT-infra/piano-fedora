@@ -26,7 +26,7 @@
 
 Name:           kernel-piano
 Version:        7.3.0
-Release:        4.%{DEVICE_NAME}%{?dist}
+Release:        5.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
 URL:            https://github.com/blu-sharky/linux-piano
@@ -158,6 +158,10 @@ depmod -a "$RELEASE" || exit 1
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
+* Sun Nov 08 2026 FFT-infra <dev@piano.invalid> - 7.3.0-5.piano
+- 内核按 Fedora 做法补上 firewalld 需要的十个 conntrack helper，全部为模块；
+  设备侧 dnf 升级需要新的 NVRA，否则同版本号不会替换内核载荷
+
 * Mon Oct 26 2026 FFT-infra <dev@piano.invalid> - 7.3.0-4.piano
 - 封存序列补齐到 55 行（`target_tree` 仍是 `81983254f51a`），整核重编
   `MAKE_EXIT=0`，Image 48650752 字节、0 error。补的是上游 2026-10 那批
