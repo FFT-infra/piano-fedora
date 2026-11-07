@@ -38,17 +38,22 @@
 
 ### 与厂商 DT 的可观测差异
 
-把出货 `board.dtb` 反编译后看到根节点是：
+出货基线 `vendor/piano-linux/board.dtb` 的根节点是：
 
 ```
-model = "Xiaomi Pad 8 Pro";
-compatible = "xiaomi,piano", "qcom,sm8750", "qcom,sun-mtp", "qcom,sun", "qcom,sunp-mtp", "qcom,sunp", "qcom,mtp";
+model = "Qualcomm Technologies, Inc. Piano based on SM8750";
+compatible = "qcom,sun-mtp", "qcom,sun", "qcom,sunp-mtp", "qcom,sunp", "qcom,mtp";
 qcom,board-id = <0x40008 0x00>;
 ```
 
-而厂商源码 `piano-sm8750-overlay.dts` 给的是 `model = "Qualcomm Technologies, Inc. Piano based on SM8750"` 和同样的 `qcom,board-id = <0x40008 0>`。
+厂商源码 `piano-sm8750-overlay.dts` 给的 model 与 board-id 和这一致，说明厂商 overlay 参与了组合。最终装进 ESP 的那份 model 是 `Xiaomi Pad 8 Pro`，由 `linux/dts/piano-board-identity.dtso` 的 `target-path = "/"` fragment 改写。
 
-board-id 对得上，说明厂商 overlay 参与了组合；model 不同，说明中间还有一次改写。谁改的没有记录，这正是 oracle 要盯的东西之一。
+节点命名两套不一样，判断 overlay 有没有打中节点时要按地址找对应物：
+
+| 出货（主线命名） | 厂商（下游命名） |
+| --- | --- |
+| `/soc/display-subsystem@ae00000` | `/soc/qcom,mdss_mdp@ae00000` |
+| `/soc/pinctrl@f100000` | `/soc/pinctrl@f000000` |
 
 ## 厂商源码的结构
 
@@ -89,9 +94,13 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 
 ## oracle 校验
 
-`scripts/compare-vendor-dt.py` 在 CI 里从厂商源码编出基线 DTB 和 piano overlay，用 `fdtoverlay` 合成，再对每个 SunUEFI overlay 的 `target-path` 逐节点比对：节点在不在、属性名集合差多少、`phandle` 指向的节点类型对不对。
+`scripts/compare-vendor-dt.py` 在 CI 里从厂商源码编出基线 DTB、piano overlay，以及 techpack 的显示、摄像头、音频三个板级 overlay，用 `fdtoverlay` 依次合成。techpack 那三个不合成的话，厂商侧就没有 display-subsystem、codec、cci 这些子树，对照会把它们误报成缺失。
+
+然后对 `config/release.json` 里的每个 overlay，按 fragment 逐个比对：目标节点在不在、要加的属性厂商有没有、要改的属性和厂商原值差在哪里。目标节点在厂商侧不存在时，按单元地址和名字前缀在同一父节点下找对应物，报告里给出厂商的实际路径。
 
 它回答的是"我们的 overlay 改的东西，厂商硬件描述里有没有对应物"，不是"能不能替换"。两份 DT 结构不同源，逐字节对齐不是目标。
+
+报告写到 `build/vendor-dt-report/report.{json,md}`。`vendor-dt` job 设了 `continue-on-error`，第一阶段的定位是审阅材料，不是门禁。
 
 厂商源码只在这个任务里读。任何出货路径（`build-bundle.yml`、`kernel-piano`、`piano-kernel-esp-update`）引用 `vendor-kernel` 都算违规，`docs/upstream.md` 记了这条规则。
 

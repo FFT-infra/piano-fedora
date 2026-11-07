@@ -4,6 +4,7 @@
 import argparse
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +14,34 @@ def git(path, *args):
     return subprocess.check_output(["git", "-C", str(path), *args], text=True).strip()
 
 
-def checkout(url, commit, destination, full_history=False, sparse_paths=()):
+def case_collisions(destination):
+    """列出因文件系统大小写不敏感而检不出的路径。
+
+    virtiofs 与 APFS 这类挂载点上，`xt_CONNMARK.h` 与 `xt_connmark.h` 只能存在
+    一个，git 会把另一个报成删除。只接受这一类差异：其余任何不干净都照旧失败。
+    """
+    # 不能走 git()：它的 strip() 会吃掉首行开头的状态位空格。
+    status = subprocess.run(["git", "-C", str(destination), "status", "--porcelain"],
+                            check=True, capture_output=True, text=True).stdout
+    if not status.strip():
+        return []
+    deleted = []
+    for line in status.splitlines():
+        if not line.startswith(" D "):
+            raise ValueError(f"source identity/cleanliness mismatch: {destination}")
+        deleted.append(line[3:])
+    index = git(destination, "ls-files").splitlines()
+    twins = {}
+    for path in index:
+        twins.setdefault(path.lower(), []).append(path)
+    for path in deleted:
+        other = [candidate for candidate in twins.get(path.lower(), []) if candidate != path]
+        if not other or not (destination / other[0]).exists():
+            raise ValueError(f"source identity/cleanliness mismatch: {destination}")
+    return deleted
+
+
+def checkout(url, commit, destination, full_history=False, sparse_paths=(), allow_case_collisions=False):
     if destination.exists():
         # Git checkout 会为未初始化的 gitlink 留一个空目录。
         if destination.is_dir() and not any(destination.iterdir()):
@@ -33,15 +61,19 @@ def checkout(url, commit, destination, full_history=False, sparse_paths=()):
         subprocess.run(["git", "-C", str(destination), "sparse-checkout", "set", "--no-cone",
                         *sparse_paths], check=True)
     subprocess.run(["git", "-C", str(destination), "checkout", "--detach", commit], check=True)
-    if git(destination, "rev-parse", "HEAD") != commit or git(destination, "status", "--porcelain"):
+    if git(destination, "rev-parse", "HEAD") != commit:
+        raise ValueError(f"source identity mismatch: {destination}")
+    collisions = case_collisions(destination) if allow_case_collisions else []
+    if not allow_case_collisions and git(destination, "status", "--porcelain"):
         raise ValueError(f"source identity/cleanliness mismatch: {destination}")
+    return collisions
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--mode", choices=("check", "boot", "device", "graphics", "installer",
-                                       "gunyah", "loopback"), default="check")
+                                       "gunyah", "loopback", "vendor-dt"), default="check")
     ap.add_argument("--kernel", action="store_true")
     args = ap.parse_args()
     if args.mode in ("gunyah", "loopback") and not args.kernel:
@@ -53,7 +85,7 @@ def main():
     sun = output / "sunuefi"
     checkout(lock["sunuefi"]["url"], lock["sunuefi"]["commit"], sun)
     upstream = json.loads((sun / "sources.lock.json").read_text())
-    names = [] if args.mode in ("check", "gunyah") else ["debian-piano-current"]
+    names = [] if args.mode in ("check", "gunyah", "vendor-dt") else ["debian-piano-current"]
     if args.mode == "graphics":
         names = ["piano-mesa-current"]
     if args.mode == "installer":
@@ -81,7 +113,20 @@ def main():
         kernel = lock["linux-piano"]
         checkout(kernel["url"], kernel["commit"], sun / "upstream/linux-piano",
                  sparse_paths=("/include/dt-bindings/",))
-    if args.mode == "boot":
+    if args.mode == "vendor-dt":
+        # 厂商 DTS 只作 overlay 的审阅基准，不进产物。稀疏检出按目录取，
+        # 整棵树 3 GiB，其中绝大多数是内核驱动。
+        vendor = lock["vendor-kernel"]
+        # 整棵 include/ 都要：dt-bindings 里有指向 ../linux/*.h 的符号链接，
+        # 只取 dt-bindings 会留下断链。
+        collisions = checkout(vendor["url"], vendor["commit"], output / "vendor-kernel", sparse_paths=(
+            "/arch/arm64/boot/dts/vendor/qcom/",
+            "/arch/arm64/boot/dts/techpack/",
+            "/techpack/camera-kernel/dt-bindings/",
+            "/include/"), allow_case_collisions=True)
+        if collisions:
+            print(f"case-insensitive filesystem: {len(collisions)} paths not checked out", file=sys.stderr)
+    if args.mode in ("boot", "vendor-dt"):
         dtc = lock["dtc"]
         checkout(dtc["url"], dtc["commit"], output / "dtc")
     if args.mode == "device":

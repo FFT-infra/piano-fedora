@@ -88,3 +88,35 @@ jobs:
             exit 1
           fi
           echo "OK: no device-write commands"
+
+  vendor-dt:
+    # 厂商 DTS 只作 overlay 的审阅基准，不进任何出货产物。编不过本身就是要修的
+    # 信息，所以这一 job 失败不挡其他检查，报告照常上传。
+    continue-on-error: true
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install DT tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git gcc make flex bison python3
+      - name: Fetch the pinned vendor DTS and the SunUEFI overlays
+        run: python3 scripts/checkout-sources.py --output build/vendor-dt-src --mode vendor-dt
+      - name: Build the pinned dtc and libfdt
+        run: make -C build/vendor-dt-src/dtc -j2 NO_PYTHON=1 NO_YAML=1 dtc fdtoverlay
+      - name: Compare each overlay against the vendor hardware description
+        run: |
+          set -euo pipefail
+          export PATH="$PWD/build/vendor-dt-src/dtc:$PATH"
+          export LD_LIBRARY_PATH="$PWD/build/vendor-dt-src/dtc/libfdt"
+          python3 scripts/compare-vendor-dt.py \
+            --vendor build/vendor-dt-src/vendor-kernel \
+            --sunuefi build/vendor-dt-src/sunuefi \
+            --dtc build/vendor-dt-src/dtc \
+            --output build/vendor-dt-report
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vendor-dt-report
+          path: build/vendor-dt-report
