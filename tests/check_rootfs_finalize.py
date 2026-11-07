@@ -59,11 +59,6 @@ def check_power_overlay_owner():
     assert "stage_power_overlay" not in source, (
         "build-device-runtime must not stage a second power overlay; "
         "piano-fedora-configs owns those five paths")
-    # BSP 里那份 piano-usb.service 与 piano-linux-debug.service 抢同一个 UDC，
-    # 装上去每次开机都会留一个 failed unit。跳过它和它的 udev 规则，别让这
-    # 三个路径再回到载荷里。
-    assert '"piano-usb.service", "79-piano-usb.rules", "usb-network"' in source, (
-        "build-device-runtime must skip the BSP's duplicate USB gadget unit")
 
     def policy_root(base, files, fallback=None):
         """把一份 overlay 摆成 finalizer 眼里的安装树。

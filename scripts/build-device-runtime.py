@@ -212,12 +212,6 @@ def build(args):
             put(p, payload / p.relative_to(adapters), p.stat().st_mode & 0o111)
     for p in (sun / "linux/bsp/common").rglob("*"):
         if p.is_file() or p.is_symlink():
-            # piano-usb.service 与 piano-linux-debug.service 抢同一个 UDC。
-            # 后者先绑定 a600000.ssusb，usb0 与 NM profile 都归它；前者再建
-            # 自己的 gadget 只会拿到 Permission denied，每次开机留一个 failed
-            # unit。BSP 的这份和它的 udev 规则一起跳过，不装第二份。
-            if p.name in ("piano-usb.service", "79-piano-usb.rules", "usb-network"):
-                continue
             put(p, payload / p.relative_to(sun / "linux/bsp/common"), p.stat().st_mode & 0o111)
     integration_proof = stage_payload(device_source, device_pin, payload, touch_proof,
                                       camera_proof, put, sha256, args.finger_config_dir)
