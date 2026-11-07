@@ -41,6 +41,19 @@ def main():
     assert (added, overridden, same) == (["c"], ["b"], []), (added, overridden, same)
     assert module.compare_node({}, {"x": b"1"}) == (["x"], [], [])
 
+    # 厂商侧缺失分两类：登记过的正常差异，和需要人工看的新增项。
+    fixtures = [
+        {"overlay": "piano-fingerprint.dtso",
+         "targets": [{"target": "/soc/rsc@16500000/regulators-4", "exists_in_vendor": False},
+                     {"target": "/soc/xiaomi_fingerprint", "exists_in_vendor": True}]},
+        {"overlay": "piano-new.dtso",
+         "targets": [{"target": "/soc/unknown@1", "exists_in_vendor": False}]},
+    ]
+    known, unexplained = module.classify_missing(fixtures)
+    assert known == [("piano-fingerprint.dtso", "/soc/rsc@16500000/regulators-4")], known
+    assert unexplained == [("piano-new.dtso", "/soc/unknown@1")], unexplained
+    assert all(isinstance(pair, tuple) and len(pair) == 2 for pair in module.KNOWN_MISSING)
+
     if not shutil.which("dtc") or not shutil.which("cpp"):
         print("SKIP: fragment parsing needs dtc and cpp")
         return 0

@@ -116,6 +116,18 @@ jobs:
             --sunuefi build/vendor-dt-src/sunuefi \
             --dtc build/vendor-dt-src/dtc \
             --output build/vendor-dt-report
+      - name: Fail on differences the whitelist does not cover
+        run: |
+          set -euo pipefail
+          # 这一 job 是 continue-on-error，红了不挡合并，只提示有人工要看的差异。
+          python3 - <<'PY'
+          import json, sys
+          report = json.load(open("build/vendor-dt-report/report.json"))
+          unexplained = report["missing_in_vendor_unexplained"]
+          for overlay, target in unexplained:
+              print(f"unexplained: {overlay} -> {target}")
+          sys.exit(1 if unexplained else 0)
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: vendor-dt-report

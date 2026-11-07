@@ -115,6 +115,8 @@ ESP 的 `EFI/Piano/stable/` 下 `board.dtb` 和 `boot.img` 都含 DT，启动时
 
 报告写到 `build/vendor-dt-report/report.{json,md}`。`vendor-dt` job 设了 `continue-on-error`，第一阶段的定位是审阅材料，不是门禁。
 
+厂商侧找不到的目标分两类：`scripts/compare-vendor-dt.py` 的 `KNOWN_MISSING` 登记的是已经看过的正常差异（下游命名不同、节点由别的 overlay 建立、厂商 DT 本来就不描述这块硬件），其余算新增，报告里单独列出来，job 也在这里显式失败一次。加 overlay 或厂商换 pin 之后，先看这一节再决定要不要往登记表里加。
+
 厂商源码只在这个任务里读。任何出货路径（`build-bundle.yml`、`kernel-piano`、`piano-kernel-esp-update`）引用 `vendor-kernel` 都算违规，`docs/upstream.md` 记了这条规则。
 
 ## 面板与内存

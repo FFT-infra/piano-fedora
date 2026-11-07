@@ -21,6 +21,37 @@ ROOT = Path(__file__).resolve().parents[1]
 
 FRAGMENT = re.compile(r"^fragment@\d+$")
 
+# 第一轮对照里厂商侧找不到的目标节点。这里登记的是已经看过、确认属于两条
+# 血缘正常差异的项：厂商用下游命名、节点由别的 overlay 建立、或者厂商 DT
+# 本来就不描述这块硬件。新增的差异不进这张表，报告里单独列成 unexplained。
+KNOWN_MISSING = {
+    ("piano-usb-typec.dtso", "/soc/pinctrl@f100000"),
+    ("piano-fingerprint.dtso", "/soc/pinctrl@f100000"),
+    ("piano-pen-dock.dtso", "/soc/pinctrl@f100000"),
+    ("piano-pen-charger.dtso", "/soc/pinctrl@f100000"),
+    ("piano-pen-charger.dtso", "/soc/pen-dock"),
+    ("piano-fingerprint.dtso", "/soc/rsc@16500000/regulators-4"),
+    ("piano-regdma-resource.dtso", "/soc/display-subsystem@ae00000/display-controller@ae01000"),
+    ("piano-audio-dmic-clock.dtso", "/soc/codec@7660000"),
+    ("piano-camera-flash.dtso", "/soc/qcom,camera-flash0"),
+    ("piano-camera-flash.dtso", "/soc/cci-ml@ac7b000/i2c-bus@1/camera@10"),
+    ("piano-camera-privacy-led.dtso", "/soc/cci-ml@ac7b000/i2c-bus@1/camera@10"),
+    ("piano-camera-privacy-led.dtso", "/soc/qcom,qupv3_2_geni_se@8c0000/i2c@884000/camera@10"),
+    ("piano-cdsp-fastrpc.dtso", "/soc/remoteproc-cdsp@32300000/glink-edge/qcom,fastrpc"),
+    ("piano-touch-panel.dtso", "/soc/display-subsystem@ae00000/dsi@ae94000/panel@0"),
+    ("piano-touch-panel.dtso", "/soc/qcom,qupv3_1_geni_se@ac0000/spi@a88000/touchscreen@0"),
+} | {("piano-cdsp-fastrpc.dtso",
+       f"/soc/remoteproc-cdsp@32300000/glink-edge/qcom,fastrpc/compute-cb@{index}")
+      for index in range(1, 13)}
+
+
+def classify_missing(overlays):
+    """把厂商侧缺失的目标分成已登记和新增两类。"""
+    entries = [(entry["overlay"], target["target"]) for entry in overlays
+               for target in entry["targets"] if target.get("exists_in_vendor") is False]
+    return ([item for item in entries if item in KNOWN_MISSING],
+            [item for item in entries if item not in KNOWN_MISSING])
+
 
 def tools(directory):
     names = {}
@@ -248,6 +279,7 @@ def main():
             if target.get("exists_in_shipped") is False and target["target"] in provided:
                 target["provided_by_overlay"] = provided[target["target"]]
 
+    known_missing, unexplainable = classify_missing(overlays)
     report = {
         "shipped": {"path": str(shipped_path), "bytes": len(shipped_data)},
         "vendor_composed_bytes": len(vendor_data),
@@ -260,6 +292,8 @@ def main():
         },
         "production_overlays": names,
         "overlays": overlays,
+        "missing_in_vendor_known": known_missing,
+        "missing_in_vendor_unexplained": unexplainable,
     }
     (args.output / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
 
@@ -273,6 +307,13 @@ def main():
     lines.append("")
     lines.append("fdtoverlay 只合并 fragment，overlay 根节点的 model/board-id 不会合并；"
                  "ABL 的 libufdt 会合并。根属性差异属于工具差异。")
+    lines.append("")
+    lines.append(f"厂商侧找不到的目标：{len(known_missing) + len(unexplainable)} 个，"
+                 f"其中已登记 {len(known_missing)} 个，新增 {len(unexplainable)} 个。")
+    if unexplainable:
+        lines.append("")
+        lines.append("新增的这几条要人工看：")
+        lines += [f"- `{overlay}` → `{target}`" for overlay, target in unexplainable]
     lines.append("")
     lines.append("| overlay | 目标 | 厂商侧 | 出货基线有节点 | 厂商缺的属性 | 改写的厂商值 |")
     lines.append("| --- | --- | --- | --- | --- | --- |")
@@ -302,6 +343,7 @@ def main():
                                   and not target.get("provided_by_overlay")),
         "provided_by_overlay": sum(1 for target in targets if target.get("provided_by_overlay")),
         "missing_in_vendor": sum(1 for target in targets if target.get("exists_in_vendor") is False),
+        "missing_in_vendor_unexplained": len(unexplainable),
         "report": str(args.output)}, indent=2))
 
 
