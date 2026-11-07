@@ -92,7 +92,18 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 
 后七个在 2026-11-08 才补进 `build-bundle.yml`。`ufs-mcq` 对应封存序列里已经合入的 `0056`/`0057`，`dsp-resources`、`cdsp-fastrpc` 对应 FastRPC，`usb-typec` 对应充电与 OTG。没有 overlay，这些代码合了也不生效。
 
-这七个的真机验收还没做。分批上的顺序、每项看什么、失败长什么样，写在扩展计划里；`piano-cma` 和 `piano-ufs-mcq` 一旦不合，表现为开不了机，回退靠刷回上一版 bundle 或恢复 ESP 备份。
+这七个的真机验收还没做。分批上的顺序、每项看什么、失败长什么样，写在扩展计划里；`piano-cma` 和 `piano-ufs-mcq` 一旦不合，表现为开不了机，回退是刷回上一版 bundle，或把 ESP 上的 `board.dtb` 与 `boot.img` 一起换回上一版。
+
+## 启动读的是 boot.img 里的 DT
+
+ESP 的 `EFI/Piano/stable/` 下 `board.dtb` 和 `boot.img` 都含 DT，启动时只读一份：
+
+- `uefi/components/os-boot/PianoEspBootSource.c:134` 打开的只有 `\EFI\Piano\stable\boot.img`，`board.dtb` 不在启动路径上。
+- `board.dtb` 是下次内核安装的输入。`scripts/piano-kernel-esp-update:124` 读 ESP 上的 `board.dtb`，和新 `Image`、`initramfs` 一起用 mkbootimg 打成新的 `boot.img`（header v2，页 4096）。
+
+2026-11-08 实测：把 ESP 的 `board.dtb` 换成带新 overlay 的版本再重启，`/proc/device-tree` 里 `qcom,pmic_glink` 的 compatible、`ufshc` 的 `reg-names`、PCIe 的 `interrupt-map` 一项没变；解开同一台设备的 `boot.img`，里面嵌的 DT 正好等于换之前那份 `board.dtb`。
+
+换 `board.dtb` 只换了下次打包的输入，`boot.img` 不重打，重启读到的还是旧 DT。验收一个 DT 改动要同时换这两份，或者直接重打 `boot.img`。
 
 ## oracle 校验
 
