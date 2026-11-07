@@ -63,7 +63,8 @@ def main():
 
         # 同名不同内容必须进 differs，不能因为 basename 相同就算命中。
         (kept / "nt36532.bin").write_bytes(b"different")
-        subprocess.run(["git", "-C", str(repo), "commit", "-qam", "change"], check=True)
+        subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@example.invalid",
+                        "-c", "user.name=t", "commit", "-qam", "change"], check=True)
         changed = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"],
                                           text=True).strip()
         buckets = module.compare(ours, module.remote_files(repo, changed))
