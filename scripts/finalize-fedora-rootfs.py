@@ -528,7 +528,8 @@ def verify_fastrpc_daemon(root, runtime_meta):
         raise ValueError("installed FastRPC daemon differs from the runtime manifest")
     services = proof.get("service_sha256", {})
     expected_services = {"usr/lib/systemd/system/adsprpcd-sensorspd.service",
-                         "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf"}
+                         "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf",
+                         "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/30-adsp-library.conf"}
     if set(services) != expected_services:
         raise ValueError("FastRPC service assembly is missing from the runtime manifest")
     for name, digest in services.items():

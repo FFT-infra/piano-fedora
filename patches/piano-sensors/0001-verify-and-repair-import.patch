@@ -1,0 +1,195 @@
+--- a/piano-sensors/piano-sensors-import
++++ b/piano-sensors/piano-sensors-import
+@@ -15,12 +15,18 @@
+ #            device-mapper from the super metadata, read with dump.erofs,
+ #            never mounted
+ #   vendor   EROFS logical partition, read the file-service configuration
+-#            /etc/sensors/sns_reg_config through the same read-only mapping
++#            /etc/sensors/sns_reg_config and the sensors dynamic libraries
++#            from /lib/rfsa/adsp through the same read-only mapping
+ #   persist  ext4, mounted read-only with noload (no journal replay), so the
+ #            partition Android uses is never written; the ADSP updates its
+ #            registry in the copy
+ #
+-# Each part is imported only while it is missing; delete it to re-import.
++# Every boot verifies what was imported against the manifest written next to
++# it and rebuilds the copy when it no longer matches. The first install boot
++# lost thirteen files of this store, every one larger than the F2FS inline
++# data boundary, and the zero-filled copy made the PD parse no sensors at all.
++# A missing store is imported, a corrupt one is re-imported; the persist copy
++# is imported only while missing, because the ADSP writes it by design.
+ set -eu
+ 
+ ROOT=${PIANO_SENSORS_ROOT:-/var/lib/piano-sensors}
+@@ -64,9 +70,30 @@
+     MAPPED_DEVICE=/dev/mapper/$mapping
+ }
+ 
+-mkdir -p "$ROOT"
++ensure_vendor() {
++    [ -n "$VENDOR" ] && return 0
++    wait_for "$SUPER"
++    map_partition piano-sensors-vendor "$VENDOR_NAME"
++    VENDOR=$MAPPED_DEVICE
++}
++
++# The manifest lists names relative to the store directory, so verify from
++# there. --strict rejects a truncated or malformed line instead of skipping it.
++store_matches() {
++    manifest=$1
++    directory=$2
++    [ -s "$manifest" ] || return 1
++    (cd "$directory" && sha256sum --check --quiet --strict "$manifest") >/dev/null 2>&1
++}
+ 
+-if [ ! -s "$ROOT/odm/config/json.lst" ]; then
++# Refuse names that would escape the store when they are used as a path.
++safe_name() {
++    case $1 in
++        ''|.|..|*/*) log "refusing unsafe name: $1"; exit 1 ;;
++    esac
++}
++
++import_odm() {
+     if [ -z "$ODM" ]; then
+         wait_for "$SUPER"
+         map_partition piano-sensors-odm "$ODM_NAME"
+@@ -75,26 +102,33 @@
+     mkdir -p "$ROOT/odm"
+     tmp=$(mktemp -d "$ROOT/odm/.config.XXXXXX")
+     # Copy the whole directory: json.lst names files odm does not carry
+-    # (the PD skips those), and dump.erofs --cat exits 0 on a missing path.
++    # (the PD skips those), and dump.erofs --cat exits 0 on a missing path,
++    # so the exit status alone does not tell a missing file from an empty one.
+     n=0
+     for name in $(dump.erofs --ls --path="$CONFIG_DIR" "$ODM" |
+                   awk 'f && $2 == 1 { print $3 } $1 == "NID" && $2 == "TYPE" { f = 1 }'); do
+-        dump.erofs --path="$CONFIG_DIR/$name" --cat "$ODM" > "$tmp/$name"
++        safe_name "$name"
++        if ! dump.erofs --path="$CONFIG_DIR/$name" --cat "$ODM" > "$tmp/$name"; then
++            rm -rf "$tmp"
++            log "cannot read $CONFIG_DIR/$name from $ODM"
++            exit 1
++        fi
++        [ -s "$tmp/$name" ] || { rm -rf "$tmp"; log "$CONFIG_DIR/$name is empty in $ODM"; exit 1; }
++        sync -- "$tmp/$name"
+         n=$((n + 1))
+     done
+     [ -s "$tmp/json.lst" ] || { rm -rf "$tmp"; log "no sensors configuration in $ODM"; exit 1; }
+     chmod 0755 "$tmp"
++    (cd "$tmp" && sha256sum -- * > "$ROOT/odm/.config.sha256.$$")
++    mv "$ROOT/odm/.config.sha256.$$" "$ROOT/odm/config.sha256"
+     rm -rf "$ROOT/odm/config"
+     mv "$tmp" "$ROOT/odm/config"
++    sync -- "$ROOT/odm"
+     log "imported $n sensors configuration files from $ODM"
+-fi
++}
+ 
+-if [ ! -s "$ROOT/vendor/sns_reg_config" ]; then
+-    if [ -z "$VENDOR" ]; then
+-        wait_for "$SUPER"
+-        map_partition piano-sensors-vendor "$VENDOR_NAME"
+-        VENDOR=$MAPPED_DEVICE
+-    fi
++import_vendor() {
++    ensure_vendor
+     mkdir -p "$ROOT/vendor"
+     tmp=$(mktemp "$ROOT/vendor/.sns_reg_config.XXXXXX")
+     if ! dump.erofs --path=/etc/sensors/sns_reg_config --cat "$VENDOR" > "$tmp"; then
+@@ -104,8 +138,87 @@
+     fi
+     [ -s "$tmp" ] || { rm -f "$tmp"; log "no sensors file-service configuration in $VENDOR"; exit 1; }
+     chmod 0644 "$tmp"
++    sync -- "$tmp"
+     mv "$tmp" "$ROOT/vendor/sns_reg_config"
++    (cd "$ROOT/vendor" && sha256sum sns_reg_config > "$ROOT/vendor/.sns_reg_config.sha256.$$")
++    mv "$ROOT/vendor/.sns_reg_config.sha256.$$" "$ROOT/vendor/sns_reg_config.sha256"
++    sync -- "$ROOT/vendor"
+     log "imported sensors file-service configuration from $VENDOR"
++}
++
++# Libraries the PD loads at run time are named in the dynamic sensor configs
++# and exist only on the vendor partition. The file service resolves them
++# through ADSP_LIBRARY_PATH, which the unit points at this store.
++rfsa_libraries() {
++    grep -ho '"data"[[:space:]]*:[[:space:]]*"[^"]*\.so"' "$ROOT/odm/config"/*_dynamic_sensors.json 2>/dev/null |
++        sed 's/.*"\([^"]*\.so\)"/\1/' | sort -u
++}
++
++import_rfsa() {
++    ensure_vendor
++    target=$ROOT/rfsa/adsp
++    mkdir -p "$target"
++    n=0
++    absent=
++    for library in $(rfsa_libraries); do
++        safe_name "$library"
++        tmp=$(mktemp "$target/.$library.XXXXXX")
++        if ! dump.erofs --path="/lib/rfsa/adsp/$library" --cat "$VENDOR" > "$tmp" || [ ! -s "$tmp" ]; then
++            rm -f "$tmp"
++            # odm names libraries for other SKUs too; a missing one is the same
++            # state Android boots with, so record it and keep going.
++            absent="$absent $library"
++            continue
++        fi
++        chmod 0644 "$tmp"
++        sync -- "$tmp"
++        mv "$tmp" "$target/$library"
++        n=$((n + 1))
++    done
++    [ -z "$absent" ] || log "not present on $VENDOR:$absent"
++    (cd "$target" && sha256sum -- * > "$ROOT/rfsa/.adsp.sha256.$$")
++    mv "$ROOT/rfsa/.adsp.sha256.$$" "$ROOT/rfsa/adsp.sha256"
++    sync -- "$ROOT/rfsa"
++    log "imported $n sensors dynamic libraries from $VENDOR"
++}
++
++# Import, then prove the copy on disk matches the manifest before the PD reads
++# it. Retry when it does not: a store the filesystem failed to persist is not
++# fixed by a later verification pass alone.
++ensure_store() {
++    directory=$1
++    manifest=$2
++    importer=$3
++    attempt=0
++    store_matches "$manifest" "$directory" && return 0
++    while [ "$attempt" -lt 3 ]; do
++        attempt=$((attempt + 1))
++        [ "$attempt" -eq 1 ] || log "store $directory does not match its manifest, re-importing (attempt $attempt)"
++        "$importer"
++        store_matches "$manifest" "$directory" && return 0
++    done
++    log "store $directory still does not match its manifest after $attempt imports"
++    exit 1
++}
++
++mkdir -p "$ROOT"
++
++ensure_store "$ROOT/odm/config" "$ROOT/odm/config.sha256" import_odm
++ensure_store "$ROOT/vendor" "$ROOT/vendor/sns_reg_config.sha256" import_vendor
++
++# Only rebuild the libraries when the store exists but does not verify; the
++# names come from the configuration just verified above.
++libraries=$(rfsa_libraries 2>/dev/null || true)
++if [ -n "$libraries" ] && ! store_matches "$ROOT/rfsa/adsp.sha256" "$ROOT/rfsa/adsp"; then
++    attempt=0
++    while [ "$attempt" -lt 3 ]; do
++        attempt=$((attempt + 1))
++        [ "$attempt" -eq 1 ] || log "sensors dynamic library store does not match its manifest, re-importing (attempt $attempt)"
++        import_rfsa
++        store_matches "$ROOT/rfsa/adsp.sha256" "$ROOT/rfsa/adsp" && break
++    done
++    store_matches "$ROOT/rfsa/adsp.sha256" "$ROOT/rfsa/adsp" ||
++        { log "sensors dynamic library store still does not match its manifest"; exit 1; }
+ fi
+ 
+ if [ ! -d "$ROOT/persist/sensors" ]; then
+@@ -127,6 +240,7 @@
+     mkdir -p "$ROOT/persist"
+     mv "$tmp/sensors" "$ROOT/persist/sensors"
+     rmdir "$tmp"
++    sync -- "$ROOT/persist"
+     log "imported the sensors registry and calibration from $PERSIST"
+ fi
+ 

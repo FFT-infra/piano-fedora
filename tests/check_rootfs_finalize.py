@@ -483,7 +483,8 @@ def main():
         daemon.chmod(0o755)
         services = {}
         for name in ("usr/lib/systemd/system/adsprpcd-sensorspd.service",
-                     "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf"):
+                     "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf",
+                     "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/30-adsp-library.conf"):
             unit = root / name
             unit.parent.mkdir(parents=True, exist_ok=True)
             unit.write_text("[Service]\nExecStart=/usr/bin/adsprpcd sensorspd\n")
