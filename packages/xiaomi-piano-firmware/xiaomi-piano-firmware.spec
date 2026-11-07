@@ -7,8 +7,8 @@
 %global sunuefi_commit afe922bc0d9f230dd05dc0dc9435ae6d6322a31b
 
 Name:           xiaomi-piano-firmware
-Version:        20261015
-Release:        2%{?dist}
+Version:        20261108
+Release:        1%{?dist}
 Summary:        Firmware binaries for Xiaomi Pad 8 Pro (piano)
 # 厂商没有给出书面许可。这里按 Fedora 处理同类不可再分发固件的写法标注
 # （`linux-firmware` 用的就是 LicenseRef-Callaway-Redistributable-no-modification-permitted），
@@ -59,7 +59,7 @@ find %{buildroot}%{_firmwaredir} -type f -exec chmod 0644 {} \;
 %{_firmwaredir}/*
 
 %changelog
-* Sun Nov 08 2026 FFT-infra <dev@piano.invalid> - 20261015-2
+* Sun Nov 08 2026 FFT-infra <dev@piano.invalid> - 20261108-1
 - 叠加 SunUEFI 的三份厂商固件：ADSP 换 ROM、补上 CDSP 与 Goodix 指纹固件
 - 叠层的每个文件按 manifest.json 的 bytes 与 sha256 核对后再写盘
 

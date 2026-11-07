@@ -101,6 +101,12 @@ def main():
             and "firmware-overlays.py" in spec), "spec must ship the overlay archive and script"
     assert (PACKAGE / "firmware-overlays.py").is_file()
 
+    # 版本号只往上走。曾经把叠层写成 20261015-2，而设备上手工装过
+    # 20261108-1，前者更小，dnf upgrade 会永远认为设备已是最新。
+    version = re.search(r"^Version:\s+(\d+)$", spec, re.M).group(1)
+    release = re.search(r"^Release:\s+(\d+)%\{\?dist\}$", spec, re.M).group(1)
+    assert (int(version), int(release)) >= (20261108, 1), (version, release)
+
     print("OK: overlay manifest, checksums, unsafe names and the pinned commit behave")
 
 
