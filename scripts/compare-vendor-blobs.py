@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 FIRMWARE_PREFIXES = ("proprietary/vendor/firmware/", "proprietary/odm/firmware/")
+FIRMWARE_ROOT = "/usr/lib/firmware/"
 IGNORED = {"SHA256SUMS", "sha256sums"}
 
 
@@ -43,10 +44,37 @@ def local_files(directory):
     return result
 
 
+def owned_paths(path):
+    """矩阵声明的固件所有权路径，转换成固件树里的相对路径。"""
+    return {line.strip()[len(FIRMWARE_ROOT):] for line in path.read_text().splitlines()
+            if line.strip().startswith(FIRMWARE_ROOT)}
+
+
 def group(path):
     """单边独有的文件按所在目录聚合，根目录下的直接归一组。"""
     directory = path.rsplit("/", 1)[0] if "/" in path else ""
     return directory or "(根目录)"
+
+
+def by_name(files):
+    result = defaultdict(list)
+    for path, sha in files.items():
+        result[path.rsplit("/", 1)[-1]].append((path, sha))
+    return result
+
+
+def compare(ours, vendor):
+    """按 basename 配对，内容相同与不同分开记；两边独有的按名字列出。"""
+    ours_by_name, vendor_by_name = by_name(ours), by_name(vendor)
+    identical, differs = [], []
+    for name in sorted(set(ours_by_name) & set(vendor_by_name)):
+        for our_path, our_sha in ours_by_name[name]:
+            for vendor_path, vendor_sha in vendor_by_name[name]:
+                record = {"name": name, "ours": our_path, "vendor": vendor_path}
+                (identical if our_sha == vendor_sha else differs).append(record)
+    return {"identical": identical, "differs": differs,
+            "vendor_only": sorted(set(vendor_by_name) - set(ours_by_name)),
+            "ours_only": sorted(set(ours_by_name) - set(vendor_by_name))}
 
 
 def main():
@@ -54,6 +82,8 @@ def main():
     ap.add_argument("--vendor-blobs", type=Path, required=True)
     ap.add_argument("--commit", help="默认取 sources.lock.json 的 vendor-blobs 锁定值")
     ap.add_argument("--firmware", type=Path, required=True)
+    ap.add_argument("--owned", type=Path, default=ROOT / "runtime/matrix-owned-paths.txt",
+                    help="矩阵所有权清单，用来核对声明的固件路径是否都有对应文件")
     ap.add_argument("--output", type=Path, required=True)
     args = ap.parse_args()
     if not args.output.resolve().is_relative_to(ROOT / "build"):
@@ -69,21 +99,10 @@ def main():
 
     vendor = remote_files(args.vendor_blobs, args.commit)
     ours = local_files(args.firmware)
-    vendor_by_name = defaultdict(list)
-    for path, sha in vendor.items():
-        vendor_by_name[path.rsplit("/", 1)[-1]].append((path, sha))
-    ours_by_name = defaultdict(list)
-    for path, sha in ours.items():
-        ours_by_name[path.rsplit("/", 1)[-1]].append((path, sha))
-
-    identical, differs = [], []
-    for name in sorted(set(ours_by_name) & set(vendor_by_name)):
-        for our_path, our_sha in ours_by_name[name]:
-            for vendor_path, vendor_sha in vendor_by_name[name]:
-                record = {"name": name, "ours": our_path, "vendor": vendor_path}
-                (identical if our_sha == vendor_sha else differs).append(record)
-    vendor_only = sorted(set(vendor_by_name) - set(ours_by_name))
-    ours_only = sorted(set(ours_by_name) - set(vendor_by_name))
+    vendor_by_name, ours_by_name = by_name(vendor), by_name(ours)
+    buckets = compare(ours, vendor)
+    identical, differs = buckets["identical"], buckets["differs"]
+    vendor_only, ours_only = buckets["vendor_only"], buckets["ours_only"]
 
     vendor_only_dirs = Counter()
     for name in vendor_only:
@@ -91,6 +110,10 @@ def main():
     ours_only_dirs = Counter()
     for name in ours_only:
         ours_only_dirs[group(ours_by_name[name][0][0])] += 1
+
+    owned = owned_paths(args.owned)
+    owned_missing = sorted(owned - set(ours))
+    owned_extra = sorted(set(ours) - owned)
 
     report = {
         "vendor_commit": args.commit,
@@ -105,6 +128,8 @@ def main():
                                            if group(vendor_by_name[name][0][0]) == directory][:8]
                                for directory in list(vendor_only_dirs)[:8]},
         "ours_only": ours_only,
+        "owned_missing": owned_missing,
+        "owned_extra": owned_extra,
     }
     (args.output / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
 
@@ -138,6 +163,14 @@ def main():
         lines += ["## 我们有、厂商没有（按目录）", "", "| 目录 | 文件数 |", "| --- | --- |"]
         lines += [f"| `{directory}` | {count} |" for directory, count in ours_only_dirs.most_common(10)]
         lines.append("")
+    lines += ["## 所有权路径核对", "",
+              f"`runtime/matrix-owned-paths.txt` 声明了 {len(owned)} 条 `/usr/lib/firmware` 下的路径，"
+              f"出货树有 {len(ours)} 个文件。",
+              f"声明了但树里没有：{len(owned_missing)} 条；树里有但没声明：{len(owned_extra)} 条。", ""]
+    if owned_missing:
+        lines += ["| 缺少 |", "| --- |"] + [f"| `{path}` |" for path in owned_missing[:20]] + [""]
+    if owned_extra:
+        lines += ["| 未声明 |", "| --- |"] + [f"| `{path}` |" for path in owned_extra[:20]] + [""]
     lines += ["传感器配置不在这条对照里：`/var/lib/piano-sensors` 的 60 个文件来自设备",
               "自身分区，2026-11-08 已在平板上与厂商树逐个比对，文件名集合与目标文件摘要",
               "都相同。"]
