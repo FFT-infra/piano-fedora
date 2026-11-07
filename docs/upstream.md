@@ -15,6 +15,10 @@
 
 这两条属于消费上游，所以进 `upstream-watch` 的漂移报告，但白名单里没有它们：厂商树一更新就要人工看对照报告有没有新差异。任何出货路径引用 `vendor-kernel` 都算违规——它描述的是 Android 下游 DT，和启动用的 `board.dtb` 不是同一条血缘，见 `docs/device-tree.md`。
 
+第一份固件对照（2026-11-08）覆盖厂商仓库提交的 148 个固件文件：5 个与出货树逐字节相同，含两个 Novatek 触控固件、Nanosic MCU 与 `gen80000_gmu.bin`；4 个不同，`gen80000_aqe/sqe`、`gen80000_zap.mbn`、`vpu35_4v.mbn`；其余两边各自独有，厂商侧以 `CAMERA_ICP` 为主。厂商仓库不是 vendor 分区的全集，所以"厂商有、我们没有"只说明这份清单里没有。
+
+`packages/xiaomi-piano-firmware` 的 `%prep` 现在核对上游自带的 `SHA256SUMS`（99 项）。在此之前 `Source0` 只订了提交号，tarball 内容被换掉也发现不了。
+
 ## 自动跟踪
 
 `.github/workflows/upstream-watch.yml` 每周一 03:23 UTC 运行一次 `scripts/audit-upstreams.py --execute`。`scripts/upstream-watch.py` 处理执行结果，按以下规则分流：

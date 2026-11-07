@@ -41,6 +41,21 @@ def case_collisions(destination):
     return deleted
 
 
+def index_only(url, commit, destination):
+    """只取文件清单与 blob 摘要，不下载文件内容。
+
+    `--filter=blob:none` 下 `ls-tree -r` 只需要树对象；厂商 blob 树 1.28 GiB，
+    对照任务要的只是路径与内容摘要。
+    """
+    if destination.exists():
+        raise ValueError(f"source output already exists: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(destination)], check=True)
+    subprocess.run(["git", "-C", str(destination), "remote", "add", "origin", url], check=True)
+    subprocess.run(["git", "-C", str(destination), "fetch", "--depth=1", "--filter=blob:none",
+                    "origin", commit], check=True)
+
+
 def checkout(url, commit, destination, full_history=False, sparse_paths=(), allow_case_collisions=False):
     if destination.exists():
         # Git checkout 会为未初始化的 gitlink 留一个空目录。
@@ -73,7 +88,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--mode", choices=("check", "boot", "device", "graphics", "installer",
-                                       "gunyah", "loopback", "vendor-dt"), default="check")
+                                       "gunyah", "loopback", "vendor-dt", "vendor-blobs"),
+                    default="check")
     ap.add_argument("--kernel", action="store_true")
     args = ap.parse_args()
     if args.mode in ("gunyah", "loopback") and not args.kernel:
@@ -86,6 +102,9 @@ def main():
     checkout(lock["sunuefi"]["url"], lock["sunuefi"]["commit"], sun)
     upstream = json.loads((sun / "sources.lock.json").read_text())
     names = [] if args.mode in ("check", "gunyah", "vendor-dt") else ["debian-piano-current"]
+    if args.mode == "vendor-blobs":
+        # 对照的本地一侧就是实际出货的固件树，没有它比不了。
+        names = ["piano-firmware-current"]
     if args.mode == "graphics":
         names = ["piano-mesa-current"]
     if args.mode == "installer":
@@ -126,6 +145,9 @@ def main():
             "/include/"), allow_case_collisions=True)
         if collisions:
             print(f"case-insensitive filesystem: {len(collisions)} paths not checked out", file=sys.stderr)
+    if args.mode == "vendor-blobs":
+        vendor = lock["vendor-blobs"]
+        index_only(vendor["url"], vendor["commit"], output / "vendor-blobs")
     if args.mode in ("boot", "vendor-dt"):
         dtc = lock["dtc"]
         checkout(dtc["url"], dtc["commit"], output / "dtc")

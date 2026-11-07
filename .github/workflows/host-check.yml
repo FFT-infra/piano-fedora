@@ -120,3 +120,30 @@ jobs:
         with:
           name: vendor-dt-report
           path: build/vendor-dt-report
+
+  vendor-blobs:
+    # 固件对照同样只出报告：厂商 blob 不进镜像，也不需要在这里下载，
+    # 只取索引算 blob 摘要。报告看完再决定要不要升成门禁。
+    continue-on-error: true
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install git
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git python3
+      - name: Fetch the vendor blob index and the shipped firmware tree
+        run: python3 scripts/checkout-sources.py --output build/vendor-blobs-src --mode vendor-blobs
+      - name: Compare every shipped firmware file against the vendor copy
+        run: |
+          set -euo pipefail
+          python3 scripts/compare-vendor-blobs.py \
+            --vendor-blobs build/vendor-blobs-src/vendor-blobs \
+            --firmware build/vendor-blobs-src/sunuefi/upstream/piano-firmware-current/firmware \
+            --output build/vendor-blob-report
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vendor-blob-report
+          path: build/vendor-blob-report
