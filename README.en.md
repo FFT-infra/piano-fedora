@@ -91,6 +91,7 @@ An archive holds the platform images, that profile's `root-install/`, the compon
 - [Maintenance and acceptance](docs/internals.md): pipeline entry points, artifact binding, run id plumbing, PR gate
 - [COPR repository](docs/copr-repository.md): online upgrades for all ten packages, kernel included, plus the rollback boundary and failure modes
 - [Upstream tracking](docs/upstream.md): current pin, drift dashboard, follow-up rules
+- [Device tree](docs/device-tree.md): the three DT lineages, provenance of the shipped baseline, and what each of the sixteen overlays does
 - [Known issues](docs/known-issues.md): open problems and items under observation
 - [Gunyah virtualization](docs/virtualization.md): VM lifecycle and networking on SM8750
 - [Gaps before public distribution](docs/public-release-gaps.md): build inputs still tied to this one device and this one person
