@@ -59,13 +59,16 @@ FAILURE_STATES = {"failed", "canceled", "cancelled"}
 
 # 图形栈的两个本地重建，来自各自的 workflow 与 artifact，不在 piano-rpms
 # 矩阵里：它们的源包是 Fedora 官方 SRPM 加补丁，不属于 packages/ 目录。
-# 两者的 version 永远低于官方（26.2.6 < 26.2.7、9.0.2 <= 9.0.3），所以
-# 必须带 epoch 才能在 COPR 仓库里排在官方版之上；发布前逐个核对。
+# 两个都改了包名（mesa-piano-*、ffmpeg-piano / libavcodec-piano），并声明
+# 提供 Fedora 的原名、与原名冲突。设备上装的从来不是 Fedora 的包，所以
+# dnf upgrade 没有可覆盖的目标。发布前按源包名逐个核对。
 GRAPHICS = {
-    "mesa": {"manifest": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED"},
-    "ffmpeg": {"manifest": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED"},
+    "mesa": {"manifest": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED",
+             "source": "mesa-piano"},
+    "ffmpeg": {"manifest": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED",
+               "source": "ffmpeg-piano"},
 }
-# 先发图形栈：设备上 dnf upgrade 需要靠它们的 epoch 立刻压住官方版，
+# 先发图形栈：设备上 dnf upgrade 要能看见改名后的包，
 # 而矩阵里的包名与它们不重叠，顺序只影响失败时先报哪一个。
 GRAPHICS_ORDER = ("mesa", "ffmpeg")
 
@@ -174,11 +177,11 @@ def verify_artifacts(rpms_dir, manifest, run):
 
 
 def verify_graphics(directory, name):
-    """核对一个图形栈 artifact：状态、epoch、SRPM 与每个 RPM 的摘要。
+    """核对一个图形栈 artifact：状态、源包名、SRPM 与每个 RPM 的摘要。
 
-    这两个包必须带 epoch，否则发出去了也压不住官方版：COPR 仓库里
-    26.2.6-1.piano1 小于 Fedora updates 的 26.2.7。这里把 epoch 当作
-    发布前提直接断言，而不是相信构建脚本。
+    这两个包靠改名压过官方版：子包声明 Provides 原名并与原名冲突。
+    构件如果还是 Fedora 的源包名，说明构建脚本没走改名路径，发出去设备
+    还是会被官方版盖掉。这里把源包名当作发布前提直接断言。
     """
     directory = Path(directory)
     manifest_path = directory / "manifest.json"
@@ -189,8 +192,15 @@ def verify_graphics(directory, name):
     problems = []
     if manifest.get("status") != expected:
         problems.append(f"{name}: unexpected manifest status {manifest.get('status')!r}")
-    if manifest.get("epoch") != 1:
-        problems.append(f"{name}: manifest does not record epoch 1")
+    if manifest.get("source_package") != GRAPHICS[name]["source"]:
+        problems.append(f"{name}: manifest source package is "
+                        f"{manifest.get('source_package')!r}, not "
+                        f"{GRAPHICS[name]['source']!r}")
+    # 二进制包也必须带改名后的名字。源包名对了而子包还是 Fedora 的原名，
+    # 等于没有 Provides/Conflicts，设备照样会被官方版盖掉。
+    for filename in manifest.get("rpms", {}):
+        if "-piano-" not in filename:
+            problems.append(f"{name}: {filename} is not a renamed piano package")
     for kind, key, subdir in (("RPM", "rpms", "rpms"), ("SRPM", "srpms", "srpms")):
         recorded = manifest.get(key)
         if not isinstance(recorded, dict) or not recorded:
@@ -212,7 +222,7 @@ def verify_graphics(directory, name):
         raise PublishError("; ".join(problems))
     return {
         "status": manifest["status"],
-        "epoch": manifest["epoch"],
+        "source_package": manifest["source_package"],
         "srpm": srpm_names[0],
         "rpm_count": len(manifest.get("rpms", {})),
         "manifest_sha256": sha256(manifest_path),
@@ -411,7 +421,7 @@ def main():
     try:
         record["project_state"] = ensure_project(binary, config, args.project)
         outputs, ids = {}, []
-        # 先发图形栈：它们的 epoch 让设备 dnf upgrade 立刻回到补丁版，
+        # 先发图形栈：设备 dnf upgrade 要能看见改名后的补丁版，
         # 而矩阵包的包名与它们不重叠，顺序只决定失败时先报哪一个。
         for name in GRAPHICS_ORDER:
             srpm_dir = Path(getattr(args, name)) / "srpms"

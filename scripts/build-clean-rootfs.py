@@ -594,11 +594,9 @@ def execute(plan_data):
         "--use-host-config",
         f"--releasever={releasever}",
         f"--repofrompath=piano-local,{rpms_dir}",
-        # The piano repository must win every name it provides. Fedora updates
-        # carries a newer mesa than the locally built piano1 RPM; without a
-        # priority dnf installed the distro Mesa
-        # and finalize then rejected the image because the package was not the
-        # verified A830v1 build. A lower value means a higher priority.
+        # 矩阵里的包与 Fedora 同名，piano-local 必须赢；数值越小优先级越高。
+        # 图形栈不走这条路：它们换了包名（mesa-piano-*、ffmpeg-piano），由
+        # profile 显式点名，再用 Provides/Conflicts 顶掉官方包。
         "--setopt=piano-local.priority=1",
         "--setopt=install_weak_deps=False",
         "--setopt=tsflags=nodocs",

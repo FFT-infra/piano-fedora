@@ -244,10 +244,10 @@ def main():
     check("sanitize_rootfs_identity" in source,
           "build-clean-rootfs.py must sanitize rootfs machine identity")
 
-    # 9. 本地 piano 仓库必须压过 Fedora 官方仓库。Fedora 44 updates 的
-    #    mesa-26.2.4-1.fc44 版本号高于自建的 26.2.3-1.piano1.fc44，没有
-    #    priority 时 dnf 选上游包，finalize 再以“不是已验证的 A830v1 构建”
-    #    拒绝整张镜像。
+    # 9. 本地 piano 仓库必须压过 Fedora 官方仓库。矩阵里的包与 Fedora 同名，
+    #    没有 priority 时 dnf 会挑上游那个。图形栈不走这条路：mesa 与 ffmpeg
+    #    换了包名（mesa-piano-*、ffmpeg-piano），由 profile 点名，再用
+    #    Provides/Conflicts 顶掉官方包。
     check("piano-local.priority=1" in source,
           "build-clean-rootfs.py must give the piano-local repository a lower "
           "priority number than the distro repositories, otherwise dnf installs "

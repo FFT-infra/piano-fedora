@@ -260,12 +260,13 @@ def test_build_failure_is_not_success(module):
         module.run_cli = original
 
 
-def make_graphics(directory, name, *, epoch=1, status=None, drop_srpm=False,
+def make_graphics(directory, name, *, source=None, status=None, drop_srpm=False,
                   corrupt=None):
     """造一个图形栈 artifact：manifest + rpms/ + srpms/。
 
-    这两个包的发布前提是 epoch，没有它就压不住 Fedora 官方版本，所以
-    测试里把 epoch 也当作可篡改的字段。
+    这两个包的发布前提是改名：源包名写成 mesa-piano / ffmpeg-piano，构件
+    却还是 Fedora 的原名时，发出去设备照样会被官方版盖掉，所以测试里把
+    源包名也当作可篡改的字段。
     """
     import hashlib
 
@@ -274,17 +275,18 @@ def make_graphics(directory, name, *, epoch=1, status=None, drop_srpm=False,
     (directory / "srpms").mkdir(parents=True, exist_ok=True)
     status = status or {"mesa": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED",
                         "ffmpeg": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED"}[name]
+    source = source or {"mesa": "mesa-piano", "ffmpeg": "ffmpeg-piano"}[name]
     rpm_payload = f"{name} binary".encode()
-    rpm_name = f"{name}-1.0-1.piano1.fc44.aarch64.rpm"
+    rpm_name = f"{source}-1.0-1.piano1.fc44.aarch64.rpm"
     (directory / "rpms" / rpm_name).write_bytes(rpm_payload)
     srpm_payload = f"{name} source".encode()
-    srpm_name = f"{name}-1.0-1.piano1.fc44.src.rpm"
+    srpm_name = f"{source}-1.0-1.piano1.fc44.src.rpm"
     if not drop_srpm:
         (directory / "srpms" / srpm_name).write_bytes(srpm_payload)
     digest = lambda data: hashlib.sha256(data).hexdigest()
     manifest = {
         "status": status,
-        "epoch": epoch,
+        "source_package": source,
         "rpms": {rpm_name: {"bytes": len(rpm_payload), "sha256": digest(rpm_payload)}},
         "srpms": {srpm_name: {"bytes": len(srpm_payload), "sha256": digest(srpm_payload)}},
     }
@@ -294,21 +296,33 @@ def make_graphics(directory, name, *, epoch=1, status=None, drop_srpm=False,
     return directory
 
 
-def test_graphics_require_epoch(module, tmp):
+def test_graphics_require_rename(module, tmp):
     good = make_graphics(tmp / "graphics-ok", "mesa")
     info = module.verify_graphics(good, "mesa")
-    assert info["epoch"] == 1 and info["srpm"].endswith(".src.rpm"), info
+    assert info["source_package"] == "mesa-piano" and info["srpm"].endswith(".src.rpm"), info
     assert info["rpm_count"] == 1
 
-    # 没有 epoch 的产物不许发布：这正是本次事故的成因，发出去了也压不住
-    # Fedora updates 里的 26.2.5。
-    bare = make_graphics(tmp / "graphics-noepoch", "mesa", epoch=None)
-    expect_error(module, lambda: module.verify_graphics(bare, "mesa"), "epoch 1")
+    # 还是 Fedora 原包名的产物不许发布：它没有 Provides/Conflicts 的原名声明，
+    # 设备上会被官方版直接盖掉。
+    original = make_graphics(tmp / "graphics-original", "mesa", source="mesa")
+    expect_error(module, lambda: module.verify_graphics(original, "mesa"),
+                 "source package")
+
+    # 源包名对了、二进制还是 Fedora 原名，同样不许发布。
+    unrenamed = make_graphics(tmp / "graphics-rpmname", "mesa")
+    manifest = json.loads((unrenamed / "manifest.json").read_text())
+    old, new = ("mesa-piano-1.0-1.piano1.fc44.aarch64.rpm",
+                "mesa-dri-drivers-1.0-1.piano1.fc44.aarch64.rpm")
+    (unrenamed / "rpms" / old).rename(unrenamed / "rpms" / new)
+    manifest["rpms"][new] = manifest["rpms"].pop(old)
+    (unrenamed / "manifest.json").write_text(json.dumps(manifest))
+    expect_error(module, lambda: module.verify_graphics(unrenamed, "mesa"),
+                 "not a renamed")
 
 
 def test_graphics_reject_tampered_and_incomplete(module, tmp):
     corrupt = make_graphics(tmp / "graphics-tamper", "ffmpeg",
-                            corrupt="rpms/ffmpeg-1.0-1.piano1.fc44.aarch64.rpm")
+                            corrupt="rpms/ffmpeg-piano-1.0-1.piano1.fc44.aarch64.rpm")
     expect_error(module, lambda: module.verify_graphics(corrupt, "ffmpeg"), "changed")
     missing = make_graphics(tmp / "graphics-nosrpm", "ffmpeg", drop_srpm=True)
     expect_error(module, lambda: module.verify_graphics(missing, "ffmpeg"), "SRPM")
@@ -337,9 +351,11 @@ def test_build_scripts_ship_srpms():
         assert '"-bb"' not in text, f"{path.name} still builds binaries only"
         assert "srpms.mkdir()" in text, f"{path.name} must stage srpms/"
         assert 'srpms":' in text, f"{path.name} must record the SRPM in its manifest"
-        # Epoch 必须是模块级常量并被写进 spec，而不是只出现在注释里。
-        assert re.search(r"^EPOCH = \"\d+\"$", text, re.M), f"{path.name} has no pinned epoch"
-        assert "Epoch:" in text, f"{path.name} never writes an Epoch into the spec"
+        # 改名必须是模块级常量，而且真的写进 spec 的 Name / pkg_suffix。
+        assert re.search(r"^SOURCE_PACKAGE = \"\w+-piano\"$", text, re.M), \
+            f"{path.name} has no renamed source package"
+        assert "Conflicts:" in text, f"{path.name} never conflicts with the Fedora package"
+        assert "Epoch:" not in text, f"{path.name} should not fall back to an epoch"
     # workflow 必须把 srpms 打进 artifact，否则上传的压缩包里没有源包。
     for path in (ROOT / ".github/workflows/build-mesa.yml",
                  ROOT / ".github/workflows/build-ffmpeg.yml"):
@@ -406,10 +422,10 @@ def test_device_verifier_contract():
     assert "kernel_visibility" in text
     assert "does not carry kernel-piano" in text
     assert "still excludes kernel-piano" in text
-    # 图形栈也在仓库里，且断言它们带 epoch（否则仍会被官方 updates 覆盖）。
-    assert "mesa-dri-drivers" in text and "ffmpeg-free" in text
-    assert "graphics_epochs" in text
-    assert "carries no epoch" in text
+    # 图形栈也在仓库里，且断言它们是改名后的包（否则仍会被官方 updates 覆盖）。
+    assert "mesa-piano-dri-drivers" in text and "ffmpeg-piano" in text
+    assert "graphics_renames" in text
+    assert "a fresh install would pick the official build" in text
 
 
 def test_device_verifier_fetches_compressed_repodata():
@@ -476,7 +492,7 @@ def main():
         test_missing_rpm(module, tmp)
         test_missing_srpm(module, tmp)
         test_bad_kernel_run(module, tmp)
-        test_graphics_require_epoch(module, tmp)
+        test_graphics_require_rename(module, tmp)
         test_graphics_reject_tampered_and_incomplete(module, tmp)
         test_copr_config_is_private_and_removed(module, tmp, _MonkeyPatch())
         test_project_create_is_idempotent(module, tmp)

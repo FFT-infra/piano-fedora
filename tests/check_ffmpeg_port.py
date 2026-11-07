@@ -96,26 +96,37 @@ def check_decoders():
 
 def check_spec():
     names = sorted("sunuefi-" + name for name in ffmpeg.PORT_SHA256)
-    synthetic = ("Name:           ffmpeg\nVersion:        9.0.2\nRelease:        3%{?dist}\n"
+    subpackages = "".join(f"{anchor}Summary:        {fedora}\n"
+                          for anchor, fedora in ffmpeg.REPLACES.items())
+    synthetic = ("%global pkg_suffix -free\n"
+                 "Name:           ffmpeg\nVersion:        9.0.2\nRelease:        3%{?dist}\n"
                  "Patch11:        ffmpeg-foo.patch\n"
                  "Patch1002:      ffmpeg-chromium.patch\n"
+                 + subpackages +
                  "Requires:       libavcodec%{?pkg_suffix}%{_isa} = %{version}-%{release}\n"
                  "\n%autosetup -S git_am\n")
     raw = synthetic.encode()
     with pinned("SPEC_SHA256", hashlib.sha256(raw).hexdigest()):
         adapted = ffmpeg.adapt_spec(raw, names)
     assert "Release:        3.piano1%{?dist}\n" in adapted
-    # 官方版本号一旦超过 9.0.2，只有 epoch 能让补丁版继续排在它之上。
-    assert f"Epoch:          {ffmpeg.EPOCH}\n" in adapted, adapted
-    # 加了 epoch 之后，包内精确版本依赖必须一起带前缀，否则子包互相装不上：
-    # rpm 认为 `= 9.0.2-3.piano1` 不等于 `= 1:9.0.2-3.piano1`。
+    # 改名压过官方版：子包全部带 -piano 后缀，各自声明替代的 Fedora 原名。
+    assert ffmpeg.SPEC_SUFFIX_NEW in adapted, adapted
+    assert "%global pkg_suffix -free\n" not in adapted, adapted
+    assert "Epoch:" not in adapted
+    for anchor, fedora in ffmpeg.REPLACES.items():
+        assert anchor in adapted, anchor
+        assert f"Provides:       {fedora} = %{{version}}-%{{release}}\n" in adapted, adapted
+        assert f"Conflicts:      {fedora}%{{?_isa}}\n" in adapted, adapted
+    # 改名之后包内精确版本依赖原样保留，不需要任何 epoch 前缀。
     assert ("Requires:       libavcodec%{?pkg_suffix}%{_isa} = "
-            "%{?epoch:%{epoch}:}%{version}-%{release}\n") in adapted, adapted
+            "%{version}-%{release}\n") in adapted, adapted
     # 编号必须排在 Fedora 现有的最大补丁号之后，%autopatch 才按顺序把 BSP 补丁放在最后。
     declared = "".join(f"Patch{2001 + index}:      {name}\n" for index, name in enumerate(names))
     assert "Patch1002:      ffmpeg-chromium.patch\n" + declared in adapted, adapted
     for broken in (synthetic.replace("Patch1002", "Patch1001"),
-                   synthetic.replace("Release:        3%{?dist}\n", "")):
+                   synthetic.replace("Release:        3%{?dist}\n", ""),
+                   synthetic.replace("%global pkg_suffix -free\n", ""),
+                   synthetic.replace("%package -n libswscale%{?pkg_suffix}\n", "")):
         try:
             with pinned("SPEC_SHA256", hashlib.sha256(broken.encode()).hexdigest()):
                 ffmpeg.adapt_spec(broken.encode(), names)

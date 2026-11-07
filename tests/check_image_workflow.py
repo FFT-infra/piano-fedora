@@ -47,23 +47,30 @@ def check_mesa(root):
         assert args[args.index("--spec") + 1] == str(spec), args
         assert args[args.index("--srpm") + 1] == str(srpm), args
         assert "_topdir " + str(top) in args, args
-    # 官方 mesa 版本号会一直往上走，只有 epoch 能让补丁版压过它。
+    # 补丁版靠改名压过官方版：改 Name、给六个运行时子包补 Provides/Conflicts，
+    # 并把 %autosetup 的 -n 指回 tarball 解出来的目录名。不用 epoch。
+    subpackages = "".join(f"%package {sub}\nSummary:        {sub}\n" for sub in mesa.REPLACES)
     synthetic = ("Name:           mesa\nVersion:        26.2.3\nRelease:        %autorelease\n"
-                 "Requires:       %{name}-libgbm%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}\n"
-                 "\n%description\nmesa\n")
+                 "%autosetup -n %{name}-%{ver} -p1\n" + subpackages
+                 + "\n%description\nmesa\n")
     with patch.object(mesa, "SPEC_SHA256", hashlib.sha256(synthetic.encode()).hexdigest()):
         adapted = mesa.adapt_spec(synthetic.encode())
-    assert f"Epoch:          {mesa.EPOCH}\n" in adapted, adapted
-    # 裸 %{version}-%{release} 依赖加了 epoch 就失配，必须当布局变化拒绝，
-    # 而不是产出一批装不上的包。
-    bare = synthetic.replace("= %{?epoch:%{epoch}:}%{version}-%{release}", "= %{version}-%{release}")
+    assert "Name:           mesa-piano\n" in adapted, adapted
+    assert "%autosetup -n mesa-%{ver} -p1\n" in adapted, adapted
+    assert "Epoch:" not in adapted
+    for sub, fedora in mesa.REPLACES.items():
+        assert f"Provides:       {fedora} = %{{version}}-%{{release}}\n" in adapted, adapted
+        assert f"Conflicts:      {fedora}%{{?_isa}}\n" in adapted, adapted
+    assert set(mesa.PACKAGES) == {f"mesa-piano-{sub}" for sub in mesa.REPLACES}
+    # 少一个子包锚点就必须停：没有替代声明的包既压不住官方版，也会装出两份。
+    broken = synthetic.replace("%package vulkan-drivers\n", "")
     try:
-        with patch.object(mesa, "SPEC_SHA256", hashlib.sha256(bare.encode()).hexdigest()):
-            mesa.adapt_spec(bare.encode())
+        with patch.object(mesa, "SPEC_SHA256", hashlib.sha256(broken.encode()).hexdigest()):
+            mesa.adapt_spec(broken.encode())
     except ValueError as error:
-        assert "epoch" in str(error), error
+        assert "layout" in str(error), error
     else:
-        raise AssertionError("a bare versioned dependency survived the epoch bump")
+        raise AssertionError("a spec without a runtime subpackage was accepted")
     header = bytearray(64)
     header[:5] = b"\x7fELF\x02"
     struct.pack_into("<H", header, 18, 183)

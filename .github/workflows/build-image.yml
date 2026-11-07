@@ -284,7 +284,7 @@ jobs:
               "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
               "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
               "piano-runtime", "librevm", "piano-crosvm",
-              "mesa-dri-drivers", "ffmpeg-free", "kernel-piano",
+              "mesa-piano-dri-drivers", "ffmpeg-piano", "kernel-piano",
           }
           missing = sorted(required - names)
           assert not missing, f"rootfs lacks release packages: {missing}"

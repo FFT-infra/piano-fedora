@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import platform
-import re
 import shutil
 import struct
 import subprocess
@@ -22,24 +21,31 @@ SPEC_SHA256 = "b3988d190cc451f6984b7a768caa4105c59df22213b5341f4938b715bb4af286"
 TARBALL_SHA256 = "b9436b3e1a8be76fbd4823dc884f90596ab7c6ac5e1867a305e66ffccfb31a92"
 PATCH = "0001-freedreno-Add-chip-id-support-for-A830v1.patch"
 PATCH_SHA256 = "01bc8e6b35019f7d6b84bc2d919a60686ffb1742d4df04467a89d3aac22a7380"
-PACKAGES = {"mesa-filesystem", "mesa-libGL", "mesa-libEGL", "mesa-libgbm",
-            "mesa-dri-drivers", "mesa-vulkan-drivers"}
+# 官方 Mesa 的版本号会一直往上走，26.2.6-1.piano1 在版本序上低于 26.2.7-1。
+# 抬 epoch 能压住，但 epoch 卸不掉：补丁进了上游之后，回到 Fedora 的 mesa
+# 要每台设备手工 distro-sync。这里改用 RPM Fusion 对同一个包的做法：换包名，
+# 声明它提供原名并与原名冲突。设备上装的从来不是 Fedora 的 mesa-libGL，
+# dnf upgrade 就没有可升级的目标，装了哪一版也能从包名直接看出来。
+SOURCE_PACKAGE = "mesa-piano"
+# 出货的六个运行时子包，以及它们替代的 Fedora 包名。spec 里的子包名和 30 条
+# 精确版本依赖都写 %{name}，改 Name 一处就全部跟着变；这里只给每个子包补上
+# 它替代的原名。Fedora 增删子包时这张表要人工过一遍，整份 spec 的摘要已经
+# 钉住了这种变化。
+REPLACES = {
+    "filesystem": "mesa-filesystem",
+    "libGL": "mesa-libGL",
+    "libEGL": "mesa-libEGL",
+    "dri-drivers": "mesa-dri-drivers",
+    "libgbm": "mesa-libgbm",
+    "vulkan-drivers": "mesa-vulkan-drivers",
+}
+PACKAGES = {f"{SOURCE_PACKAGE}-{sub}" for sub in REPLACES}
 CHIP_ID = 0xffff44050001
 GALLIUM = "libgallium-26.2.6.so"
-# 官方 Mesa 的版本号会一直往上走，仅靠 release 后缀的 piano1 压不住它：
-# 26.2.6-1.piano1 < 26.2.7-1。发布到 COPR 之后设备要做的是升级而不是
-# 重装，仓库 priority 只能让新装选对包，救不回已经被官方版覆盖的系统，
-# 所以这里抬高 epoch。Epoch 是版本序里最高的一档，1:26.2.6 大于 0:26.2.7。
-EPOCH = "1"
-# 加 epoch 之后，包内那些写成 `Requires: x = %{version}-%{release}` 的精确
-# 版本依赖会失配：rpm 认为 `= 26.2.6-1.piano1` 不等于 `= 1:26.2.6-1.piano1`。
-# Fedora 的 mesa spec 这 30 行都自带 %{?epoch:%{epoch}:}，所以 mesa 只需要
-# 插 Release 与 Epoch；FFmpeg 的 spec 一行都没写，那边必须连依赖一起改。
-# 这里断言"没有需要改的行"，上游一旦引入新的裸版本依赖就会立刻失败。
-BARE_VERSION_DEP = re.compile(
-    r"^(?:Requires|Provides|Conflicts|Obsoletes|Recommends|Suggests):"
-    r"(?!.*%\{\?epoch:).*?%\{version\}-%\{release\}",
-    re.M)
+SPEC_NAME = "Name:           mesa\n"
+SPEC_RELEASE = "Release:        %autorelease\n"
+SPEC_SETUP = "%autosetup -n %{name}-%{ver} -p1\n"
+SPEC_DESCRIPTION = "\n%description\n"
 
 
 def run(*command):
@@ -61,18 +67,27 @@ def adapt_spec(raw):
     if hashlib.sha256(raw).hexdigest() != SPEC_SHA256:
         raise ValueError("Fedora Mesa spec changed; review the recipe")
     text = raw.decode()
-    old = "Release:        %autorelease\n"
-    if text.count(old) != 1 or text.count("\n%description\n") != 1:
-        raise ValueError("unexpected Fedora Mesa spec layout")
-    # Fedora 的 mesa 子包依赖已经统一写成 %{?epoch:%{epoch}:}%{version}-%{release}，
-    # 加 epoch 不需要动它们。真出现裸 %{version} 的精确依赖就停下重新审核，
-    # 而不是让构建产出一批装不上的包。
-    bare = BARE_VERSION_DEP.findall(text)
-    if bare:
-        raise ValueError("Fedora Mesa spec has versioned dependencies without an epoch "
-                         f"prefix: {bare[:3]}")
-    return text.replace(old, f"Release:        %autorelease -e piano1\nEpoch:          {EPOCH}\n").replace(
-        "\n%description\n", "\nPatch999:       piano-a830v1.patch\n\n%description\n", 1)
+    for anchor in (SPEC_NAME, SPEC_RELEASE, SPEC_SETUP, SPEC_DESCRIPTION):
+        if text.count(anchor) != 1:
+            raise ValueError("unexpected Fedora Mesa spec layout: " + anchor.strip())
+    # 子包名与精确版本依赖都是 %{name}-<sub>，改这一处就整份跟着变。
+    text = text.replace(SPEC_NAME, f"Name:           {SOURCE_PACKAGE}\n")
+    # %autosetup 的 -n 原本取 %{name}-%{ver}。改名之后那个目录不存在，tarball
+    # 解出来仍然是 mesa-26.2.6。
+    text = text.replace(SPEC_SETUP, "%autosetup -n mesa-%{ver} -p1\n")
+    text = text.replace(SPEC_RELEASE, "Release:        %autorelease -e piano1\n")
+    # 每个子包声明它替代的 Fedora 包名：Provides 让依赖原名的东西继续解析，
+    # Conflicts 保证两个版本不会同时装进设备。
+    for sub, fedora in REPLACES.items():
+        anchor = f"%package {sub}\n"
+        if text.count(anchor) != 1:
+            raise ValueError("unexpected Fedora Mesa spec layout: " + anchor.strip())
+        text = text.replace(anchor, anchor + (
+            f"Provides:       {fedora} = %{{version}}-%{{release}}\n"
+            f"Provides:       {fedora}%{{?_isa}} = %{{version}}-%{{release}}\n"
+            f"Conflicts:      {fedora}%{{?_isa}}\n"), 1)
+    return text.replace(SPEC_DESCRIPTION,
+                        "\nPatch999:       piano-a830v1.patch\n\n%description\n", 1)
 
 
 def driver_proof(root):
@@ -129,8 +144,8 @@ def build(sun, output):
     built = sorted((top / "SRPMS").glob("*.src.rpm"))
     if len(built) != 1:
         raise ValueError(f"expected one Mesa SRPM, found {[p.name for p in built]}")
-    if query("rpm", "-qp", "--qf", "%{EPOCHNUM} %{NAME}", built[0]) != EPOCH + " mesa":
-        raise ValueError("the Mesa SRPM does not carry the pinned epoch")
+    if query("rpm", "-qp", "--qf", "%{NAME}", built[0]) != SOURCE_PACKAGE:
+        raise ValueError("the Mesa SRPM is not the renamed piano source package")
     shutil.copyfile(built[0], srpms / built[0].name)
     rpms = output / "rpms"
     rpms.mkdir()
@@ -159,8 +174,8 @@ def build(sun, output):
     packages = query("rpm", "-qa", "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n")
     (output / "builder-packages.tsv").write_text("\n".join(sorted(packages.splitlines())) + "\n")
     result = {"status": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED", "releasever": "45",
-              "arch": "aarch64", "chip_id": hex(CHIP_ID), "epoch": int(EPOCH),
-              "source_url": SOURCE_URL,
+              "arch": "aarch64", "chip_id": hex(CHIP_ID), "source_package": SOURCE_PACKAGE,
+              "replaces": dict(REPLACES), "source_url": SOURCE_URL,
               "source_rpm_sha256": SOURCE_SHA256, "source_tarball_sha256": TARBALL_SHA256,
               "original_spec_sha256": SPEC_SHA256, "effective_spec_sha256": sha256(spec),
               "patch_commit": lock["commit"], "patch_sha256": PATCH_SHA256,

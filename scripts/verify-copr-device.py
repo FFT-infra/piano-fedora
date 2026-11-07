@@ -26,6 +26,10 @@ from pathlib import Path
 DEFAULT_REPO_ID = "copr:copr.fedorainfracloud.org:xinyang26:piano-fedora"
 DEFAULT_BASEURL = "https://download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/"
 KERNEL_PACKAGE = "kernel-piano"
+# 图形栈的补丁版改用改名包，这里列的是仓库里必须出现的新名字，以及它们
+# 替代的 Fedora 原名。
+GRAPHICS_RENAMES = {"mesa-piano-dri-drivers": "mesa-dri-drivers",
+                    "ffmpeg-piano": "ffmpeg-free"}
 
 
 def run(args, *, check=True, sudo=False, binary=False, timeout=None):
@@ -132,27 +136,16 @@ def repoquery_kernel(baseurl):
             "stderr": result.stderr.strip()[:2000]}
 
 
-def graphics_epochs(baseurl):
-    """确认仓库里 mesa / ffmpeg 的补丁版真的带 epoch。
+def graphics_renames(names):
+    """确认仓库里是改名后的补丁版，且没有同名的 Fedora 包一起出现。
 
-    没有 epoch 的话，`26.2.6-1.piano1` 在版本序上低于 Fedora updates 的
-    `26.2.7-1`，发布出去也压不住，设备 dnf upgrade 仍会退回官方版本。
+    mesa 与 ffmpeg 的补丁版换成 mesa-piano-* 与 ffmpeg-piano / libavcodec-piano，
+    再声明提供 Fedora 的原名、与原名冲突。两个名字都进仓库时，全新安装
+    会优先选名字完全匹配的那个，补丁版就被绕过去了。
     """
-    result = run([
-        "dnf", "repoquery",
-        "--disablerepo=*", f"--repofrompath=coprcheck,{baseurl}",
-        f"--setopt=coprcheck.baseurl={baseurl}",
-        "--setopt=coprcheck.gpgcheck=1", "--setopt=coprcheck.repo_gpgcheck=0",
-        "--setopt=coprcheck.skip_if_unavailable=True",
-        "--qf", "%{name} %{epoch} %{version}-%{release}",
-        "mesa-dri-drivers", "ffmpeg-free",
-    ], check=False, timeout=180)
-    found = {}
-    for line in result.stdout.splitlines():
-        fields = line.split()
-        if len(fields) == 3:
-            found[fields[0]] = {"epoch": fields[1], "evr": fields[2]}
-    return {"packages": found, "stderr": result.stderr.strip()[:2000]}
+    names = set(names)
+    return {ours: {"present": ours in names, "fedora_name_present": fedora in names}
+            for ours, fedora in GRAPHICS_RENAMES.items()}
 
 
 def upgrade_dry_run():
@@ -192,16 +185,16 @@ def main():
             "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
             "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
             "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
-            # 图形栈：这两个是本地重建的 Fedora 包，靠 epoch 压过官方版本。
-            # 仓库里没有它们，设备 dnf upgrade 就会被官方 mesa / ffmpeg 覆盖。
-            "mesa-dri-drivers", "ffmpeg-free",
+            # 图形栈：这两个是本地重建的包，靠改名后声明 Provides/Conflicts
+            # 压过官方版本。仓库里没有它们，设备 dnf upgrade 就会装回官方版。
+            "mesa-piano-dri-drivers", "ffmpeg-piano",
         }
         missing = sorted(expected - set(names))
         if missing:
             problems.append("repository is missing: " + ", ".join(missing))
         record["missing_packages"] = missing
-        # epoch 是这两个包唯一能压过官方版的依据，缺了就等于没发。
-        record["graphics_epochs"] = graphics_epochs(baseurl)
+        # 改名是这两个包压过官方版的依据，名字错了就等于没发。
+        record["graphics_renames"] = graphics_renames(names)
     except (RuntimeError, OSError) as error:
         problems.append(f"cannot read repodata: {error}")
 
@@ -228,15 +221,16 @@ def main():
     except (RuntimeError, OSError) as error:
         problems.append(f"repoquery failed: {error}")
 
-    # 图形栈的补丁版必须带 epoch。发布记录里写了 epoch 不等于仓库里有：
-    # COPR 会忽略 SRPM 头里被 spec 覆盖的字段，唯一可信的是仓库自身。
-    for name in ("mesa-dri-drivers", "ffmpeg-free"):
-        row = record.get("graphics_epochs", {}).get("packages", {}).get(name)
-        if row is None:
+    # 仓库里只能有改名后的包。两个名字都在时，全新安装会优先选名字完全
+    # 匹配的 Fedora 包，补丁版就被绕过去了。发布记录里写了改名不等于仓库
+    # 里真的改了：唯一可信的是仓库自身。
+    for ours, row in record.get("graphics_renames", {}).items():
+        if not row["present"]:
             continue  # 缺失已经在 missing_packages 里报过
-        if row["epoch"] in ("", "0", "(none)"):
-            problems.append(f"{name} in the repository carries no epoch; "
-                            "the official Fedora build still wins")
+        if row["fedora_name_present"]:
+            fedora = GRAPHICS_RENAMES[ours]
+            problems.append(f"repository still ships {fedora} next to {ours}; "
+                            "a fresh install would pick the official build")
 
     if args.install_test:
         try:

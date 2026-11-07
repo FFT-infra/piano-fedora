@@ -30,9 +30,11 @@ PIANO_DEBUG_NCM_ADDRESS = "192.168.77.1/30"
 PIANO_DEBUG_NM_UUID = "5b1c9a2e-6f3d-4a71-8c2b-0d4e5f607182"
 
 # 重建 FFmpeg 只装运行时库和 CLI；-devel 与 freeworld 不进设备镜像。集合必须
-# 恰好等于这 8 个，空集合或漏包都要拒绝，否则 NEVRA 校验会被空清单绕过。
-FFMPEG_PACKAGES = {"ffmpeg-free", "libavcodec-free", "libavdevice-free", "libavfilter-free",
-                   "libavformat-free", "libavutil-free", "libswresample-free", "libswscale-free"}
+# 恰好等于这 8 个改名后的包，空集合或漏包都要拒绝，否则 NEVRA 校验会被空清单
+# 绕过。名字带 -piano 是压住官方版的手段：它们声明 Provides 原名、与原名冲突。
+FFMPEG_PACKAGES = {"ffmpeg-piano", "libavcodec-piano", "libavdevice-piano",
+                   "libavfilter-piano", "libavformat-piano", "libavutil-piano",
+                   "libswresample-piano", "libswscale-piano"}
 
 
 def chroot(root, *command):
@@ -603,11 +605,11 @@ def verify_device_integration(root, runtime_meta):
 
 
 def verify_ffmpeg_install(root, ffmpeg, releasever):
-    """拒绝装成官方 ffmpeg-free 或漏装解码器的镜像。
+    """拒绝装成官方 ffmpeg 或漏装解码器的镜像。
 
     与 Mesa 一样，逐个核对已安装包的 NEVRA 是否就是本次重建的产物；再在目标树里
     真跑一次 `ffmpeg -decoders`，确认两个 v4l2m2m 解码器真的注册进来，而不是只把
-    RPM 拷进去。官方 ffmpeg-free 的 release 更低，dnf 会把它升级成 piano1 产物。
+    RPM 拷进去。重建的包改名成 -piano，官方包与它冲突，两者不会同时出现。
     """
     if (ffmpeg.get("status"), ffmpeg.get("releasever"), ffmpeg.get("arch")) != (
             "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", str(releasever), "aarch64"):

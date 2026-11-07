@@ -80,8 +80,8 @@ def check_diagnostics_paths():
 
 
 def manifest():
-    names = ("ffmpeg-free", "libavcodec-free", "libavdevice-free", "libavfilter-free",
-             "libavformat-free", "libavutil-free", "libswresample-free", "libswscale-free")
+    names = ("ffmpeg-piano", "libavcodec-piano", "libavdevice-piano", "libavfilter-piano",
+             "libavformat-piano", "libavutil-piano", "libswresample-piano", "libswscale-piano")
     packages = {name: {"file": name + ".rpm", "nevra": f"{name}-9.0.2-3.piano1.fc45.aarch64"}
                 for name in names}
     return {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "releasever": "45",
@@ -108,7 +108,7 @@ def check_install_verification():
     with patch.object(finalizer, "chroot", fake_chroot()):
         finalizer.verify_ffmpeg_install(root, good, "45")
     # 包集合必须恰好是那 8 个：空集合或漏包都不能靠 NEVRA 循环绕过。
-    for bad in ({}, {"ffmpeg-free": good["packages"]["ffmpeg-free"]}):
+    for bad in ({}, {"ffmpeg-piano": good["packages"]["ffmpeg-piano"]}):
         with patch.object(finalizer, "chroot", fake_chroot()):
             try:
                 finalizer.verify_ffmpeg_install(root, {**good, "packages": bad}, "45")
@@ -118,13 +118,13 @@ def check_install_verification():
                 raise AssertionError("an incomplete FFmpeg package set was accepted")
     # 官方未改包（release 不是 piano1）必须停。
     with patch.object(finalizer, "chroot",
-                      fake_chroot(nevra_override={"ffmpeg-free": "ffmpeg-free-9.0.2-3.fc45.aarch64"})):
+                      fake_chroot(nevra_override={"ffmpeg-piano": "ffmpeg-piano-9.0.2-3.fc45.aarch64"})):
         try:
             finalizer.verify_ffmpeg_install(root, good, "45")
         except ValueError as error:
             assert "differs" in str(error), error
         else:
-            raise AssertionError("an unpatched ffmpeg-free package was accepted")
+            raise AssertionError("an unpatched ffmpeg package was accepted")
     # 缺解码器（例如 -decoders 里只有 h264）必须停。
     with patch.object(finalizer, "chroot", fake_chroot(decoders="h264_v4l2m2m")):
         try:

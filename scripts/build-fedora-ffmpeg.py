@@ -15,7 +15,6 @@ import hashlib
 import json
 import os
 import platform
-import re
 import shutil
 import subprocess
 import urllib.request
@@ -33,22 +32,30 @@ SPEC_RELEASE_OLD = "Release:        3%{?dist}\n"
 SPEC_RELEASE_NEW = "Release:        3.piano1%{?dist}\n"
 SPEC_PATCH_ANCHOR = "Patch1002:      ffmpeg-chromium.patch\n"
 RELEASE = "3.piano1.fc45"
-# 同一个理由：官方版本号一旦走到 9.0.3，release 后缀的 piano1 就压不住了，
-# 发布到 COPR 之后要靠 epoch 让补丁版永远排在官方版之上。
-EPOCH = "1"
-EPOCH_LINE = f"Epoch:          {EPOCH}\n"
-# Fedora 的 ffmpeg spec 里 64 行包内精确依赖写成 `= %{version}-%{release}`，
-# 不带 epoch 前缀。加了 Epoch 之后这些依赖会失配（rpm 认为 `= 9.0.2-3.piano1`
-# 不等于 `= 1:9.0.2-3.piano1`），装包时直接 Failed dependencies。mesa 的 spec
-# 已经统一写成 %{?epoch:%{epoch}:}，ffmpeg 的没有，所以这里逐行补前缀。
-# 只改版本比较的右值，标签与包名不动；%autorelease/%autochangelog 不受影响。
-VERSIONED_DEP = re.compile(
-    r"^((?:Requires|Provides|Conflicts|Obsoletes|Recommends|Suggests):[^\n]*?)"
-    r"%\{version\}-%\{release\}",
-    re.M)
+# 官方版本号一旦走到 9.0.3，release 后缀的 piano1 就压不住了。抬 epoch 能压住，
+# 但 epoch 卸不掉：补丁进了上游之后回不到 Fedora 的包。这里改用 RPM Fusion
+# 对同一个包的做法：换包名，声明它提供原名并与原名冲突。
+SOURCE_PACKAGE = "ffmpeg-piano"
+# Fedora 的 spec 用一个开关区分 free 与完整编解码器两版：`pkg_suffix` 默认
+# `-free`，所有 17 个子包名和 75 条依赖都跟着它走。把它改成 `-piano`，整份
+# 配方就变成改名版，不用逐行改依赖。
+SPEC_SUFFIX_OLD = "%global pkg_suffix -free\n"
+SPEC_SUFFIX_NEW = "%global pkg_suffix -piano\n"
+# 每个出货子包的锚点 -> 它替代的 Fedora 包名。锚点必须唯一，改名后的包名由
+# 锚点里的宏展开得到。
+REPLACES = {
+    "%package -n     %{pkg_name}\n": "ffmpeg-free",
+    "%package -n libavcodec%{?pkg_suffix}\n": "libavcodec-free",
+    "%package -n libavdevice%{?pkg_suffix}\n": "libavdevice-free",
+    "%package -n libavfilter%{?pkg_suffix}\n": "libavfilter-free",
+    "%package -n libavformat%{?pkg_suffix}\n": "libavformat-free",
+    "%package -n libavutil%{?pkg_suffix}\n": "libavutil-free",
+    "%package -n libswresample%{?pkg_suffix}\n": "libswresample-free",
+    "%package -n libswscale%{?pkg_suffix}\n": "libswscale-free",
+}
 # 只有运行时库和 CLI，-devel 与 freeworld 不装进设备镜像。
-PACKAGES = {"ffmpeg-free", "libavcodec-free", "libavdevice-free", "libavfilter-free",
-            "libavformat-free", "libavutil-free", "libswresample-free", "libswscale-free"}
+PACKAGES = {"ffmpeg-piano", "libavcodec-piano", "libavdevice-piano", "libavfilter-piano",
+            "libavformat-piano", "libavutil-piano", "libswresample-piano", "libswscale-piano"}
 # 解码器名 -> 在 enable_decoders 里插到哪一行之后（该文件按字母序排列）。
 DECODERS = {"h264_v4l2m2m": "h263p", "hevc_v4l2m2m": "hdr"}
 
@@ -133,13 +140,21 @@ def adapt_spec(raw, names):
     text = raw.decode()
     if text.count(SPEC_RELEASE_OLD) != 1 or text.count(SPEC_PATCH_ANCHOR) != 1:
         raise ValueError("unexpected Fedora FFmpeg spec layout")
+    if text.count(SPEC_SUFFIX_OLD) != 1:
+        raise ValueError("unexpected Fedora FFmpeg spec suffix switch")
     declared = "".join(f"Patch{2001 + index}:      {name}\n" for index, name in enumerate(names))
-    text = text.replace(SPEC_RELEASE_OLD, SPEC_RELEASE_NEW + EPOCH_LINE).replace(
+    text = text.replace(SPEC_RELEASE_OLD, SPEC_RELEASE_NEW).replace(
         SPEC_PATCH_ANCHOR, SPEC_PATCH_ANCHOR + declared, 1)
-    # 加 epoch 之后必须同步给包内精确版本依赖补前缀，否则子包互相装不上。
-    # SPEC_SHA256 已经钉住整份 spec，行数是确定的，不需要再数一遍。
-    text, _ = VERSIONED_DEP.subn(
-        lambda match: match.group(1) + "%{?epoch:%{epoch}:}%{version}-%{release}", text)
+    text = text.replace(SPEC_SUFFIX_OLD, SPEC_SUFFIX_NEW)
+    # 每个子包声明它替代的 Fedora 包名：Provides 让依赖原名的东西继续解析，
+    # Conflicts 保证两个版本不会同时装进设备。
+    for anchor, fedora in REPLACES.items():
+        if text.count(anchor) != 1:
+            raise ValueError("unexpected Fedora FFmpeg spec layout: " + anchor.strip())
+        text = text.replace(anchor, anchor + (
+            f"Provides:       {fedora} = %{{version}}-%{{release}}\n"
+            f"Provides:       {fedora}%{{?_isa}} = %{{version}}-%{{release}}\n"
+            f"Conflicts:      {fedora}%{{?_isa}}\n"), 1)
     return text
 
 
@@ -199,8 +214,8 @@ def build(sun, output):
     built = sorted((top / "SRPMS").glob("*.src.rpm"))
     if len(built) != 1:
         raise ValueError(f"expected one FFmpeg SRPM, found {[p.name for p in built]}")
-    if query("rpm", "-qp", "--qf", "%{EPOCHNUM} %{NAME}", built[0]) != EPOCH + " ffmpeg":
-        raise ValueError("the FFmpeg SRPM does not carry the pinned epoch")
+    if query("rpm", "-qp", "--qf", "%{NAME}", built[0]) != SOURCE_PACKAGE:
+        raise ValueError("the FFmpeg SRPM is not the renamed piano source package")
     shutil.copyfile(built[0], srpms / built[0].name)
     rpms = output / "rpms"
     rpms.mkdir()
@@ -230,8 +245,8 @@ def build(sun, output):
                      "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n")
     (output / "installed-packages.tsv").write_text("\n".join(sorted(packages.splitlines())) + "\n")
     result = {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "releasever": "45",
-              "arch": "aarch64", "epoch": int(EPOCH),
-              "source_url": SOURCE_URL, "source_rpm_sha256": SOURCE_SHA256,
+              "arch": "aarch64", "source_package": SOURCE_PACKAGE,
+              "replaces": list(REPLACES.values()), "source_url": SOURCE_URL, "source_rpm_sha256": SOURCE_SHA256,
               "source_tarball_sha256": TARBALL_SHA256, "original_spec_sha256": SPEC_SHA256,
               "effective_spec_sha256": sha256(spec),
               "enable_decoders_sha256": sha256(enable_list),
