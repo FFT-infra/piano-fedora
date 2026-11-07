@@ -32,6 +32,7 @@ test:
 	python3 tests/check_bundle_overlays.py
 	python3 tests/check_vendor_dt.py
 	python3 tests/check_vendor_blobs.py
+	python3 tests/check_firmware_overlays.py
 	python3 tests/check_patches.py
 	python3 tests/check_uefi_live_rm.py
 	python3 tests/check_fedora_kernel.py

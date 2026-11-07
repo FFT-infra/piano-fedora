@@ -19,6 +19,8 @@
 
 `packages/xiaomi-piano-firmware` 的 `%prep` 现在核对上游自带的 `SHA256SUMS`（99 项）。在此之前 `Source0` 只订了提交号，tarball 内容被换掉也发现不了。
 
+固件包还要再叠一层厂商 ROM。SunUEFI 的 `config/release.json` 用 `firmware.overlays` 声明 `vendor/firmware/hyperos4-{adsp,cdsp,fingerprint}` 三份，每份带 `manifest.json`，逐文件记 bytes 与 sha256。上游 piano-firmware tarball 里没有 cdsp 与指纹固件，adsp 也是另一版 ROM，所以 99 项之外还有 88 个文件来自这一层，由 `packages/xiaomi-piano-firmware/firmware-overlays.py` 在写盘前逐个核对。清单从 `release.json` 读，叠层的提交号与 `sources.lock.json` 的 `sunuefi` pin 相同，`tests/check_firmware_overlays.py` 守住两者一致。
+
 ## 自动跟踪
 
 `.github/workflows/upstream-watch.yml` 每周一 03:23 UTC 运行一次 `scripts/audit-upstreams.py --execute`。`scripts/upstream-watch.py` 处理执行结果，按以下规则分流：
