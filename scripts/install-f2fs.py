@@ -205,7 +205,15 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     if existing:
         targets = {row["name"]: row for row in layout["partitions"]}
         capacity = root_capacity(transport_meta["expanded_bytes"], targets["sunuefi_root"]["bytes"])
-        require(generic["files"]["sunuefi_esp.img"]["bytes"] == targets["sunuefi_esp"]["bytes"], "ESP image does not match the existing partition capacity")
+        # 已分区设备的 ESP 是首次安装时按 512 MiB 规划出来的，规划器把尾部对齐到
+        # 块边界，实际分区因此比镜像大出不到 1 MiB（真机上是 1008 KiB）。要求两
+        # 者逐字节相等会把每一次更新都拒掉；这里只要求镜像装得下，并且多出来的
+        # 部分不超过一个对齐粒度，容量档位不同（例如 1 GiB 分区配 512 MiB 镜像）
+        # 仍然拒绝。
+        esp_bytes = targets["sunuefi_esp"]["bytes"]
+        esp_image_bytes = generic["files"]["sunuefi_esp.img"]["bytes"]
+        require(esp_image_bytes <= esp_bytes < esp_image_bytes + 1024**2,
+                "ESP image does not match the existing partition capacity")
     else:
         capacity = root_capacity(transport_meta["expanded_bytes"], layout["capacity"]["linux_root_mib"] * 1024**2)
         # ESP 镜像按 product.json 的 esp_size_mib 造出，分区必须正好装下它。
