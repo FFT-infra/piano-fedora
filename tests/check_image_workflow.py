@@ -615,7 +615,7 @@ def check_bundle_asset_names():
         if name in release_assets.BUNDLE_MEMBERS:
             assert name in verifier, f"verify-bundle does not require {name}"
     assert "initramfs.tar.zst" in verifier, "verify-bundle does not require initramfs.tar.zst"
-    assert 'bundle / "boot_sunuefi.img"' in updater
+    assert 'bundle / "boot_sunuefi.img"' in (ROOT / "scripts/piano_memory.py").read_text()
     assert 'bundle / "sunuefi_esp.img"' in updater
     assert 'bundle / "esp.img"' not in installer
     assert 'bundle / "boot.img"' not in updater

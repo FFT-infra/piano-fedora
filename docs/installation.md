@@ -614,7 +614,7 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 `update-f2fs.py` 复用锁定上游的只读设备/GPT 解析、工厂 Fastboot 身份检查和本仓库的材料校验。`update-f2fs.py` 只传输 ESP 与 F2FS root 文件系统，不写 GPT、userdata 与持久 BOOT。完整 root 文件系统会替换 Linux 文件，个人文件先备份。
 
-先确认原 Android 能从当前活动槽完整启动并提供 root ADB。历史的 init_boot/DTBO 试验不算恢复完成的证据。计划阶段会核对主备 GPT/CRC、分区类型、当前槽、原 BOOT、源码清单、管理配置与实际 sparse 容量，并以只读方式取得 Android 的 `/sys/firmware/fdt`，检查 Linux RAM 子集与固定保留区。含义见[上游核对](upstream.md)。
+先确认原 Android 能从当前活动槽完整启动并提供 root ADB。历史的 init_boot/DTBO 试验不算恢复完成的证据。计划阶段会核对主备 GPT/CRC、分区类型、当前槽、原 BOOT、源码清单、管理配置与实际 sparse 容量，并以只读方式取得 Android 的 `/sys/firmware/fdt`，检查 Linux 实际使用的 RAM 地图与固定保留区：交付件带 `uefi-live-memory` 补丁时按原厂实时地图核对，否则要求 payload 地图逐段落在原厂地图内。含义见[上游核对](upstream.md)。
 
 缺 FDT 或比较失败就停下，不要跳过检查。
 

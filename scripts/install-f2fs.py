@@ -20,6 +20,7 @@ import zlib
 
 from piano_artifacts import sha256, verify_uefi_source
 import piano_gpt as gpt_entry
+import piano_memory
 import piano_sparse
 from piano_sparse import require
 
@@ -175,8 +176,8 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     image = json.loads((bundle / "root-image-manifest.json").read_text())
     require(generic.get("status") == "HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED", "generic bundle not verified")
     source_runs = json.loads((bundle / "source-runs.json").read_text())
-    verify_uefi_source(ROOT, bundle / "PianoUEFI-product.img",
-                       json.loads((bundle / "uefi-source.json").read_text()), source_runs.get("uefi_run"))
+    uefi = json.loads((bundle / "uefi-source.json").read_text())
+    verify_uefi_source(ROOT, bundle / "PianoUEFI-product.img", uefi, source_runs.get("uefi_run"))
     for asset, packaged in BUNDLE_ASSETS.items():
         checked(bundle / asset, generic["files"][packaged])
     # root-install 只是把同一份封存镜像预先扩到目标容量的可选产物。带了它就要
@@ -255,6 +256,13 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
         require(rows and all("formattable" in line.split()[-1].split(",") for line in rows),
                 "Android userdata auto-format contract is unverified; do not repartition")
     require(device.text("getprop sys.boot_completed") == "1", "normal Android boot must be complete")
+    # payload DTB 的地图是构建时冻结的；带 uefi-live-memory 的 UEFI 会在交接前用
+    # 这次启动的继承 FDT 替换 /memory，此时 payload 地图只是兜底。没有这个补丁的
+    # 交付件仍然要求 payload 地图逐段落在原厂地图内。
+    from compose_piano_dtb import read_fdt
+    memory = piano_memory.memory_contract(
+        piano_memory.boot_dtb(bundle), device.shell("cat /sys/firmware/fdt"), read_fdt,
+        piano_memory.live_memory_attestation(uefi))
     return {"schema_version": 1, "status": "EXISTING_PARTITIONS_READ_ONLY_PLAN" if existing else "FIRST_INSTALL_READ_ONLY_PLAN", "device": snapshot["identity"],
             "android_slot": slot, "android_build": device.text("getprop ro.build.version.incremental"),
             "gpt_baseline": snapshot["gpt"].baseline(), "partition_plan": layout,
@@ -263,6 +271,7 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
                        "root_manifest_sha256": sha256(prepared_manifest) if prepared_manifest.is_file() else None,
                        "boot_manifest_sha256": sha256(boot / "device-boot-manifest.json")},
             "android_data_preserved": existing, "root_capacity": capacity,
+            "memory_contract": memory,
             "boot_request": {"device": "/dev/disk/by-partlabel/boot" + slot,
                              "source": "read-only Qualcomm GPT A/B attributes"},
             "device_writes": False}, snapshot
