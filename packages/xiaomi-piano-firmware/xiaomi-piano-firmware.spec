@@ -27,6 +27,9 @@ Firmware binaries for Xiaomi Pad 8 Pro (piano, SM8750):
 
 %prep
 %autosetup -n piano-firmware-05fc37c09ca8146eecfc4920f8485479db140ae5
+# 上游树自带 SHA256SUMS，99 个固件逐个核对。之前只有 Source0 的提交号，
+# 拿到的 tarball 内容被换掉也发现不了。
+(cd firmware && sha256sum --check --quiet SHA256SUMS)
 
 %install
 mkdir -p %{buildroot}%{_firmwaredir}
