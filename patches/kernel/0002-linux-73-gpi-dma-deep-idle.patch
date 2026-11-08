@@ -25,19 +25,19 @@ series.json and config/release.json move their target_tree together.
  create mode 100644 patches/linux/7.3/0029-spi-geni-gpi-dma-deep-idle.patch
 
 diff --git a/config/release.json b/config/release.json
-index 991bf9d..fb9710c 100644
+index ddb0450..48fb056 100644
 --- a/config/release.json
 +++ b/config/release.json
-@@ -7,7 +7,7 @@
-     "stable_source": "https://github.com/torvalds/linux.git",
-     "stable_commit": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
-     "stable_version": "7.3.0",
--    "target_tree": "45528c432cd0767948a71a4086c1d4a36ef83583",
-+    "target_tree": "15e96facb4c3197c4e41996b0a6325ad115b8a22",
+@@ -8,7 +8,7 @@
+     "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
+     "stable_version": "7.3.3",
+     "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
+-    "target_tree": "68413b8c73d28c5f9d2b510fcf335bf92fd69036",
++    "target_tree": "73f02c1146e1e7f324776e27e252eb83c54cb9df",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0029-spi-geni-gpi-dma-deep-idle.patch b/patches/linux/7.3/0029-spi-geni-gpi-dma-deep-idle.patch
+diff --git a/patches/linux/7.3/0046-spi-geni-gpi-dma-deep-idle.patch b/patches/linux/7.3/0046-spi-geni-gpi-dma-deep-idle.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..a664f8468a894043c5b75e913f39dc0bf916218d
 GIT binary patch
@@ -98,35 +98,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index fa5172d..0da9c60 100644
+index bca9f22..dc8cf6f 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
-   "kernel_version": "7.3.0",
-   "base_commit": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
-   "base_tree": "30fd2ef82912c26cf3a58ad0ba6afc375fa851ac",
--  "target_tree": "45528c432cd0767948a71a4086c1d4a36ef83583",
+   "kernel_version": "7.3.3",
+   "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
+   "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
+-  "target_tree": "68413b8c73d28c5f9d2b510fcf335bf92fd69036",
 -  "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
-+  "target_tree": "15e96facb4c3197c4e41996b0a6325ad115b8a22",
++  "target_tree": "73f02c1146e1e7f324776e27e252eb83c54cb9df",
 +  "original_target_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
-   "source_url": "https://github.com/torvalds/linux.git",
+   "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -231,6 +231,14 @@
+@@ -367,6 +367,14 @@
        "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
        "committer_date": "2026-10-24T18:30:00+08:00",
-       "tree": "45528c432cd0767948a71a4086c1d4a36ef83583"
+       "tree": "68413b8c73d28c5f9d2b510fcf335bf92fd69036"
 +    },
 +    {
-+      "file": "0029-spi-geni-gpi-dma-deep-idle.patch",
++      "file": "0046-spi-geni-gpi-dma-deep-idle.patch",
 +      "sha256": "00ade037740de7d39bd76a86426701c9daf7a8f90119ea3d86496f94560d0950",
 +      "original_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
 +      "original_parent": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
 +      "committer_date": "2026-10-25T03:50:00+08:00",
-+      "tree": "15e96facb4c3197c4e41996b0a6325ad115b8a22"
++      "tree": "73f02c1146e1e7f324776e27e252eb83c54cb9df"
      }
-   ],
-   "provenance": {
--- 
-2.54.0
-
+   ]
+ }

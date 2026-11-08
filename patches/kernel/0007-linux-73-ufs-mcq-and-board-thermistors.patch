@@ -1,17 +1,17 @@
 diff --git a/config/release.json b/config/release.json
-index 821dfb4..5cb9ab6 100644
+index b5a9159..52513e3 100644
 --- a/config/release.json
 +++ b/config/release.json
-@@ -7,7 +7,7 @@
-     "stable_source": "https://github.com/torvalds/linux.git",
-     "stable_commit": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
-     "stable_version": "7.3.0",
--    "target_tree": "81983254f51aaba3822a7aee5f71702c7cd8bd9c",
-+    "target_tree": "783e27278886d41e56fb4df41334c3df2068f52d",
+@@ -8,7 +8,7 @@
+     "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
+     "stable_version": "7.3.3",
+     "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
+-    "target_tree": "cd3372081b1dc6619a390e83cfcaf354593d0694",
++    "target_tree": "2d19373cafae9ae2baf814e93f6112c032daee7d",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0056-arm64-dts-sm8750-ufs-mcq-enable.patch b/patches/linux/7.3/0056-arm64-dts-sm8750-ufs-mcq-enable.patch
+diff --git a/patches/linux/7.3/0073-arm64-dts-sm8750-ufs-mcq-enable.patch b/patches/linux/7.3/0073-arm64-dts-sm8750-ufs-mcq-enable.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..eefd42c2347fd255a93b029622e0875ceabfae4a
 GIT binary patch
@@ -43,7 +43,7 @@ ogR&V&sS!vT?81VKN{F?vv{sN&X=lx)tE<3eq-ScPXTZe;080Y+WB>pF
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0057-arm64-dts-sm8750-ufs-mcq-window-limit.patch b/patches/linux/7.3/0057-arm64-dts-sm8750-ufs-mcq-window-limit.patch
+diff --git a/patches/linux/7.3/0074-arm64-dts-sm8750-ufs-mcq-window-limit.patch b/patches/linux/7.3/0074-arm64-dts-sm8750-ufs-mcq-window-limit.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..1aee92d68500ad4c314ccb3a97b5fc41325e4c16
 GIT binary patch
@@ -79,7 +79,7 @@ bWK=?|g{7K;j7pI6brrab^h{0k47j)efaflh
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0058-dt-bindings-iio-adc-pmic5-gen4.patch b/patches/linux/7.3/0058-dt-bindings-iio-adc-pmic5-gen4.patch
+diff --git a/patches/linux/7.3/0075-dt-bindings-iio-adc-pmic5-gen4.patch b/patches/linux/7.3/0075-dt-bindings-iio-adc-pmic5-gen4.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..985e8c0a2cf57bb01118e84e82db0bab64f922f4
 GIT binary patch
@@ -119,7 +119,7 @@ KHPJKR;sOBE5v{TS
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0059-iio-adc-qcom-spmi-adc5-gen3-pmic5-gen4.patch b/patches/linux/7.3/0059-iio-adc-qcom-spmi-adc5-gen3-pmic5-gen4.patch
+diff --git a/patches/linux/7.3/0076-iio-adc-qcom-spmi-adc5-gen3-pmic5-gen4.patch b/patches/linux/7.3/0076-iio-adc-qcom-spmi-adc5-gen3-pmic5-gen4.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..771f88728da629b4c2444336eb80057042155431
 GIT binary patch
@@ -265,7 +265,7 @@ E0B%mSH2?qr
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0060-iio-adc-qcom-spmi-adc5-gen3-gen4-helpers.patch b/patches/linux/7.3/0060-iio-adc-qcom-spmi-adc5-gen3-gen4-helpers.patch
+diff --git a/patches/linux/7.3/0077-iio-adc-qcom-spmi-adc5-gen3-gen4-helpers.patch b/patches/linux/7.3/0077-iio-adc-qcom-spmi-adc5-gen3-gen4-helpers.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..932a901ee0f8f7633b1ab46acf1218c5f9573d08
 GIT binary patch
@@ -324,7 +324,7 @@ jsQ}5AVAC9+W>{fU0kx~NC>1oor@&>TXKJEnz{Lds^EBtF
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0061-arm64-dts-sm8750-pmics-pmk8550-adc.patch b/patches/linux/7.3/0061-arm64-dts-sm8750-pmics-pmk8550-adc.patch
+diff --git a/patches/linux/7.3/0078-arm64-dts-sm8750-pmics-pmk8550-adc.patch b/patches/linux/7.3/0078-arm64-dts-sm8750-pmics-pmk8550-adc.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..285dde92d076589bb29090123adffd0bf32ce4e0
 GIT binary patch
@@ -352,7 +352,7 @@ eS!#TWl>(?Naxhk?=F-(w;4;!PHPJKR;sO9FqNHd5
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0062-arm64-dts-piano-board-thermistors.patch b/patches/linux/7.3/0062-arm64-dts-piano-board-thermistors.patch
+diff --git a/patches/linux/7.3/0079-arm64-dts-piano-board-thermistors.patch b/patches/linux/7.3/0079-arm64-dts-piano-board-thermistors.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..9aa9e9ca3986d819617cdfe46b793d9f007550d6
 GIT binary patch
@@ -408,80 +408,80 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index e6b26c7..aafe86f 100644
+index a14911e..b33b7ce 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
-   "kernel_version": "7.3.0",
-   "base_commit": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
-   "base_tree": "30fd2ef82912c26cf3a58ad0ba6afc375fa851ac",
--  "target_tree": "81983254f51aaba3822a7aee5f71702c7cd8bd9c",
+   "kernel_version": "7.3.3",
+   "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
+   "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
+-  "target_tree": "cd3372081b1dc6619a390e83cfcaf354593d0694",
 -  "original_target_commit": "99d7ec96e5360fa7b30e5236bd24e4bb043fe7c3",
-+  "target_tree": "783e27278886d41e56fb4df41334c3df2068f52d",
++  "target_tree": "2d19373cafae9ae2baf814e93f6112c032daee7d",
 +  "original_target_commit": "7c8ebb2458d736c2a17955aa4edf09c6345fc371",
-   "source_url": "https://github.com/torvalds/linux.git",
+   "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -447,6 +447,62 @@
+@@ -583,6 +583,62 @@
        "original_parent": "f8f655de8cd43ded8afacb38a04b67bf69595d47",
        "committer_date": "2026-10-25T19:47:28+08:00",
-       "tree": "81983254f51aaba3822a7aee5f71702c7cd8bd9c"
+       "tree": "cd3372081b1dc6619a390e83cfcaf354593d0694"
 +    },
 +    {
-+      "file": "0056-arm64-dts-sm8750-ufs-mcq-enable.patch",
++      "file": "0073-arm64-dts-sm8750-ufs-mcq-enable.patch",
 +      "sha256": "72816c4c63fb4603961834ca2e2e71f4fed74368624794257c0baf7e26ecb357",
 +      "original_commit": "1c61c0ca27d7022bb3a9686bb9105975860b81aa",
 +      "original_parent": "99d7ec96e5360fa7b30e5236bd24e4bb043fe7c3",
 +      "committer_date": "2026-10-26T23:30:28+08:00",
-+      "tree": "2a7ec63dd282e6fe6181b6f9dbe12730d343204d"
++      "tree": "c85a5baad10ae2a438b64d035fe6ef08ed308d2b"
 +    },
 +    {
-+      "file": "0057-arm64-dts-sm8750-ufs-mcq-window-limit.patch",
++      "file": "0074-arm64-dts-sm8750-ufs-mcq-window-limit.patch",
 +      "sha256": "656262b04ba23825d4acc0fa46686bded04ce4a2ff7c4c003f0c45635d521971",
 +      "original_commit": "c900d44b9dda668fa117d976470ab31373c03274",
 +      "original_parent": "1c61c0ca27d7022bb3a9686bb9105975860b81aa",
 +      "committer_date": "2026-10-26T23:30:28+08:00",
-+      "tree": "f7f72d63a15c33cbb8a096c0c8de035c683b1a68"
++      "tree": "9fcf22838afda851a751b7eb9299089732f805af"
 +    },
 +    {
-+      "file": "0058-dt-bindings-iio-adc-pmic5-gen4.patch",
++      "file": "0075-dt-bindings-iio-adc-pmic5-gen4.patch",
 +      "sha256": "1db2cbdc7bbd8600af1c77cbeeda27c5615641c2a4e6d2357d414ca05bf237ad",
 +      "original_commit": "6e8a652364a86ee76bfed94f0ad2728872820e96",
 +      "original_parent": "c900d44b9dda668fa117d976470ab31373c03274",
 +      "committer_date": "2026-10-26T23:30:40+08:00",
-+      "tree": "1ee3ce1fd5e538f50983a644bc1c82b10fffa2e0"
++      "tree": "d081ede62dcf509b029e62ed4a53debb53ed693a"
 +    },
 +    {
-+      "file": "0059-iio-adc-qcom-spmi-adc5-gen3-pmic5-gen4.patch",
++      "file": "0076-iio-adc-qcom-spmi-adc5-gen3-pmic5-gen4.patch",
 +      "sha256": "ad890ae124e5eede3547e5f191533273a8c3b427e4734eadbd28586147b85c57",
 +      "original_commit": "28a45adf1206258678b03fb993c6ae825a7efa4c",
 +      "original_parent": "6e8a652364a86ee76bfed94f0ad2728872820e96",
 +      "committer_date": "2026-10-26T23:30:41+08:00",
-+      "tree": "81650ca6c6c0a0dc8e278db5e4b382e0d12582e7"
++      "tree": "70d78b0fa233038b89afc9908d7b20f24b9fc1ab"
 +    },
 +    {
-+      "file": "0060-iio-adc-qcom-spmi-adc5-gen3-gen4-helpers.patch",
++      "file": "0077-iio-adc-qcom-spmi-adc5-gen3-gen4-helpers.patch",
 +      "sha256": "c454c5bccee2863f891db2ab6ec5dfba0148da7fbaacc8a4d4a62a6cc3272188",
 +      "original_commit": "94ab7845ae7f65131d170ef9f502fadf53b83eeb",
 +      "original_parent": "28a45adf1206258678b03fb993c6ae825a7efa4c",
 +      "committer_date": "2026-10-26T23:30:41+08:00",
-+      "tree": "7ed65117d33baed9a6e030db968097d3237c3e43"
++      "tree": "ceb0d5538f5c9025c4b22e16b0ecdc0cec9ae702"
 +    },
 +    {
-+      "file": "0061-arm64-dts-sm8750-pmics-pmk8550-adc.patch",
++      "file": "0078-arm64-dts-sm8750-pmics-pmk8550-adc.patch",
 +      "sha256": "2b7eb404c7a5043cd003fee9ab8334db2b7e44a14c438da7759ef207027ef6ed",
 +      "original_commit": "641b04cab8512d375b6f6f577e8fccc16f7bbc96",
 +      "original_parent": "94ab7845ae7f65131d170ef9f502fadf53b83eeb",
 +      "committer_date": "2026-10-26T23:30:41+08:00",
-+      "tree": "0b1de438b6138bf9ce77b4df5814d13c27f79991"
++      "tree": "23627cf29f29ca8a2c33c08a96f7a50dd83c9890"
 +    },
 +    {
-+      "file": "0062-arm64-dts-piano-board-thermistors.patch",
++      "file": "0079-arm64-dts-piano-board-thermistors.patch",
 +      "sha256": "ac18e0811496e877ad47f83d619cea9f27ca048c4e46239ef57bca98d1ca7ea0",
 +      "original_commit": "7c8ebb2458d736c2a17955aa4edf09c6345fc371",
 +      "original_parent": "641b04cab8512d375b6f6f577e8fccc16f7bbc96",
 +      "committer_date": "2026-10-26T23:33:13+08:00",
-+      "tree": "783e27278886d41e56fb4df41334c3df2068f52d"
++      "tree": "2d19373cafae9ae2baf814e93f6112c032daee7d"
      }
-   ],
-   "provenance": {
+   ]
+ }

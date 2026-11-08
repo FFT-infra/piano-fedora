@@ -40,6 +40,18 @@ KNOWN_MISSING = {
     ("piano-cdsp-fastrpc.dtso", "/soc/remoteproc-cdsp@32300000/glink-edge/qcom,fastrpc"),
     ("piano-touch-panel.dtso", "/soc/display-subsystem@ae00000/dsi@ae94000/panel@0"),
     ("piano-touch-panel.dtso", "/soc/qcom,qupv3_1_geni_se@ac0000/spi@a88000/touchscreen@0"),
+    # DP 与 BT 相关节点的下游名字不同：厂商是 qcom,mdss_mdp@ae00000、
+    # clock-controller@af00000、pinctrl@f000000，主线分别叫
+    # display-subsystem@ae00000、clock-controller-ml@af00000、
+    # pinctrl@f100000。DP 的 ports 与蓝牙节点厂商树里没有对应物。
+    ("piano-displayport.dtso", "/soc/display-subsystem@ae00000"),
+    ("piano-displayport.dtso",
+     "/soc/display-subsystem@ae00000/display-controller@ae01000/ports"),
+    ("piano-displayport.dtso", "/soc/ssphy@88e8000/ports"),
+    ("piano-displayport.dtso", "/soc/clock-controller-ml@af00000"),
+    ("piano-bluetooth-nvm.dtso",
+     "/soc/qcom,qupv3_2_geni_se@8c0000/qcom,qup_uart@898000/bluetooth"),
+    ("piano-ir-spi-controller.dtso", "/soc/pinctrl@f100000"),
 } | {("piano-cdsp-fastrpc.dtso",
        f"/soc/remoteproc-cdsp@32300000/glink-edge/qcom,fastrpc/compute-cb@{index}")
       for index in range(1, 13)}

@@ -23,18 +23,18 @@ compatible and reads the capability pair from reg.
  1 file changed, 56 insertions(+)
 
 diff --git a/uefi/core/PianoRawLinuxBoot.c b/uefi/core/PianoRawLinuxBoot.c
-index 09e5d12..e3466c3 100644
+index 52fb729..5039557 100644
 --- a/uefi/core/PianoRawLinuxBoot.c
 +++ b/uefi/core/PianoRawLinuxBoot.c
-@@ -23,6 +23,7 @@
+@@ -24,6 +24,7 @@
  #define RAW_MEMORY_REG_MAX 1024U
  #define RAW_DDR_REGIONS 4U
  #define RAW_DDR_REGION_MAX 64U
 +#define RAW_RM_REG_BYTES 16U
  typedef struct {
    EFI_HANDLE Image;EFI_SYSTEM_TABLE *SystemTable;EFI_LOADED_IMAGE_PROTOCOL *Identity,Loaded;
-   BOOLEAN Registered,InTake,Captured,Prepared,Entered;
-@@ -253,6 +254,59 @@ STATIC EFI_STATUS ApplyLiveMemory(VOID *Tree,CONST LIVE_MEMORY *In){
+   EFI_HANDLE ExitImage;EFI_LOADED_IMAGE_PROTOCOL *ExitIdentity,ExitLoaded;
+@@ -261,6 +262,59 @@ STATIC EFI_STATUS ApplyLiveMemory(VOID *Tree,CONST LIVE_MEMORY *In){
    DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_MEMORY adopted=1 was=%lu now=%lu banks=%u\n",Before,In->Total,In->Banks));
    return EFI_SUCCESS;
  }
@@ -91,11 +91,11 @@ index 09e5d12..e3466c3 100644
 +    SwapBytes64(ReadUnaligned64((CONST UINT64 *)(In->Reg+8)))));
 +  return EFI_SUCCESS;
 +}
- EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST PIANO_RAW_LINUX_REPORT **Out){
+ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,EFI_HANDLE ExitImage,CONST PIANO_RAW_LINUX_REPORT **Out){
   if(!Out)return EFI_INVALID_PARAMETER;*Out=NULL;
-  if(!mRaw.Captured||mRaw.Prepared||Image!=mRaw.Image||!Live()||!SameImage()||!Clean(O))return EFI_ACCESS_DENIED;
-@@ -277,11 +331,13 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,CONST P
-  .Dtb=RAW_DTB,.Initrd=RAW_INITRD,.InitrdBytes=P->Ramdisk.Bytes,.Image=Image,.Identity=mRaw.Identity,.Token=mRaw.Token};
+  if(!ExitImage)return EFI_INVALID_PARAMETER;
+@@ -294,12 +348,14 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,EFI_HAN
+  .ExitImage=ExitImage,.ExitIdentity=mRaw.ExitIdentity};
   if(!Hash(Kernel,(UINTN)P->Kernel.Bytes,R.KernelSha)||!Hash(Bytes+P->Ramdisk.Offset,(UINTN)P->Ramdisk.Bytes,R.InitrdSha))return EFI_DEVICE_ERROR;
   LIVE_MEMORY Live;CaptureLiveMemory(&Live,O->Config.Fdt);
 + LIVE_RM Rm;CaptureLiveRm(&Rm,O->Config.Fdt);
@@ -103,6 +103,7 @@ index 09e5d12..e3466c3 100644
   if(Span>P->Kernel.Bytes)ZeroMem((VOID *)(UINTN)(Address+P->Kernel.Bytes),(UINTN)(Span-P->Kernel.Bytes));
   CopyMem((VOID *)(UINTN)RAW_INITRD,Bytes+P->Ramdisk.Offset,(UINTN)P->Ramdisk.Bytes);
   VOID *Tree=(VOID *)(UINTN)RAW_DTB;if(FdtOpenInto(InputDtb,Tree,(INT32)Capacity))return EFI_COMPROMISED_DATA;
+  E=PianoProductMemoryApplyDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
   E=ApplyLiveMemory(Tree,&Live);if(E!=EFI_SUCCESS)return E;
 + E=ApplyLiveRm(Tree,&Rm);if(E!=EFI_SUCCESS)return E;
   E=PianoPanelSelectDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
