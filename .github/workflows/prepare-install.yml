@@ -182,6 +182,9 @@ jobs:
           python3 tests/check_installer.py --sunuefi build/installer-sources/sunuefi
           python3 scripts/export-installer.py --sunuefi build/installer-sources/sunuefi --output build/boot-tools/installer
           python3 build/boot-tools/installer/scripts/install-f2fs.py --help
+          # --help 只加载 install-f2fs，不碰上游工具。真正跑 plan 时会
+          # load_source() 并 import install_piano，所以导出目录要真能 import。
+          PYTHONPATH=build/boot-tools/installer/sunuefi/tools python3 -c "import install_piano"
           (cd build/boot-tools/installer && sha256sum -c SHA256SUMS)
           python3 -m unittest discover -s build/installer-sources/sunuefi/tests/unit -p test_boot_request.py -v
       - name: Verify the exported installer is unchanged
