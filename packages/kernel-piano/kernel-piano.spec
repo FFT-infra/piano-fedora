@@ -8,8 +8,8 @@
 # has to be regenerated.
 %global __strip /bin/true
 %global _build_id_links none
-%global KERNEL_VER 7.3.0
-%global KERNEL_TAG piano-7.3.0
+%global KERNEL_VER 7.3.3
+%global KERNEL_TAG piano-7.3.3
 %global DEVICE_NAME piano
 %global PLATFORM_NAME sm8750
 
@@ -25,8 +25,8 @@
 %global kernel_payload_tar kernel-payload-%{KERNEL_VER}.tar.zst
 
 Name:           kernel-piano
-Version:        7.3.0
-Release:        5.%{DEVICE_NAME}%{?dist}
+Version:        7.3.3
+Release:        1.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
 URL:            https://github.com/blu-sharky/linux-piano
@@ -96,7 +96,7 @@ if [ -f board.dtb ]; then
 fi
 test -s %{buildroot}/boot/dtb/qcom/sm8750-xiaomi-piano.dtb
 
-# Modules keep the kernel's own release string (7.3.0-piano-sunuefi-cachy); the
+# Modules keep the kernel's own release string (7.3.3-piano-sunuefi-cachy); the
 # RPM version alone would not match the modules' vermagic.
 cp -a lib/modules/. %{buildroot}%{_prefix}/lib/modules/
 test -s "$(find %{buildroot}%{_prefix}/lib/modules -name 'modules.dep' | head -n 1)"
@@ -158,6 +158,14 @@ depmod -a "$RELEASE" || exit 1
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
+* Sun Nov 08 2026 FFT-infra <dev@piano.invalid> - 7.3.3-1.piano
+- 跟到 SunUEFI 8b0fc42d 的 stable 7.3.3。封存序列整体重放，上游 41 行加本仓库
+  38 行共 79 行全部 clean apply，`target_tree` 为 `2d19373cafae`；补丁号随之
+  重排到 0042–0079
+- 板级 overlay 按上游 `release.json` 补到 18 个，新增 DisplayPort、蓝牙 NVM
+  与 IR SPI 控制器；UFS 补丁改用上游的 `EnsureDeviceActive()`
+- 打包版本号随内核升到 7.3.3，NVRA 变化让 installonly 升级替换内核载荷
+
 * Sun Nov 08 2026 FFT-infra <dev@piano.invalid> - 7.3.0-5.piano
 - 内核按 Fedora 做法补上 firewalld 需要的十个 conntrack helper，全部为模块；
   设备侧 dnf 升级需要新的 NVRA，否则同版本号不会替换内核载荷
