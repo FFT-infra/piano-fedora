@@ -282,12 +282,26 @@ def project_listed(stdout, name):
     return re.search(rf"^\s*Name:\s*{re.escape(name)}\s*$", stdout, re.M) is not None
 
 
+def ensure_chroot(binary, config, project):
+    """项目里的 chroot 不随 releasever 自动出现，缺了 build 会被 COPR 拒绝。
+
+    项目建的是一次成型：releasever 从 44 升到 45 之后，旧项目仍然只有
+    fedora-44-aarch64，`copr-cli build --chroot fedora-45-aarch64` 直接失败。
+    `modify --chroot` 只是往项目里追加，不动已有的那一个。
+    """
+    probe = run_cli(binary, config, ["get-chroot", f"{project}/{CHROOT}"], check=False)
+    if probe.returncode == 0:
+        return "present"
+    run_cli(binary, config, ["modify", project, "--chroot", CHROOT])
+    return "added"
+
+
 def ensure_project(binary, config, project):
-    """幂等创建项目：已存在就返回，不存在才 create。"""
+    """幂等创建项目：已存在就补 chroot，不存在才 create。"""
     name = project.split("/")[-1]
     listing = run_cli(binary, config, ["list"], check=False)
     if listing.returncode == 0 and project_listed(listing.stdout, name):
-        return "exists"
+        return "exists+" + ensure_chroot(binary, config, project)
     created = run_cli(binary, config, [
         "create", project, "--chroot", CHROOT,
         "--description",

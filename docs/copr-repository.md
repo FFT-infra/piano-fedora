@@ -2,7 +2,7 @@
 
 设备装好 Fedora 后，配置、固件、相机、触控、传感器、VA-API、调度器和内核都可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
 
-**当前状态：10 个包已发布，全部可以 `dnf upgrade` 升级，内核在内。** 项目是 `xinyang26/piano-fedora`，`fedora-44-aarch64` 仓库开着。仓库里有全部 10 个包：
+**当前状态：10 个矩阵包加上 Mesa 与 FFmpeg 两组图形栈可以 `dnf upgrade` 升级，内核在内。** 项目是 `xinyang26/piano-fedora`，chroot 跟 `product.json` 的 releasever 走，现在是 `fedora-45-aarch64`。项目存在但缺这个 chroot 时，发布脚本会先 `copr-cli modify --chroot` 补上，否则 `copr-cli build` 会被 COPR 拒掉。仓库里有全部 10 个包：
 
 `alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-camera`、`piano-fedora-configs`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。
 

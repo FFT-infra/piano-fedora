@@ -183,8 +183,37 @@ def test_project_create_is_idempotent(module, tmp):
         state = module.ensure_project("copr-cli", tmp / "conf", "xinyang26/piano-fedora")
     finally:
         module.run_cli = original
-    assert state == "exists"
+    assert state == "exists+present"
     assert not any(c[0] == "create" for c in calls), calls
+    assert not any(c[0] == "modify" for c in calls), calls
+
+
+def test_existing_project_gains_the_new_chroot(module, tmp):
+    """releasever 升上去之后，旧项目的 chroot 不会自己出现。"""
+    calls = []
+
+    class Result:
+        def __init__(self, code=0, out=""):
+            self.returncode, self.stdout, self.stderr = code, out, ""
+
+    def run_cli(binary, config, args, check=True):
+        calls.append(list(args))
+        if args[0] == "list":
+            return Result(0, "Name: piano-fedora\n")
+        if args[0] == "get-chroot":
+            return Result(1)
+        return Result(0)
+
+    original = module.run_cli
+    module.run_cli = run_cli
+    try:
+        state = module.ensure_project("copr-cli", tmp / "conf", "xinyang26/piano-fedora")
+    finally:
+        module.run_cli = original
+    assert state == "exists+added"
+    assert not any(c[0] == "create" for c in calls), calls
+    added = [c for c in calls if c[0] == "modify"]
+    assert added and added[0][2:] == ["xinyang26/piano-fedora", "--chroot", module.CHROOT], calls
 
 
 def test_project_listing_formats(module):
