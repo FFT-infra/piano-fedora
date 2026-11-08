@@ -558,7 +558,7 @@ cherry-pick）。有六处没有照抄上游：
 
 ## 开机日志里的红色报错
 
-一次冷启动后 `journalctl -b -p err` 是 98 行，分七类。装入 `piano-cma`、
+一次冷启动后 `journalctl -b -p err` 是 97 行，分六类。装入 `piano-cma`、
 `piano-pcie-interrupt-map`、`dsp-resources` 与 `cdsp-fastrpc` 之后，PCIe 的六条
 `probe failed -22`、CMA 的四条 `alloc failed` 与 cdsp 的 `-61` 都不再出现
 （`dmesg | grep -cE "pcie_pme|trigger mode 5"` 为 0，`CmaTotal` 937984 kB，
@@ -572,10 +572,13 @@ cherry-pick）。有六处没有照抄上游：
 | `Bluetooth: HCI_IBS_WAKE_ACK in tx state 0` | 2 | wcn7850 上电序列里 hci_qca 的状态机输出 | 不改 |
 | `bluetoothd` | 1 | `No matching connection for device` | 不改 |
 | `msm_dpu` | 1 | `no GPU device was found`。`separate_gpu_kms=1` 下 DPU 比 adreno 先探测，之后两块卡都绑上 | 不改。GNOME 跑在 adreno 上 |
-| `snd-seq` | 1 | udev 对 `snd_pcm` 执行 `modprobe snd-seq`，模块不存在 | 见下 |
 
-`CONFIG_SND_SEQUENCER` 在内核里没开，`/dev/snd/seq` 不存在，`aconnect` 与
-`aplaymidi` 用不了，这一条就是它的表现。开启它要在 SunUEFI 的
-`tools/build_piano_full_kernel.py` 里给配置白名单加一项，那份白名单是 sha 锁定的
-定值，本仓库按约定不 fork 上游，所以记为上游缺口。剩下的处理只有接受，或者等
-上游加项。
+还有一条已经消掉：`snd-seq`。`CONFIG_SND_SEQUENCER` 在内核里没开，Fedora 的
+alsa-lib 仍然在 `dist-alsa.conf` 里给 `snd-pcm` 挂 `modprobe snd-seq`，每次加载
+声卡报一次 not found。`piano-fedora-configs` 用同名的 `/etc/modprobe.d/dist-alsa.conf`
+遮住发行版那份，只保留加载 `snd-pcm` 的那一半。kmod 按文件名全局排序取先命中的
+一条，换个名字压不住，所以必须同名。
+
+根因还在内核里，`/dev/snd/seq` 不存在，`aconnect`、`aplaymidi` 这类依赖音序器
+路由的应用用不了。要真开得在 SunUEFI 的 `tools/build_piano_full_kernel.py` 配置
+白名单里加一项，那份清单是 sha 锁定的定值。上游开了之后删掉这份覆盖即可。
