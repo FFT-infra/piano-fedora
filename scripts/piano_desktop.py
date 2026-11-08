@@ -38,7 +38,7 @@ REQUIRED_FIELDS = (
     "required_packages", "root_size_mib", "display_manager", "session",
     "power_policy",
 )
-REQUIRED_DISPLAY_MANAGER = ("unit", "package", "autologin", "dependency_dropin")
+REQUIRED_DISPLAY_MANAGER = ("unit", "package", "autologin")
 REQUIRED_SESSION = ("desktop_names", "process_names", "session_files", "bins")
 # autologin 的落盘机制。每种机制在 login_files() 里有且只有一个实现。
 AUTOLOGIN_KINDS = ("gdm-custom-conf", "sddm-autologin", "plasmalogin-autologin", "greetd-config")
@@ -78,10 +78,6 @@ def _require(profile, desktop):
         if kind == "greetd-config" and not manager["autologin"].get("command"):
             raise DesktopError(
                 f"desktop {desktop!r} uses greetd-config without a session command")
-        dropin = manager["dependency_dropin"]
-        if not isinstance(dropin, dict) or "unit" not in dropin or "after" not in dropin:
-            raise DesktopError(
-                f"desktop {desktop!r} dependency_dropin needs unit and after")
     missing = [name for name in REQUIRED_SESSION if name not in profile["session"]]
     if missing:
         raise DesktopError(f"desktop {desktop!r} session lacks: {missing}")
@@ -261,18 +257,6 @@ def enable_units(context):
     if manager is None:
         return []
     return [manager["unit"]]
-
-
-def display_dependency_dropin(context):
-    """显示服务必须在面板真正就绪之后启动。"""
-    manager = context["profile"]["display_manager"]
-    if manager is None:
-        return None
-    dropin = manager["dependency_dropin"]
-    unit = dropin["unit"]
-    after = dropin["after"]
-    path = f"etc/systemd/system/{unit}.d/20-piano-display.conf"
-    return path, f"[Unit]\nRequires={after}\nAfter={after}\n"
 
 
 def required_packages(context):
@@ -467,11 +451,6 @@ def validate_against_rootfs(root, context, *, require_enabled=True):
         if path.is_file():
             want(_mode_executable(path), f"session binary is executable: {relative}")
 
-    dropin = display_dependency_dropin(context)
-    if dropin is not None:
-        path, _ = dropin
-        want((root / path).is_file(), f"display dependency drop-in staged: {path}")
-
     for name in power_required(context):
         want((root / name).is_file(), f"power policy file staged: {name}")
 
@@ -602,7 +581,6 @@ def main(argv=None):
                 "artifacts": names,
                 "login_files": sorted(login_files(context, "piano")),
                 "enable_units": enable_units(context),
-                "display_dependency_dropin": (display_dependency_dropin(context) or [None])[0],
                 "power_files": sorted(power_required(context)),
                 "repo_args": repo_args(context),
                 "gpgkey_pins": [{"repo": name, "sha256": digest}

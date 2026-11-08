@@ -179,7 +179,12 @@ def prune_missing_manpage_links(root):
 
 
 def stage_boot_diagnostics(root, context):
-    """显示、相机与电源诊断文件；显示依赖由桌面档给出，不写死 GDM。"""
+    """相机与电源诊断文件。
+
+    显示管理器直接开机启动。旧实现往 gdm/plasmalogin/greetd 上加
+    `Requires=piano-display.service`，上游删掉这个 unit 之后依赖永远不满足，
+    桌面起不来；冷启动实测去掉 drop-in 后 gdm 正常拉起，所以不再生成。
+    """
     files = {
         "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf":
             "[Unit]\nWants=piano-camera.service\nAfter=piano-camera.service\n"
@@ -244,16 +249,7 @@ def stage_boot_diagnostics(root, context):
         target = safe_destination(root, name)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text)
-    # 显示依赖 drop-in：GDM 的 gdm.service.d 是 Debian 沿用的写法，KDE 的
-    # sddm.service 同理。单元名取自桌面档，不加第二个硬编码。
-    dropin = piano_desktop.display_dependency_dropin(context)
     staged = list(files)
-    if dropin is not None:
-        dropin_path, dropin_text = dropin
-        target = safe_destination(root, dropin_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(dropin_text)
-        staged.append(dropin_path)
     # piano-collect-boot 由 piano-fedora-configs RPM 拥有，这里只核对在位，
     # 不再覆盖一份同路径的副本，否则 rpm 的文件归属与镜像内容会分叉。
     target = safe_destination(root, "usr/bin/piano-collect-boot")
@@ -762,10 +758,12 @@ def main():
     hardware_files = stage_piano_hardware_fixes(root, context)
     diagnostic_files = stage_boot_diagnostics(root, context)
     verify_power_overlay(root, context)
+    # 驱动按标准 modalias 自动加载，上游已删掉 display/radio/audio/video/
+    # keyboard/cpufreq 这几组手动拉起驱动的 unit；piano-touch 由 79-piano-touch
+    # udev 规则在 /proc/nvt_thp_stream 出现时激活，unit 本身没有 [Install]。
+    # 这两类都不再由这里 enable。
     services = ["NetworkManager.service", "sshd.service", "bluetooth.service",
-                "piano-display.service", "piano-touch.service", "piano-radio.service",
-                "piano-adsp.service", "piano-audio.service", "piano-keyboard.service",
-                "piano-cpufreq.service", "piano-video.service", "piano-camera.service",
+                "piano-adsp.service", "piano-camera.service",
                 "piano-camerad.service", "adsprpcd-sensorspd.service",
                 "piano-fake-tablet-mode.service", "xiaomi-charger-mode.service",
                 "librevm-daemon.service", "uperf-linux.service",

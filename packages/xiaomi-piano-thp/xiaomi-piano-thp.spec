@@ -3,7 +3,7 @@
 
 Name:           xiaomi-piano-thp
 Version:        0.2.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Touch Host Processor (THP) and Xiaomi Focus Pen driver for Xiaomi Pad 8 Pro (piano)
 License:        Apache-2.0 AND BSD-2-Clause-Patent AND GPL-2.0-only AND MIT
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -42,12 +42,11 @@ if [ -f src/build/piano-thp-live ]; then
 fi
 
 %files
-# /usr/bin/piano-touch-view, /usr/lib/piano/touch-start, touch-input and
-# pen-bluetooth belong to piano-runtime: SunUEFI generates them from the pinned
-# debian-piano overlay and linux/userspace/pen, and the runtime patches
-# touch-input for the LCD-specific finger calibration. A checked-in copy here
-# gave every one of them two owners, and rpm aborted the transaction on the
-# three that had already drifted apart.
+# /usr/bin/piano-touch-view, touch-input and pen-bluetooth belong to
+# piano-runtime: SunUEFI generates them from the pinned debian-piano overlay and
+# linux/userspace/pen, and the runtime patches touch-input for the LCD-specific
+# finger calibration. A checked-in copy here gave every one of them two owners,
+# and rpm aborted the transaction on the three that had already drifted apart.
 %{_bindir}/piano-thp-live
 %{_unitdir}/piano-touch.service
 %dir %{_datadir}/piano/touch
@@ -60,8 +59,9 @@ fi
 %{_datadir}/piano/pen/calibration/piano-boe.ini
 
 %post
+# unit 与上游一致，没有 [Install]：79-piano-touch.rules 在 /proc/nvt_thp_stream
+# 出现时用 SYSTEMD_WANTS 拉起，不在这里 enable。
 %systemd_post piano-touch.service
-systemctl enable piano-touch.service || :
 
 %preun
 %systemd_preun piano-touch.service
@@ -70,6 +70,10 @@ systemctl enable piano-touch.service || :
 %systemd_postun_with_restart piano-touch.service
 
 %changelog
+* Sun Nov 09 2026 FFT-infra <dev@piano.invalid> - 0.2.0-3
+- piano-touch.service 跟上游 pin 对齐：去掉 touch-start 预启动与
+  piano-display 依赖，交给 79-piano-touch udev 规则激活
+
 * Mon Oct 20 2026 FFT-infra <dev@piano.invalid> - 0.2.0-2
 - 交还 touch-start/touch-input/pen-bluetooth/piano-touch-view 给 piano-runtime，
   本包不再重复拥有这批由 SunUEFI 生成的运行时文件

@@ -314,7 +314,6 @@ def check_validate_against_rootfs_reports_paths():
             (root / "usr/bin" / name).chmod(0o755)
         for relative in ("usr/share/wayland-sessions/plasma.desktop",
                          "etc/plasmalogin.conf",
-                         "etc/systemd/system/plasmalogin.service.d/20-piano-display.conf",
                          "etc/xdg/powerdevilrc"):
             (root / relative).parent.mkdir(parents=True, exist_ok=True)
             (root / relative).write_text("fixture")
@@ -363,7 +362,6 @@ def check_gdm_enable_is_the_display_manager_alias():
             (root / "usr/bin" / name).chmod(0o755)
         for relative in ("etc/gdm/custom.conf",
                          "usr/share/wayland-sessions/gnome.desktop",
-                         "etc/systemd/system/gdm.service.d/20-piano-display.conf",
                          "etc/dconf/db/local.d/00-power"):
             (root / relative).parent.mkdir(parents=True, exist_ok=True)
             (root / relative).write_text("fixture")
@@ -416,11 +414,9 @@ def check_greetd_desktops_stage_a_config_toml():
         default_section = text.split("[default_session]", 1)[1]
         assert 'user = "greetd"' in default_section, (desktop, text)
         assert 'user = "greeter"' not in text, (desktop, text)
-        # 单元启用与依赖 drop-in 都指向 greetd。
+        # 单元启用指向 greetd。显示管理器不再挂 piano-display 依赖：那个单元
+        # 已随上游的标准 modalias 架构删除，挂上去只会让桌面起不来。
         assert piano_desktop.enable_units(context) == ["greetd.service"], desktop
-        path, body = piano_desktop.display_dependency_dropin(context)
-        assert path == "etc/systemd/system/greetd.service.d/20-piano-display.conf", path
-        assert "piano-display.service" in body, body
 
 
 def check_greetd_validation_checks_the_session_command():
@@ -432,8 +428,7 @@ def check_greetd_validation_checks_the_session_command():
             (root / unit).parent.mkdir(parents=True, exist_ok=True)
             (root / unit).write_text("[Unit]\n")
         for relative in ("usr/share/wayland-sessions/niri.desktop",
-                         "etc/greetd/config.toml",
-                         "etc/systemd/system/greetd.service.d/20-piano-display.conf"):
+                         "etc/greetd/config.toml"):
             (root / relative).parent.mkdir(parents=True, exist_ok=True)
             (root / relative).write_text("fixture")
         (root / "usr/bin").mkdir(parents=True, exist_ok=True)

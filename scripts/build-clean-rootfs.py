@@ -693,14 +693,6 @@ def execute(plan_data):
                     f"cannot enable the {context['desktop']} display manager: {service}")
             pass
 
-    # 显示依赖：显示管理器必须等面板真正就绪之后再起。
-    dropin = piano_desktop.display_dependency_dropin(context)
-    if dropin is not None:
-        dropin_path, dropin_text = dropin
-        target = root / dropin_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(dropin_text, encoding="utf-8")
-
     # 电源策略：KDE 的 powerdevilrc 由这里落盘；GNOME 的 dconf 文件由
     # piano-fedora-configs 这个 RPM 安装，构建器不写第二个写者；
     # /etc/dconf/profile/user 同样由 dconf 包自带（已含 system-db:local）。
