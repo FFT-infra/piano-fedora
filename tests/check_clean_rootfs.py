@@ -371,6 +371,14 @@ def main():
           "the piano-runtime RPM must declare erofs-utils in its Requires, "
           "otherwise a rootfs built without the profile silently loses sensors")
 
+    # 15. SunUEFI 的 package_release.py 从根系统取 systemd-boot 当 ESP 的
+    #     /EFI/BOOT/BOOTAA64.EFI；Fedora 45 上这个文件只由 systemd-boot-unsigned
+    #     提供，而它唯一的反向依赖是 sdubby，我们的树里没有人装。缺了它
+    #     build-bundle 在 "Expected regular EFI application" 处失败。
+    check("systemd-boot-unsigned" in profile["base_packages"],
+          "scripts/profiles/fedora.json must install systemd-boot-unsigned: "
+          "SunUEFI packages systemd-bootaa64.efi as the ESP boot application")
+
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)
