@@ -208,6 +208,7 @@ jobs:
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-cma.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-pcie-interrupt-map.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-usb-typec.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-displayport.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-ufs-mcq.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-dsp-resources.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-cdsp-fastrpc.dtso \
@@ -220,6 +221,8 @@ jobs:
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-touch-panel.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-pen-dock.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-pen-charger.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-bluetooth-nvm.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-ir-spi-controller.dtso \
             --initramfs build/initramfs/initramfs.cpio.gz \
             --rootfs build/device-root/rootfs --rootfs-manifest build/device-root/manifest.json \
             --root-selector LABEL=PIANOROOT --esp-size-mib "$ESP_SIZE_MIB" --output build/packaged
