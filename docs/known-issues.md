@@ -568,7 +568,7 @@ cherry-pick）。有六处没有照抄上游：
 | --- | --- | --- | --- |
 | `adsprpcd` | 86 | 厂商 SEE daemon 按固定清单找 `/odm/etc/sensors/config/sns_*.json` 与 `./sns_tppe.so`、`./libeai_service.so`。ROM 的 ODM 只有 60 个配置，它要的那些本机没有 | 不补。要补只能伪造厂商配置，传感器本身可用，见「传感器与自动旋转」 |
 | `60-block-scheduler.rules` | 5 | 五个盘各报一次 `Failed to write "bfq" ... Device or resource busy`。手工写 `bfq` 返回 0，是 udev 与内核默认值的时序冲突 | 不改。这是发行版规则，不是本仓库的文件 |
-| `[NVT-ts-spi]` | 2 | `nvt_thp_stylus_write` 与 `nvt_thp_raw_write` 用 `pr_err` 打 info 级内容 | 不改。为两行日志动 linux-piano 的驱动要重编一次内核 |
+| `[NVT-ts-spi]` | 2 | `nvt_thp_stylus_write` 与 `nvt_thp_raw_write` 用 `pr_err` 打 info 级内容 | 攒着。改 linux-piano 的驱动要动 7.3 补丁序列、重算 `target_tree`，和下一轮内核重编一起做 |
 | `Bluetooth: HCI_IBS_WAKE_ACK in tx state 0` | 2 | wcn7850 上电序列里 hci_qca 的状态机输出 | 不改 |
 | `bluetoothd` | 1 | `No matching connection for device` | 不改 |
 | `msm_dpu` | 1 | `no GPU device was found`。`separate_gpu_kms=1` 下 DPU 比 adreno 先探测，之后两块卡都绑上 | 不改。GNOME 跑在 adreno 上 |
