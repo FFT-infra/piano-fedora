@@ -579,6 +579,10 @@ alsa-lib 仍然在 `dist-alsa.conf` 里给 `snd-pcm` 挂 `modprobe snd-seq`，�
 遮住发行版那份，只保留加载 `snd-pcm` 的那一半。kmod 按文件名全局排序取先命中的
 一条，换个名字压不住，所以必须同名。
 
-根因还在内核里，`/dev/snd/seq` 不存在，`aconnect`、`aplaymidi` 这类依赖音序器
-路由的应用用不了。要真开得在 SunUEFI 的 `tools/build_piano_full_kernel.py` 配置
-白名单里加一项，那份清单是 sha 锁定的定值。上游开了之后删掉这份覆盖即可。
+根因在内核里：`CONFIG_SND_SEQUENCER` 没开，`/dev/snd/seq` 不存在，`aconnect`、
+`aplaymidi` 这类依赖音序器路由的应用用不了。`patches/kernel-snd-seq/` 往 SunUEFI
+的 `tools/build_piano_full_kernel.py` 配置白名单里加了一项
+`CONFIG_SND_SEQUENCER=m`，新内核一起床 `snd-seq.ko` 就会出现在 `/usr/lib/modules`。
+那时候这份 modprobe 覆盖就该删掉：它遮掉的正是加载 `snd-seq` 的那一半，留着
+反而不会自动加载。删它要连带删 `tests/check_audio_stack.py` 的对应断言，并升一次
+`piano-fedora-configs` 的 Release。

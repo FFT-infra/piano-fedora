@@ -58,6 +58,9 @@ def main():
     assert not both, "symbol declared by both fragments: " + repr(sorted(both))
     assert helpers <= set(policy), "firewalld conntrack helpers missing from Fedora policy"
     assert all(policy[symbol] == "m" for symbol in helpers), "firewalld conntrack helpers must be modules"
+    # alsa-lib 的 dist-alsa.conf 跟着声卡加载 snd-seq，内核缺这个模块就每次
+    # 开机报一条 not found。SND 是模块，它也只能是模块。
+    assert policy.get("CONFIG_SND_SEQUENCER") == "m", "ALSA sequencer must ship as a module"
     missing = {symbol for symbol in declared if symbol not in policy and symbol not in platform}
     assert not missing, "Fedora nftables kernel options missing: " + repr(sorted(missing))
     assert not (derived & (set(policy) | set(platform))), "select-only symbol set by a fragment"

@@ -1,0 +1,36 @@
+From 5cff81428cb0ba25a5b4cd516263de7668dfe8997d9d5c0cc7148bc597661b9e Mon Sep 17 00:00:00 2001
+From: piano-fedora <dev@piano.invalid>
+Date: Sun, 8 Nov 2026 15:25:37 +0800
+Subject: [PATCH] config: ship the ALSA sequencer as a module
+
+Fedora's alsa-lib keeps `install snd-pcm ... && /sbin/modprobe snd-seq` in
+/usr/lib/modprobe.d/dist-alsa.conf, so every sound card load asks for a module
+the production profile does not build. The modprobe attempt fails on every boot,
+and user space that routes MIDI through the sequencer (FluidSynth, aconnect,
+aplaymidi) has no /dev/snd/seq to open.
+
+SND_SEQUENCER is a plain tristate in sound/core/seq/Kconfig with no `depends
+on`, only `select SND_TIMER` and `select SND_SEQ_DEVICE`, so it can follow SND
+as a module. Nothing loads it on a default desktop; it appears when a program
+asks for it.
+---
+ tools/build_piano_full_kernel.py | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
+index a67089c..6d4670d 100644
+--- a/tools/build_piano_full_kernel.py
++++ b/tools/build_piano_full_kernel.py
+@@ -103,6 +103,12 @@ FEDORA_OVERRIDES.update({key:'m' for key in (
+     'CONFIG_NF_CONNTRACK_IRC','CONFIG_NF_CONNTRACK_NETBIOS_NS','CONFIG_NF_CONNTRACK_PPTP',
+     'CONFIG_NF_CONNTRACK_SANE','CONFIG_NF_CONNTRACK_SIP','CONFIG_NF_CONNTRACK_SNMP',
+     'CONFIG_NF_CONNTRACK_TFTP')})
++# Fedora user space routes MIDI through the ALSA sequencer: alsa-lib's
++# dist-alsa.conf loads snd-seq whenever a sound card comes up, and FluidSynth or
++# aconnect need /dev/snd/seq to exist. The public profile leaves the sequencer
++# off, so that modprobe attempt fails on every boot. Keep it a module: nothing
++# loads it on a default desktop, and SND is a module too.
++FEDORA_OVERRIDES.update({'CONFIG_SND_SEQUENCER':'m'})
+ # The Fedora production kernel always includes the locked upstream Gunyah VMM.
+ GUNYAH_OVERRIDES={'CONFIG_GUNYAH':'y','CONFIG_GUNYAH_HYPERCALLS':'y',
+                   'CONFIG_GUNYAH_TIMER':'y','CONFIG_GUNYAH_PLATFORM_HOOKS':'y',
