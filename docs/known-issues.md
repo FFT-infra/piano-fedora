@@ -555,3 +555,27 @@ cherry-pick）。有六处没有照抄上游：
   在上游 SunUEFI 仓库，按 `sources.lock.json` 的 pin 取。还有一份设备验收记录
   已移到不入库的本地笔记，这条引用是历史记录。改 `series.json` 会改变
   `project_source_sha256`，现有 bundle 的 UEFI 来源校验会失效，因此本轮不改它。
+
+## 开机日志里的红色报错
+
+一次冷启动后 `journalctl -b -p err` 是 98 行，分七类。装入 `piano-cma`、
+`piano-pcie-interrupt-map`、`dsp-resources` 与 `cdsp-fastrpc` 之后，PCIe 的六条
+`probe failed -22`、CMA 的四条 `alloc failed` 与 cdsp 的 `-61` 都不再出现
+（`dmesg | grep -cE "pcie_pme|trigger mode 5"` 为 0，`CmaTotal` 937984 kB，
+`remoteproc` 里 adsp 与 cdsp 都是 running）。
+
+| 来源 | 行数 | 归因 | 处理 |
+| --- | --- | --- | --- |
+| `adsprpcd` | 86 | 厂商 SEE daemon 按固定清单找 `/odm/etc/sensors/config/sns_*.json` 与 `./sns_tppe.so`、`./libeai_service.so`。ROM 的 ODM 只有 60 个配置，它要的那些本机没有 | 不补。要补只能伪造厂商配置，传感器本身可用，见「传感器与自动旋转」 |
+| `60-block-scheduler.rules` | 5 | 五个盘各报一次 `Failed to write "bfq" ... Device or resource busy`。手工写 `bfq` 返回 0，是 udev 与内核默认值的时序冲突 | 不改。这是发行版规则，不是本仓库的文件 |
+| `[NVT-ts-spi]` | 2 | `nvt_thp_stylus_write` 与 `nvt_thp_raw_write` 用 `pr_err` 打 info 级内容 | 不改。为两行日志动 linux-piano 的驱动要重编一次内核 |
+| `Bluetooth: HCI_IBS_WAKE_ACK in tx state 0` | 2 | wcn7850 上电序列里 hci_qca 的状态机输出 | 不改 |
+| `bluetoothd` | 1 | `No matching connection for device` | 不改 |
+| `msm_dpu` | 1 | `no GPU device was found`。`separate_gpu_kms=1` 下 DPU 比 adreno 先探测，之后两块卡都绑上 | 不改。GNOME 跑在 adreno 上 |
+| `snd-seq` | 1 | udev 对 `snd_pcm` 执行 `modprobe snd-seq`，模块不存在 | 见下 |
+
+`CONFIG_SND_SEQUENCER` 在内核里没开，`/dev/snd/seq` 不存在，`aconnect` 与
+`aplaymidi` 用不了，这一条就是它的表现。开启它要在 SunUEFI 的
+`tools/build_piano_full_kernel.py` 里给配置白名单加一项，那份白名单是 sha 锁定的
+定值，本仓库按约定不 fork 上游，所以记为上游缺口。剩下的处理只有接受，或者等
+上游加项。
