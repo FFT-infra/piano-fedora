@@ -3,6 +3,7 @@
 
 import argparse
 import importlib.util
+import json
 from pathlib import Path
 import shutil
 import struct
@@ -195,6 +196,34 @@ def main():
         export = importlib.util.module_from_spec(export_spec)
         export_spec.loader.exec_module(export)
         export.require_complete_tool_dependencies(args.sunuefi)
+        # 发布包里的安装器拿的是导出目录（source-manifest.json），不是 git
+        # 检出。按 export-installer.py 的写法造一份导出，正反两面都跑：五个
+        # 工具齐全时必须能 load_source，少了 package_sparse_images.py 必须拒绝。
+        export_dir = Path(tempfile.mkdtemp())
+        tools = export_dir / "sunuefi" / "tools"
+        tools.mkdir(parents=True)
+        for name in export.TOOLS:
+            shutil.copyfile(args.sunuefi / "tools" / name, tools / name)
+        pin = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["sunuefi"]["commit"]
+
+        def write_manifest():
+            names = sorted(tools.iterdir())
+            (export_dir / "sunuefi" / "source-manifest.json").write_text(json.dumps({
+                "commit": pin,
+                "files": {"tools/" + p.name: {"bytes": p.stat().st_size, "sha256": export.sha256(p)}
+                          for p in names}}, indent=2) + "\n")
+
+        write_manifest()
+        assert installer.load_source(export_dir / "sunuefi").parse_gpt
+        (tools / "package_sparse_images.py").unlink()
+        write_manifest()
+        try:
+            installer.load_source(export_dir / "sunuefi")
+        except ValueError as error:
+            assert "exported source manifest differs" in str(error), error
+        else:
+            raise AssertionError("an export without package_sparse_images.py passed load_source")
+        shutil.rmtree(export_dir)
     else:
         upstream = SimpleNamespace(_new_header=new_header, parse_gpt=lambda *unused: gpt,
             LINUX_TYPE=uuid.UUID("0fc63daf-8483-4772-8e79-3d69d8477de4").bytes_le,
@@ -266,7 +295,6 @@ def main():
             raise AssertionError(message + " was accepted")
 
     # bundle 自带的 sparse 必须解码回封存镜像；root-install 缺席时刷的就是它。
-    import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
         raw = work / "pianoroot.raw"

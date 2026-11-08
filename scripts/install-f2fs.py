@@ -42,7 +42,11 @@ BUNDLE_ASSETS = {
 
 def load_source(source):
     pin = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["sunuefi"]["commit"]
-    names = ("install_piano.py", "provision_piano_bluetooth.py", "provision_piano_ssh.py", "compose_piano_dtb.py")
+    # install_piano.py 依赖同目录的 package_sparse_images.py（SunUEFI 8b0fc42
+    # 起）。它必须与另外四个工具一起出现在导出清单里，否则发布包里的
+    # --sunuefi boot-tools/installer/sunuefi 会在第一次 load_source 时失败。
+    names = ("install_piano.py", "provision_piano_bluetooth.py", "provision_piano_ssh.py",
+             "compose_piano_dtb.py", "package_sparse_images.py")
     if (source / ".git").exists():
         actual = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
         require(actual == pin, "installer source does not match sources.lock.json")
