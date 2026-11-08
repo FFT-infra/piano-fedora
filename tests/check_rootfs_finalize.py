@@ -453,9 +453,9 @@ def main():
         staged = finalizer.stage_boot_diagnostics(root, GNOME)
         assert "usr/bin/piano-collect-boot" in staged
         assert collector.read_bytes() == packaged, "the finalizer overwrote the packaged collector"
-        gdm = root / "etc/systemd/system/gdm.service.d/20-piano-display.conf"
-        assert "Requires=piano-display.service" in gdm.read_text()
-        assert "After=piano-display.service" in gdm.read_text()
+        # 显示管理器不再挂 piano-display 依赖：上游删掉了那个 unit，
+        # Requires 永远不满足，gdm 会在开机时被依赖失败拖死。
+        assert not (root / "etc/systemd/system/gdm.service.d/20-piano-display.conf").exists()
         camera = root / "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf"
         assert "Wants=piano-camera.service" in camera.read_text()
         assert "Requires=" not in camera.read_text()

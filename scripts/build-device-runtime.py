@@ -297,6 +297,18 @@ def build(args):
     extras_proof = build_extras(sun.parent, output / "extras", rpm_package, put, sha256, run)
     for p in (output / "extras/rpms").glob("*.rpm"):
         shutil.copyfile(p, output / "rpms" / p.name)
+    # 上游的现行架构是标准 modalias：stage_piano_ram_hardware 的 removed_paths
+    # 删掉按子系统手动拉起驱动的 piano-*-start 与对应 unit（display、radio、
+    # audio、video、camera、keyboard、cpufreq），连同 wants 链接。BSP 与
+    # debian-piano overlay 里这些 unit 还在，原样装进 RPM 就成了指向不存在脚本
+    # 的空壳：真机上 5 个 runtime unit 全部 203/EXEC。这里用上游自己的清单删一遍，
+    # 不在 Fedora 侧维护第二套“哪些 unit 过时”的判断。
+    removed_upstream = []
+    for relative in hardware.removed_paths(payload):
+        target = payload / relative
+        if target.is_file() or target.is_symlink():
+            target.unlink()
+            removed_upstream.append(relative)
     # Drop every path the RPM matrix already owns. The matrix is the release
     # artifact for configs, services, calibration data and the xiaomi boot
     # helpers; a second owner here made DNF abort the clean-rootfs transaction.
@@ -306,7 +318,8 @@ def build(args):
                   "touch": touch_proof, "camera": camera_proof, "boot_request": request,
                   "sensor_sources": sensor_proof, "fastrpc_daemon": fastrpc_proof,
                   "extras": extras_proof,
-                  "integration": integration_proof, "pruned_matrix_owned": pruned, "device_tested": False}
+                  "integration": integration_proof, "pruned_matrix_owned": pruned,
+                  "removed_upstream_paths": removed_upstream, "device_tested": False}
     dest = payload / "usr/share/piano-provenance/fedora-runtime.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(provenance, indent=2) + "\n")
@@ -316,7 +329,9 @@ def build(args):
     # Release 3：importer 每次启动校验 sensors store 并在损坏时重建，动态库
     # 导入 /var/lib/piano-sensors/rfsa/adsp，dropin 只经由 30-adsp-library.conf
     # 暴露路径。同样必须换 NEVRA，否则装过 0.2.0-2 的设备拿不到新 importer。
-    rpm_package("piano-runtime", payload, output, version="0.2.0", release="3",
+    # Release 4：按上游 removed_paths 去掉过时的 piano-*-start 与 unit，载荷
+    # 字节变了，同样换 NEVRA。
+    rpm_package("piano-runtime", payload, output, version="0.2.0", release="4",
                 requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
                           "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils",
                           # piano-sensors-import reads the Android odm/vendor EROFS

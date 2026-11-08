@@ -43,8 +43,9 @@
   ```
   日志里出现 `configured default session user 'greeter' not found` 即是这个问题。
 
-四个显示管理器都在 `piano-display.service` 之后启动（`Requires=` + `After=`
-的 drop-in），面板没就绪时不会先起桌面。
+四个显示管理器都直接随开机启动，不挂 `piano-display.service` 依赖。驱动按
+标准 modalias 加载，旧的分子系统手动 bring-up 单元已随上游删除；给显示管理器
+挂 `Requires=` 只会在依赖永远不满足时把桌面一起拖死。
 
 ## 电源行为
 
