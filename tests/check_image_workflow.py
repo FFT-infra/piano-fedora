@@ -122,7 +122,9 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     # esp-manifest.json is produced upstream and keeps its internal esp.img /
     # boot.img keys; verify-bundle maps them to the release asset names.
     write("esp-manifest.json", {"kernel_manifest_sha256": kernel,
-          "esp_files": ["/EFI/Piano/stable/" + name for name in ("Image", "board.dtb", "initramfs", "boot.img")],
+          "esp_files": ["/EFI/Piano/stable/" + name for name in ("Image", "board.dtb", "initramfs", "boot.img")]
+                       + ["/EFI/BOOT/BOOTAA64.EFI", "/EFI/Piano/LinuxBoot.efi",
+                          "/loader/loader.conf", "/loader/entries/debian.conf"],
           "files": {
               "esp.img": {"sha256": digest(root / "sunuefi_esp.img"),
                            "bytes": (root / "sunuefi_esp.img").stat().st_size},

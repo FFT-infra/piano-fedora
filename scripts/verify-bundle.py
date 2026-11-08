@@ -37,7 +37,12 @@ def verify(root):
     esp = read("esp-manifest.json")
     if esp["kernel_manifest_sha256"] != kernel_hash:
         raise ValueError("ESP and rootfs use different kernel manifests")
-    expected_paths = {"/EFI/Piano/stable/" + p for p in ("Image", "board.dtb", "initramfs", "boot.img")}
+    # 载荷四个文件在 /EFI/Piano/stable/ 下；引导链是固件直接执行的
+    # systemd-boot（BOOTAA64.EFI）、它 chainload 的 LinuxBoot.efi，以及
+    # systemd-boot 读的两份配置。缺任何一份这台机器都起不来。
+    expected_paths = {"/EFI/Piano/stable/" + p for p in ("Image", "board.dtb", "initramfs", "boot.img")} | {
+        "/EFI/BOOT/BOOTAA64.EFI", "/EFI/Piano/LinuxBoot.efi",
+        "/loader/loader.conf", "/loader/entries/debian.conf"}
     if set(esp["esp_files"]) != expected_paths:
         raise ValueError("ESP layout differs from the actual firmware loader")
     for asset, packaged in ASSETS.items():
