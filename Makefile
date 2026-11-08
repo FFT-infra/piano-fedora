@@ -1,6 +1,7 @@
 .PHONY: test test-device-media plan plan-desktop clean build-rpms release-bundle selinux
 
 test:
+	python3 tests/check_audio_stack.py
 	python3 tests/check_sources.py
 	python3 tests/check_upstreams.py
 	python3 tests/check_upstream_watch.py
