@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ("install-f2fs.py", "update-f2fs.py", "plan-first-partition.py", "prepare-device-boot.py",
            "verify-native-boot.py", "apply-patches.py", "piano_artifacts.py", "piano_sparse.py",
            "piano_gpt.py", "piano_memory.py")
-TOOLS = ("install_piano.py", "provision_piano_bluetooth.py", "provision_piano_ssh.py", "compose_piano_dtb.py")
+TOOLS = ("install_piano.py", "provision_piano_bluetooth.py", "provision_piano_ssh.py", "compose_piano_dtb.py",
+         "package_sparse_images.py")
 # 脚本按路径加载的同目录模块（`spec_from_file_location("piano_gpt", …/piano_gpt.py)`）
 # 不一定走 import，按文件名文字再扫一遍。
 LOCAL_MODULE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*+)\.py\b")
@@ -49,6 +50,34 @@ def require_complete_dependencies(names):
                 if (ROOT / "scripts" / (module + ".py")).is_file() and module not in shipped:
                     missing.add(f"{name} -> {module}.py")
     require(not missing, "exported scripts depend on modules that are not exported: "
+            + ", ".join(sorted(missing)))
+
+
+def require_complete_tool_dependencies(sunuefi):
+    """上游工具之间的同目录 import 必须一起导出。
+
+    SunUEFI 8b0fc42 的 `install_piano.py` 加了 `from package_sparse_images import
+    convert`，导出清单没有跟着长。少一个文件时导出成功、`install-f2fs.py --help`
+    也成功，安装方第一次调用 `load_source()` 才 `ModuleNotFoundError`，那时人已经
+    在设备旁边、命令行就是安装指南里抄的那条。这里按上游工具自己的 import 反查，
+    缺一个就在写输出目录之前停下。
+    """
+    tools = sunuefi / "tools"
+    shipped = {name.removesuffix(".py") for name in TOOLS}
+    missing = set()
+    for name in TOOLS:
+        text = (tools / name).read_text(encoding="utf-8")
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, ast.Import):
+                modules = [alias.name.split(".")[0] for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                modules = [node.module.split(".")[0]]
+            else:
+                continue
+            for module in modules:
+                if (tools / (module + ".py")).is_file() and module not in shipped:
+                    missing.add(f"{name} -> {module}.py")
+    require(not missing, "exported upstream tools depend on files that are not exported: "
             + ", ".join(sorted(missing)))
 
 
@@ -87,6 +116,7 @@ def main():
     spec.loader.exec_module(installer)
     installer.load_source(args.sunuefi)
     require_complete_dependencies(SCRIPTS)
+    require_complete_tool_dependencies(args.sunuefi)
     output = args.output.absolute()
     require(not output.exists() and not output.is_symlink(), "installer output already exists")
     sources = [("sources.lock.json", "sources.lock.json"), ("docs/installation.md", "INSTALL.md")]

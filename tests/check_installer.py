@@ -188,6 +188,13 @@ def main():
     if args.sunuefi:
         upstream = installer.load_source(args.sunuefi)
         gpt = upstream.parse_gpt(primary, table, backup, table, sectors * 4096)
+        # 导出清单必须覆盖上游工具之间的同目录 import；8b0fc42 起
+        # install_piano.py 依赖 package_sparse_images.py，漏导出时安装方
+        # 第一次 load_source() 才失败。
+        export_spec = importlib.util.spec_from_file_location("installer_export", ROOT / "scripts/export-installer.py")
+        export = importlib.util.module_from_spec(export_spec)
+        export_spec.loader.exec_module(export)
+        export.require_complete_tool_dependencies(args.sunuefi)
     else:
         upstream = SimpleNamespace(_new_header=new_header, parse_gpt=lambda *unused: gpt,
             LINUX_TYPE=uuid.UUID("0fc63daf-8483-4772-8e79-3d69d8477de4").bytes_le,
