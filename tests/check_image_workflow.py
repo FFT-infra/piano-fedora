@@ -47,8 +47,9 @@ def check_mesa(root):
         assert args[args.index("--spec") + 1] == str(spec), args
         assert args[args.index("--srpm") + 1] == str(srpm), args
         assert "_topdir " + str(top) in args, args
-    # 补丁版靠改名压过官方版：改 Name、给六个运行时子包补 Provides/Conflicts，
-    # 并把 %autosetup 的 -n 指回 tarball 解出来的目录名。不用 epoch。
+    # 补丁版靠改名压过官方版：改 Name、给六个运行时子包补
+    # Provides/Obsoletes/Conflicts，并把 %autosetup 的 -n 指回 tarball
+    # 解出来的目录名。不用 epoch。
     subpackages = "".join(f"%package {sub}\nSummary:        {sub}\n" for sub in mesa.REPLACES)
     synthetic = ("Name:           mesa\nVersion:        26.2.3\nRelease:        %autorelease\n"
                  "%autosetup -n %{name}-%{ver} -p1\n" + subpackages
@@ -60,6 +61,9 @@ def check_mesa(root):
     assert "Epoch:" not in adapted
     for sub, fedora in mesa.REPLACES.items():
         assert f"Provides:       {fedora} = %{{version}}-%{{release}}\n" in adapted, adapted
+        # 桌面 environment 按名字提 mesa-dri-drivers 这类成员时，只有 Obsoletes
+        # 能把请求引到这里；少了这一行，rootfs 事务直接 conflicting requests。
+        assert f"Obsoletes:      {fedora} < %{{version}}-%{{release}}\n" in adapted, adapted
         assert f"Conflicts:      {fedora}%{{?_isa}}\n" in adapted, adapted
     assert set(mesa.PACKAGES) == {f"mesa-piano-{sub}" for sub in mesa.REPLACES}
     # 少一个子包锚点就必须停：没有替代声明的包既压不住官方版，也会装出两份。

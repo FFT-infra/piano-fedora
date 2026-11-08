@@ -151,14 +151,19 @@ def adapt_spec(raw, names):
     text = text.replace(SPEC_RELEASE_OLD, SPEC_RELEASE_NEW).replace(
         SPEC_PATCH_ANCHOR, SPEC_PATCH_ANCHOR + declared, 1)
     text = text.replace(SPEC_SUFFIX_OLD, SPEC_SUFFIX_NEW)
-    # 每个子包声明它替代的 Fedora 包名：Provides 让依赖原名的东西继续解析，
-    # Conflicts 保证两个版本不会同时装进设备。
+    # 每个子包声明它替代的 Fedora 包名：Provides 让依赖原名的东西继续解析；
+    # Obsoletes 让按原名提的安装请求落到这里——dnf 解析明确的包名时只认名字，
+    # Provides 压不过同名的官方包；
+    # Conflicts 保证两个版本不会同时装进设备，也是 Fedora 版本号超过本包时
+    # 唯一的报错出口（那时 Obsoletes 的区间盖不住，构建直接红，需要跟着新
+    # SRPM 重做）。
     for anchor, fedora in REPLACES.items():
         if text.count(anchor) != 1:
             raise ValueError("unexpected Fedora FFmpeg spec layout: " + anchor.strip())
         text = text.replace(anchor, anchor + (
             f"Provides:       {fedora} = %{{version}}-%{{release}}\n"
             f"Provides:       {fedora}%{{?_isa}} = %{{version}}-%{{release}}\n"
+            f"Obsoletes:      {fedora} < %{{version}}-%{{release}}\n"
             f"Conflicts:      {fedora}%{{?_isa}}\n"), 1)
     return text
 

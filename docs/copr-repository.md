@@ -116,7 +116,7 @@ Fedora 的 mesa 与 ffmpeg 版本号一直在往上走，补丁版的版本号�
 | `mesa`、`mesa-libGL`、`mesa-libEGL`、`mesa-libgbm`、`mesa-dri-drivers`、`mesa-vulkan-drivers`、`mesa-filesystem` | `mesa-piano`、`mesa-piano-libGL`、`mesa-piano-libEGL`、`mesa-piano-libgbm`、`mesa-piano-dri-drivers`、`mesa-piano-vulkan-drivers`、`mesa-piano-filesystem` |
 | `ffmpeg-free`、`libavcodec-free` 等 8 个 | `ffmpeg-piano`、`libavcodec-piano` 等 8 个 |
 
-每个本地子包声明 `Provides: <上游名> = <版本>-<发布号>` 和 `Conflicts: <上游名>`。依赖上游名字的包照旧能被满足，两个版本不会同时装进一台设备，`dnf upgrade` 也没有同名目标可以覆盖。
+每个本地子包声明 `Provides: <上游名> = <版本>-<发布号>`、`Obsoletes: <上游名> < <版本>-<发布号>` 和 `Conflicts: <上游名>`。依赖上游名字的包照旧能被满足；按名字提的安装请求（comps 组、桌面 environment 的成员）落到本地包上，`Obsoletes` 那一行就是为它写的——dnf 解析明确的包名只认名字，`Provides` 压不过同名的官方包；两个版本不会同时装进一台设备。上游版本号超过本地包时 `Obsoletes` 的区间盖不住，构建会直接报冲突，需要跟着新 SRPM 重做。
 
 已经装着 Fedora 图形栈的设备要换一次名字，`dnf upgrade` 不会主动安装新名字的包：
 

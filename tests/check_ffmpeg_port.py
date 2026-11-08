@@ -116,6 +116,8 @@ def check_spec():
     for anchor, fedora in ffmpeg.REPLACES.items():
         assert anchor in adapted, anchor
         assert f"Provides:       {fedora} = %{{version}}-%{{release}}\n" in adapted, adapted
+        # 按名字提 ffmpeg-free 的安装请求只能靠 Obsoletes 落到 -piano 这里。
+        assert f"Obsoletes:      {fedora} < %{{version}}-%{{release}}\n" in adapted, adapted
         assert f"Conflicts:      {fedora}%{{?_isa}}\n" in adapted, adapted
     # 改名之后包内精确版本依赖原样保留，不需要任何 epoch 前缀。
     assert ("Requires:       libavcodec%{?pkg_suffix}%{_isa} = "
