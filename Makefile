@@ -23,7 +23,7 @@ test:
 	python3 tests/check_first_partition.py
 	python3 tests/check_manual_partition.py
 	python3 tests/check_root_capacity.py
-	python3 tests/check_installer.py
+	python3 tests/check_installer.py $(if $(PIANO_TEST_SUNUEFI),--sunuefi $(PIANO_TEST_SUNUEFI))
 	python3 tests/check_prepare_device_boot.py
 	python3 tests/check_boot_tools.py
 	python3 tests/check_installer_export.py
