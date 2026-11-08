@@ -207,10 +207,21 @@ def build(args):
             put(p, payload / "usr/lib/systemd/system" / p.name)
     adapters = sun / "build/fedora-adapters"
     hardware.build(adapters, public)
+    common = sun / "linux/bsp/common"
     for p in adapters.rglob("*"):
         if p.is_file() and p.name != "manifest.json":
-            put(p, payload / p.relative_to(adapters), p.stat().st_mode & 0o111)
-    for p in (sun / "linux/bsp/common").rglob("*"):
+            # 上游的 adapter 目录现在原样复制 linux/bsp/common，其中还有符号链接
+            # （ucm2 的 conf.d 入口就是）。同一条路径装两次会把链接摊平成普通
+            # 文件，随后 BSP 遍历写链接时撞上 FileExistsError。这类路径只从
+            # BSP 树装一次，链接与权限以它为准；两份内容不一致就在这里失败，
+            # 不静默挑一份。
+            relative = p.relative_to(adapters)
+            if (common / relative).is_file() or (common / relative).is_symlink():
+                if p.read_bytes() != (common / relative).read_bytes():
+                    raise ValueError("adapter differs from the BSP tree: " + str(relative))
+                continue
+            put(p, payload / relative, p.stat().st_mode & 0o111)
+    for p in common.rglob("*"):
         if p.is_file() or p.is_symlink():
             # piano-usb.service 与 piano-linux-debug.service 抢同一个 UDC。
             # 后者先绑定 a600000.ssusb，usb0 与 NM profile 都归它；前者再建
