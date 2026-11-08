@@ -13,7 +13,7 @@ on:
       releasever:
         description: "Fedora release (must match product.json)"
         required: false
-        default: "44"
+        default: "45"
   workflow_call:
     inputs:
       kernel_run_id:
@@ -24,7 +24,7 @@ on:
         description: "Fedora release (must match product.json)"
         required: false
         type: string
-        default: "44"
+        default: "45"
 
 permissions:
   contents: read
@@ -35,11 +35,19 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
+
       - name: Require a kernel run when invoked from host-check
         if: ${{ github.event_name == 'workflow_call' && inputs.kernel_run_id == '' }}
         run: |
           echo "kernel_run_id is required when build_piano_rpms=true" >&2
           exit 2
+
+      - name: Require the requested release to match product.json
+        run: |
+          set -euo pipefail
+          expected="$(python3 -c 'import json;print(json.load(open("product.json"))["target"]["releasever"])')"
+          test "${{ inputs.releasever }}" = "$expected"
 
   rpms:
     needs: inputs

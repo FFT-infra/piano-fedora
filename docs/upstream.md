@@ -6,17 +6,32 @@
 
 构建消费的上游以 `sources.lock.json` 为准，当前 pin 的 commit 写在 `sources.lock.json` 里。其他消费源的 commit 也记在 `sources.lock.json`。研究与对照仓库登记在 `upstreams.json`，不参与构建。本页的引用链接按当前 pin 固定到具体提交。
 
+### 对照基准
+
+`sources.lock.json` 里有两条 pin 只进对照任务、不进产物：
+
+- `vendor-kernel`：`android_kernel_xiaomi_piano` 的 DTS 源码，被 `scripts/compare-vendor-dt.py` 读取，用来核对 SunUEFI overlay 的目标节点在厂商硬件描述里是否存在。
+- `vendor-blobs`：`android_vendor_xiaomi_piano` 的固件与传感器配置，被 `scripts/compare-vendor-blobs.py` 按 git blob 摘要比对。只读文件清单，不下载内容，不进镜像。
+
+这两条属于消费上游，所以进 `upstream-watch` 的漂移报告，但白名单里没有它们：厂商树一更新就要人工看对照报告有没有新差异。任何出货路径引用 `vendor-kernel` 都算违规——它描述的是 Android 下游 DT，和启动用的 `board.dtb` 不是同一条血缘，见 `docs/device-tree.md`。
+
+第一份固件对照（2026-11-08）覆盖厂商仓库提交的 148 个固件文件：5 个与出货树逐字节相同，含两个 Novatek 触控固件、Nanosic MCU 与 `gen80000_gmu.bin`；4 个不同，`gen80000_aqe/sqe`、`gen80000_zap.mbn`、`vpu35_4v.mbn`；其余两边各自独有，厂商侧以 `CAMERA_ICP` 为主。厂商仓库不是 vendor 分区的全集，所以"厂商有、我们没有"只说明这份清单里没有。报告同时核对 `runtime/matrix-owned-paths.txt` 的 99 条固件所有权路径：与出货树 99 个文件一一对应，没有缺失也没有未声明的。
+
+`packages/xiaomi-piano-firmware` 的 `%prep` 现在核对上游自带的 `SHA256SUMS`（99 项）。在此之前 `Source0` 只订了提交号，tarball 内容被换掉也发现不了。
+
+固件包还要再叠一层厂商 ROM。SunUEFI 的 `config/release.json` 用 `firmware.overlays` 声明 `vendor/firmware/hyperos4-{adsp,cdsp,fingerprint}` 三份，每份带 `manifest.json`，逐文件记 bytes 与 sha256。上游 piano-firmware tarball 里没有 cdsp 与指纹固件，adsp 也是另一版 ROM，所以 99 项之外还有 88 个文件来自这一层，由 `packages/xiaomi-piano-firmware/firmware-overlays.py` 在写盘前逐个核对。清单从 `release.json` 读，叠层的提交号与 `sources.lock.json` 的 `sunuefi` pin 相同，`tests/check_firmware_overlays.py` 守住两者一致。
+
 ## 自动跟踪
 
 `.github/workflows/upstream-watch.yml` 每周一 03:23 UTC 运行一次 `scripts/audit-upstreams.py --execute`。`scripts/upstream-watch.py` 处理执行结果，按以下规则分流：
 
 - 锁定 ref 指向的提交与 `sources.lock.json` 的 pin 不同时，算作漂移。漂移汇总进一个 `upstream-drift` issue。下次运行若没有漂移，`scripts/upstream-watch.py` 关闭这个 issue。
-- 白名单（`crosvm`、`librevm`、`uperf`、`piano-mesa`、`piano-sensors`、`piano-mipps-auth`）里的漂移另开一个 draft PR。这个 PR 仅修改 `sources.lock.json` 的 `commit`。`ref` 保持不动。这些项目属于纯用户态上游。`make test` 与 CI 能够覆盖检查。PR 由 `GITHUB_TOKEN` 创建。GitHub 不会为这个 PR 自动运行 workflow。合并前必须手动触发一次 `host-check`。
+- 白名单（`crosvm`、`librevm`、`uperf`、`piano-mesa`、`piano-sensors`、`piano-mipps-auth`）里的漂移在 issue 里附带一条改 pin 命令。workflow 本身不碰锁文件，也不开 PR：仓库设置不允许 Actions 创建 PR。人跑 `scripts/upstream-watch.py bump` 改 `sources.lock.json` 的 `commit`，`ref` 保持不动。这些项目属于纯用户态上游，`make test` 与 CI 能够覆盖检查；受影响产物仍要按本页末节重编。
 - 内核、UEFI、相机/触控、固件和 debian-piano 只作报告。离线 CI 代替不了这些组件的真机验收。维护者按后文「每次跟进上游」的规则评审 pin。
 
 漂移判断只看 pin，不看 `docs/upstreams.json` 的 `reference_commit`。`reference_commit` 是人工基线，只在 `--record-baseline` 时推进。拿 `reference_commit` 判断，会把没有位移的上游报成更新。
 
-自动跟踪只覆盖 14 个消费上游。`docs/upstreams.json` 里的 82 个对照仓库不进 `upstream-watch`：它们没有 `lock_key`，`scripts/upstream-watch.py` 只处理带 `lock_key` 的行。这些仓库要人工复核，用下面两条命令：
+自动跟踪只覆盖 16 个消费上游。`docs/upstreams.json` 里的 83 个对照仓库不进 `upstream-watch`：它们没有 `lock_key`，`scripts/upstream-watch.py` 只处理带 `lock_key` 的行。这些仓库要人工复核，用下面两条命令：
 
 ```sh
 python3 scripts/audit-upstreams.py --execute --output build/upstream-audit.json

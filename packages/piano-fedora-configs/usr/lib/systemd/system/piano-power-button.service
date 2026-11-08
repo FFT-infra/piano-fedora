@@ -1,0 +1,21 @@
+# Blank/restore the display with the power key instead of suspending.
+# Runs as root so `loginctl lock-sessions` needs no polkit round trip, and so
+# the uinput KEY_WAKEUP device can be created. Started after the display
+# manager: there is no graphical session to address before that.
+[Unit]
+Description=Piano power key display toggle (GNOME PowerSaveMode)
+After=display-manager.service
+After=systemd-modules-load.service
+
+[Service]
+Type=simple
+# 经 /usr/bin/python3 启动，不是少写一个解释器：/usr/lib/piano 下的脚本带
+# lib_t 标签，systemd 直接执行它时进程停在 init_t，而 init_t 读不了
+# /dev/input/event*（实测 PermissionError: event3）。python3 是 bin_t，
+# 和 piano-fake-tablet-mode 一样落到 unconfined_service_t，抓键才成立。
+ExecStart=/usr/bin/python3 /usr/lib/piano/power-button
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

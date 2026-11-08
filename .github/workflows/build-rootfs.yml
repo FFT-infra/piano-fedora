@@ -8,7 +8,7 @@ on:
       releasever:
         description: "Fedora 版本"
         required: false
-        default: "44"
+        default: "45"
       desktop:
         description: "gnome / kde / niri / hyprland / server，或 all（按 profile 自动展开矩阵）"
         required: false
@@ -51,6 +51,10 @@ jobs:
           PIANO_DESKTOP: ${{ inputs.desktop }}
         run: |
           set -euo pipefail
+          # 版本号只有一个真源。dispatch 的默认值落后于 product.json 时在
+          # 这里停下，免得装配出上一代的 rootfs 还带着当前的产物名。
+          expected="$(python3 -c 'import json;print(json.load(open("product.json"))["target"]["releasever"])')"
+          test "${{ inputs.releasever }}" = "$expected"
           matrix="$(python3 scripts/piano_desktop.py expand \
             --desktop "$PIANO_DESKTOP" --releasever "${{ inputs.releasever }}")"
           python3 -c 'import json,sys; rows=json.load(sys.stdin); assert rows, "empty matrix"' \

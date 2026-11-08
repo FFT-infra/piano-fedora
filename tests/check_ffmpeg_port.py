@@ -23,9 +23,6 @@ _SPEC = importlib.util.spec_from_file_location(
 ffmpeg = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(ffmpeg)
 
-SERIES = {"0001-v4l2m2m-follow-stateful-source-change.patch": (2, 1),
-          "0002-v4l2m2m-accept-empty-event-queue.patch": (0, 0),
-          "0003-v4l2m2m-preserve-encoder-drain-poll.patch": (0, 0)}
 
 
 def pinned(attribute, value):
@@ -52,8 +49,8 @@ def copy_series(source, sunuefi):
     """把 BSP series 摆成一个最小 SunUEFI 布局，供负向控制改动。"""
     folder = sunuefi / ffmpeg.BSP_SERIES
     folder.mkdir(parents=True)
-    metadata = json.loads((source / "series.json").read_text())
-    for name in ["series.json"] + [row["path"] for row in metadata["series"]]:
+    metadata = json.loads((source / ffmpeg.BSP_SERIES_FILE).read_text())
+    for name in [ffmpeg.BSP_SERIES_FILE] + [row["path"] for row in metadata["series"]]:
         shutil.copyfile(source / name, folder / name)
     return metadata, folder
 
@@ -68,8 +65,8 @@ def check_guards():
     else:
         raise AssertionError("build accepted an output outside the build directory")
     releasever = json.loads((ROOT / "product.json").read_text())["target"]["releasever"]
-    assert ffmpeg.SPEC_RELEASE_NEW == "Release:        1.piano1%{?dist}\n"
-    assert ffmpeg.RELEASE == f"1.piano1.fc{releasever}", "RPM release and product releasever disagree"
+    assert ffmpeg.SPEC_RELEASE_NEW == "Release:        3.piano1%{?dist}\n"
+    assert ffmpeg.RELEASE == f"3.piano1.fc{releasever}", "RPM release and product releasever disagree"
     assert f"fc{releasever}" in ffmpeg.SOURCE_URL and ffmpeg.SOURCE_SHA256
 
 
@@ -99,18 +96,37 @@ def check_decoders():
 
 def check_spec():
     names = sorted("sunuefi-" + name for name in ffmpeg.PORT_SHA256)
-    synthetic = ("Name:           ffmpeg\nVersion:        8.1.3\nRelease:        1%{?dist}\n"
+    subpackages = "".join(f"{anchor}Summary:        {fedora}\n"
+                          for anchor, fedora in ffmpeg.REPLACES.items())
+    synthetic = ("%global pkg_suffix -free\n"
+                 "Name:           ffmpeg\nVersion:        9.0.2\nRelease:        3%{?dist}\n"
                  "Patch11:        ffmpeg-foo.patch\n"
-                 "Patch1002:      ffmpeg-chromium.patch\n\n%autosetup -S git_am\n")
+                 "Patch1002:      ffmpeg-chromium.patch\n"
+                 + subpackages +
+                 "Requires:       libavcodec%{?pkg_suffix}%{_isa} = %{version}-%{release}\n"
+                 "\n%autosetup -S git_am\n")
     raw = synthetic.encode()
     with pinned("SPEC_SHA256", hashlib.sha256(raw).hexdigest()):
         adapted = ffmpeg.adapt_spec(raw, names)
-    assert "Release:        1.piano1%{?dist}\n" in adapted
+    assert "Release:        3.piano1%{?dist}\n" in adapted
+    # 改名压过官方版：子包全部带 -piano 后缀，各自声明替代的 Fedora 原名。
+    assert ffmpeg.SPEC_SUFFIX_NEW in adapted, adapted
+    assert "%global pkg_suffix -free\n" not in adapted, adapted
+    assert "Epoch:" not in adapted
+    for anchor, fedora in ffmpeg.REPLACES.items():
+        assert anchor in adapted, anchor
+        assert f"Provides:       {fedora} = %{{version}}-%{{release}}\n" in adapted, adapted
+        assert f"Conflicts:      {fedora}%{{?_isa}}\n" in adapted, adapted
+    # 改名之后包内精确版本依赖原样保留，不需要任何 epoch 前缀。
+    assert ("Requires:       libavcodec%{?pkg_suffix}%{_isa} = "
+            "%{version}-%{release}\n") in adapted, adapted
     # 编号必须排在 Fedora 现有的最大补丁号之后，%autopatch 才按顺序把 BSP 补丁放在最后。
     declared = "".join(f"Patch{2001 + index}:      {name}\n" for index, name in enumerate(names))
-    assert "Patch1002:      ffmpeg-chromium.patch\n" + declared + "\n%autosetup -S git_am\n" in adapted
+    assert "Patch1002:      ffmpeg-chromium.patch\n" + declared in adapted, adapted
     for broken in (synthetic.replace("Patch1002", "Patch1001"),
-                   synthetic.replace("Release:        1%{?dist}\n", "")):
+                   synthetic.replace("Release:        3%{?dist}\n", ""),
+                   synthetic.replace("%global pkg_suffix -free\n", ""),
+                   synthetic.replace("%package -n libswscale%{?pkg_suffix}\n", "")):
         try:
             with pinned("SPEC_SHA256", hashlib.sha256(broken.encode()).hexdigest()):
                 ffmpeg.adapt_spec(broken.encode(), names)
@@ -164,23 +180,25 @@ def check_workflow():
 
 def check_bsp_port(sunuefi):
     series = sunuefi / ffmpeg.BSP_SERIES
-    if not (series / "series.json").is_file():
+    if not (series / ffmpeg.BSP_SERIES_FILE).is_file():
         print(f"SKIP: BSP FFmpeg series unavailable at {series}; port checks not run")
         return
     ported = ffmpeg.port_series(sunuefi)
     assert set(ported) == {"sunuefi-" + name for name in ffmpeg.PORT_SHA256}
     for name, row in ported.items():
         assert row["text"].startswith("From: "), name
+        # FFmpeg 9 的系列是上游原生写的，不该再有 7.x 的 refstruct 旧名。
         assert "ff_refstruct_" not in row["text"], name
         assert row["sha256"] == ffmpeg.PORT_SHA256[name.removeprefix("sunuefi-")], name
-    changed = ported["sunuefi-0001-v4l2m2m-follow-stateful-source-change.patch"]["text"]
-    # 8.x 的改名只碰这三个引用；数目对不上说明补丁本身换了内容。
-    assert (changed.count("av_refstruct_unref"), changed.count("av_refstruct_ref")) == SERIES[
-        "0001-v4l2m2m-follow-stateful-source-change.patch"]
+        assert row["sha256"] == row["bsp_sha256"], name
+    name = "0004-v4l2m2m-ffmpeg9-stateful.patch"
+    text = ported["sunuefi-" + name]["text"]
+    # 补丁确实改的是 FFmpeg 9 的 v4l2m2m 源文件，而不是同名的随便什么文件。
+    for target in ("libavcodec/v4l2_m2m_dec.c", "libavcodec/v4l2_context.c"):
+        assert target in text, f"{name} does not touch {target}"
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
-        name = "0001-v4l2m2m-follow-stateful-source-change.patch"
-        # 1) BSP 补丁被改动而 series.json 没跟上：必须停。
+        # 1) BSP 补丁被改动而系列摘要没跟上：必须停。
         _, folder = copy_series(series, work / "stale")
         tamper(folder / name)
         try:
@@ -189,29 +207,31 @@ def check_bsp_port(sunuefi):
             pass
         else:
             raise AssertionError("a BSP patch differing from its recorded digest was accepted")
-        # 2) 连摘要一起改：仍然必须停，移植规则是被钉住的，不是"能替换就替换"。
+        # 2) 连摘要一起改：仍然必须停，本仓库自己钉的那份没有跟着动。
         fresh, folder = copy_series(series, work / "fresh")
         target = tamper(folder / name)
         for row in fresh["series"]:
             if row["path"] == target.name:
                 row["sha256"] = hashlib.sha256(target.read_bytes()).hexdigest()
-        (folder / "series.json").write_text(json.dumps(fresh))
+        (folder / ffmpeg.BSP_SERIES_FILE).write_text(json.dumps(fresh))
         assert fresh["series"][0]["sha256"] != json.loads(
-            (series / "series.json").read_text())["series"][0]["sha256"]
+            (series / ffmpeg.BSP_SERIES_FILE).read_text())["series"][0]["sha256"]
         try:
             ffmpeg.port_series(work / "fresh")
         except ValueError:
             pass
         else:
             raise AssertionError("a silently changed BSP patch reproduced the reviewed digest")
-        # 3) 规则本身被改动同样要停：派生摘要绑定的是这套替换，不只是输入文件。
-        with pinned("PORT_SUBSTITUTIONS", ()):
-            try:
-                ffmpeg.port_series(sunuefi)
-            except ValueError:
-                pass
-            else:
-                raise AssertionError("porting without the reviewed substitutions was accepted")
+        # 3) 系列名的是另一个源码包：补丁对不上 SRPM 里的 tar.xz，必须停。
+        other, folder = copy_series(series, work / "other")
+        other["source"]["sha256"] = "0" * 64
+        (folder / ffmpeg.BSP_SERIES_FILE).write_text(json.dumps(other))
+        try:
+            ffmpeg.port_series(work / "other")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("a series targeting another tarball was accepted")
 
 
 def main():
@@ -225,7 +245,7 @@ def main():
     check_proof()
     check_workflow()
     check_bsp_port(args.sunuefi)
-    print(f"OK: Fedora FFmpeg port rules pinned for {len(ffmpeg.PORT_SHA256)} BSP patches"
+    print(f"OK: Fedora FFmpeg 9 series pinned for {len(ffmpeg.PORT_SHA256)} BSP patches"
           f", {len(ffmpeg.DECODERS)} v4l2m2m decoders and the RPM proof rejection path")
     return 0
 

@@ -51,12 +51,17 @@ def verify(root):
     for component in ("runtime", "mesa", "ffmpeg"):
         if read("rootfs-manifest.json").get(component + "_manifest_sha256") != sha256(root / (component + "-manifest.json")):
             raise ValueError("rootfs refers to another installed component: " + component)
+    releasever = read("rootfs-manifest.json").get("releasever")
+    if not releasever:
+        raise ValueError("rootfs manifest does not name the Fedora release")
     mesa = read("mesa-manifest.json")
-    if mesa.get("status") != "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED" or mesa.get("chip_id") != "0xffff44050001":
+    if (mesa.get("status") != "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED"
+            or mesa.get("releasever") != releasever
+            or mesa.get("chip_id") != "0xffff44050001"):
         raise ValueError("bundle does not include the verified piano Mesa build")
     ffmpeg = read("ffmpeg-manifest.json")
     if (ffmpeg.get("status"), ffmpeg.get("releasever"), ffmpeg.get("arch")) != (
-            "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "44", "aarch64") or set(
+            "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", releasever, "aarch64") or set(
                 ffmpeg.get("decoders", {})) != {"h264_v4l2m2m", "hevc_v4l2m2m"}:
         raise ValueError("bundle does not include the verified piano FFmpeg build")
     if image["status"] != "IMAGE_VERIFIED" or image.get("format") != "raw-f2fs" or image["label"] != "PIANOROOT":

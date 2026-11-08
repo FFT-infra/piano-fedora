@@ -2,11 +2,9 @@
 """更新已有 piano F2FS/ESP；默认只读计划，不改 GPT、userdata 或持久 BOOT。"""
 
 import argparse
-import hashlib
 import importlib.util
 import json
 from pathlib import Path
-import struct
 import subprocess
 import time
 
@@ -19,84 +17,9 @@ installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
 
 
-def _linux_dtb(bundle):
-    data = (bundle / "boot_sunuefi.img").read_bytes()
-    require(len(data) >= 4096 and data[:8] == b"ANDROID!" and struct.unpack_from("<I", data, 40)[0] == 2,
-            "expected the sealed Linux BOOT v2 container")
-    kernel, ramdisk, second = (struct.unpack_from("<I", data, x)[0] for x in (8, 16, 24))
-    page = struct.unpack_from("<I", data, 36)[0]
-    require(page == 4096 and second == 0 and struct.unpack_from("<I", data, 1632)[0] == 0,
-            "unsupported Linux BOOT layout")
-    align = lambda n: (n + page - 1) // page * page
-    start = page + align(kernel) + align(ramdisk)
-    size = struct.unpack_from("<I", data, 1648)[0]
-    require(40 <= size <= 2 * 1024**2 and start + size <= len(data), "invalid Linux DTB bounds")
-    return data[start:start + size]
-
-
-def _merge(spans):
-    result = []
-    for start, end in sorted(spans):
-        require(0 <= start < end <= 2**64, "invalid memory interval")
-        if result and start <= result[-1][1]:
-            result[-1] = (result[-1][0], max(end, result[-1][1]))
-        else:
-            result.append((start, end))
-    return result
-
-
-def _covered(start, end, spans):
-    return any(left <= start and end <= right for left, right in spans)
-
-
-def memory_contract(linux_dtb, factory_dtb, read_fdt):
-    """比较描述的范围，不能证明实机 DDR 所有权或完整 24 GB 已可用。"""
-    require(40 <= len(factory_dtb) <= 2 * 1024**2, "factory DTB is missing or too large")
-
-    def ranges(parsed):
-        tree = parsed["tree"]
-        banks, reserved = [], list(parsed["reservations"])
-        for path, props in tree.items():
-            memory = props.get("device_type") == b"memory\0"
-            fixed = path.startswith("/reserved-memory/") and "reg" in props
-            if not (memory or fixed):
-                continue
-            parent = path.rsplit("/", 1)[0] or "/"
-            address = int.from_bytes(tree[parent].get("#address-cells", b"\0\0\0\2"), "big")
-            size = int.from_bytes(tree[parent].get("#size-cells", b"\0\0\0\1"), "big")
-            require(address in (1, 2) and size in (1, 2), "unsupported memory tuple widths")
-            raw, stride = props.get("reg", b""), (address + size) * 4
-            require(raw and len(raw) % stride == 0, "invalid memory reg tuples")
-            for offset in range(0, len(raw), stride):
-                start = int.from_bytes(raw[offset:offset + address * 4], "big")
-                length = int.from_bytes(raw[offset + address * 4:offset + stride], "big")
-                if length:
-                    (banks if memory else reserved).append((start, length))
-        return _merge((start, start + size) for start, size in banks), _merge((start, start + size) for start, size in reserved if size)
-
-    linux_banks, linux_reserved = ranges(read_fdt(linux_dtb))
-    factory_banks, factory_reserved = ranges(read_fdt(factory_dtb))
-    require(linux_banks and factory_banks, "DTB has no current RAM banks")
-    for start, end in linux_banks:
-        require(_covered(start, end, factory_banks), "Linux DTB advertises RAM outside this device's Android memory map")
-    for first, last in factory_reserved:
-        for left, right in linux_banks:
-            start, end = max(first, left), min(last, right)
-            if start < end:
-                require(_covered(start, end, linux_reserved), "Linux DTB omits a current Android fixed reservation")
-    return {"status": "DESCRIBED_MEMORY_SUBSET_AND_FIXED_RESERVATIONS_CHECKED",
-            "linux_dtb_sha256": hashlib.sha256(linux_dtb).hexdigest(),
-            "factory_dtb_sha256": hashlib.sha256(factory_dtb).hexdigest(),
-            "linux_ram_bytes": sum(end - start for start, end in linux_banks),
-            "factory_ram_bytes": sum(end - start for start, end in factory_banks),
-            "full_device_ram_available": False, "physical_memory_ownership_verified": False}
-
-
 def update_plan(upstream, device, bundle, root_install, boot, stock_boot):
+    # 内存契约由 installation_plan 对首装与更新一并给出，这里只补更新路径的靶点。
     plan, snapshot = installer.installation_plan(upstream, device, bundle, root_install, boot, stock_boot, existing=True)
-    from compose_piano_dtb import read_fdt
-    factory = device.shell("cat /sys/firmware/fdt")
-    plan["memory_contract"] = memory_contract(_linux_dtb(bundle), factory, read_fdt)
     plan["targets"] = ["sunuefi_esp", "sunuefi_root"]
     plan["persistent_boot_written"] = False
     plan["linux_files_replaced"] = True

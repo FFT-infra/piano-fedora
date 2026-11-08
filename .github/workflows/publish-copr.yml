@@ -15,6 +15,14 @@ on:
         description: "Expected build-kernel run bound in the matrix manifest"
         required: true
         default: ""
+      mesa_run_id:
+        description: "Successful build-mesa run that produced piano-fedora-mesa"
+        required: true
+        default: ""
+      ffmpeg_run_id:
+        description: "Successful run (host-check) that produced piano-fedora-ffmpeg"
+        required: true
+        default: ""
       project:
         description: "COPR project (owner/name)"
         required: true
@@ -42,6 +50,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RPMS_RUN: ${{ inputs.rpms_run_id }}
+          MESA_RUN: ${{ inputs.mesa_run_id }}
+          FFMPEG_RUN: ${{ inputs.ffmpeg_run_id }}
         run: |
           set -euo pipefail
           test -n "$RPMS_RUN" || { echo "rpms_run_id is required" >&2; exit 2; }
@@ -51,6 +61,14 @@ jobs:
             --artifact piano-rpms \
             --run-id "$RPMS_RUN" \
             --output-key rpms_run
+          # 图形栈来自各自的 workflow；build-ffmpeg.yml 是 workflow_call 复用件，
+          # 实际 run 的 workflow_id 是 host-check。
+          python3 scripts/resolve-artifact-run.py \
+            --workflow build-mesa.yml \
+            --artifact piano-fedora-mesa --run-id "$MESA_RUN" --output-key mesa_run
+          python3 scripts/resolve-artifact-run.py \
+            --workflow host-check.yml \
+            --artifact piano-fedora-ffmpeg --run-id "$FFMPEG_RUN" --output-key ffmpeg_run
 
       - uses: actions/download-artifact@v4
         with:
@@ -58,6 +76,32 @@ jobs:
           path: build/in/piano-rpms
           run-id: ${{ steps.source.outputs.rpms_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-fedora-mesa
+          path: build/in/mesa-artifact
+          run-id: ${{ steps.source.outputs.mesa_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-fedora-ffmpeg
+          path: build/in/ffmpeg-artifact
+          run-id: ${{ steps.source.outputs.ffmpeg_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Unpack the graphics artifacts
+        run: |
+          set -euo pipefail
+          # 两个 artifact 都是 tar.zst，manifest 在包内，所以先解再校验。
+          mkdir -p build/in/mesa build/in/ffmpeg
+          tar -I zstd -xf build/in/mesa-artifact/*.tar.zst -C build/in/mesa
+          tar -I zstd -xf build/in/ffmpeg-artifact/*.tar.zst -C build/in/ffmpeg
+          test -f build/in/mesa/manifest.json
+          test -f build/in/ffmpeg/manifest.json
+          test -d build/in/mesa/srpms
+          test -d build/in/ffmpeg/srpms
 
       - name: Validate the artifact without publishing
         env:
@@ -69,6 +113,8 @@ jobs:
             --kernel-run-id "${{ inputs.kernel_run_id }}" \
             --project "${{ inputs.project }}" \
             --rpms build/in/piano-rpms \
+            --mesa build/in/mesa \
+            --ffmpeg build/in/ffmpeg \
             --record build/copr-publication.json
 
       - uses: actions/upload-artifact@v4
@@ -90,6 +136,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RPMS_RUN: ${{ inputs.rpms_run_id }}
+          MESA_RUN: ${{ inputs.mesa_run_id }}
+          FFMPEG_RUN: ${{ inputs.ffmpeg_run_id }}
         run: |
           set -euo pipefail
           test -n "$RPMS_RUN" || { echo "rpms_run_id is required" >&2; exit 2; }
@@ -99,6 +147,12 @@ jobs:
             --artifact piano-rpms \
             --run-id "$RPMS_RUN" \
             --output-key rpms_run
+          python3 scripts/resolve-artifact-run.py \
+            --workflow build-mesa.yml \
+            --artifact piano-fedora-mesa --run-id "$MESA_RUN" --output-key mesa_run
+          python3 scripts/resolve-artifact-run.py \
+            --workflow host-check.yml \
+            --artifact piano-fedora-ffmpeg --run-id "$FFMPEG_RUN" --output-key ffmpeg_run
 
       - uses: actions/download-artifact@v4
         with:
@@ -106,6 +160,31 @@ jobs:
           path: build/in/piano-rpms
           run-id: ${{ steps.source.outputs.rpms_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-fedora-mesa
+          path: build/in/mesa-artifact
+          run-id: ${{ steps.source.outputs.mesa_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-fedora-ffmpeg
+          path: build/in/ffmpeg-artifact
+          run-id: ${{ steps.source.outputs.ffmpeg_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Unpack the graphics artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p build/in/mesa build/in/ffmpeg
+          tar -I zstd -xf build/in/mesa-artifact/*.tar.zst -C build/in/mesa
+          tar -I zstd -xf build/in/ffmpeg-artifact/*.tar.zst -C build/in/ffmpeg
+          test -f build/in/mesa/manifest.json
+          test -f build/in/ffmpeg/manifest.json
+          test -d build/in/mesa/srpms
+          test -d build/in/ffmpeg/srpms
 
       - name: Require COPR credentials
         env:
@@ -138,6 +217,8 @@ jobs:
             --kernel-run-id "${{ inputs.kernel_run_id }}" \
             --project "${{ inputs.project }}" \
             --rpms build/in/piano-rpms \
+            --mesa build/in/mesa \
+            --ffmpeg build/in/ffmpeg \
             --record build/copr-publication.json \
             --execute
 

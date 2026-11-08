@@ -107,7 +107,10 @@ def dnf_binary():
     return None
 
 
-def inspect_rpm_repo(rpms_dir):
+DIST_TAG = re.compile(r"\.(fc\d+)\.(?:aarch64|noarch|armv7hl|x86_64)\.rpm$")
+
+
+def inspect_rpm_repo(rpms_dir, releasever):
     rpms_path = Path(rpms_dir).resolve()
     if not rpms_path.is_dir():
         return {"valid": False, "error": f"directory does not exist: {rpms_path}", "packages": {}}
@@ -124,13 +127,31 @@ def inspect_rpm_repo(rpms_dir):
                 found_pkgs[expected] = str(p)
                 break
 
+    # 文件名里的 dist 段必须和本次 releasever 一致。只按包名前缀匹配的话，
+    # `make plan RELEASEVER=45` 会安静地接受上一次留下的 fc44 RPM，装出来的
+    # rootfs 一半是 45 的仓库包、一半是 44 的自建包。
+    expected_dist = f"fc{releasever}"
+    mismatched = []
+    for expected, path in sorted(found_pkgs.items()):
+        match = DIST_TAG.search(Path(path).name)
+        dist = match.group(1) if match else None
+        if dist != expected_dist:
+            mismatched.append({"package": expected, "file": Path(path).name,
+                               "dist": dist, "expected": expected_dist})
+
     missing = set(required) - set(found_pkgs.keys())
-    return {
-        "valid": len(missing) == 0,
+    result = {
+        "valid": len(missing) == 0 and len(mismatched) == 0,
         "missing": sorted(missing),
+        "dist_mismatch": mismatched,
         "packages": found_pkgs,
         "repodata": str(repodata),
     }
+    if mismatched:
+        result["error"] = (
+            f"{len(mismatched)} RPM(s) in {rpms_path} are not {expected_dist}: "
+            + ", ".join(f"{m['file']} ({m['dist'] or 'no dist tag'})" for m in mismatched))
+    return result
 
 
 def plan(releasever, desktop, rpms_dir, output=None):
@@ -164,7 +185,7 @@ def plan(releasever, desktop, rpms_dir, output=None):
     releasever = context["releasever"]
 
     profile = context["base"]
-    repo_info = inspect_rpm_repo(rpms_dir)
+    repo_info = inspect_rpm_repo(rpms_dir, releasever)
     base_pkgs = list(profile["base_packages"])
     desktop_pkgs = piano_desktop.desktop_packages(context)
 
@@ -256,7 +277,7 @@ def audit_rootfs(rootfs_dir):
         "usr/lib/piano/piano-camerad",
         "usr/bin/uperf-linux",
         "usr/lib64/libssc.so",
-        "usr/lib64/dri/v4l2_drv_video.so",
+        "usr/lib64/dri/qcom_drv_video.so",
         "etc/systemd/system/qbootctl.service.d/piano.conf",
         # initramfs 在 chroot 之后立刻运行 piano-disk-hardware-prepare，
         # 它的 require_ram() 直接读 root-policy.json。缺这个文件，
@@ -573,11 +594,9 @@ def execute(plan_data):
         "--use-host-config",
         f"--releasever={releasever}",
         f"--repofrompath=piano-local,{rpms_dir}",
-        # The piano repository must win every name it provides. Fedora 44 updates
-        # carries mesa-26.2.4-1.fc44, which sorts above the locally built
-        # 26.2.3-1.piano1.fc44; without a priority dnf installed the distro Mesa
-        # and finalize then rejected the image because the package was not the
-        # verified A830v1 build. A lower value means a higher priority.
+        # 矩阵里的包与 Fedora 同名，piano-local 必须赢；数值越小优先级越高。
+        # 图形栈不走这条路：它们换了包名（mesa-piano-*、ffmpeg-piano），由
+        # profile 显式点名，再用 Provides/Conflicts 顶掉官方包。
         "--setopt=piano-local.priority=1",
         "--setopt=install_weak_deps=False",
         "--setopt=tsflags=nodocs",

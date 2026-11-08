@@ -21,6 +21,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import piano_sparse
 from piano_artifacts import uefi_patch_identities
 
+# artifact 名由 product.json 的 releasever 派生，测试跟着产品走而不是抄一份。
+RELEASEVER = json.loads((ROOT / "product.json").read_text())["target"]["releasever"]
+ROOTFS_GNOME = f"rootfs-{RELEASEVER}-gnome"
+ROOTFS_KDE = f"rootfs-{RELEASEVER}-kde"
+ROOT_IMAGE_GNOME = f"root-image-{RELEASEVER}-gnome"
+ROOT_IMAGE_KDE = f"root-image-{RELEASEVER}-kde"
+
 
 def module(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -40,16 +47,40 @@ def check_mesa(root):
         assert args[args.index("--spec") + 1] == str(spec), args
         assert args[args.index("--srpm") + 1] == str(srpm), args
         assert "_topdir " + str(top) in args, args
+    # 补丁版靠改名压过官方版：改 Name、给六个运行时子包补 Provides/Conflicts，
+    # 并把 %autosetup 的 -n 指回 tarball 解出来的目录名。不用 epoch。
+    subpackages = "".join(f"%package {sub}\nSummary:        {sub}\n" for sub in mesa.REPLACES)
+    synthetic = ("Name:           mesa\nVersion:        26.2.3\nRelease:        %autorelease\n"
+                 "%autosetup -n %{name}-%{ver} -p1\n" + subpackages
+                 + "\n%description\nmesa\n")
+    with patch.object(mesa, "SPEC_SHA256", hashlib.sha256(synthetic.encode()).hexdigest()):
+        adapted = mesa.adapt_spec(synthetic.encode())
+    assert "Name:           mesa-piano\n" in adapted, adapted
+    assert "%autosetup -n mesa-%{ver} -p1\n" in adapted, adapted
+    assert "Epoch:" not in adapted
+    for sub, fedora in mesa.REPLACES.items():
+        assert f"Provides:       {fedora} = %{{version}}-%{{release}}\n" in adapted, adapted
+        assert f"Conflicts:      {fedora}%{{?_isa}}\n" in adapted, adapted
+    assert set(mesa.PACKAGES) == {f"mesa-piano-{sub}" for sub in mesa.REPLACES}
+    # 少一个子包锚点就必须停：没有替代声明的包既压不住官方版，也会装出两份。
+    broken = synthetic.replace("%package vulkan-drivers\n", "")
+    try:
+        with patch.object(mesa, "SPEC_SHA256", hashlib.sha256(broken.encode()).hexdigest()):
+            mesa.adapt_spec(broken.encode())
+    except ValueError as error:
+        assert "layout" in str(error), error
+    else:
+        raise AssertionError("a spec without a runtime subpackage was accepted")
     header = bytearray(64)
     header[:5] = b"\x7fELF\x02"
     struct.pack_into("<H", header, 18, 183)
     data = bytes(header) + struct.pack("<Q", 0xffff44050001) + b"Adreno (TM) 830v1\0"
     library = root / "usr/lib64"
     library.mkdir(parents=True)
-    for name in ("libgallium-26.2.3.so", "libvulkan_freedreno.so"):
+    for name in (mesa.GALLIUM, "libvulkan_freedreno.so"):
         (library / name).write_bytes(data)
     assert len(mesa.driver_proof(root)) == 2
-    (library / "libgallium-26.2.3.so").write_bytes(data.replace(
+    (library / mesa.GALLIUM).write_bytes(data.replace(
         struct.pack("<Q", 0xffff44050001), struct.pack("<Q", 0xffff44050000)))
     try:
         mesa.driver_proof(root)
@@ -76,12 +107,13 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     identity = {"kernel_release": "fixture", "kernel_manifest_sha256": kernel}
     for name in ("runtime", "initramfs"):
         write(name + "-manifest.json", identity)
-    write("mesa-manifest.json", {"status": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED", "chip_id": "0xffff44050001"})
+    write("mesa-manifest.json", {"status": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED",
+                                   "releasever": "45", "chip_id": "0xffff44050001"})
     write("ffmpeg-manifest.json", {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED",
-                                   "releasever": "44", "arch": "aarch64",
+                                   "releasever": "45", "arch": "aarch64",
                                    "decoders": {"h264_v4l2m2m": " V..... h264_v4l2m2m",
                                                 "hevc_v4l2m2m": " V..... hevc_v4l2m2m"}})
-    write("rootfs-manifest.json", {**identity, **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
+    write("rootfs-manifest.json", {**identity, "releasever": "45", **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
                                                 for name in ("runtime", "mesa", "ffmpeg")}})
     # esp-manifest.json is produced upstream and keeps its internal esp.img /
     # boot.img keys; verify-bundle maps them to the release asset names.
@@ -163,12 +195,12 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     for changed in ({"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "arch": "x86_64"},
                     {"decoders": {"h264_v4l2m2m": " V..... h264_v4l2m2m"}}):
         write("ffmpeg-manifest.json", {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED",
-                                       "releasever": "44", "arch": "aarch64",
+                                       "releasever": "45", "arch": "aarch64",
                                        "decoders": {"h264_v4l2m2m": " V..... h264_v4l2m2m",
                                                     "hevc_v4l2m2m": " V..... hevc_v4l2m2m"},
                                        **changed})
         write("root-image-manifest.json", {**image, "ffmpeg_manifest_sha256": digest(root / "ffmpeg-manifest.json")})
-        write("rootfs-manifest.json", {**identity, **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
+        write("rootfs-manifest.json", {**identity, "releasever": "45", **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
                                                     for name in ("runtime", "mesa", "ffmpeg")}})
         try:
             verify()
@@ -178,11 +210,11 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
             raise AssertionError("bundle accepted an unverified FFmpeg manifest: " + str(changed))
     # FFmpeg manifest 缺失时 bundle 必须判为不完整（REQUIRED 必须含它）。
     write("ffmpeg-manifest.json", {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED",
-                                   "releasever": "44", "arch": "aarch64",
+                                   "releasever": "45", "arch": "aarch64",
                                    "decoders": {"h264_v4l2m2m": " V..... h264_v4l2m2m",
                                                 "hevc_v4l2m2m": " V..... hevc_v4l2m2m"}})
     write("root-image-manifest.json", {**image, "ffmpeg_manifest_sha256": digest(root / "ffmpeg-manifest.json")})
-    write("rootfs-manifest.json", {**identity, **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
+    write("rootfs-manifest.json", {**identity, "releasever": "45", **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
                                                 for name in ("runtime", "mesa", "ffmpeg")}})
     saved = (root / "ffmpeg-manifest.json").read_bytes()
     (root / "ffmpeg-manifest.json").unlink()
@@ -267,7 +299,7 @@ def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_
                 desktop="gnome", rootfs_artifact=None, size_mib="", sha="", runs=None):
     workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
                  "build-mesa.yml", "host-check.yml"]
-    artifacts = ["rootfs-44-gnome", "rootfs-44-kde", "kernel-release-7.3.0", "kernel-sdk-7.3.0",
+    artifacts = [ROOTFS_GNOME, ROOTFS_KDE, "kernel-release-7.3.0", "kernel-sdk-7.3.0",
                  "kernel-experimental-gunyah", "piano-fedora-runtime",
                  "piano-fedora-runtime-gunyah", "piano-fedora-mesa", "piano-fedora-ffmpeg"]
     if runs is None:
@@ -298,7 +330,7 @@ def check_release_mode_binds_every_input_run(root):
     """
     workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
                  "build-mesa.yml", "host-check.yml"]
-    artifacts = ["rootfs-44-gnome", "kernel-release-7.3.0", "kernel-sdk-7.3.0",
+    artifacts = [ROOTFS_GNOME, "kernel-release-7.3.0", "kernel-sdk-7.3.0",
                  "piano-fedora-runtime", "piano-fedora-mesa", "piano-fedora-ffmpeg"]
     runs = {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml",
             "7003": "build-rootfs.yml", "7004": "build-mesa.yml",
@@ -346,12 +378,12 @@ def check_image_kernel_tiers(root):
                  "build-mesa.yml", "host-check.yml"]
     env, _ = resolve_step_env(root / "onlystd",
                               workflows,
-                              ["rootfs-44-gnome", "kernel-release-7.3.0", "kernel-sdk-7.3.0",
+                              [ROOTFS_GNOME, "kernel-release-7.3.0", "kernel-sdk-7.3.0",
                                "piano-fedora-runtime", "piano-fedora-mesa", "piano-fedora-ffmpeg"],
                               {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml"})
     env.update(DESKTOP="gnome", SIZE_MIB="",
                KERNEL_ARTIFACT="kernel-experimental-gunyah",
-               ROOTFS_ARTIFACT="rootfs-44-gnome",
+               ROOTFS_ARTIFACT=ROOTFS_GNOME,
                RUNTIME_ARTIFACT="piano-fedora-runtime-gunyah", KERNEL_RUN="7001", RUNTIME_RUN="7002")
     result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
                              step_body(".github/workflows/build-image.yml", "Resolve successful input runs")],
@@ -373,14 +405,14 @@ def check_image_kernel_tiers(root):
     # 显式给别的桌面的 rootfs artifact 也必须拒绝。
     result, _ = run_resolve(root / "reject-foreign", "kernel-release-7.3.0",
                             "piano-fedora-runtime", desktop="kde",
-                            rootfs_artifact="rootfs-44-gnome")
+                            rootfs_artifact=ROOTFS_GNOME)
     assert result.returncode != 0, "build-image accepted another desktop's rootfs"
-    assert "rootfs-44-kde" in result.stderr, result.stderr
+    assert ROOTFS_KDE in result.stderr, result.stderr
     # 非 GNOME 档派生出自己的 artifact 与容量。
     result, output = run_resolve(root / "kde", "kernel-release-7.3.0",
                                  "piano-fedora-runtime", desktop="kde")
     assert result.returncode == 0, result.stderr
-    assert "rootfs_artifact=rootfs-44-kde" in output, output
+    assert f"rootfs_artifact={ROOTFS_KDE}" in output, output
     assert "desktop=kde" in output, output
     assert "size_mib=" in output, output
 
@@ -548,8 +580,11 @@ def check_clean_rootfs_release_entry():
     assert "the clean rootfs must carry exactly the kernel-piano module" in image
     assert '"kernel-piano"' in image
     # rpm must run inside the Fedora image: the Ubuntu runner's rpm cannot
-    # read Fedora 44's sqlite rpmdb and silently returns no packages.
-    assert 'def fedora_rpm(' in image and 'registry.fedoraproject.org/fedora:44' in image
+    # read the release's sqlite rpmdb and silently returns no packages.
+    assert 'def fedora_rpm(' in image
+    assert 'registry.fedoraproject.org/fedora:{RELEASEVER}' in image, (
+        "the rpm query image must follow product.json instead of a fixed release")
+    assert not re.search(r"fedora:\d+", image), "build-image still hardcodes a Fedora release"
     assert 'fedora_rpm("-qf"' in image and 'fedora_rpm("-qa")' in image
     assert 'local.get("kernel_run") == os.environ["KERNEL_RUN"]' in image
     assert 'record["audit"]["kernel_release"] == kernel["kernel_release"]' in image
@@ -587,7 +622,7 @@ def check_bundle_asset_names():
         if name in release_assets.BUNDLE_MEMBERS:
             assert name in verifier, f"verify-bundle does not require {name}"
     assert "initramfs.tar.zst" in verifier, "verify-bundle does not require initramfs.tar.zst"
-    assert 'bundle / "boot_sunuefi.img"' in updater
+    assert 'bundle / "boot_sunuefi.img"' in (ROOT / "scripts/piano_memory.py").read_text()
     assert 'bundle / "sunuefi_esp.img"' in updater
     assert 'bundle / "esp.img"' not in installer
     assert 'bundle / "boot.img"' not in updater
@@ -706,7 +741,7 @@ def run_workflow_step(step_file, step_name, env_extra, workflows, artifacts, run
 def check_image_artifact_follows_the_desktop():
     """build-bundle 与 build-initramfs 的镜像 artifact 必须由桌面档派生。"""
     workflows = ["build-image.yml", "build-uefi.yml"]
-    artifacts = ["root-image-44-gnome", "root-image-44-kde", "uefi-product"]
+    artifacts = [ROOT_IMAGE_GNOME, ROOT_IMAGE_KDE, "uefi-product"]
     runs = {}
     for step_file, step_name, env_key in (
             (".github/workflows/build-bundle.yml", "Resolve complete image and UEFI inputs",
@@ -720,16 +755,16 @@ def check_image_artifact_follows_the_desktop():
                                    "ROOT_ARTIFACT": "", "ROOT_RUN": "", "UEFI_RUN": ""},
             workflows, artifacts, runs)
         assert result.returncode == 0, (step_file, result.stderr)
-        assert f"{env_key}=root-image-44-kde" in output, output
+        assert f"{env_key}={ROOT_IMAGE_KDE}" in output, output
         # 显式给 GNOME 的镜像却选了 KDE：必须拒绝。
         result, _ = run_workflow_step(
             step_file, step_name, {**common, "DESKTOP": "kde",
-                                   "ROOT_IMAGE": "root-image-44-gnome",
-                                   "ROOT_ARTIFACT": "root-image-44-gnome",
+                                   "ROOT_IMAGE": ROOT_IMAGE_GNOME,
+                                   "ROOT_ARTIFACT": ROOT_IMAGE_GNOME,
                                    "ROOT_RUN": "", "UEFI_RUN": ""},
             workflows, artifacts, runs)
         assert result.returncode != 0, f"{step_file} accepted another desktop's image"
-        assert "root-image-44-kde" in result.stderr, result.stderr
+        assert ROOT_IMAGE_KDE in result.stderr, result.stderr
         # `all` 只属于 build-rootfs 的矩阵。
         result, _ = run_workflow_step(
             step_file, step_name, {**common, "DESKTOP": "all", "ROOT_IMAGE": "",

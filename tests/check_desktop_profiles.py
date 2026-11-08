@@ -117,18 +117,22 @@ def check_schema_is_enforced():
 
 
 def check_vulkan_desktops_install_the_driver():
-    """非 GNOME/KDE 的档位必须自己声明 `mesa-vulkan-drivers`。
+    """每个档位都必须显式声明 `mesa-piano-vulkan-drivers`。
 
-    GNOME 与 KDE 靠 `@workstation-product-environment` /
-    `@kde-desktop-environment` 传递依赖拿到 Mesa 的 Vulkan 驱动。niri 与
-    Hyprland 没有元包，只有显式写进 `dnf_packages` 才会进树。少了它，
-    finalize 阶段逐一核对 Mesa 清单里的 6 个包时会失败。
+    补丁版换了包名：它提供 Fedora 的 `mesa-vulkan-drivers` 并与原名冲突。
+    元包里的 `mesa-vulkan-drivers` 名字完全匹配 Fedora 的包，不显式点名
+    piano 版的话，dnf 会挑官方包，finalize 阶段逐一核对 Mesa 清单里的
+    6 个改名包时就会失败。niri 与 Hyprland 没有元包，本来就靠显式声明。
     """
-    for desktop in ("niri", "hyprland"):
+    for desktop in ("gnome", "kde", "niri", "hyprland"):
         context = piano_desktop.load(desktop, "44")
         packages = context["profile"]["dnf_packages"]
-        assert "mesa-vulkan-drivers" in packages, (
-            f"{desktop} needs mesa-vulkan-drivers; no metapackage pulls it in")
+        # Vulkan 驱动会把 libgbm、dri-drivers 与 filesystem 一起拉进来，
+        # libGL 与 libEGL 没有谁依赖它们，必须自己点名，否则 Mesa 清单里
+        # 那 6 个包装不齐，finalize 会逐个核对失败。
+        for name in ("mesa-piano-vulkan-drivers", "mesa-piano-libGL", "mesa-piano-libEGL"):
+            assert name in packages, (
+                f"{desktop} needs {name}, not the Fedora-named package")
 
 
 def check_repo_args():

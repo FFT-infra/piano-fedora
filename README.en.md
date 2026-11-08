@@ -4,19 +4,19 @@
 >
 > This project ships under the [MIT license](LICENSE) as is. The authors and contributors take no responsibility for damaged hardware, lost data, or a voided warranty.
 
-# Fedora 44 for Xiaomi Pad 8 Pro (piano)
+# Fedora 45 for Xiaomi Pad 8 Pro (piano)
 
 English | [简体中文](README.md)
 
 [![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
 
-Fedora 44 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 Elite SM8750), with GNOME as the default desktop. The boot chain is SunUEFI (EDK2). The kernel is a mainline Linux 7.3 port. The root filesystem is F2FS. The tablet dual-boots Linux and the stock HyperOS. A 3-second chooser in the combined BOOT and the Android boot-assistant module handle both directions without a host.
+Fedora 45 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 Elite SM8750), with GNOME as the default desktop. The boot chain is SunUEFI (EDK2). The kernel is a mainline Linux 7.3 port. The root filesystem is F2FS. The tablet dual-boots Linux and the stock HyperOS. A 3-second chooser in the combined BOOT and the Android boot-assistant module handle both directions without a host.
 
 ## Hardware status
 
 | Module | Status | Notes |
 |---|---|---|
-| Display | ✅ | 3200×2136 at 120 Hz, Mesa 26.2.3 Turnip (Adreno 830) |
+| Display | ✅ | 3200×2136 at 120 Hz, Mesa 26.2.6 Turnip (Adreno 830) |
 | Touch | ✅ | Kalman filter, 24 px dead zone, orthogonal axis lock. 97 SYN reports per second over a 45-second continuous drag, full screen reachable, multitouch works |
 | Video | ✅ | Iris V4L2 M2M works. H.264 and HEVC encode and decode in hardware, 300 frames each. B-frame sources decode too, all at 1080p. Frame-by-frame digests match software decode, and the Iris interrupt count grows. In-browser decode is verified: Chrome and Firefox decode in hardware by default, Fedora's Chromium does not, see [known issues](docs/known-issues.md#触屏网络音频与相机). VP9, 10-bit and 4K60 are not tested |
 | Power | ✅ | Dual-cell battery reporting, deep suspend |
@@ -39,7 +39,7 @@ Images are built per profile from the same release chain. They differ only in th
 
 | Profile | Session | Login | Auto-rotate | Acceptance |
 |---|---|---|---|---|
-| `gnome` | GNOME 50 (Workstation environment) | GDM autologin | Mutter | Desktop reached. Rotation verified on device |
+| `gnome` | GNOME 51 (Workstation environment) | GDM autologin | Mutter | Desktop reached. Rotation verified on device |
 | `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Desktop reached. Rotation verified. One brief flicker per rotation, see [known issues](docs/known-issues.md) |
 | `niri` | niri | greetd + tuigreet | None, manual `transform` | Desktop reached |
 | `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None, manual rotate | Desktop reached |
@@ -91,6 +91,7 @@ An archive holds the platform images, that profile's `root-install/`, the compon
 - [Maintenance and acceptance](docs/internals.md): pipeline entry points, artifact binding, run id plumbing, PR gate
 - [COPR repository](docs/copr-repository.md): online upgrades for all ten packages, kernel included, plus the rollback boundary and failure modes
 - [Upstream tracking](docs/upstream.md): current pin, drift dashboard, follow-up rules
+- [Device tree](docs/device-tree.md): the three DT lineages, provenance of the shipped baseline, and what each of the sixteen overlays does
 - [Known issues](docs/known-issues.md): open problems and items under observation
 - [Gunyah virtualization](docs/virtualization.md): VM lifecycle and networking on SM8750
 - [Gaps before public distribution](docs/public-release-gaps.md): build inputs still tied to this one device and this one person
@@ -102,7 +103,7 @@ An archive holds the platform images, that profile's `root-install/`, the compon
 
 ```bash
 make test                  # offline suite: GPT math, image and metadata checks
-make plan RELEASEVER=44    # print the Fedora 44 root filesystem plan
+make plan RELEASEVER=45    # print the Fedora 45 root filesystem plan
 ```
 
 The pipeline lives in `.github/workflows/`. The main chain is `host-check` (with `build_piano_rpms=true`) → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`. Every stage takes explicit run ids for its inputs. `build-rootfs` needs the RPM matrix, runtime, Mesa and FFmpeg. `build-image` adds the kernel. `build-bundle` needs the image and UEFI. `prepare-install` needs the bundle. The chain is not a plain linear hand-off.

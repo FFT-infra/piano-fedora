@@ -22,7 +22,7 @@ spec.loader.exec_module(finalizer)
 
 POWER_FILES = {
     "usr/lib/piano/power-button",
-    "usr/lib/systemd/user/piano-power-button.service",
+    "usr/lib/systemd/system/piano-power-button.service",
     "etc/udev/rules.d/70-piano-power-button.rules",
     "etc/systemd/logind.conf.d/piano.conf",
     "etc/dconf/db/local.d/00-power",
@@ -59,13 +59,25 @@ def check_power_overlay_owner():
     assert "stage_power_overlay" not in source, (
         "build-device-runtime must not stage a second power overlay; "
         "piano-fedora-configs owns those five paths")
+    # BSP 里那份 piano-usb.service 与 piano-linux-debug.service 抢同一个 UDC，
+    # 装上去每次开机都会留一个 failed unit。跳过它和它的 udev 规则，别让这
+    # 三个路径再回到载荷里。
+    assert '"piano-usb.service", "79-piano-usb.rules", "usb-network"' in source, (
+        "build-device-runtime must skip the BSP's duplicate USB gadget unit")
 
-    def policy_root(base, files):
-        """把一份 overlay 摆成 finalizer 眼里的安装树。"""
+    def policy_root(base, files, fallback=None):
+        """把一份 overlay 摆成 finalizer 眼里的安装树。
+
+        上游那份可能还按 user 单元摆放，单元路径不是这份检查的对象（它只
+        比对 dconf 策略），上游缺的文件从矩阵副本补上。
+        """
         for name in POWER_FILES:
+            source = files / name
+            if not source.is_file() and fallback is not None:
+                source = fallback / name
             target = base / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes((files / name).read_bytes())
+            target.write_bytes(source.read_bytes())
         profile = base / "etc/dconf/profile/user"
         profile.parent.mkdir(parents=True, exist_ok=True)
         profile.write_text("user-db:user\nsystem-db:local\n")
@@ -79,7 +91,7 @@ def check_power_overlay_owner():
     overlay = sun / "linux/desktops/gnome/power-overlay"
     if overlay.is_dir():
         with tempfile.TemporaryDirectory() as temporary:
-            upstream = policy_root(Path(temporary) / "upstream", overlay)
+            upstream = policy_root(Path(temporary) / "upstream", overlay, fallback=package)
             try:
                 finalizer.verify_power_overlay(upstream, GNOME)
             except ValueError:
@@ -271,24 +283,21 @@ def check_service_staging_order(root):
               and isinstance(node.value.func, ast.Name)
               and node.value.func.id == "verify_power_overlay"):
             selected.append(node)
-    assert len(selected) == 6, "service setup execution path changed; review this test"
+    assert len(selected) == 5, "service setup execution path changed; review this test"
     required = {"piano-clock-restore.service", "piano-clock-save.service",
-                "piano-clock-save.timer", "piano-selinux-policy.service"}
+                "piano-clock-save.timer", "piano-selinux-policy.service",
+                "piano-power-button.service"}
     enabled = []
 
     def enable(guest, *command):
         assert guest == root and command[0:1] == ("systemctl",)
-        if "--global" in command:
-            assert command == ("systemctl", "--global", "enable", "piano-power-button.service"), command
-            assert (root / "usr/lib/systemd/user/piano-power-button.service").is_file()
-            enabled.append("global:piano-power-button.service")
-        else:
-            assert command[1:2] == ("enable",)
-            assert required <= set(command[2:]), "enable path omitted required custom units"
-            for name in required:
-                unit = root / "usr/lib/systemd/system" / name
-                assert unit.is_file(), "enable called before the unit was staged: " + name
-            enabled.extend(command[2:])
+        assert "--global" not in command, "piano-power-button is a system unit now"
+        assert command[1:2] == ("enable",)
+        assert required <= set(command[2:]), "enable path omitted required custom units"
+        for name in required:
+            unit = root / "usr/lib/systemd/system" / name
+            assert unit.is_file(), "enable called before the unit was staged: " + name
+        enabled.extend(command[2:])
 
     def verify_power(root, context):
         assert context["desktop"] == "gnome", "this fixture is the GNOME power contract"
@@ -304,6 +313,7 @@ def check_service_staging_order(root):
         policy = ("[org/gnome/settings-daemon/plugins/media-keys]\npower-static=['']\n"
                   "[org/gnome/settings-daemon/plugins/power]\npower-button-action='nothing'\n"
                   "sleep-inactive-ac-type='nothing'\nsleep-inactive-battery-type='nothing'\n"
+                  "ambient-enabled=false\nidle-dim=false\n"
                   "[org/gnome/desktop/session]\nidle-delay=uint32 300\n"
                   "[org/gnome/desktop/screensaver]\nlock-enabled=true\nlock-delay=uint32 0\n")
         dconf.write_text(policy)
@@ -320,6 +330,7 @@ def check_service_staging_order(root):
                 policy.replace("sleep-inactive-ac-type='nothing'", "sleep-inactive-ac-type='suspend'"),
                 policy.replace("sleep-inactive-ac-type='nothing'", "# sleep-inactive-ac-type='nothing'"),
                 policy.replace("[org/gnome/desktop/screensaver]", "[wrong/group]"),
+                policy.replace("ambient-enabled=false", "ambient-enabled=true"),
                 policy + "lock-enabled=false\n"):
             dconf.write_text(unsafe)
             try:
@@ -337,7 +348,6 @@ def check_service_staging_order(root):
                  "verify_power_overlay": verify_power}
     exec(compile(ast.Module(body=selected, type_ignores=[]), "service-setup", "exec"), namespace)
     assert required <= set(enabled), "service enable path was never exercised"
-    assert "global:piano-power-button.service" in enabled
 
 
 def check_first_boot_ssh_key(root):
@@ -478,7 +488,8 @@ def main():
         daemon.chmod(0o755)
         services = {}
         for name in ("usr/lib/systemd/system/adsprpcd-sensorspd.service",
-                     "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf"):
+                     "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf",
+                     "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/30-adsp-library.conf"):
             unit = root / name
             unit.parent.mkdir(parents=True, exist_ok=True)
             unit.write_text("[Service]\nExecStart=/usr/bin/adsprpcd sensorspd\n")

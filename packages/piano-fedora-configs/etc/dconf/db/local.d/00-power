@@ -11,6 +11,11 @@ power-static=['']
 power-button-action='nothing'
 sleep-inactive-ac-type='nothing'
 sleep-inactive-battery-type='nothing'
+# 与 sheng-gnome-fix 保持一致：自动亮度会把任何外部写入的背光值重算成
+# min + (max - min) * (abTarget + value - 0.5)，熄屏和手动调节都会被覆盖；
+# 空闲变暗同理，会和电源键熄屏抢同一个接口。
+ambient-enabled=false
+idle-dim=false
 
 [org/gnome/desktop/session]
 idle-delay=uint32 300

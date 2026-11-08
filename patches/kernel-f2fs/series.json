@@ -3,7 +3,7 @@
   "target": "sunuefi",
   "note": "按顺序应用。每个补丁的 targets 是应用前该文件必须匹配的摘要；上游更新后不匹配会报错退出，不静默跳过。creates 必须与实际新建的文件完全一致。",
   "base": {
-    "sunuefi_commit": "0a8ec14340c02d0c1febb25f1bb3af830485545e"
+    "sunuefi_commit": "afe922bc0d9f230dd05dc0dc9435ae6d6322a31b"
   },
   "patches": [
     {
@@ -35,7 +35,7 @@
     },
     {
       "file": "0005-fedora-nftables.patch",
-      "summary": "补齐 Fedora firewalld 与 libvirt 所需 nftables 内核接口，配置后逐项验证",
+      "summary": "补齐 Fedora firewalld 与 libvirt 所需 nftables 内核接口，并以模块形式提供 firewalld 自带的全部 conntrack helper，配置后逐项验证",
       "targets": {
         "tools/build_piano_full_kernel.py": "38da26185beac51a4804d32c7bcce29955c7627dded07b3dffa08266ab18bcaf"
       },

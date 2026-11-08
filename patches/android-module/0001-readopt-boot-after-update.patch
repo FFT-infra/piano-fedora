@@ -1,0 +1,68 @@
+diff --git a/android/module/action.sh b/android/module/action.sh
+index 1b65efd..a42451b 100644
+--- a/android/module/action.sh
++++ b/android/module/action.sh
+@@ -45,6 +45,10 @@ else
+     [ "$#" = 2 ] || exit 2
+     mode=--preview
+   fi
++  # A confirmed request must not fail only because a system update replaced
++  # BOOT. Adopt validates the live carrier against this module's payloads; a
++  # preview stays read-only.
++  [ "$mode" != --execute ] || piano_readopt_if_needed "$MODPATH/install-state.json" || exit 2
+   "$tool" request --target "$target" --boot-device "$bootdev" --active-slot "$slot" \
+     --rom-fingerprint "$rom_fingerprint" --boot-fingerprint "$boot_fingerprint" \
+     --installed-state "$MODPATH/install-state.json" --policy "$MODPATH/policy.json" --require-ready "$mode"
+diff --git a/android/module/common.sh b/android/module/common.sh
+index c5df66c..35fdc95 100644
+--- a/android/module/common.sh
++++ b/android/module/common.sh
+@@ -81,3 +81,33 @@ piano_check_payload() {
+     piano_fail "The native repacker refused readiness."; return 1;
+   }
+ }
++# Every system update rewrites BOOT with a newer carrier, and the saved state
++# describes the carrier that existed before. A request or a switch then fails
++# the identity check until the module is reinstalled. adopt validates the live
++# wrapper against this module's payload hashes, never writes BOOT, and
++# regenerates the state, so it is the safe repair in that case. If the live
++# BOOT is not this module's wrapper adopt refuses and the caller keeps its own
++# error.
++piano_readopt_if_needed() {
++  state=$1
++  if [ -f "$state" ] && "$MODPATH/bin/piano-boot-repack" status \
++      --boot-device "$bootdev" --active-slot "$slot" --policy "$MODPATH/policy.json" \
++      --installed-state "$state" >/dev/null 2>&1; then
++    return 0
++  fi
++  ui_print "当前 BOOT 与安装记录不一致，正在按模块载荷重新校验并接管。"
++  mkdir -p "$MODPATH/.work"
++  work=$(mktemp -d "$MODPATH/.work/adopt.XXXXXX") || return 1
++  if "$MODPATH/bin/piano-boot-repack" adopt --boot-device "$bootdev" --active-slot "$slot" \
++      --policy "$MODPATH/policy.json" --state-output "$work/install-state.json" 2>"$work/adopt.log"; then
++    mv -f "$work/install-state.json" "$state" || {
++      sed 's/^/piano-boot-repack: /' "$work/adopt.log" >&2
++      rm -rf "$work"; return 1
++    }
++  else
++    sed 's/^/piano-boot-repack: /' "$work/adopt.log" >&2
++    rm -rf "$work"; return 1
++  fi
++  rm -rf "$work"
++  return 0
++}
+diff --git a/android/module/manager.sh b/android/module/manager.sh
+index 2a60508..bfb221a 100644
+--- a/android/module/manager.sh
++++ b/android/module/manager.sh
+@@ -145,6 +145,10 @@ case "$operation" in
+   [ "$target" != linux ] || piano_installed_linux || {
+    echo '未找到已安装的 Linux 启动文件，请先完成 Linux 安装。' >&2; exit 2;
+   }
++  # A system update replaces BOOT while the saved state still describes the
++  # previous carrier. Re-adopt first; without this every switch fails with an
++  # identity mismatch until the module is reinstalled by hand.
++  piano_readopt_if_needed "$state" || exit 1
+   "$repack" request --target "$target" --boot-device "$bootdev" --active-slot "$slot" \
+    --rom-fingerprint "$rom_fingerprint" --boot-fingerprint "$boot_fingerprint" \
+    --policy "$policy" --installed-state "$state" --execute

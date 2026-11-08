@@ -12,7 +12,10 @@
       "dconf",
       "pipewire",
       "wireplumber",
-      "iio-sensor-proxy"
+      "iio-sensor-proxy",
+      "mesa-piano-vulkan-drivers",
+      "mesa-piano-libGL",
+      "mesa-piano-libEGL"
     ],
     "repos": [],
     "exclude_packages": ["iio-sensor-proxy"],
@@ -47,7 +50,10 @@
       "konsole",
       "pipewire",
       "wireplumber",
-      "iio-sensor-proxy"
+      "iio-sensor-proxy",
+      "mesa-piano-vulkan-drivers",
+      "mesa-piano-libGL",
+      "mesa-piano-libEGL"
     ],
     "repos": [],
     "exclude_packages": ["iio-sensor-proxy"],
@@ -86,7 +92,9 @@
       "swaybg",
       "waybar",
       "brightnessctl",
-      "mesa-vulkan-drivers",
+      "mesa-piano-vulkan-drivers",
+      "mesa-piano-libGL",
+      "mesa-piano-libEGL",
       "pipewire",
       "wireplumber",
       "iio-sensor-proxy"
@@ -128,7 +136,9 @@
       "mako",
       "waybar",
       "brightnessctl",
-      "mesa-vulkan-drivers",
+      "mesa-piano-vulkan-drivers",
+      "mesa-piano-libGL",
+      "mesa-piano-libEGL",
       "pipewire",
       "wireplumber",
       "iio-sensor-proxy"

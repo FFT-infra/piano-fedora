@@ -243,12 +243,22 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
                  --define "_annobin_gcc_plugin %{nil}" \
                  -ba "$SPEC_FILE"
 
-        # If we just built libssc, ensure host has it installed for downstream iio-sensor-proxy-ssc
+        # iio-sensor-proxy-ssc 的 BuildRequires 里有 libssc，而 libssc 是本矩阵
+        # 刚编出来的包，镜像里没有。CI 在 Fedora 容器里以 root 直接跑，没有
+        # sudo；本地在主机上跑才走 sudo。两种情况都要把刚编的 libssc 装上，
+        # 否则下一个包会以 "Failed build dependencies" 失败。
         if [ "$pkg" = "libssc" ] && [ -d "$BUILD_TMP/RPMS/aarch64" ]; then
             LIBSSC_RPM=$(find "$BUILD_TMP/RPMS/aarch64" -name "libssc-[0-9]*.rpm" | head -n 1)
-            if [ -n "$LIBSSC_RPM" ] && sudo -n true 2>/dev/null; then
-                echo "--> Installing host prerequisite libssc for dependent builds..."
-                sudo rpm -Uvh --force "$LIBSSC_RPM" 2>/dev/null || true
+            if [ -n "$LIBSSC_RPM" ]; then
+                RUN_AS=()
+                if [ "$(id -u)" -ne 0 ]; then
+                    RUN_AS=(sudo -n)
+                fi
+                if "${RUN_AS[@]}" true 2>/dev/null; then
+                    echo "--> Installing host prerequisite libssc for dependent builds..."
+                    "${RUN_AS[@]}" rpm --define "_pkgverify_level none" \
+                        -Uvh --force "$LIBSSC_RPM"
+                fi
             fi
         fi
     fi

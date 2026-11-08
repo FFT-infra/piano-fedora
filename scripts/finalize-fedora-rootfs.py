@@ -30,9 +30,11 @@ PIANO_DEBUG_NCM_ADDRESS = "192.168.77.1/30"
 PIANO_DEBUG_NM_UUID = "5b1c9a2e-6f3d-4a71-8c2b-0d4e5f607182"
 
 # 重建 FFmpeg 只装运行时库和 CLI；-devel 与 freeworld 不进设备镜像。集合必须
-# 恰好等于这 8 个，空集合或漏包都要拒绝，否则 NEVRA 校验会被空清单绕过。
-FFMPEG_PACKAGES = {"ffmpeg-free", "libavcodec-free", "libavdevice-free", "libavfilter-free",
-                   "libavformat-free", "libavutil-free", "libswresample-free", "libswscale-free"}
+# 恰好等于这 8 个改名后的包，空集合或漏包都要拒绝，否则 NEVRA 校验会被空清单
+# 绕过。名字带 -piano 是压住官方版的手段：它们声明 Provides 原名、与原名冲突。
+FFMPEG_PACKAGES = {"ffmpeg-piano", "libavcodec-piano", "libavdevice-piano",
+                   "libavfilter-piano", "libavformat-piano", "libavutil-piano",
+                   "libswresample-piano", "libswscale-piano"}
 
 
 def chroot(root, *command):
@@ -208,7 +210,7 @@ def stage_boot_diagnostics(root, context):
             'SUBSYSTEM=="dma_heap", KERNEL=="system", GROUP="video", MODE="0660", TAG+="uaccess"\n',
         "etc/udev/rules.d/70-piano-power-button.rules":
             "# Let the active session user open the power key and the keyboard-cover\n"
-            "# lid switch: the piano-power-button user service owns both (see\n"
+            "# lid switch: the piano-power-button system service owns both (see\n"
             "# /usr/lib/piano/power-button).  The power key is grabbed; the lid switch\n"
             "# is only read, so its state stays visible to logind and GNOME.\n"
             'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="pmic_pwrkey", TAG+="uaccess"\n'
@@ -357,7 +359,7 @@ WantedBy=sysinit.target
 # piano_desktop.power_required() 提供（GNOME dconf / KDE powerdevilrc / 无）。
 POWER_OVERLAY_FILES = (
     "usr/lib/piano/power-button",
-    "usr/lib/systemd/user/piano-power-button.service",
+    "usr/lib/systemd/system/piano-power-button.service",
     "etc/udev/rules.d/70-piano-power-button.rules",
     "etc/systemd/logind.conf.d/piano.conf",
 )
@@ -465,7 +467,8 @@ def verify_power_overlay(root, context):
             "org/gnome/settings-daemon/plugins/media-keys": {"power-static": "['']"},
             "org/gnome/settings-daemon/plugins/power": {
                 "power-button-action": "'nothing'", "sleep-inactive-ac-type": "'nothing'",
-                "sleep-inactive-battery-type": "'nothing'"},
+                "sleep-inactive-battery-type": "'nothing'",
+                "ambient-enabled": "false", "idle-dim": "false"},
             "org/gnome/desktop/session": {"idle-delay": "uint32 300"},
             "org/gnome/desktop/screensaver": {"lock-enabled": "true", "lock-delay": "uint32 0"},
         }
@@ -527,7 +530,8 @@ def verify_fastrpc_daemon(root, runtime_meta):
         raise ValueError("installed FastRPC daemon differs from the runtime manifest")
     services = proof.get("service_sha256", {})
     expected_services = {"usr/lib/systemd/system/adsprpcd-sensorspd.service",
-                         "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf"}
+                         "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf",
+                         "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/30-adsp-library.conf"}
     if set(services) != expected_services:
         raise ValueError("FastRPC service assembly is missing from the runtime manifest")
     for name, digest in services.items():
@@ -567,7 +571,7 @@ def verify_runtime_extras(root, runtime_meta):
         if not target.is_file() or sha256(target) != digest:
             raise ValueError("installed runtime extra differs: " + name)
     alias = guest_resolve(root, "/usr/lib64/dri") / "msm_drv_video.so"
-    if not alias.is_symlink() or str(alias.readlink()) != "v4l2_drv_video.so":
+    if not alias.is_symlink() or str(alias.readlink()) != "qcom_drv_video.so":
         raise ValueError("VA-API msm driver alias differs")
 
 
@@ -600,15 +604,15 @@ def verify_device_integration(root, runtime_meta):
         raise ValueError("finger pipeline adapter proof differs")
 
 
-def verify_ffmpeg_install(root, ffmpeg):
-    """拒绝装成官方 ffmpeg-free 或漏装解码器的镜像。
+def verify_ffmpeg_install(root, ffmpeg, releasever):
+    """拒绝装成官方 ffmpeg 或漏装解码器的镜像。
 
     与 Mesa 一样，逐个核对已安装包的 NEVRA 是否就是本次重建的产物；再在目标树里
     真跑一次 `ffmpeg -decoders`，确认两个 v4l2m2m 解码器真的注册进来，而不是只把
-    RPM 拷进去。官方 ffmpeg-free 的 release 更低，dnf 会把它升级成 piano1 产物。
+    RPM 拷进去。重建的包改名成 -piano，官方包与它冲突，两者不会同时出现。
     """
     if (ffmpeg.get("status"), ffmpeg.get("releasever"), ffmpeg.get("arch")) != (
-            "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "44", "aarch64"):
+            "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", str(releasever), "aarch64"):
         raise ValueError("FFmpeg is not the verified native piano build")
     expected_decoders = {"h264_v4l2m2m", "hevc_v4l2m2m"}
     if set(ffmpeg.get("decoders", {})) != expected_decoders:
@@ -702,7 +706,8 @@ def main():
     mesa_dir = args.mesa.resolve()
     mesa = json.loads((mesa_dir / "manifest.json").read_text())
     if (mesa.get("status"), mesa.get("releasever"), mesa.get("arch"), mesa.get("chip_id")) != (
-            "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED", "44", "aarch64", "0xffff44050001"):
+            "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED", str(context["releasever"]),
+            "aarch64", "0xffff44050001"):
         raise ValueError("Mesa is not the verified native piano build")
     for name, row in mesa["packages"].items():
         if chroot(root, "rpm", "-q", "--qf", "%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}", name).strip() != row["nevra"]:
@@ -712,7 +717,8 @@ def main():
         if sha256(guest_resolve(root, "/" + relative)) != digest:
             raise ValueError("installed A830v1 driver differs: " + relative)
     ffmpeg_dir = args.ffmpeg.resolve()
-    verify_ffmpeg_install(root, json.loads((ffmpeg_dir / "manifest.json").read_text()))
+    verify_ffmpeg_install(root, json.loads((ffmpeg_dir / "manifest.json").read_text()),
+                          context["releasever"])
     kernel_install = verify_kernel_install(root, kernel)
     for row in m["modules"]:
         path = root / "usr" / row["path"]
@@ -767,9 +773,9 @@ def main():
                 "piano-clock-save.timer", "piano-selinux-policy.service",
                 "piano-first-boot-ssh-key.service",
                 "piano-pstore-save.service", "qbootctl.service",
+                "piano-power-button.service",
                 *piano_desktop.enable_units(context)]
     chroot(root, "systemctl", "enable", *services)
-    chroot(root, "systemctl", "--global", "enable", "piano-power-button.service")
     # dconf 编译只有 dconf 档需要：KDE 与无桌面档没有这个库，跑它会把一份
     # 空的系统库写进镜像。
     if piano_desktop.dconf_profile_required(context):

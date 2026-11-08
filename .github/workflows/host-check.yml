@@ -49,7 +49,7 @@ jobs:
     uses: ./.github/workflows/build-piano-rpms.yml
     with:
       kernel_run_id: ${{ inputs.kernel_run_id }}
-      releasever: "44"
+      releasever: "45"
   checks:
     env:
       PIANO_TEST_SUNUEFI: ${{ github.workspace }}/build/test-sources/sunuefi
@@ -72,7 +72,7 @@ jobs:
         run: |
           sudo podman run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
             --env PIANO_TEST_SUNUEFI=/workspace/build/test-sources/sunuefi \
-            registry.fedoraproject.org/fedora:44 bash -euo pipefail -c '
+            registry.fedoraproject.org/fedora:45 bash -euo pipefail -c '
               dnf -y install busybox binutils util-linux shadow-utils libxcrypt make git python3 gcc patch dtc logrotate glib2-devel f2fs-tools
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory /workspace/build/test-sources/sunuefi
@@ -88,3 +88,74 @@ jobs:
             exit 1
           fi
           echo "OK: no device-write commands"
+
+  vendor-dt:
+    # 厂商 DTS 只作 overlay 的审阅基准，不进任何出货产物。编不过本身就是要修的
+    # 信息，所以这一 job 失败不挡其他检查，报告照常上传。
+    continue-on-error: true
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install DT tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git gcc make flex bison python3
+      - name: Fetch the pinned vendor DTS and the SunUEFI overlays
+        run: python3 scripts/checkout-sources.py --output build/vendor-dt-src --mode vendor-dt
+      - name: Build the pinned dtc and libfdt
+        run: make -C build/vendor-dt-src/dtc -j2 NO_PYTHON=1 NO_YAML=1 dtc fdtoverlay
+      - name: Compare each overlay against the vendor hardware description
+        run: |
+          set -euo pipefail
+          export PATH="$PWD/build/vendor-dt-src/dtc:$PATH"
+          export LD_LIBRARY_PATH="$PWD/build/vendor-dt-src/dtc/libfdt"
+          python3 scripts/compare-vendor-dt.py \
+            --vendor build/vendor-dt-src/vendor-kernel \
+            --sunuefi build/vendor-dt-src/sunuefi \
+            --dtc build/vendor-dt-src/dtc \
+            --output build/vendor-dt-report
+      - name: Fail on differences the whitelist does not cover
+        run: |
+          set -euo pipefail
+          # 这一 job 是 continue-on-error，红了不挡合并，只提示有人工要看的差异。
+          python3 - <<'PY'
+          import json, sys
+          report = json.load(open("build/vendor-dt-report/report.json"))
+          unexplained = report["missing_in_vendor_unexplained"]
+          for overlay, target in unexplained:
+              print(f"unexplained: {overlay} -> {target}")
+          sys.exit(1 if unexplained else 0)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vendor-dt-report
+          path: build/vendor-dt-report
+
+  vendor-blobs:
+    # 固件对照同样只出报告：厂商 blob 不进镜像，也不需要在这里下载，
+    # 只取索引算 blob 摘要。报告看完再决定要不要升成门禁。
+    continue-on-error: true
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install git
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git python3
+      - name: Fetch the vendor blob index and the shipped firmware tree
+        run: python3 scripts/checkout-sources.py --output build/vendor-blobs-src --mode vendor-blobs
+      - name: Compare every shipped firmware file against the vendor copy
+        run: |
+          set -euo pipefail
+          python3 scripts/compare-vendor-blobs.py \
+            --vendor-blobs build/vendor-blobs-src/vendor-blobs \
+            --firmware build/vendor-blobs-src/sunuefi/upstream/piano-firmware-current/firmware \
+            --output build/vendor-blob-report
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vendor-blob-report
+          path: build/vendor-blob-report

@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-10-26",
-  "note": "只列构建实际消费的上游；研究与后端参考单独记录在 docs/upstreams.json。",
+  "checked_date": "2026-11-08",
+  "note": "只列构建链实际读取的上游；研究与后端参考单独记录在 docs/upstreams.json。vendor-kernel 与 vendor-blobs 只被对照任务读取，不进任何出货产物。",
   "sources": {
     "dtc": {
       "url": "https://github.com/dgibson/dtc.git",
       "ref": "main",
-      "commit": "f99e3af0ecb67a9085478a9b8ddbcc25aa64931d",
+      "commit": "54e547173bf0f2a4cc35eba8b5738caf38b9230f",
       "role": "设备树打包工具：保留覆盖层目标节点已有 phandle 的 libfdt 1.8.1"
     },
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "0a8ec14340c02d0c1febb25f1bb3af830485545e",
+      "commit": "afe922bc0d9f230dd05dc0dc9435ae6d6322a31b",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器"
     },
     "linux-piano": {
@@ -20,6 +20,18 @@
       "ref": "piano-7.2.6",
       "commit": "453bb567f2fc12423ab3338953ca8938a2f06e16",
       "role": "内核基线。取 piano-7.2.6 分支上的提交；内核版本 7.2.9 由 SunUEFI 合入 stable 后得到，不是这个分支的名字"
+    },
+    "vendor-kernel": {
+      "url": "https://github.com/xiaomi-pad-8-pro-development/android_kernel_xiaomi_piano.git",
+      "ref": "seventeen",
+      "commit": "ed494167a93f36b98a7a8db7e4106cd9f8d2bb12",
+      "role": "厂商 Android 下游内核的 DTS 源码，作为 overlay 的审阅基准。不进任何出货产物，只被 scripts/compare-vendor-dt.py 读取"
+    },
+    "vendor-blobs": {
+      "url": "https://github.com/xiaomi-pad-8-pro-development/android_vendor_xiaomi_piano.git",
+      "ref": "seventeen",
+      "commit": "c1e5a318cfe41b5c7cef74385b376fd0c2527c49",
+      "role": "厂商固件与传感器配置的 blob 树，作为固件对照基准。只读文件清单与 git blob 摘要，不下载内容，不进镜像"
     },
     "piano-firmware": {
       "url": "https://github.com/blu-sharky/piano-firmware.git",
@@ -66,19 +78,19 @@
     "crosvm": {
       "url": "https://github.com/google/crosvm.git",
       "ref": "main",
-      "commit": "1784d938eb43bd8a0c4b62ec447c7330a6ecee20",
+      "commit": "14a4f2cbb586ef9af33130e4aa6fd40ec387c8d3",
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {
-      "url": "https://github.com/radxa-pkg/libva-v4l2.git",
+      "url": "https://github.com/radxa-pkg/qcom-va-driver.git",
       "ref": "master",
-      "commit": "51df9a538a1e8ce7a02449d9bca32ecf621c76c5",
-      "role": "Qualcomm Iris stateful V4L2 VA-API 后端：H.264/HEVC 硬解与编码；phxinyang/qualcomm-iris-vaapi 只有解码 entrypoint，会覆盖它"
+      "commit": "0980a1decf26d34c9aa71cd0a4a0d25703a7a17f",
+      "role": "Qualcomm Iris stateful V4L2 VA-API 后端（上游已改名 qcom-va-driver）：H.264/HEVC/AV1 硬解与编码；phxinyang/qualcomm-iris-vaapi 只有解码 entrypoint，会覆盖它"
     },
     "piano-integration": {
       "url": "https://github.com/yzddmr6/xiaomipad-8pro-mainline.git",
       "ref": "main",
-      "commit": "cede87ccee5b3041f9da47d0639644d1d69ca96b",
+      "commit": "5152d48f4153752abfa7bd1c8ff940a3a8f6dff8",
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者"
     },
     "uperf": {

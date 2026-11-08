@@ -1,11 +1,11 @@
 diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
-index bbf641c..f85593f 100644
+index f7782b3..a67089c 100644
 --- a/tools/build_piano_full_kernel.py
 +++ b/tools/build_piano_full_kernel.py
-@@ -93,8 +93,13 @@ FEDORA_OVERRIDES.update({
-  'CONFIG_NETFILTER':'y','CONFIG_NETFILTER_ADVANCED':'y',
-  'CONFIG_NF_CONNTRACK':'y','CONFIG_NF_NAT':'y',
- })
+@@ -103,8 +103,13 @@ FEDORA_OVERRIDES.update({key:'m' for key in (
+     'CONFIG_NF_CONNTRACK_IRC','CONFIG_NF_CONNTRACK_NETBIOS_NS','CONFIG_NF_CONNTRACK_PPTP',
+     'CONFIG_NF_CONNTRACK_SANE','CONFIG_NF_CONNTRACK_SIP','CONFIG_NF_CONNTRACK_SNMP',
+     'CONFIG_NF_CONNTRACK_TFTP')})
 +# The Fedora production kernel always includes the locked upstream Gunyah VMM.
 +GUNYAH_OVERRIDES={'CONFIG_GUNYAH':'y','CONFIG_GUNYAH_HYPERCALLS':'y',
 +                  'CONFIG_GUNYAH_TIMER':'y','CONFIG_GUNYAH_PLATFORM_HOOKS':'y',
@@ -17,7 +17,7 @@ index bbf641c..f85593f 100644
  
  
  def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
-@@ -141,6 +146,8 @@ def validate_module_overrides(values):
+@@ -151,6 +156,8 @@ def validate_module_overrides(values):
      if flash and flash!=set(FLASH_OVERRIDES):raise ValueError('Flash requires all four reviewed options')
      fedora=set(values)&set(FEDORA_OVERRIDES)
      if fedora and fedora!=set(FEDORA_OVERRIDES):raise ValueError('Fedora requires the complete reviewed SELinux policy')
@@ -26,7 +26,7 @@ index bbf641c..f85593f 100644
      return values
  
  
-@@ -261,7 +268,9 @@ def main():
+@@ -271,7 +278,9 @@ def main():
      args=parser.parse_args()
      if not 1<=args.jobs<=8:raise SystemExit('Full candidate jobs must be 1..8')
      work,out,artifacts=(path.resolve()for path in (args.worktree,args.build_dir,args.artifacts));commit=args.commit
@@ -37,7 +37,7 @@ index bbf641c..f85593f 100644
          raise ValueError('Explicit full kernel paths must stay in the workspace build/artifact directories')
      compiler=ROOT/'build/kernel-worktrees'/(out.name+'-compiler-'+hashlib.sha256(str(out).encode()).hexdigest()[:12])
      if compiler==work or compiler.resolve()!=compiler:
-@@ -283,6 +292,9 @@ def main():
+@@ -293,6 +302,9 @@ def main():
               **module_overrides(f2fs.read_text(),'f2fs')}
      if args.fedora_policy:
          modules={**modules,**FEDORA_OVERRIDES}

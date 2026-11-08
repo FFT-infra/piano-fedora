@@ -1,6 +1,7 @@
 .PHONY: test test-device-media plan plan-desktop clean build-rpms release-bundle selinux
 
 test:
+	python3 tests/check_audio_stack.py
 	python3 tests/check_sources.py
 	python3 tests/check_upstreams.py
 	python3 tests/check_upstream_watch.py
@@ -30,6 +31,9 @@ test:
 	python3 tests/check_update_memory.py
 	python3 tests/check_esp_image.py
 	python3 tests/check_bundle_overlays.py
+	python3 tests/check_vendor_dt.py
+	python3 tests/check_vendor_blobs.py
+	python3 tests/check_firmware_overlays.py
 	python3 tests/check_patches.py
 	python3 tests/check_uefi_live_rm.py
 	python3 tests/check_fedora_kernel.py
@@ -72,7 +76,7 @@ test-device-media:
 	test -n "$(MEDIA_OUTPUT)" && test -n "$(MEDIA_HOST)"
 	bash scripts/run-device-media.sh "$(MEDIA_HOST)" "$(MEDIA_OUTPUT)" $(FIXTURE_DIR)
 
-RELEASEVER ?= 44
+RELEASEVER ?= $(shell python3 -c "import json; print(json.load(open('product.json'))['target']['releasever'])")
 DESKTOP ?= gnome
 plan:
 	python3 scripts/build-clean-rootfs.py --plan --releasever $(RELEASEVER)

@@ -45,14 +45,16 @@ Fedora 官方 COPR 实例没有启用二进制 RPM 上传。运行中实例的 A
 
 ## 发布流程（维护者）
 
-发布走 `publish-copr.yml`，需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`。先在 `main` 上跑一次带 `build_piano_rpms=true` 的 `host-check`，拿到 `piano-rpms` artifact。再用这个 run id 触发 `publish-copr.yml`：
+发布走 `publish-copr.yml`，需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`。先在 `main` 上跑一次带 `build_piano_rpms=true` 的 `host-check`，拿到 `piano-rpms` artifact；图形栈走 `build-mesa.yml` 与 `build-ffmpeg.yml`。再用这些 run id 触发 `publish-copr.yml`：
 
 ```bash
 gh workflow run publish-copr.yml --ref main \
-  -f rpms_run_id=<host-check run> -f kernel_run_id=<同一个内核 run> -f execute=false
+  -f rpms_run_id=<host-check run> -f kernel_run_id=<同一个内核 run> \
+  -f mesa_run_id=<build-mesa run> -f ffmpeg_run_id=<host-check run> \
+  -f execute=false
 ```
 
-`execute=false` 是 dry-run：核对 run 状态、每个 RPM 与 SRPM 的大小和摘要、清单里的包是否齐全。通过后把 `execute` 换成 `true` 真实提交。脚本幂等创建项目，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。
+`execute=false` 是 dry-run：核对 run 状态、每个 RPM 与 SRPM 的大小和摘要、清单里的包是否齐全，以及源包名与二进制包名。Mesa 的源包名是 `mesa-piano`；FFmpeg 的配方把变体放在 `pkg_suffix` 里，源包仍叫 `ffmpeg`，所以按 release 认这一版。两者的二进制包必须全部带 `-piano`。通过后把 `execute` 换成 `true` 真实提交。脚本幂等创建项目，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。
 
 CI 的 RPM 矩阵、COPR 的重建产物与 bundle 里的 RPM 版本号相同，但构建环境不同，不是逐字节同一份。要完全一致的二进制，就用 bundle 里的 RPM。
 
@@ -103,6 +105,28 @@ sudo rm /etc/yum.repos.d/piano-fedora-copr.repo
 sudo dnf makecache
 ```
 
+## 图形栈为什么换包名
+
+Fedora 的 mesa 与 ffmpeg 版本号一直在往上走，补丁版的版本号永远落后：`26.2.6-1.piano1` 排在 `26.2.7-1` 之下，`dnf upgrade` 会把补丁版换回官方版。
+
+抬 Epoch 能压住，但 epoch 是单向的。`1:` 一旦发出去就回不到 `0:`，等 A830v1 的 chip id 进了上游、要回到 Fedora 的包时，每台设备都得手工 `dnf distro-sync`。所以改成 RPM Fusion 对同两个包的做法：换包名。
+
+| 上游包 | 本地包 |
+| --- | --- |
+| `mesa`、`mesa-libGL`、`mesa-libEGL`、`mesa-libgbm`、`mesa-dri-drivers`、`mesa-vulkan-drivers`、`mesa-filesystem` | `mesa-piano`、`mesa-piano-libGL`、`mesa-piano-libEGL`、`mesa-piano-libgbm`、`mesa-piano-dri-drivers`、`mesa-piano-vulkan-drivers`、`mesa-piano-filesystem` |
+| `ffmpeg-free`、`libavcodec-free` 等 8 个 | `ffmpeg-piano`、`libavcodec-piano` 等 8 个 |
+
+每个本地子包声明 `Provides: <上游名> = <版本>-<发布号>` 和 `Conflicts: <上游名>`。依赖上游名字的包照旧能被满足，两个版本不会同时装进一台设备，`dnf upgrade` 也没有同名目标可以覆盖。
+
+已经装着 Fedora 图形栈的设备要换一次名字，`dnf upgrade` 不会主动安装新名字的包：
+
+```sh
+sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
+  mesa-piano-libEGL ffmpeg-piano
+```
+
+从带这套包的新镜像装起的设备不需要这一步。
+
 ## 边界
 
 - COPR 覆盖全部 10 个包，包括内核。ESP 上的 `boot.img` 由 `kernel-piano` 的 `%posttrans` 维护，但 `board.dtb` 不换。它来自固件的板级叠加，升级路径只复用 ESP 上已有那份。
@@ -114,4 +138,4 @@ sudo dnf makecache
 
 ## 设备侧验证
 
-`verify-copr-device.py` 在平板上跑。只读模式核对四件事：仓库里的 10 个包名齐全、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。
+`verify-copr-device.py` 在平板上跑。只读模式核对：仓库里的 10 个矩阵包和 Mesa/FFmpeg 齐全、图形栈是改名后的 `mesa-piano-*` 与 `ffmpeg-piano` 且仓库里没有同名的 Fedora 包（避免升级时被官方包覆盖）、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。

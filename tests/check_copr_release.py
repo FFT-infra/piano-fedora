@@ -9,6 +9,7 @@
 import importlib.util
 import io
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -259,6 +260,123 @@ def test_build_failure_is_not_success(module):
         module.run_cli = original
 
 
+def make_graphics(directory, name, *, source=None, variant=None, status=None,
+                  drop_srpm=False, corrupt=None):
+    """造一个图形栈 artifact：manifest + rpms/ + srpms/。
+
+    这两个包的发布前提是改名：二进制包必须是 -piano 名字，否则设备上会被
+    Fedora 官方版盖掉。源包名只有 mesa 改了；ffmpeg 的变体由 pkg_suffix
+    决定，源包仍叫 ffmpeg，所以源包名与二进制包名分开可篡改。
+    """
+    import hashlib
+
+    directory = Path(directory)
+    (directory / "rpms").mkdir(parents=True, exist_ok=True)
+    (directory / "srpms").mkdir(parents=True, exist_ok=True)
+    status = status or {"mesa": "FEDORA_MESA_BUILT_NOT_DEVICE_VERIFIED",
+                        "ffmpeg": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED"}[name]
+    source = source or {"mesa": "mesa-piano", "ffmpeg": "ffmpeg"}[name]
+    variant = variant or {"mesa": "mesa-piano", "ffmpeg": "ffmpeg-piano"}[name]
+    rpm_payload = f"{name} binary".encode()
+    rpm_name = f"{variant}-1.0-1.piano1.fc44.aarch64.rpm"
+    (directory / "rpms" / rpm_name).write_bytes(rpm_payload)
+    srpm_payload = f"{name} source".encode()
+    srpm_name = f"{source}-1.0-1.piano1.fc44.src.rpm"
+    if not drop_srpm:
+        (directory / "srpms" / srpm_name).write_bytes(srpm_payload)
+    digest = lambda data: hashlib.sha256(data).hexdigest()
+    manifest = {
+        "status": status,
+        "source_package": source,
+        "rpms": {rpm_name: {"bytes": len(rpm_payload), "sha256": digest(rpm_payload)}},
+        "srpms": {srpm_name: {"bytes": len(srpm_payload), "sha256": digest(srpm_payload)}},
+    }
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    if corrupt:
+        (directory / corrupt).write_bytes(b"tampered")
+    return directory
+
+
+def test_graphics_require_rename(module, tmp):
+    good = make_graphics(tmp / "graphics-ok", "mesa")
+    info = module.verify_graphics(good, "mesa")
+    assert info["source_package"] == "mesa-piano" and info["srpm"].endswith(".src.rpm"), info
+    assert info["rpm_count"] == 1
+
+    # 还是 Fedora 原包名的产物不许发布：它没有 Provides/Conflicts 的原名声明，
+    # 设备上会被官方版直接盖掉。
+    original = make_graphics(tmp / "graphics-original", "mesa", source="mesa")
+    expect_error(module, lambda: module.verify_graphics(original, "mesa"),
+                 "source package")
+
+    # ffmpeg 的源包名就是 ffmpeg，合法；二进制包不叫 ffmpeg-piano 才拦。
+    ffmpeg = make_graphics(tmp / "graphics-ffmpeg", "ffmpeg")
+    info = module.verify_graphics(ffmpeg, "ffmpeg")
+    assert info["source_package"] == "ffmpeg", info
+    stock_ffmpeg = make_graphics(tmp / "graphics-ffmpeg-stock", "ffmpeg",
+                                 variant="ffmpeg-free")
+    expect_error(module, lambda: module.verify_graphics(stock_ffmpeg, "ffmpeg"),
+                 "not a renamed")
+
+    # 源包名对了、二进制还是 Fedora 原名，同样不许发布。
+    unrenamed = make_graphics(tmp / "graphics-rpmname", "mesa")
+    manifest = json.loads((unrenamed / "manifest.json").read_text())
+    old, new = ("mesa-piano-1.0-1.piano1.fc44.aarch64.rpm",
+                "mesa-dri-drivers-1.0-1.piano1.fc44.aarch64.rpm")
+    (unrenamed / "rpms" / old).rename(unrenamed / "rpms" / new)
+    manifest["rpms"][new] = manifest["rpms"].pop(old)
+    (unrenamed / "manifest.json").write_text(json.dumps(manifest))
+    expect_error(module, lambda: module.verify_graphics(unrenamed, "mesa"),
+                 "not a renamed")
+
+
+def test_graphics_reject_tampered_and_incomplete(module, tmp):
+    corrupt = make_graphics(tmp / "graphics-tamper", "ffmpeg",
+                            corrupt="rpms/ffmpeg-piano-1.0-1.piano1.fc44.aarch64.rpm")
+    expect_error(module, lambda: module.verify_graphics(corrupt, "ffmpeg"), "changed")
+    missing = make_graphics(tmp / "graphics-nosrpm", "ffmpeg", drop_srpm=True)
+    expect_error(module, lambda: module.verify_graphics(missing, "ffmpeg"), "SRPM")
+    wrong = make_graphics(tmp / "graphics-wrongstatus", "ffmpeg", status="BUILT")
+    expect_error(module, lambda: module.verify_graphics(wrong, "ffmpeg"), "status")
+
+
+def test_graphics_are_in_the_publish_order(module):
+    """图形栈必须在发布顺序里，且排在矩阵包之前。
+
+    mesa 与 ffmpeg 的包名不在 REQUIRED 里（它们来自各自的 artifact），
+    但漏掉就会回到"设备拿不到补丁版"的原点。
+    """
+    assert set(module.GRAPHICS_ORDER) == set(module.GRAPHICS), module.GRAPHICS_ORDER
+    assert module.GRAPHICS_ORDER == ("mesa", "ffmpeg"), module.GRAPHICS_ORDER
+    for name in module.GRAPHICS:
+        assert name not in module.REQUIRED, f"{name} 不该出现在 piano-rpms 的必需清单里"
+
+
+def test_build_scripts_ship_srpms():
+    """两个构建脚本必须打 -ba 并产出 srpms/，否则 COPR 无从重建。"""
+    for path in (ROOT / "scripts/build-fedora-mesa.py",
+                 ROOT / "scripts/build-fedora-ffmpeg.py"):
+        text = path.read_text()
+        assert '"-ba"' in text, f"{path.name} must build the SRPM as well"
+        assert '"-bb"' not in text, f"{path.name} still builds binaries only"
+        assert "srpms.mkdir()" in text, f"{path.name} must stage srpms/"
+        assert 'srpms":' in text, f"{path.name} must record the SRPM in its manifest"
+        # 改名必须是模块级常量，而且真的写进 spec 的 Name / pkg_suffix。
+        # mesa 改 Name，ffmpeg 只改 pkg_suffix，主二进制包名两者都带 -piano。
+        renamed = {"build-fedora-mesa.py": ["SOURCE_PACKAGE"],
+                   "build-fedora-ffmpeg.py": ["VARIANT_PACKAGE"]}[path.name]
+        for constant in renamed:
+            assert re.search(rf'^{constant} = "\w+-piano"$', text, re.M), \
+                f"{path.name} has no renamed package constant {constant}"
+        assert "Conflicts:" in text, f"{path.name} never conflicts with the Fedora package"
+        assert "Epoch:" not in text, f"{path.name} should not fall back to an epoch"
+    # workflow 必须把 srpms 打进 artifact，否则上传的压缩包里没有源包。
+    for path in (ROOT / ".github/workflows/build-mesa.yml",
+                 ROOT / ".github/workflows/build-ffmpeg.yml"):
+        text = path.read_text()
+        assert "rpms srpms" in text, f"{path.name} does not package srpms"
+
+
 def test_repo_file_contract():
     text = REPO_FILE.read_text()
     assert "gpgcheck=1" in text
@@ -318,6 +436,10 @@ def test_device_verifier_contract():
     assert "kernel_visibility" in text
     assert "does not carry kernel-piano" in text
     assert "still excludes kernel-piano" in text
+    # 图形栈也在仓库里，且断言它们是改名后的包（否则仍会被官方 updates 覆盖）。
+    assert "mesa-piano-dri-drivers" in text and "ffmpeg-piano" in text
+    assert "graphics_renames" in text
+    assert "a fresh install would pick the official build" in text
 
 
 def test_device_verifier_fetches_compressed_repodata():
@@ -384,6 +506,8 @@ def main():
         test_missing_rpm(module, tmp)
         test_missing_srpm(module, tmp)
         test_bad_kernel_run(module, tmp)
+        test_graphics_require_rename(module, tmp)
+        test_graphics_reject_tampered_and_incomplete(module, tmp)
         test_copr_config_is_private_and_removed(module, tmp, _MonkeyPatch())
         test_project_create_is_idempotent(module, tmp)
         test_submit_parses_every_created_build(module, tmp)
@@ -392,6 +516,8 @@ def main():
     test_failed_run_rejected(module, _MonkeyPatch())
     test_missing_credentials(module, _MonkeyPatch())
     test_build_failure_is_not_success(module)
+    test_graphics_are_in_the_publish_order(module)
+    test_build_scripts_ship_srpms()
     test_repo_file_contract()
     test_workflow_contract()
     test_device_verifier_contract()

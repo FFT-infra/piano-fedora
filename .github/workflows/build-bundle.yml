@@ -205,6 +205,13 @@ jobs:
             --dtb build/sources/sunuefi/vendor/piano-linux/board.dtb \
             --cpu-model-overlay build/sources/sunuefi/linux/dts/piano-cpu-model.dtso \
             --panel-vendor auto \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-cma.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-pcie-interrupt-map.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-usb-typec.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-ufs-mcq.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-dsp-resources.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-cdsp-fastrpc.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-fingerprint.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-board-identity.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-regdma-resource.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-audio-dmic-clock.dtso \

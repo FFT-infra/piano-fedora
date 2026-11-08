@@ -126,14 +126,19 @@ def stage_sensor_integration(sun, output):
     sensor = output / "sensor-source"
     shutil.copytree(sun / "upstream/piano-sensors-current", sensor,
                     ignore=shutil.ignore_patterns(".git"))
-    for p in sorted((sun / "patches/piano-sensors").glob("*.patch")):
-        run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", p], cwd=sensor)
+    applied = []
+    # 上游自己的补丁在前，本仓库的在后：后者按补丁后的 importer 文本生成。
+    for folder in (sun / "patches/piano-sensors", ROOT / "patches/piano-sensors"):
+        for p in sorted(folder.glob("*.patch")):
+            run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", p], cwd=sensor)
+            applied.append({"file": p.name, "sha256": sha256(p)})
     return {
         "source": "piano-sensors",
         "packages": {
             "libssc": "built by packages/libssc at the same NEVRA",
             "iio-sensor-proxy": "built by packages/iio-sensor-proxy-ssc at the same NEVRA",
         },
+        "patches": applied,
     }
 
 
@@ -207,6 +212,12 @@ def build(args):
             put(p, payload / p.relative_to(adapters), p.stat().st_mode & 0o111)
     for p in (sun / "linux/bsp/common").rglob("*"):
         if p.is_file() or p.is_symlink():
+            # piano-usb.service 与 piano-linux-debug.service 抢同一个 UDC。
+            # 后者先绑定 a600000.ssusb，usb0 与 NM profile 都归它；前者再建
+            # 自己的 gadget 只会拿到 Permission denied，每次开机留一个 failed
+            # unit。BSP 的这份和它的 udev 规则一起跳过，不装第二份。
+            if p.name in ("piano-usb.service", "79-piano-usb.rules", "usb-network"):
+                continue
             put(p, payload / p.relative_to(sun / "linux/bsp/common"), p.stat().st_mode & 0o111)
     integration_proof = stage_payload(device_source, device_pin, payload, touch_proof,
                                       camera_proof, put, sha256, args.finger_config_dir)
@@ -255,10 +266,19 @@ def build(args):
     dropin.parent.mkdir(parents=True, exist_ok=True)
     dropin.write_text("[Service]\nExecStart=\nExecStart=/usr/bin/adsprpcd sensorspd\n"
                       "RestartPreventExitStatus=32\n")
+    # 动态传感器库只存在于 vendor 分区，importer 把它们连同校准一起复制到
+    # /var/lib/piano-sensors；file service 按 ADSP_LIBRARY_PATH 里的相对名
+    # 解析，所以这份清单必须以 store 开头，后面接 daemon 自己的默认路径。
+    library_dropin = dropin.parent / "30-adsp-library.conf"
+    library_dropin.write_text(
+        "[Service]\n"
+        "Environment=ADSP_LIBRARY_PATH=/var/lib/piano-sensors/rfsa/adsp;"
+        "/usr/share/hexagon-dsp/hexagon/v79;/usr/lib/rfsa/adsp;/usr/lib/dsp\n")
     fastrpc_proof["service_sha256"] = {
         name: sha256(payload / name) for name in (
             "usr/lib/systemd/system/adsprpcd-sensorspd.service",
-            "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf")}
+            "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/20-fedora-daemon.conf",
+            "usr/lib/systemd/system/adsprpcd-sensorspd.service.d/30-adsp-library.conf")}
     put(integration / "debian/piano-sensors.udev", payload / "usr/lib/udev/rules.d/70-piano-sensors.rules")
     put(integration / "59-fastrpc-remoteproc.rules", payload / "etc/udev/rules.d/59-fastrpc-remoteproc.rules")
     put(integration / "iio-sensor-proxy-piano.conf", payload / "etc/systemd/system/iio-sensor-proxy.service.d/piano.conf")
@@ -282,7 +302,10 @@ def build(args):
     # Release 2：adsprpcd 跟到 fastrpc `development`（v1.0.8 之后的两条 EBUSY
     # 修复），dropin 加上 RestartPreventExitStatus=32。已装设备的 0.2.0-1 里
     # dropin 没有这一行，同 NEVRA 不同字节会让 dnf 认成「已是最新」装不上。
-    rpm_package("piano-runtime", payload, output, version="0.2.0", release="2",
+    # Release 3：importer 每次启动校验 sensors store 并在损坏时重建，动态库
+    # 导入 /var/lib/piano-sensors/rfsa/adsp，dropin 只经由 30-adsp-library.conf
+    # 暴露路径。同样必须换 NEVRA，否则装过 0.2.0-2 的设备拿不到新 importer。
+    rpm_package("piano-runtime", payload, output, version="0.2.0", release="3",
                 requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
                           "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils",
                           # piano-sensors-import reads the Android odm/vendor EROFS

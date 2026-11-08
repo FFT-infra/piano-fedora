@@ -4,19 +4,19 @@
 >
 > 本项目按 [MIT 许可证](LICENSE) 原样提供，作者与贡献者不承担设备损坏、数据丢失或保修失效的责任。
 
-# Fedora 44 for Xiaomi Pad 8 Pro (piano)
+# Fedora 45 for Xiaomi Pad 8 Pro (piano)
 
 [English](README.en.md) | 简体中文
 
 [![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
 
-在小米平板 8 Pro（代号 `piano`，高通骁龙 8 至尊版 SM8750）上原生运行 Fedora 44，默认桌面是 GNOME。引导链是 SunUEFI（EDK2），内核是 Linux 7.3 主线适配，root 文件系统用 F2FS。它与原生 HyperOS 组成双系统，合体 BOOT 里的 3 秒选择器与引导助手负责往返，两个方向都不需要电脑。
+在小米平板 8 Pro（代号 `piano`，高通骁龙 8 至尊版 SM8750）上原生运行 Fedora 45，默认桌面是 GNOME。引导链是 SunUEFI（EDK2），内核是 Linux 7.3 主线适配，root 文件系统用 F2FS。它与原生 HyperOS 组成双系统，合体 BOOT 里的 3 秒选择器与引导助手负责往返，两个方向都不需要电脑。
 
 ## 硬件支持
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
-| 显示与渲染 | ✅ | 3200×2136 @ 120Hz，Mesa 26.2.3 Turnip（Adreno 830）硬件加速 |
+| 显示与渲染 | ✅ | 3200×2136 @ 120Hz，Mesa 26.2.6 Turnip（Adreno 830）硬件加速 |
 | 触控 | ✅ | 卡尔曼滤波、24 像素死区防抖、正交轴向锁。45 秒持续划动 97 次/秒，全屏可达，多点正常 |
 | 视频编解码 | ✅ | Iris V4L2 M2M 已通：H.264 与 HEVC 各 300 帧的硬件编码与解码、带 B 帧素材的解码，逐帧摘要与软件解码一致，Iris 中断计数同步增长（1080p）。浏览器硬解已验收：Chrome 与 Firefox 默认走硬件解码，Fedora 的 Chromium 不走硬件解码，原因见[已知问题](docs/known-issues.md#触屏网络音频与相机)。VP9、10-bit 与 4K60 未实测 |
 | 电源与电池 | ✅ | 双电芯电量监控，支持深度挂起 |
@@ -40,7 +40,7 @@
 
 | 档位 | 会话 | 登录 | 自动旋转 | 验收状态 |
 |---|---|---|---|---|
-| `gnome` | GNOME 50（Workstation 环境） | GDM 自动登录 | Mutter | 已登录桌面，旋转已实机验证 |
+| `gnome` | GNOME 51（Workstation 环境） | GDM 自动登录 | Mutter | 已登录桌面，旋转已实机验证 |
 | `kde` | KDE Plasma | plasma-login-manager 自动登录 | KWin，需 `qt6-qtsensors` | 已登录桌面，旋转已验。旋转瞬间有一次画面闪烁，见[已知问题](docs/known-issues.md) |
 | `niri` | niri | greetd + tuigreet | 无，手动 `transform` | 已登录桌面 |
 | `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无，手动 rotate | 已登录桌面 |
@@ -93,6 +93,7 @@ Release 由维护者用 tag 手工 dispatch，tag push 不会触发发布。一�
 - [维护与验收](docs/internals.md)：流水线入口、产物绑定、各步的 run id、PR 门槛
 - [COPR 软件源](docs/copr-repository.md)：全部 10 个包的在线升级，包括内核。回滚边界与失败模式
 - [上游跟踪](docs/upstream.md)：当前 pin、漂移看板、跟进规则
+- [设备树](docs/device-tree.md)：三条 DT 血缘、出货基线的谱系、16 个 overlay 的作用
 - [已知问题](docs/known-issues.md)：未解决与观察中的问题
 - [Gunyah 虚拟化](docs/virtualization.md)：SM8750 上的虚拟机生命周期与网络
 - [公开分发前的缺口](docs/public-release-gaps.md)：构建期仍绑着这一台设备、这一个人的输入
@@ -104,7 +105,7 @@ Release 由维护者用 tag 手工 dispatch，tag push 不会触发发布。一�
 
 ```bash
 make test                  # 全套离线单测：GPT 计算、镜像与元数据校验
-make plan RELEASEVER=44    # 打印 Fedora 44 根文件系统生成计划
+make plan RELEASEVER=45    # 打印 Fedora 45 根文件系统生成计划
 ```
 
 流水线入口是 `.github/workflows/`。主链是 `host-check`（带 `build_piano_rpms=true`）→ `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`。每一步都要显式指定上游的成功 run id：`build-rootfs` 要 RPM 矩阵、运行时、Mesa 与 FFmpeg，`build-image` 再加内核，`build-bundle` 要镜像与 UEFI，`prepare-install` 要 bundle。各步的依赖不是单纯的线性接力。

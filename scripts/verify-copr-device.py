@@ -26,6 +26,10 @@ from pathlib import Path
 DEFAULT_REPO_ID = "copr:copr.fedorainfracloud.org:xinyang26:piano-fedora"
 DEFAULT_BASEURL = "https://download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/"
 KERNEL_PACKAGE = "kernel-piano"
+# 图形栈的补丁版改用改名包，这里列的是仓库里必须出现的新名字，以及它们
+# 替代的 Fedora 原名。
+GRAPHICS_RENAMES = {"mesa-piano-dri-drivers": "mesa-dri-drivers",
+                    "ffmpeg-piano": "ffmpeg-free"}
 
 
 def run(args, *, check=True, sudo=False, binary=False, timeout=None):
@@ -132,6 +136,18 @@ def repoquery_kernel(baseurl):
             "stderr": result.stderr.strip()[:2000]}
 
 
+def graphics_renames(names):
+    """确认仓库里是改名后的补丁版，且没有同名的 Fedora 包一起出现。
+
+    mesa 与 ffmpeg 的补丁版换成 mesa-piano-* 与 ffmpeg-piano / libavcodec-piano，
+    再声明提供 Fedora 的原名、与原名冲突。两个名字都进仓库时，全新安装
+    会优先选名字完全匹配的那个，补丁版就被绕过去了。
+    """
+    names = set(names)
+    return {ours: {"present": ours in names, "fedora_name_present": fedora in names}
+            for ours, fedora in GRAPHICS_RENAMES.items()}
+
+
 def upgrade_dry_run():
     # --disablerepo='*' 会连本地仓库一起关掉，升级计划就永远为空；这里只
     # 关掉网络上的第三方仓库不够精确，所以保留默认启用集合，但给一个上限：
@@ -169,11 +185,16 @@ def main():
             "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
             "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
             "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
+            # 图形栈：这两个是本地重建的包，靠改名后声明 Provides/Conflicts
+            # 压过官方版本。仓库里没有它们，设备 dnf upgrade 就会装回官方版。
+            "mesa-piano-dri-drivers", "ffmpeg-piano",
         }
         missing = sorted(expected - set(names))
         if missing:
             problems.append("repository is missing: " + ", ".join(missing))
         record["missing_packages"] = missing
+        # 改名是这两个包压过官方版的依据，名字错了就等于没发。
+        record["graphics_renames"] = graphics_renames(names)
     except (RuntimeError, OSError) as error:
         problems.append(f"cannot read repodata: {error}")
 
@@ -199,6 +220,17 @@ def main():
             problems.append("kernel-piano is not visible in the repository")
     except (RuntimeError, OSError) as error:
         problems.append(f"repoquery failed: {error}")
+
+    # 仓库里只能有改名后的包。两个名字都在时，全新安装会优先选名字完全
+    # 匹配的 Fedora 包，补丁版就被绕过去了。发布记录里写了改名不等于仓库
+    # 里真的改了：唯一可信的是仓库自身。
+    for ours, row in record.get("graphics_renames", {}).items():
+        if not row["present"]:
+            continue  # 缺失已经在 missing_packages 里报过
+        if row["fedora_name_present"]:
+            fedora = GRAPHICS_RENAMES[ours]
+            problems.append(f"repository still ships {fedora} next to {ours}; "
+                            "a fresh install would pick the official build")
 
     if args.install_test:
         try:

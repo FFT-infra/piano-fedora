@@ -1,23 +1,23 @@
 name: upstream-watch
 
 # 每周只读核验登记上游的锁定 ref 指向哪个提交，把漂移写进一个跟踪 issue。
-# 白名单里的纯用户态上游另开一个 draft PR，只改 sources.lock.json 的 commit；
+# 白名单里的纯用户态上游在 issue 里给出可直接复制的改 pin 命令；
 # 内核、UEFI、相机/触控、固件和 debian-piano 只报告，pin 由人评审。
+# 本 workflow 不改 sources.lock.json，也不开 PR。
 on:
   schedule:
     - cron: "23 3 * * 1"
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "只跑审计与报告，不开 issue、不开 PR"
+        description: "只跑审计与报告，不动 issue"
         required: false
         type: boolean
         default: false
 
 permissions:
-  contents: write
+  contents: read
   issues: write
-  pull-requests: write
 
 # 两个看板同时写 issue 会互相覆盖，串行执行。
 concurrency:
@@ -84,34 +84,3 @@ jobs:
           else
             echo "没有漂移，不建 issue"
           fi
-
-      - name: Open the whitelist bump PR
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          if [ "$(jq -r '.auto | length' build/upstream-drift.json)" -eq 0 ]; then
-            echo "白名单没有漂移，跳过"
-            exit 0
-          fi
-          branch="upstream-bump/$(date -u +%Y%m%d)-$RUN_ID"
-          open=$(gh pr list --state open --json headRefName \
-            --jq '[.[] | select(.headRefName | startswith("upstream-bump/"))] | length')
-          if [ "$open" -gt 0 ]; then
-            echo "已有未合并的上游跟进 PR，本轮不再开新的"
-            exit 0
-          fi
-          python3 scripts/upstream-watch.py bump --pr-body build/upstream-bump.md
-          git config user.name "upstream-watch"
-          git config user.email "upstream-watch@users.noreply.github.com"
-          git switch -c "$branch"
-          git add sources.lock.json
-          git commit -m "chore(upstreams): 跟进白名单上游的 commit"
-          git push origin "$branch"
-          # 仓库设置若禁止 Actions 创建 PR，这里会失败并给出明确原因，
-          # 而不是让 pin 停在旧值上安静地过一周。
-          gh pr create --draft \
-            --title "chore(upstreams): 跟进白名单上游（$(date -u +%F)）" \
-            --body-file build/upstream-bump.md

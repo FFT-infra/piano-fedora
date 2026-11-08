@@ -50,7 +50,7 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 | `package-install.yml` | 手动 / `host-check` 调用 | 压缩已校验的 `root-install-<desktop>`，不重建文件系统 |
 | `publish-copr.yml` | 手动 | 从矩阵 SRPM 在 COPR 重建用户态包 |
 | `release.yml` | 手动 | 单个 Release 带一个或多个档位，每档一个归档。不填 run id，按 tag commit 解析 |
-| `upstream-watch.yml` | 每周一 | 上游漂移看板，必要时开 draft PR 改 pin |
+| `upstream-watch.yml` | 每周一 | 上游漂移看板，只写 issue，改 pin 由人执行 |
 
 上表只列构建与发布链。`host-check.yml` 也会在 push 与 PR 上跑 `make test`。
 

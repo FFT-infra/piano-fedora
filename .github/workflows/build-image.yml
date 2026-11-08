@@ -224,6 +224,7 @@ jobs:
           root = Path(sys.argv[1]).resolve()
           record = json.loads((root.parent / "clean-manifest.json").read_text())
           ROOT = os.environ["GITHUB_WORKSPACE"]
+          RELEASEVER = json.loads((Path(ROOT) / "product.json").read_text())["target"]["releasever"]
           assert record["status"] == "BUILT_AND_AUDITED"
           # 桌面档必须与这次 build-image 的输入一致：拿错 rootfs artifact
           # （例如 KDE 的树配 GNOME 的输入）在这里就停下，而不是等到最终
@@ -263,7 +264,7 @@ jobs:
           db_dir = root / "usr/lib/sysimage/rpm"
           print("rpmdb:", sorted(p.name for p in db_dir.iterdir())[:8] if db_dir.is_dir() else "missing")
           # The runner is Ubuntu, whose rpm (4.18) cannot read the rpm 6
-          # sqlite database Fedora 44 ships: `rpm --root ... -qa` returns no
+          # sqlite database the release ships: `rpm --root ... -qa` returns no
           # packages and exits 0. Query through the Fedora image instead, the
           # same way build-rootfs assembles the tree.
           def fedora_rpm(*args):
@@ -271,7 +272,7 @@ jobs:
                   "sudo", "podman", "run", "--rm",
                   "-v", f"{root.parent}:/rootfs", "-v", f"{ROOT}:/workspace",
                   "-w", "/workspace", "--entrypoint", "/usr/bin/rpm",
-                  "registry.fedoraproject.org/fedora:44", "--root", "/rootfs/rootfs", *args,
+                  f"registry.fedoraproject.org/fedora:{RELEASEVER}", "--root", "/rootfs/rootfs", *args,
               ]
               return subprocess.check_output(command, text=True, stderr=subprocess.STDOUT).splitlines()
 
@@ -283,7 +284,7 @@ jobs:
               "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
               "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
               "piano-runtime", "librevm", "piano-crosvm",
-              "mesa-dri-drivers", "ffmpeg-free", "kernel-piano",
+              "mesa-piano-dri-drivers", "ffmpeg-piano", "kernel-piano",
           }
           missing = sorted(required - names)
           assert not missing, f"rootfs lacks release packages: {missing}"
@@ -305,12 +306,13 @@ jobs:
           # rpm queries and the SELinux/config reads.
           root = Path(sys.argv[1]).resolve()
           ROOT = os.environ["GITHUB_WORKSPACE"]
+          RELEASEVER = json.loads((Path(ROOT) / "product.json").read_text())["target"]["releasever"]
           record = json.loads((root.parent / "clean-manifest.json").read_text())
           audit = record["audit"]
           assert record["status"] == "BUILT_AND_AUDITED"
           assert audit["audit_passed"] is True
           # The runner is Ubuntu, whose rpm (4.18) cannot read the rpm 6
-          # sqlite database Fedora 44 ships: `rpm --root ... -qa` returns no
+          # sqlite database the release ships: `rpm --root ... -qa` returns no
           # packages and exits 0. Query through the Fedora image instead, the
           # same way build-rootfs assembles the tree.
           def fedora_rpm(*args):
@@ -318,7 +320,7 @@ jobs:
                   "sudo", "podman", "run", "--rm",
                   "-v", f"{root.parent}:/rootfs", "-v", f"{ROOT}:/workspace",
                   "-w", "/workspace", "--entrypoint", "/usr/bin/rpm",
-                  "registry.fedoraproject.org/fedora:44", "--root", "/rootfs/rootfs", *args,
+                  f"registry.fedoraproject.org/fedora:{RELEASEVER}", "--root", "/rootfs/rootfs", *args,
               ]
               return subprocess.check_output(command, text=True, stderr=subprocess.STDOUT).splitlines()
 

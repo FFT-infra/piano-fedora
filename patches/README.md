@@ -33,6 +33,43 @@ scripts/apply-patches.py --sunuefi DIR
 工具按 `series.json` 的顺序应用，逐个核对上下文，失败即停并说明是哪个补丁、
 哪个文件、哪一行。CI 的 `build-kernel.yml` 在构建前调用它。
 
+`patches/piano-sensors/` 是例外：它改的是 SunUEFI 子模块里的设备侧 importer，
+由 `scripts/build-device-runtime.py` 在复制出 `sensor-source` 之后用 `patch`
+应用，排在上游自己的 `patches/piano-sensors` 之后。所以这一目录没有
+`series.json`，`apply-patches.py` 不碰它。
+
+## android-module
+
+SunUEFI 的 KernelSU 模块把安装记录（`install-state.json`）绑定到当时的
+BOOT：槽位、设备节点、ROM 与 boot 指纹、wrapper 摘要。系统安装会重写
+BOOT，记录随之失效，之后模块里每次「切换系统」都会在身份校验处失败，
+只能手动重装模块才能恢复。
+
+补丁在 `common.sh` 增加 `piano_readopt_if_needed`：切换或已确认的请求之前，
+先带安装记录跑只读 `status`；不一致时调用 `adopt`，用模块自己的载荷摘要
+校验当前 BOOT，通过后重写安装记录。`adopt` 不写 BOOT，当前镜像不是本模块
+的 wrapper 时它会拒绝，调用方保留原来的错误。
+
+## piano-sensors
+
+`piano-sensors-import` 过去只在文件缺失时导入。首次安装启动丢过 13 个 ODM
+配置文件（全部大于 F2FS inline data 阈值），内容变成全零，而 PD 读的是
+零长度之外的合法文件，于是解析出零个传感器。
+
+补丁做四件事：
+
+1. 每个文件读入后检查 `dump.erofs --cat` 的退出码与非空，写盘后 `sync`。
+2. 导入目录旁写 `config.sha256`；`ensure_store` 每次启动校验，和清单不符就
+   重导，三次仍失败则带明确日志退出。
+3. `sns_reg_config` 用同样的清单校验；persist 的注册表与校准仍只导入一次，
+   因为 ADSP 会正常改写它。
+4. 从 ODM 动态传感器配置里读出 `sns_dynamic_libraries` 列出的库，从 vendor
+   的 `/lib/rfsa/adsp` 导入 `/var/lib/piano-sensors/rfsa/adsp`；vendor 上
+   不存在的库（如 `sns_tppe.so`）记录后跳过。
+
+库目录通过在 `adsprpcd-sensorspd.service` 的 `30-adsp-library.conf` 里设置
+`ADSP_LIBRARY_PATH` 暴露给 file service。
+
 ## 选项为什么是这几个
 
 `CONFIG_F2FS_FS=y` 内建，不是模块。根分区在 initramfs 阶段就要挂载，模块

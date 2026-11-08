@@ -286,6 +286,38 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 
 ## 触屏、网络、音频与相机
 
+### piano-usb.service 每次开机失败
+
+`piano-usb.service` 每次启动都落到 failed，`journalctl -u piano-usb` 只有一行
+`/usr/lib/piano/usb-network: line 46: /sys/kernel/config/usb_gadget/piano/idVendor: Permission denied`。
+
+原因是两个单元抢同一个 UDC。`piano-linux-debug.service` 先绑定
+`a600000.ssusb`，建的是 acm+ncm gadget，`usb0` 的 MAC
+`02:87:50:00:00:01` 与 `192.168.77.1/30` 都归它，NetworkManager 的
+`piano-debug-ncm` profile 也按这个 MAC 匹配。SunUEFI BSP 里的
+`piano-usb.service` 随后再往自己的 gadget 写描述符，configfs 在 gadget
+已绑定后拒绝修改，脚本拿到 `Permission denied`。
+
+排除了 SELinux：`/usr/lib/piano/usb-network` 是 `lib_t`，systemd 直接执行
+时停在 `init_t`，但把同样的写入放进 `bin_t` 的脚本里、或用 `sh` 显式启动，
+写 `idVendor` 都成功。失败的只有那个已绑定 gadget 的路径。
+
+这条不影响功能：`usb0` 正常起来，USB 网络与串口都在，只是每次开机留一个
+failed unit。改法是在装 BSP 树时跳过 `piano-usb.service`、`79-piano-usb.rules`
+与 `usb-network`。`piano-linux-debug.service` 自带的 acm+ncm 就是同一条链路，
+BSP 那份是重复实现，一个 owner 就够。
+
+冷启动验证已在 2026-11-08 通过：这三个文件不在系统里，`usb0` 起来是
+`192.168.77.1/30`，`systemctl --failed` 为空，`udevadm trigger
+--subsystem-match=typec` 之后仍然为空，UDC 状态 `configured`。先前那次
+"删掉之后重启，平板从 USB 总线上消失"与删文件没有因果：同样删掉的这一次
+断电重开，USB 网络正常上线。
+
+判断平板是否还在 USB 上，只看 `lsusb` 里有没有 `idVendor=1209`、主机侧
+`usb1-port12/state`、以及 `dmesg` 里 `usb 1-12` 的事件。不要用
+`/dev/tcp/192.168.77.1/22` 判断：构建机上 clash 的 TUN 会接管这条路径，
+不存在的地址也返回 CONNECTED。
+
 - 触控：45 秒持续单指划动，SYN 报文 97 次/秒，43/45 秒有事件（两个空秒
   是换手间隙），NVT 中断同期增长 5425。X 覆盖 5395–28696、Y 覆盖
   4591–19408，全屏可达。多点 slot 0–5 都出现过。相邻坐标跳变的 p95 为 2770，
@@ -523,3 +555,34 @@ cherry-pick）。有六处没有照抄上游：
   在上游 SunUEFI 仓库，按 `sources.lock.json` 的 pin 取。还有一份设备验收记录
   已移到不入库的本地笔记，这条引用是历史记录。改 `series.json` 会改变
   `project_source_sha256`，现有 bundle 的 UEFI 来源校验会失效，因此本轮不改它。
+
+## 开机日志里的红色报错
+
+一次冷启动后 `journalctl -b -p err` 是 97 行，分六类。装入 `piano-cma`、
+`piano-pcie-interrupt-map`、`dsp-resources` 与 `cdsp-fastrpc` 之后，PCIe 的六条
+`probe failed -22`、CMA 的四条 `alloc failed` 与 cdsp 的 `-61` 都不再出现
+（`dmesg | grep -cE "pcie_pme|trigger mode 5"` 为 0，`CmaTotal` 937984 kB，
+`remoteproc` 里 adsp 与 cdsp 都是 running）。
+
+| 来源 | 行数 | 归因 | 处理 |
+| --- | --- | --- | --- |
+| `adsprpcd` | 86 | 厂商 SEE daemon 按固定清单找 `/odm/etc/sensors/config/sns_*.json` 与 `./sns_tppe.so`、`./libeai_service.so`。ROM 的 ODM 只有 60 个配置，它要的那些本机没有 | 不补。要补只能伪造厂商配置，传感器本身可用，见「传感器与自动旋转」 |
+| `60-block-scheduler.rules` | 5 | 五个盘各报一次 `Failed to write "bfq" ... Device or resource busy`。手工写 `bfq` 返回 0，是 udev 与内核默认值的时序冲突 | 不改。这是发行版规则，不是本仓库的文件 |
+| `[NVT-ts-spi]` | 2 | `nvt_thp_stylus_write` 与 `nvt_thp_raw_write` 用 `pr_err` 打 info 级内容 | 攒着。改 linux-piano 的驱动要动 7.3 补丁序列、重算 `target_tree`，和下一轮内核重编一起做 |
+| `Bluetooth: HCI_IBS_WAKE_ACK in tx state 0` | 2 | wcn7850 上电序列里 hci_qca 的状态机输出 | 不改 |
+| `bluetoothd` | 1 | `No matching connection for device` | 不改 |
+| `msm_dpu` | 1 | `no GPU device was found`。`separate_gpu_kms=1` 下 DPU 比 adreno 先探测，之后两块卡都绑上 | 不改。GNOME 跑在 adreno 上 |
+
+还有一条已经消掉：`snd-seq`。`CONFIG_SND_SEQUENCER` 在内核里没开，Fedora 的
+alsa-lib 仍然在 `dist-alsa.conf` 里给 `snd-pcm` 挂 `modprobe snd-seq`，每次加载
+声卡报一次 not found。`piano-fedora-configs` 用同名的 `/etc/modprobe.d/dist-alsa.conf`
+遮住发行版那份，只保留加载 `snd-pcm` 的那一半。kmod 按文件名全局排序取先命中的
+一条，换个名字压不住，所以必须同名。
+
+根因在内核里：`CONFIG_SND_SEQUENCER` 没开，`/dev/snd/seq` 不存在，`aconnect`、
+`aplaymidi` 这类依赖音序器路由的应用用不了。`patches/kernel-snd-seq/` 往 SunUEFI
+的 `tools/build_piano_full_kernel.py` 配置白名单里加了一项
+`CONFIG_SND_SEQUENCER=m`，新内核一起床 `snd-seq.ko` 就会出现在 `/usr/lib/modules`。
+那时候这份 modprobe 覆盖就该删掉：它遮掉的正是加载 `snd-seq` 的那一半，留着
+反而不会自动加载。删它要连带删 `tests/check_audio_stack.py` 的对应断言，并升一次
+`piano-fedora-configs` 的 Release。
