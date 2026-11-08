@@ -76,8 +76,13 @@ def adapt_spec(raw):
     # 解出来仍然是 mesa-26.2.6。
     text = text.replace(SPEC_SETUP, "%autosetup -n mesa-%{ver} -p1\n")
     text = text.replace(SPEC_RELEASE, "Release:        %autorelease -e piano1\n")
-    # 每个子包声明它替代的 Fedora 包名：Provides 让依赖原名的东西继续解析，
-    # Conflicts 保证两个版本不会同时装进设备。
+    # 每个子包声明它替代的 Fedora 包名：Provides 让依赖原名的东西继续解析；
+    # Obsoletes 让按原名提的安装请求落到这里——dnf 解析明确的包名时只认名字，
+    # Provides 压不过同名的官方包，桌面 environment 里的 mesa-dri-drivers 这类
+    # 成员会和这里同时进事务，报 conflicting requests；
+    # Conflicts 保证两个版本不会同时装进设备，也是 Fedora 版本号超过本包时
+    # 唯一的报错出口（那时 Obsoletes 的区间盖不住，构建直接红，需要跟着新
+    # SRPM 重做）。
     for sub, fedora in REPLACES.items():
         anchor = f"%package {sub}\n"
         if text.count(anchor) != 1:
@@ -85,6 +90,7 @@ def adapt_spec(raw):
         text = text.replace(anchor, anchor + (
             f"Provides:       {fedora} = %{{version}}-%{{release}}\n"
             f"Provides:       {fedora}%{{?_isa}} = %{{version}}-%{{release}}\n"
+            f"Obsoletes:      {fedora} < %{{version}}-%{{release}}\n"
             f"Conflicts:      {fedora}%{{?_isa}}\n"), 1)
     return text.replace(SPEC_DESCRIPTION,
                         "\nPatch999:       piano-a830v1.patch\n\n%description\n", 1)
