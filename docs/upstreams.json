@@ -733,8 +733,8 @@
       "decision": "consume",
       "reason": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
       "lock_key": "sunuefi",
-      "reference_commit": "afe922bc0d9f230dd05dc0dc9435ae6d6322a31b",
-      "reference_date": "2026-10-27"
+      "reference_commit": "8b0fc42d8bdeb68c799235c5f14c166f7c5528cf",
+      "reference_date": "2026-11-07"
     },
     {
       "repo": "sm8750-mainline/linux",
@@ -894,8 +894,8 @@
       "decision": "consume",
       "lock_key": "crosvm",
       "reason": "正式 Fedora 运行时按构建锁消费",
-      "reference_commit": "14a4f2cbb586ef9af33130e4aa6fd40ec387c8d3",
-      "reference_date": "2026-11-05"
+      "reference_commit": "f0880b36b6e3f25ee814222e6bd1cead4151bc85",
+      "reference_date": "2026-11-07"
     },
     {
       "repo": "radxa-pkg/qcom-va-driver",
@@ -915,8 +915,8 @@
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者",
       "decision": "consume",
       "lock_key": "piano-integration",
-      "reference_commit": "5152d48f4153752abfa7bd1c8ff940a3a8f6dff8",
-      "reference_date": "2026-11-05",
+      "reference_commit": "9e3d12777ac8c8ee3b73921790c9381159be577a",
+      "reference_date": "2026-11-07",
       "reason": "正式 Fedora 运行时按固定源码构建并核验安装字节"
     },
     {

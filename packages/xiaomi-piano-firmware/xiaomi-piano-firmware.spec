@@ -4,7 +4,7 @@
 # 上游 piano-firmware 里没有，adsp 也是另一版 ROM。三份都带 manifest.json，
 # 逐个文件记 bytes 与 sha256，由 firmware-overlays.py 在写盘前核对。
 # 提交号与 sources.lock.json 的 sunuefi pin 相同，由 tests/check_firmware_overlays.py 守住。
-%global sunuefi_commit afe922bc0d9f230dd05dc0dc9435ae6d6322a31b
+%global sunuefi_commit 8b0fc42d8bdeb68c799235c5f14c166f7c5528cf
 
 Name:           xiaomi-piano-firmware
 Version:        20261108
