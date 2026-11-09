@@ -36,6 +36,10 @@ KNOWN_MISSING = {
     ("piano-camera-flash.dtso", "/soc/qcom,camera-flash0"),
     ("piano-camera-flash.dtso", "/soc/cci-ml@ac7b000/i2c-bus@1/camera@10"),
     ("piano-camera-privacy-led.dtso", "/soc/cci-ml@ac7b000/i2c-bus@1/camera@10"),
+    # 后置传感器在厂商树里挂在 cci 的下游节点名下，主线的 cci-ml 地址与总线
+    # 编号都对不上，按单元地址找不到对应物。传感器自己由驱动创建。
+    ("piano-camera-sensors.dtso", "/soc/cci-ml@ac7b000/i2c-bus@1/camera@10"),
+    ("piano-camera-sensors.dtso", "/soc/cci-ml@ac7b000/i2c-bus@1/camera@10/port/endpoint"),
     ("piano-camera-privacy-led.dtso", "/soc/qcom,qupv3_2_geni_se@8c0000/i2c@884000/camera@10"),
     ("piano-cdsp-fastrpc.dtso", "/soc/remoteproc-cdsp@32300000/glink-edge/qcom,fastrpc"),
     ("piano-touch-panel.dtso", "/soc/display-subsystem@ae00000/dsi@ae94000/panel@0"),
@@ -49,6 +53,11 @@ KNOWN_MISSING = {
      "/soc/display-subsystem@ae00000/display-controller@ae01000/ports"),
     ("piano-displayport.dtso", "/soc/ssphy@88e8000/ports"),
     ("piano-displayport.dtso", "/soc/clock-controller-ml@af00000"),
+    # DP 音频卡与互连绑定都只在主线侧存在：厂商 DT 没有 ASoC 声卡节点
+    # （DP 的 dai-link 由主线声卡建立），interconnect 提供者是下游的单单元
+    # MMSS 名字，和 sm8750-rpmh 的两单元绑定不是同一个节点。
+    ("piano-displayport.dtso", "/soc/sound-ml"),
+    ("piano-display-interconnects.dtso", "/soc/display-subsystem@ae00000"),
     ("piano-bluetooth-nvm.dtso",
      "/soc/qcom,qupv3_2_geni_se@8c0000/qcom,qup_uart@898000/bluetooth"),
     ("piano-ir-spi-controller.dtso", "/soc/pinctrl@f100000"),

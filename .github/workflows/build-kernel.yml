@@ -22,6 +22,15 @@ jobs:
     # 原生 arm64：内核交叉编译在 x86 上也能做，但原生更快，且与上游一致。
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 300
+    env:
+      # 上游 tools/build_piano_full_kernel.py 只在 CCACHE_DIR 存在时才把编译器
+      # 换成 "ccache clang" 并固定 KBUILD_BUILD_TIMESTAMP。只安装 ccache 不设
+      # 这个变量等于没装：每次都走裸 clang 全量重编。
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 5G
+      CCACHE_COMPILERCHECK: content
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +59,20 @@ jobs:
           for tool in clang ld.lld llvm-ar llvm-nm llvm-objcopy llvm-strip make bison flex bc; do
             printf '%-14s %s\n' "$tool" "$(command -v "$tool" || echo MISSING)"
           done
+
+      - name: Restore the compiler cache
+        id: kernel-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          # 恢复 key 带上内核输入：pin、补丁和工作流引用的准备脚本。改了其中
+          # 任何一项就换新 key，restore-keys 再退回上一份缓存，仍然命中大部分。
+          key: kernel-ccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sources.lock.json', 'patches/**', 'scripts/apply-patches.py', 'scripts/prepare-production-kernel.py') }}
+          restore-keys: |
+            kernel-ccache-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Reset the compiler cache statistics
+        run: ccache -z
 
       - name: Clone SunUEFI at the pinned commit
         run: |
@@ -169,6 +192,18 @@ jobs:
           tar -I 'zstd -10 -T0' -cf "$GITHUB_WORKSPACE/kernel-release-7.3.0.tar.zst" \
             -C artifacts/kernels/release .
           ls -lh "$GITHUB_WORKSPACE"/kernel-release-7.3.0.tar.zst
+
+      - name: Report the compiler cache
+        if: always()
+        run: ccache --show-stats || true
+
+      # 命中已有缓存时不再保存：key 相同，重复保存只会多传一份。
+      - name: Save the compiler cache
+        if: ${{ always() && steps.kernel-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.kernel-cache.outputs.cache-primary-key }}
 
       - uses: actions/upload-artifact@v4
         with:

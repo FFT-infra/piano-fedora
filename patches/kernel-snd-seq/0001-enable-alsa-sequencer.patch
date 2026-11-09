@@ -14,14 +14,11 @@ on`, only `select SND_TIMER` and `select SND_SEQ_DEVICE`, so it can follow SND
 as a module. Nothing loads it on a default desktop; it appears when a program
 asks for it.
 ---
- tools/build_piano_full_kernel.py | 6 ++++++
- 1 file changed, 6 insertions(+)
-
 diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
-index a67089c..6d4670d 100644
+index a2926ea..d50ac40 100644
 --- a/tools/build_piano_full_kernel.py
 +++ b/tools/build_piano_full_kernel.py
-@@ -103,6 +103,12 @@ FEDORA_OVERRIDES.update({key:'m' for key in (
+@@ -120,6 +120,12 @@ FEDORA_OVERRIDES.update({key:'m' for key in (
      'CONFIG_NF_CONNTRACK_IRC','CONFIG_NF_CONNTRACK_NETBIOS_NS','CONFIG_NF_CONNTRACK_PPTP',
      'CONFIG_NF_CONNTRACK_SANE','CONFIG_NF_CONNTRACK_SIP','CONFIG_NF_CONNTRACK_SNMP',
      'CONFIG_NF_CONNTRACK_TFTP')})

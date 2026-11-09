@@ -14,10 +14,10 @@ index 1b65efd..a42451b 100644
      --rom-fingerprint "$rom_fingerprint" --boot-fingerprint "$boot_fingerprint" \
      --installed-state "$MODPATH/install-state.json" --policy "$MODPATH/policy.json" --require-ready "$mode"
 diff --git a/android/module/common.sh b/android/module/common.sh
-index c5df66c..35fdc95 100644
+index ec979ac..145fd79 100644
 --- a/android/module/common.sh
 +++ b/android/module/common.sh
-@@ -81,3 +81,33 @@ piano_check_payload() {
+@@ -129,3 +129,33 @@ piano_check_payload() {
      piano_fail "The native repacker refused readiness."; return 1;
    }
  }
@@ -52,10 +52,10 @@ index c5df66c..35fdc95 100644
 +  return 0
 +}
 diff --git a/android/module/manager.sh b/android/module/manager.sh
-index 2a60508..bfb221a 100644
+index 21d4695..a9132c7 100644
 --- a/android/module/manager.sh
 +++ b/android/module/manager.sh
-@@ -145,6 +145,10 @@ case "$operation" in
+@@ -147,6 +147,10 @@ case "$operation" in
    [ "$target" != linux ] || piano_installed_linux || {
     echo '未找到已安装的 Linux 启动文件，请先完成 Linux 安装。' >&2; exit 2;
    }

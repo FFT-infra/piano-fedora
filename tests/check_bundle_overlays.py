@@ -36,10 +36,8 @@ def main():
         board = work / 'board.dtb'
         shutil.copyfile(SUN / 'vendor/piano-linux/board.dtb', board)
         before = read_fdt(board.read_bytes())
-        overlays = ('cpu-model', 'cma', 'pcie-interrupt-map', 'usb-typec', 'ufs-mcq',
-                    'dsp-resources', 'cdsp-fastrpc', 'fingerprint', 'board-identity',
-                    'regdma-resource', 'audio-dmic-clock', 'camera-flash',
-                    'camera-privacy-led', 'touch-panel', 'pen-dock', 'pen-charger')
+        overlays = ['cpu-model'] + [Path(item).name[len('piano-'):-len('.dtso')]
+                                    for item in kernel['additional_dtb_overlays']]
         for name in overlays:
             print('APPLY:', name, flush=True)
             package.apply_cpu_model_overlay(board, SUN / f'linux/dts/piano-{name}.dtso',
@@ -73,8 +71,25 @@ def main():
         assert 'qcom,non-secure-domain' in fastrpc
         assert tree['/soc/xiaomi_fingerprint']['compatible'] == b'xiaomi,piano-goodix-control\0'
         assert tree['/soc/rsc@16500000/regulators-4/ldo9']['regulator-name'] == b'piano_fp_vdd\0'
-        print('OK: sixteen overlays match release.json; CMA, PCIe IRQs, Type-C, UFS MCQ, '
-              'CDSP, fingerprint, touch link, pen GPIOs and inherited phandles all hold')
+        # 随 SunUEFI 61b6c592 一起进来的四个。
+        gcc = cells(tree['/soc/clock-controller@100000']['clocks'])
+        assert len(gcc) == 8 and handles.get(gcc[3]), 'GCC clocks[3] must reach the PCIe PHY'
+        assert tree['/battery']['compatible'] == b'xiaomi,piano-battery\0'
+        assert [handles[handle] for handle in cells(tree['/battery']['power-supplies'])] == [
+            '/soc/qcom,qupv3_1_geni_se@ac0000/i2c@a94000/bq27z561_master@55',
+            '/soc/qcom,qupv3_2_geni_se@8c0000/i2c@88c000/bq27z561_slave@55']
+        camera = '/soc/cci-ml@ac7b000/i2c-bus@1/camera@10'
+        assert cells(tree[camera]['assigned-clock-rates']) == (19200000,)
+        assert struct.unpack('>Q', tree[camera + '/port/endpoint']['link-frequencies'])[0] == 857600000
+        assert tree['/soc/interconnect@1780000']['compatible'] == b'qcom,sm8750-mmss-noc\0'
+        # 两条路径各三段（提供者 + 两个单元），提供者按 MDSS 的父子关系解析。
+        interconnects = cells(tree['/soc/display-subsystem@ae00000']['interconnects'])
+        assert [handles[interconnects[index]] for index in (0, 3, 6, 9)] == [
+            '/soc/interconnect@1780000', '/soc/interconnect@1',
+            '/soc/interconnect@24100000', '/soc/interconnect@1600000']
+        print('OK: every overlay in release.json applies; CMA, PCIe IRQs and clocks, Type-C, '
+              'UFS MCQ, CDSP, fingerprint, touch link, pen GPIOs, battery, camera clock, '
+              'display interconnects and inherited phandles all hold')
 
 
 if __name__ == '__main__':

@@ -19,7 +19,7 @@
 
 `packages/xiaomi-piano-firmware` 的 `%prep` 现在核对上游自带的 `SHA256SUMS`（99 项）。在此之前 `Source0` 只订了提交号，tarball 内容被换掉也发现不了。
 
-固件包还要再叠一层厂商 ROM。SunUEFI 的 `config/release.json` 用 `firmware.overlays` 声明 `vendor/firmware/hyperos4-{adsp,cdsp,fingerprint}` 三份，每份带 `manifest.json`，逐文件记 bytes 与 sha256。上游 piano-firmware tarball 里没有 cdsp 与指纹固件，adsp 也是另一版 ROM，所以 99 项之外还有 88 个文件来自这一层，由 `packages/xiaomi-piano-firmware/firmware-overlays.py` 在写盘前逐个核对。清单从 `release.json` 读，叠层的提交号与 `sources.lock.json` 的 `sunuefi` pin 相同，`tests/check_firmware_overlays.py` 守住两者一致。
+固件包还要再叠一层厂商 ROM。SunUEFI 的 `config/release.json` 用 `firmware.overlays` 声明 `vendor/firmware/hyperos4-{adsp,cdsp,fingerprint}` 与 `vendor/firmware/piano-display` 四份，每份带 `manifest.json`，逐文件记 bytes 与 sha256，可选的 `directory` 给出落点。上游 piano-firmware tarball 里没有 cdsp 与指纹固件，adsp 也是另一版 ROM，所以 99 项之外还有 88 个文件来自这一层，由 `packages/xiaomi-piano-firmware/firmware-overlays.py` 在写盘前逐个核对。`piano-display` 的两份面板校准写成 `qcom/sm8750/`，其余三份落在固件根目录；落点由清单声明，脚本不另写一份映射。清单从 `release.json` 读，叠层的提交号与 `sources.lock.json` 的 `sunuefi` pin 相同，`tests/check_firmware_overlays.py` 守住两者一致。
 
 ## 自动跟踪
 
@@ -48,6 +48,22 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 2. 启动、交接、内存、DTB、模块或硬件准备有变时，重读相关合同与消费者。检查补丁 series 的 base 和目标摘要。不要直接替换某一件旧产物。
 3. 改 pin 之前核对所有消费路径、构建容器和依赖。重新生成受影响的内核、运行时、root 文件系统、initramfs、ESP 和 BOOT。清单同步更新。
 4. 下载并核对实际产物，更新部署入口。构建、文件验证和实机行为分别记账。不能继承上游另一台设备的结果。
+
+### 2026-11-10
+
+四个 pin 一起推进：`sunuefi` `8b0fc42` → `61b6c592`，`fastrpc` `a56e9d4` → `8f59273`，`crosvm` `f0880b3` → `deac401`，`piano-integration` `9e3d127` → `e49a960`。后三个只动文档与一个头文件的安装，`make test` 能覆盖。SunUEFI 这一段有 108 个提交、300 个文件，下面逐条记账。
+
+内核侧换的是编译方式，不是硬件描述：`localversion` 变成 `-piano-sunuefi-cachy-optimize`，内核打开 `CC_OPTIMIZE_FOR_PERFORMANCE_O3`、`LTO_CLANG_THIN` 与 `CONFIG_ARM64_PIANO_OPTIMIZE`，工具链固定到 LLVM 23.1.5，由 `tools/host/prepare_kernel_llvm.py` 按 `config/kernel-llvm.json` 的摘要下载。
+
+`patches/linux/7.3/series.json` 的上游行从 83 条变到 83 条加我们自己的 38 条（编号 `0042`–`0079` 让位给上游，改排 `0084`–`0121`）。新的 `target_tree` 是 `39ecc3be`，末行 `original_commit` `7c8ebb24` 成为顶层的 `original_target_commit`。重放逐行核过：83 条上游行的 tree 与声明一致，我们的 38 条在新 base 上 `git am --whitespace=error` 通过。其中 `0091`（spi-geni-gpi-dma-deep-idle）撞上上游 `0043` 重写的同一段，按原意图逐处重贴；`0093`（电量计）在上游加了认证逻辑之后与我们的 suspend/resume 守卫冲突，两边意图合并。
+
+`patches/kernel` 的七段按新的段边界重新生成，`targets` 换成新补丁的前像摘要，`creates` 覆盖 `0084`–`0121`。另外五组补丁（`android-module`、`kernel-f2fs`、`kernel-gunyah`、`kernel-snd-seq`、`packaging-overlays`、`uefi-live-*`）只换 `base.sunuefi_commit` 并重生成，意图没变。
+
+DTB overlay 从 18 个补到 22 个，`build-bundle.yml` 按 `release.json` 的顺序补了 `piano-pcie-clocks`、`piano-battery`、`piano-camera-sensors`、`piano-display-interconnects`。固件叠层多出 `piano-display` 一份，它的 `manifest.json` 带 `directory: qcom/sm8750`，`firmware-overlays.py` 原来一律平铺到根目录，这次改成读清单里的落点。
+
+已核：`scripts/apply-patches.py --check` 在 `61b6c592` 的干净 clone 上给出 `CHECKED`，套到夹具上给出 `APPLIED`；`make test` 全绿。未核：新 pin 上的整条构建链、LLVM 23 下载与 ThinLTO 的实际耗时、四个新 overlay 与 `-optimize` 内核在设备上的行为。这三项分别记账，在这轮验收完成前不发 v45.2。
+
+`battery` overlay 在 `bq27z561_master@55` 上写 `ti,authentication-key`，来自上游自己的 DTB，本次未改动，记录在此便于以后审阅时认识它。
 
 ## 内存与面板边界
 
