@@ -6,6 +6,7 @@ import difflib
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from piano_artifacts import inspect_kernel, sha256

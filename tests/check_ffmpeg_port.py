@@ -50,8 +50,12 @@ def copy_series(source, sunuefi):
     folder = sunuefi / ffmpeg.BSP_SERIES
     folder.mkdir(parents=True)
     metadata = json.loads((source / ffmpeg.BSP_SERIES_FILE).read_text())
-    for name in [ffmpeg.BSP_SERIES_FILE] + [row["path"] for row in metadata["series"]]:
-        shutil.copyfile(source / name, folder / name)
+    shutil.copyfile(source / ffmpeg.BSP_SERIES_FILE, folder / ffmpeg.BSP_SERIES_FILE)
+    for row in metadata["series"]:
+        src = (source / row["path"]).resolve()
+        dst = (folder / row["path"]).resolve()
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
     return metadata, folder
 
 
@@ -202,7 +206,8 @@ def check_bsp_port(sunuefi):
         work = Path(directory)
         # 1) BSP 补丁被改动而系列摘要没跟上：必须停。
         _, folder = copy_series(series, work / "stale")
-        tamper(folder / name)
+        target_file = (folder / "../../../linux/bsp/patches/ffmpeg" / name).resolve()
+        tamper(target_file)
         try:
             ffmpeg.port_series(work / "stale")
         except ValueError:
@@ -211,10 +216,11 @@ def check_bsp_port(sunuefi):
             raise AssertionError("a BSP patch differing from its recorded digest was accepted")
         # 2) 连摘要一起改：仍然必须停，本仓库自己钉的那份没有跟着动。
         fresh, folder = copy_series(series, work / "fresh")
-        target = tamper(folder / name)
+        target_file = (folder / "../../../linux/bsp/patches/ffmpeg" / name).resolve()
+        tamper(target_file)
         for row in fresh["series"]:
-            if row["path"] == target.name:
-                row["sha256"] = hashlib.sha256(target.read_bytes()).hexdigest()
+            if Path(row["path"]).name == name:
+                row["sha256"] = hashlib.sha256(target_file.read_bytes()).hexdigest()
         (folder / ffmpeg.BSP_SERIES_FILE).write_text(json.dumps(fresh))
         assert fresh["series"][0]["sha256"] != json.loads(
             (series / ffmpeg.BSP_SERIES_FILE).read_text())["series"][0]["sha256"]

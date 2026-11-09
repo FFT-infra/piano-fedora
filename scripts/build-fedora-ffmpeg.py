@@ -67,12 +67,12 @@ DECODERS = {"h264_v4l2m2m": "h263p", "hevc_v4l2m2m": "hdr"}
 # BSP 补丁固定在 9.0.2/sunuefi3，这是上游为 FFmpeg 9 重写过的系列。
 # 补丁自带 From:，但 Fedora 的 %autosetup -S git_am 需要完整邮件头，
 # 新补丁漏了 From: 时 git am 会以空作者失败，所以缺了就补一条。
-BSP_SERIES = "linux/bsp/patches/ffmpeg"
-BSP_SERIES_FILE = "series-9.json"
+BSP_SERIES = "patches/ffmpeg/9.0.2"
+BSP_SERIES_FILE = "series.json"
 BSP_VERSION = "9.0.2"
-BSP_REVISION = "sunuefi3"
+BSP_REVISION = "sunuefi4"
 PORT_MAIL_HEADER = "From: slwyts <slwyts@foxmail.com>\n"
-# 每一条的 sha256 与 series-9.json 记录的一致。单独钉一份是为了在 upstream
+# 每一条的 sha256 与 series.json 记录的一致。单独钉一份是为了在 upstream
 # 原地改写同一版本号时仍然失败，而不是安静地跟着换补丁。
 PORT_SHA256 = {
     "0004-v4l2m2m-ffmpeg9-stateful.patch":
@@ -81,6 +81,12 @@ PORT_SHA256 = {
         "b35c619d8467a15144db5ba58b4015884de71167f32b0c31fdb6f3b834e29bb3",
     "0006-v4l2m2m-p010-capture.patch":
         "2eeca4bcb88a54819c8211703eb3b6461e00a4fd122d5c405ff2764c08381044",
+    "0001-v4l2m2m-join-sequence-header.patch":
+        "8a79e6ba96c0ad384cf3a61b0cf0fd2d4a577028091509672b16d90741bef7e9",
+    "0002-v4l2m2m-copy-visible-nv12-rows.patch":
+        "28006717fe6028af22c76b9af3215dc05fc16ee7bd034d26c0ba55259ee3e2f2",
+    "0003-v4l2m2m-stop-unstarted-encoder.patch":
+        "63ec598d048ead5424f6cc1eb882b430ff268c368838057b439cdf98ee172c2d",
 }
 # Fedora 的 %autosetup -S git_am 用 git am 提交补丁，需要 committer 身份；
 # Koji 构建机有完整域名可以自动推断，容器里没有，所以显式给出。
@@ -108,16 +114,18 @@ def port_series(sun):
         raise ValueError("BSP FFmpeg series targets another source tarball than the Fedora SRPM")
     ported = {}
     for row in bsp["series"]:
-        raw = (folder / row["path"]).read_bytes()
+        patch_path = (folder / row["path"]).resolve()
+        raw = patch_path.read_bytes()
         if hashlib.sha256(raw).hexdigest() != row["sha256"]:
             raise ValueError("BSP patch differs from its recorded digest: " + row["path"])
         # 漏了 From: 的补丁补一条邮件头；已有的不能补第二次，否则 git am 读到两个作者。
         text = ("" if raw.startswith(b"From: ") else PORT_MAIL_HEADER) + raw.decode()
         digest = hashlib.sha256(text.encode()).hexdigest()
-        if digest != PORT_SHA256.get(row["path"]):
-            raise ValueError("BSP patch is not the reviewed FFmpeg 9 port: " + row["path"])
-        ported["sunuefi-" + row["path"]] = {"text": text, "bsp_sha256": row["sha256"],
-                                            "sha256": digest}
+        name = patch_path.name
+        if digest != PORT_SHA256.get(name):
+            raise ValueError("BSP patch is not the reviewed FFmpeg 9 port: " + name)
+        ported["sunuefi-" + name] = {"text": text, "bsp_sha256": row["sha256"],
+                                    "sha256": digest}
     if set(ported) != {"sunuefi-" + name for name in PORT_SHA256}:
         raise ValueError("BSP series and the reviewed port disagree on the patch set")
     return ported
