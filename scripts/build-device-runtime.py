@@ -26,6 +26,11 @@ SSC_DRIVER_MARKERS = ("ssc-accel", "ssc-proximity", "ssc-light", "ssc-compass")
 # 构建机已装 binutils；用它的 readelf 读 DT_NEEDED，不自己解析 ELF。
 SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]")
 
+# 运行时 RPM 的版本号。载荷每变一次就要换 NEVRA，已装设备才看得见这次替换；
+# 增量路径（scripts/package-device-integration.py）也从这里取，两处不各写一份。
+RUNTIME_VERSION = "0.2.0"
+RUNTIME_RELEASE = "5"
+
 
 def run(command, **kw):
     subprocess.run([str(x) for x in command], check=True, **kw)
@@ -332,7 +337,12 @@ def build(args):
     # 暴露路径。同样必须换 NEVRA，否则装过 0.2.0-2 的设备拿不到新 importer。
     # Release 4：按上游 removed_paths 去掉过时的 piano-*-start 与 unit，载荷
     # 字节变了，同样换 NEVRA。
-    rpm_package("piano-runtime", payload, output, version="0.2.0", release="4",
+    # Release 5：SunUEFI 换到 4ef8740 之后载荷又变了：piano-touch-view 接到
+    # Focus Pen 事实，pen-bluetooth 与 piano-pen-offline 跟着上游改，另有一批
+    # unit 与 udev 规则按上游 removed_paths 退场、相机规则改由矩阵提供。已装
+    # 设备的 0.2.0-4 与这份载荷同 NEVRA 不同字节，不换 NEVRA 就装不上去。
+    rpm_package("piano-runtime", payload, output,
+                version=RUNTIME_VERSION, release=RUNTIME_RELEASE,
                 requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
                           "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils",
                           # piano-sensors-import reads the Android odm/vendor EROFS
