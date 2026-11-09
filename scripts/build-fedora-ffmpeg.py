@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import urllib.request
@@ -82,11 +83,11 @@ PORT_SHA256 = {
     "0006-v4l2m2m-p010-capture.patch":
         "2eeca4bcb88a54819c8211703eb3b6461e00a4fd122d5c405ff2764c08381044",
     "0001-v4l2m2m-join-sequence-header.patch":
-        "8a79e6ba96c0ad384cf3a61b0cf0fd2d4a577028091509672b16d90741bef7e9",
+        "fa547bc67853afc574a49653c5f4e57170f11a916c967d0220e2a0f7b83c6263",
     "0002-v4l2m2m-copy-visible-nv12-rows.patch":
-        "28006717fe6028af22c76b9af3215dc05fc16ee7bd034d26c0ba55259ee3e2f2",
+        "83360b9c808c765a2f40ede0978e8984c6e1fec76ee1a1d7ebbadb32e32ca7ae",
     "0003-v4l2m2m-stop-unstarted-encoder.patch":
-        "63ec598d048ead5424f6cc1eb882b430ff268c368838057b439cdf98ee172c2d",
+        "b8069106dc3c73279444607d7b3aab8726c0cf5a9bfb59d95fd7fed4c942d1f4",
 }
 # Fedora 的 %autosetup -S git_am 用 git am 提交补丁，需要 committer 身份；
 # Koji 构建机有完整域名可以自动推断，容器里没有，所以显式给出。
@@ -118,8 +119,14 @@ def port_series(sun):
         raw = patch_path.read_bytes()
         if hashlib.sha256(raw).hexdigest() != row["sha256"]:
             raise ValueError("BSP patch differs from its recorded digest: " + row["path"])
-        # 漏了 From: 的补丁补一条邮件头；已有的不能补第二次，否则 git am 读到两个作者。
-        text = ("" if raw.startswith(b"From: ") else PORT_MAIL_HEADER) + raw.decode()
+        # Fedora 的 %autosetup -S git_am 需要合法邮件作者头（From: Name <email>）。
+        # 漏了 email 或整个 From: 的补丁补一条标准邮件头，保证 git am 能作为有效提交解析。
+        text = raw.decode()
+        if not re.match(r"^From:\s+[^\n<]+<[^\n>]+>", text):
+            if text.startswith("From:"):
+                text = PORT_MAIL_HEADER + text.split("\n", 1)[1]
+            else:
+                text = PORT_MAIL_HEADER + text
         digest = hashlib.sha256(text.encode()).hexdigest()
         name = patch_path.name
         if digest != PORT_SHA256.get(name):
