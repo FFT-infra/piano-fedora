@@ -19,14 +19,11 @@ the driver reads, keeps the payload property and reports why. The node's
 unit-address keeps the build-time id because the driver matches on the
 compatible and reads the capability pair from reg.
 ---
- uefi/core/PianoRawLinuxBoot.c |   56 +++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 56 insertions(+)
-
 diff --git a/uefi/core/PianoRawLinuxBoot.c b/uefi/core/PianoRawLinuxBoot.c
-index 52fb729..5039557 100644
+index 69bbefb..c0adabb 100644
 --- a/uefi/core/PianoRawLinuxBoot.c
 +++ b/uefi/core/PianoRawLinuxBoot.c
-@@ -24,6 +24,7 @@
+@@ -26,6 +26,7 @@
  #define RAW_MEMORY_REG_MAX 1024U
  #define RAW_DDR_REGIONS 4U
  #define RAW_DDR_REGION_MAX 64U
@@ -34,7 +31,7 @@ index 52fb729..5039557 100644
  typedef struct {
    EFI_HANDLE Image;EFI_SYSTEM_TABLE *SystemTable;EFI_LOADED_IMAGE_PROTOCOL *Identity,Loaded;
    EFI_HANDLE ExitImage;EFI_LOADED_IMAGE_PROTOCOL *ExitIdentity,ExitLoaded;
-@@ -261,6 +262,59 @@ STATIC EFI_STATUS ApplyLiveMemory(VOID *Tree,CONST LIVE_MEMORY *In){
+@@ -263,6 +264,59 @@ STATIC EFI_STATUS ApplyLiveMemory(VOID *Tree,CONST LIVE_MEMORY *In){
    DEBUG((DEBUG_WARN,"SUNUEFI_RAW_LIVE_MEMORY adopted=1 was=%lu now=%lu banks=%u\n",Before,In->Total,In->Banks));
    return EFI_SUCCESS;
  }
@@ -94,18 +91,12 @@ index 52fb729..5039557 100644
  EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,EFI_HANDLE ExitImage,CONST PIANO_RAW_LINUX_REPORT **Out){
   if(!Out)return EFI_INVALID_PARAMETER;*Out=NULL;
   if(!ExitImage)return EFI_INVALID_PARAMETER;
-@@ -294,12 +348,14 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,EFI_HAN
-  .ExitImage=ExitImage,.ExitIdentity=mRaw.ExitIdentity};
-  if(!Hash(Kernel,(UINTN)P->Kernel.Bytes,R.KernelSha)||!Hash(Bytes+P->Ramdisk.Offset,(UINTN)P->Ramdisk.Bytes,R.InitrdSha))return EFI_DEVICE_ERROR;
-  LIVE_MEMORY Live;CaptureLiveMemory(&Live,O->Config.Fdt);
-+ LIVE_RM Rm;CaptureLiveRm(&Rm,O->Config.Fdt);
-  CopyMem((VOID *)(UINTN)Address,Kernel,(UINTN)P->Kernel.Bytes);
-  if(Span>P->Kernel.Bytes)ZeroMem((VOID *)(UINTN)(Address+P->Kernel.Bytes),(UINTN)(Span-P->Kernel.Bytes));
-  CopyMem((VOID *)(UINTN)RAW_INITRD,Bytes+P->Ramdisk.Offset,(UINTN)P->Ramdisk.Bytes);
+@@ -302,6 +356,8 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,EFI_HAN
   VOID *Tree=(VOID *)(UINTN)RAW_DTB;if(FdtOpenInto(InputDtb,Tree,(INT32)Capacity))return EFI_COMPROMISED_DATA;
   E=PianoProductMemoryApplyDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
   E=ApplyLiveMemory(Tree,&Live);if(E!=EFI_SUCCESS)return E;
++ LIVE_RM Rm;CaptureLiveRm(&Rm,O->Config.Fdt);
 + E=ApplyLiveRm(Tree,&Rm);if(E!=EFI_SUCCESS)return E;
   E=PianoPanelSelectDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
-  E=PianoProductBootObjectsApplyGunyah(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
-  INT32 Chosen=FdtPathOffset(Tree,"/chosen");if(Chosen<0)return EFI_COMPROMISED_DATA;
+  E=PianoBluetoothAddressApplyDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
+  E=PianoRtcOffsetApplyDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;

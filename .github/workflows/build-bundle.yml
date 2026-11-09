@@ -207,8 +207,10 @@ jobs:
             --panel-vendor auto \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-cma.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-pcie-interrupt-map.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-pcie-clocks.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-usb-typec.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-displayport.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-battery.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-ufs-mcq.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-dsp-resources.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-cdsp-fastrpc.dtso \
@@ -216,6 +218,7 @@ jobs:
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-board-identity.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-regdma-resource.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-audio-dmic-clock.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-sensors.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-flash.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-privacy-led.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-touch-panel.dtso \
@@ -223,6 +226,7 @@ jobs:
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-pen-charger.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-bluetooth-nvm.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-ir-spi-controller.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-display-interconnects.dtso \
             --initramfs build/initramfs/initramfs.cpio.gz \
             --rootfs build/device-root/rootfs --rootfs-manifest build/device-root/manifest.json \
             --root-selector LABEL=PIANOROOT --esp-size-mib "$ESP_SIZE_MIB" --output build/packaged

@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | `sunuefi/vendor/piano-linux/board.dtb` | 二进制，1,208,011 字节 | 是 | 启动基线；overlay 打在它上面 |
 | `xiaomi-pad-8-pro-development/android_kernel_xiaomi_piano` 的 `arch/arm64/boot/dts/vendor/qcom/` | Android 下游 DTS 源码，808 个 `.dts`/`.dtsi` | 否 | overlay 的审阅基准 |
-| `sunuefi/linux/dts/*.dtso` | 15 个附加 overlay 加 1 个 CPU 模型 overlay | 部分 | 把厂商 DT 改成主线内核可用 |
+| `sunuefi/linux/dts/*.dtso` | 22 个附加 overlay 加 1 个 CPU 模型 overlay | 部分 | 把厂商 DT 改成主线内核可用 |
 
 内核自带的 `arch/arm64/boot/dts/qcom/sm8750-xiaomi-piano.dts` 不参与启动。上游所有 `arm64: dts: qcom: sm8750-xiaomi-piano: ...` 提交都搬不过来，`docs/known-issues.md` 里被挡住的 77 条 + 3 条就是这个原因。
 
@@ -67,9 +67,9 @@ qcom,board-id = <0x40008 0x00>;
 
 techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，其中 `piano-audio-mtp.dts` 4264 行，`piano-sde-display.dtsi` 4.2 KB，`piano-charger-common.dtsi` 742 行。这些是我们 overlay 里那些硬件常量（SPI 号、稳压器、时钟）的原始出处。
 
-## 16 个 overlay
+## 23 个 overlay
 
-`config/release.json` 的 `kernel` 段列 `cpu_model_overlay` 一个，加 `additional_dtb_overlays` 十五个。`build-bundle.yml` 按这个顺序全部传入，`tests/check_bundle_overlays.py` 断言两份清单逐条相等。
+`config/release.json` 的 `kernel` 段列 `cpu_model_overlay` 一个，加 `additional_dtb_overlays` 二十二个。`build-bundle.yml` 按这个顺序全部传入，`tests/check_bundle_overlays.py` 断言两份清单逐条相等。
 
 | overlay | 目标节点 | 作用 |
 | --- | --- | --- |
@@ -77,6 +77,7 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 | `piano-board-identity` | 根节点 | 板级标识 |
 | `piano-regdma-resource` | regdma | 资源窗口 |
 | `piano-audio-dmic-clock` | 音频 | DMIC 时钟 |
+| `piano-camera-sensors` | CCI 下的相机传感器 | 出厂模式的传感器时钟（19.2 MHz TCXO） |
 | `piano-camera-flash` | camera | 闪光灯 |
 | `piano-camera-privacy-led` | camera | 隐私指示灯 |
 | `piano-touch-panel` | 触控 / 面板 | 触控与面板关联 |
@@ -84,15 +85,21 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 | `piano-pen-charger` | 充电 | 笔的充电 |
 | `piano-cma` | `/reserved-memory/linux,cma` | CMA 改 256 MiB（`0x10000000`） |
 | `piano-pcie-interrupt-map` | `/soc/pcie@1c00000` | INT A-D 用 SPI 149-152，折叠 GIC 的地址单元差异 |
+| `piano-pcie-clocks` | `/soc/clock-controller@100000` | GCC 的 `clocks[3]` 接 PHY 的标准时钟提供者 |
 | `piano-usb-typec` | `/soc/qcom,pmic_glink` | `qcom,sm8750-pmic-glink` 与 Type-C 端口 |
+| `piano-displayport` | `/soc/display-subsystem@ae00000` | DP0 与 USB/DP combo PHY 的资源和 graph |
+| `piano-battery` | `/i2c@a94000/bq27z561_master@55` | 并联电量计汇总成一块电池，带认证键 |
 | `piano-ufs-mcq` | `/soc/ufshc@1d84000` | MCQ 窗口 `0x1da0000`，`msi-parent = <&gic_its 0x60>` |
 | `piano-dsp-resources` | `/soc/remoteproc-cdsp@32300000` | cdsp 的时钟与电源域 |
 | `piano-cdsp-fastrpc` | cdsp 的 `qcom,fastrpc` | `qcom,non-secure-domain` 与 compute-cb |
 | `piano-fingerprint` | `/soc/rsc@16500000/regulators-4` | `piano_fp_vdd`（ldo9） |
+| `piano-bluetooth-nvm` | 蓝牙节点 | 选 `brhbtnv20.b2e`，补板级 RF 校准 |
+| `piano-ir-spi-controller` | QUP2 SE7 / CS0 | LIRC 红外发射，GPIO29 驱动 |
+| `piano-display-interconnects` | `/soc/interconnect@1780000` | 换成标准 SM8750 MDSS/RPMh 互连绑定 |
 
-后七个在 2026-11-08 才补进 `build-bundle.yml`。`ufs-mcq` 对应封存序列里已经合入的 `0056`/`0057`，`dsp-resources`、`cdsp-fastrpc` 对应 FastRPC，`usb-typec` 对应充电与 OTG。没有 overlay，这些代码合了也不生效。
+`usb-typec`、`ufs-mcq`、`dsp-resources`、`cdsp-fastrpc` 在 2026-11-08 补进 `build-bundle.yml`。`displayport`、`bluetooth-nvm`、`ir-spi-controller` 更早就有，本文到 2026-11-10 才补齐。`pcie-clocks`、`battery`、`camera-sensors`、`display-interconnects` 随 SunUEFI `61b6c592` 一起来，同时进了工作流。
 
-这七个的真机验收还没做。分批上的顺序、每项看什么、失败长什么样，写在扩展计划里；`piano-cma` 和 `piano-ufs-mcq` 一旦不合，表现为开不了机，回退是刷回上一版 bundle，或把 ESP 上的 `board.dtb` 与 `boot.img` 一起换回上一版。
+没有 overlay，对应的内核代码合了也不生效。这些项的真机验收还没做完：`piano-cma`、`piano-ufs-mcq` 一旦不合，表现为开不了机，回退是刷回上一版 bundle，或把 ESP 上的 `board.dtb` 与 `boot.img` 一起换回上一版。
 
 ## 启动读的是 boot.img 里的 DT
 

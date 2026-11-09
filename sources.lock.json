@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-11-08",
+  "checked_date": "2026-11-10",
   "note": "只列构建链实际读取的上游；研究与后端参考单独记录在 docs/upstreams.json。vendor-kernel 与 vendor-blobs 只被对照任务读取，不进任何出货产物。",
   "sources": {
     "dtc": {
@@ -12,7 +12,7 @@
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "8b0fc42d8bdeb68c799235c5f14c166f7c5528cf",
+      "commit": "61b6c592bd0383773b59a4dcd66b4c0f5c3f069f",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器"
     },
     "linux-piano": {
@@ -66,7 +66,7 @@
     "fastrpc": {
       "url": "https://github.com/qualcomm/fastrpc.git",
       "ref": "development",
-      "commit": "a56e9d4de3614a8d8f4b0e15ff561350c4b686e3",
+      "commit": "8f5927397d1b7c87e6724cb1ddbde956a7f34cab",
       "role": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd"
     },
     "librevm": {
@@ -78,7 +78,7 @@
     "crosvm": {
       "url": "https://github.com/google/crosvm.git",
       "ref": "main",
-      "commit": "f0880b36b6e3f25ee814222e6bd1cead4151bc85",
+      "commit": "deac4016929e01e08ea33f3ba15ed3df2b7e536c",
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {
@@ -90,7 +90,7 @@
     "piano-integration": {
       "url": "https://github.com/yzddmr6/xiaomipad-8pro-mainline.git",
       "ref": "main",
-      "commit": "9e3d12777ac8c8ee3b73921790c9381159be577a",
+      "commit": "e49a960ef820f85a2b01252a4462a28dd2375dea",
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者"
     },
     "uperf": {

@@ -25,9 +25,6 @@ REPORT_LUNS attempt fails, so keep it on the retry path.
 3. Keep the mStartupStage markers so a stuck stage shows in the log.
 
 ---
- uefi/core/PianoUfsReadOnlyDma.c |   19 +++++++++++++++----
- 1 file changed, 15 insertions(+), 4 deletions(-)
-
 diff --git a/uefi/core/PianoUfsReadOnlyDma.c b/uefi/core/PianoUfsReadOnlyDma.c
 index 7b293f5..52a4d39 100644
 --- a/uefi/core/PianoUfsReadOnlyDma.c

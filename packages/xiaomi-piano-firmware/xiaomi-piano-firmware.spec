@@ -1,13 +1,14 @@
 %global debug_package %{nil}
 %global _firmwaredir %{_prefix}/lib/firmware
-# 厂商固件叠层取自 SunUEFI 的 vendor/firmware/hyperos4-*：cdsp 与指纹固件
-# 上游 piano-firmware 里没有，adsp 也是另一版 ROM。三份都带 manifest.json，
-# 逐个文件记 bytes 与 sha256，由 firmware-overlays.py 在写盘前核对。
-# 提交号与 sources.lock.json 的 sunuefi pin 相同，由 tests/check_firmware_overlays.py 守住。
-%global sunuefi_commit 8b0fc42d8bdeb68c799235c5f14c166f7c5528cf
+# 厂商固件叠层取自 SunUEFI 的 vendor/firmware/：cdsp 与指纹固件上游
+# piano-firmware 里没有，adsp 也是另一版 ROM，display 校准要落在 qcom/sm8750。
+# 每份都带 manifest.json，逐个文件记 bytes 与 sha256，由 firmware-overlays.py
+# 在写盘前核对。提交号与 sources.lock.json 的 sunuefi pin 相同，
+# 由 tests/check_firmware_overlays.py 守住。
+%global sunuefi_commit 61b6c592bd0383773b59a4dcd66b4c0f5c3f069f
 
 Name:           xiaomi-piano-firmware
-Version:        20261108
+Version:        20261110
 Release:        1%{?dist}
 Summary:        Firmware binaries for Xiaomi Pad 8 Pro (piano)
 # 厂商没有给出书面许可。这里按 Fedora 处理同类不可再分发固件的写法标注
@@ -59,6 +60,9 @@ find %{buildroot}%{_firmwaredir} -type f -exec chmod 0644 {} \;
 %{_firmwaredir}/*
 
 %changelog
+* Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 20261110-1
+- 跟随 SunUEFI 61b6c592：叠层按 manifest 的 directory 落位，新增 display 校准两份
+
 * Sun Nov 08 2026 FFT-infra <dev@piano.invalid> - 20261108-1
 - 叠加 SunUEFI 的三份厂商固件：ADSP 换 ROM、补上 CDSP 与 Goodix 指纹固件
 - 叠层的每个文件按 manifest.json 的 bytes 与 sha256 核对后再写盘

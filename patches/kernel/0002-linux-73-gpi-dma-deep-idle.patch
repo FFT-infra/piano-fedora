@@ -18,30 +18,24 @@ byte-identical.
 
 series.json and config/release.json move their target_tree together.
 ---
- config/release.json                              |   2 +-
- .../7.3/0029-spi-geni-gpi-dma-deep-idle.patch    | Bin 0 -> 4523 bytes
- patches/linux/7.3/series.json                    |  12 ++++++++++--
- 3 files changed, 11 insertions(+), 3 deletions(-)
- create mode 100644 patches/linux/7.3/0029-spi-geni-gpi-dma-deep-idle.patch
-
 diff --git a/config/release.json b/config/release.json
-index ddb0450..48fb056 100644
+index 41e2ad7..682ec18 100644
 --- a/config/release.json
 +++ b/config/release.json
 @@ -8,7 +8,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "68413b8c73d28c5f9d2b510fcf335bf92fd69036",
-+    "target_tree": "73f02c1146e1e7f324776e27e252eb83c54cb9df",
+-    "target_tree": "573e90c54711b54b6ae3751e935374106f3b4f2a",
++    "target_tree": "831a5659eb1b785885321b4c248ffa67f580fd53",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0046-spi-geni-gpi-dma-deep-idle.patch b/patches/linux/7.3/0046-spi-geni-gpi-dma-deep-idle.patch
+diff --git a/patches/linux/7.3/0088-spi-geni-gpi-dma-deep-idle.patch b/patches/linux/7.3/0088-spi-geni-gpi-dma-deep-idle.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..a664f8468a894043c5b75e913f39dc0bf916218d
+index 0000000000000000000000000000000000000000..4264a1279043ee7a919ea3ae7c7ef73f7443b0e9
 GIT binary patch
-literal 4523
+literal 4489
 zcmZ=O%Fk6WPEJiRGEYk}GBz?Yut+g9HAqfNwM<DdvPeuZG)lBcGc`0eG%-(B@XgOt
 z2u>|fFf>;%Ft7q61tS9kLoSdpRtgoFd6kKI=?XSbMsA)%dTwH7j$U$pt{s<4Vo9o%
 zLU3uGj)IY?f`4*}f{}rdnSz0_l_|(91#JTh0|Tz$(xj}^<Ps}|=m5tMXOCEg;(|;o
@@ -62,68 +56,68 @@ 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
-zR_GSzg7Ty;B-a=l8KtEdCZ#2%BwFfm>FVloDWnu-mZcUI>lYVfg0L>UT+&Ncs8KL6
-zP|zj<=yE9-Dx`r5spO2ry!6x*9R*`ch0MI-)FN>7YG`ZfC>ScFq~@f8_!_#JTwE!c
-zX=w_&y6KrE3W@soT#<xNmMb$aCAC7qEZNjN&BEBgGSOI1FU{N_$=J})&^Rqc!O+0K
-z%)|ubRs6PaX=`gM;J3-aK|$BhOvg+?+t5tMT*1MCOF=m^FFB_)B~`%&9N7A~`6;D2
-zsd^c9m{J8fi6v?IMY-`Qsb!hTIMn3E=NA-!v}>cAT#y@Im|qN%!mzX;H@*l|X6E8B
-zv?#wIwWy>LtKQ=LWPMO2qz{hvVz3Dye_9xT{AppRV`u{LXi92YW?rg-d$4D`bAX2<
-zC#REVh=z$Kmx3~ijK2>=##EC_flFIoi%VNU3rl&Fk(!eN&7j~~4N`YOD>WR|3Mfy3
-zje{1V7*&e~a;XU~N;4s~hD(ShsP4%x$w)0K&n!*_n*^@gV7VJqQh;iqqEc|_4bA@G
-z8Y#2H8f3cyN`a}M0V^-TW@Q#DWF!{l=A;%E>nZrACKi_#rKW)DEO5@#Q7BG@lyAxT
-zxu6mmS`z4i^y+hI!$L7Qz%$<6)z35DJ-{<Q&_6gnG?)`qa&u{ODHN9!l_r;f8xHZs
-z1)1?Fsl~|()m#dknRz7&8d^oE#rdU0$*INhnR%Hdni?p|Qx&v|Q#GyOii=ZA;)@bX
-zQn4x1Q7FwT&P>lsO;O0n&r4TG&dH8XD@rZYwB`aQ4NFkcu(SYY0i2G4I~U|qP~wWu
-zO$1jqAP1v4tvJ=1OPdoa2ubMiMX80Qsl_D<5H85!P<cr9QP4_BEdz;`8XGB;RK%xc
-zrsc<{q!yH9zy!e};QA>(DYK*);&xLra~*R9ZBuh|9YZ4p2L}aE)t8y901834L($4*
-zSU`g0k=hbk#RZu<Tne0=MX4pFMR^KEsU_B23S0`D$%)0O3h+2|@pZJ~(&gmT*8<go
-z8K9cGBwryVA6#F$2Y7;0zLq|hHb@DGRL}xflAx5BnwJjBbC6aXD0zY#btU=WmRo)v
-zxC+QG&x2+pP_0x6H38OmOM<pe$`dn7Kvu&l>E!&}0!UE|@_K4fQE5Smo`QF3Y5~*$
-zkZsU>25KJWr-9QyBFlj)DTR`Z#1c>lf*Ng^C3+C8V6P+>l*U6_AfRF^zO*1Eu_P51
-zsTyjziN(5hkf_yBz>?;{DHRs72B0Xd<x&8rK2vj39Ww=OQ%eIKBV+2sAT$DXT|NE6
-z9DS_06hL-qV@nwrbvE9#q0Pz3$*BMa(6kFmLePw_07^gcxy9+4T-w!$)DKdDoLjVV
-z6N?pWL2ZC|MB0l_Pb~peBcSA<QCyIzY0ah0rOla{rl0{1*yPfp_=>dDqIhsD+1jF{
-zMomyOkrY1xzTlF`#nsI*)F&i9%+V**6=Wq+{AkyLTmTKSvi!^xu#3SSDM|&UUr;L0
-z0840rTuqdxK?)&0Lw7FJOlTQ_lAJ&e133niE=w|#6~K1FL$xS1CpED+H9jRbF&@-X
-zL2(keEJcbbu=Am%7Bn6pP6CyJhK7dbpoC~>XkrN~2@^pUq7^0iNvW_zg4P01&?-nt
-zEz{&u;4Ci4)V0e^tcWizNKH+N&!|$cRWLPx08rY8%Y&SqlbWYst6)%(mX?-gV6C99
-zrC?;D04m|YB}z$!eo=)&N^YV;PHJ9yNrr-!KFk8NVhx(Az@9{t0++@hH({iAWK9^7
-zaHoPB_Mr3!>Ht6zFW4Gnak%2-#5_=RDA+<OHYgV^4f1ksVgV?*E7&Teq?YO0fm+ge
-zC6EH$(9qZf5)EeNI);Y03j|`~0hEEjVO^3~l%84wiW*4VK=|>AN%=)3$U%TC4l4Y$
-zInh&UVoC~*QV(CQg7`Ey9;6%6L5j~WiZ4nnPA$<$NiEaCmb-KmaubU|sUKVp6oH(t
-zjaoTrb185l+KTa|#i{X$r6u{rrNsrQc_|udpya4)2TGHm&__}UYAhhBj893;NvuRt
-u4;uY202kRssi5#lNiEBbN7A2~mzb233UaxoHJ7fg0+*4VsfnHe7Z(6d<;sKr
+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
+bfa`;zR8aVU-HxO`H7_wKCl%y!O=~UyInd34
 
 literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index bca9f22..dc8cf6f 100644
+index 201f767..99e84c4 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "68413b8c73d28c5f9d2b510fcf335bf92fd69036",
+-  "target_tree": "573e90c54711b54b6ae3751e935374106f3b4f2a",
 -  "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
-+  "target_tree": "73f02c1146e1e7f324776e27e252eb83c54cb9df",
++  "target_tree": "831a5659eb1b785885321b4c248ffa67f580fd53",
 +  "original_target_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -367,6 +367,14 @@
+@@ -703,6 +703,14 @@
        "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
        "committer_date": "2026-10-24T18:30:00+08:00",
-       "tree": "68413b8c73d28c5f9d2b510fcf335bf92fd69036"
+       "tree": "573e90c54711b54b6ae3751e935374106f3b4f2a"
 +    },
 +    {
-+      "file": "0046-spi-geni-gpi-dma-deep-idle.patch",
-+      "sha256": "00ade037740de7d39bd76a86426701c9daf7a8f90119ea3d86496f94560d0950",
++      "file": "0088-spi-geni-gpi-dma-deep-idle.patch",
++      "sha256": "8ccef216bbd292600a5ba08e9d3876b83b614a98e733465cbb6ca9eb9c6862ad",
 +      "original_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
 +      "original_parent": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
 +      "committer_date": "2026-10-25T03:50:00+08:00",
-+      "tree": "73f02c1146e1e7f324776e27e252eb83c54cb9df"
++      "tree": "831a5659eb1b785885321b4c248ffa67f580fd53"
      }
-   ]
- }
+   ],
+   "provenance": {

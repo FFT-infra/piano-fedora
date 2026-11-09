@@ -3,7 +3,7 @@
   "target": "sunuefi",
   "note": "按顺序应用。每个补丁的 targets 是应用前该文件必须匹配的摘要；上游更新后不匹配会报错退出，不静默跳过。creates 必须与实际新建的文件完全一致。",
   "base": {
-    "sunuefi_commit": "8b0fc42d8bdeb68c799235c5f14c166f7c5528cf"
+    "sunuefi_commit": "61b6c592bd0383773b59a4dcd66b4c0f5c3f069f"
   },
   "patches": [
     {
@@ -11,8 +11,8 @@
       "summary": "系统安装会重写 BOOT，旧的安装记录随之失效；切换或请求前先按模块载荷重新采纳当前 BOOT，避免每次系统更新后都要手动重装模块",
       "targets": {
         "android/module/action.sh": "a41253701bf2d6809493727c4ab8b2d1e28790be7a5af441df07394513a65dbc",
-        "android/module/common.sh": "9aa3e6db593dc2622e8442529d4affce88cf87b9fe6aeaa90c1243f355cd884b",
-        "android/module/manager.sh": "4b2575456af9b33a475da0346183629b7b31f66aabf20fae075ad4fa0c7f74de"
+        "android/module/common.sh": "566be45491f25a20fc5f03cf8d0b03faadbb1800fe5a31b0cbc1656406b50ac2",
+        "android/module/manager.sh": "4aa19891f6b9b9d7f96f830165fcf24e8c57cae86374de0a5f0b85dd63049b23"
       },
       "creates": []
     }

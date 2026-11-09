@@ -1,8 +1,8 @@
 diff --git a/tools/package_release.py b/tools/package_release.py
-index 95dc94a..b929ae9 100644
+index c8926a9..f291136 100644
 --- a/tools/package_release.py
 +++ b/tools/package_release.py
-@@ -36,22 +36,40 @@ def sha(path):
+@@ -191,22 +191,40 @@ def sha(path):
  
  
  def run(argv, **kwargs):
@@ -47,7 +47,7 @@ index 95dc94a..b929ae9 100644
              payload = fragments[path + '/__overlay__']
              require(target in before, 'Board overlay must target an existing node')
              if cpu_only:
-@@ -69,8 +87,9 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True):
+@@ -224,8 +242,9 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True):
                      handle = struct.pack('>I', next_phandle)
                      next_phandle += 1
                      before[target]['phandle'] = handle
@@ -59,7 +59,7 @@ index 95dc94a..b929ae9 100644
              expected[target] = payload
      require(expected, 'Board overlay has no targets')
      overlay_input = board
-@@ -86,6 +105,9 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True):
+@@ -241,6 +260,9 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True):
              output_fdt['boot_cpu'] == parsed['boot_cpu'],
              'Board overlay changed reserved memory or boot CPU')
      after = output_fdt['tree']

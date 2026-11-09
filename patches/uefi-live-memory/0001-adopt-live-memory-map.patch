@@ -18,14 +18,11 @@ before this function's own kernel/initrd/tree copies reuse that RAM, and
 anything absent, unreadable or implausible is refused with a logged
 reason, leaving the payload map in place.
 ---
- uefi/core/PianoRawLinuxBoot.c |   72 +++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 72 insertions(+)
-
 diff --git a/uefi/core/PianoRawLinuxBoot.c b/uefi/core/PianoRawLinuxBoot.c
-index 147fc3a..52fb729 100644
+index 28cf83e..69bbefb 100644
 --- a/uefi/core/PianoRawLinuxBoot.c
 +++ b/uefi/core/PianoRawLinuxBoot.c
-@@ -21,6 +21,9 @@
+@@ -23,6 +23,9 @@
  #define RAW_INITRD 0xB0200000ULL
  #define RAW_INITRD_MAX 0x1000000U
  #define RAW_DTB_MAX 0x200000U
@@ -35,7 +32,7 @@ index 147fc3a..52fb729 100644
  typedef struct {
    EFI_HANDLE Image;EFI_SYSTEM_TABLE *SystemTable;EFI_LOADED_IMAGE_PROTOCOL *Identity,Loaded;
    EFI_HANDLE ExitImage;EFI_LOADED_IMAGE_PROTOCOL *ExitIdentity,ExitLoaded;
-@@ -191,6 +194,73 @@ STATIC BOOLEAN Destination(UINT64 A,UINT64 N){
+@@ -193,6 +196,73 @@ STATIC BOOLEAN Destination(UINT64 A,UINT64 N){
   return FALSE;
  }
  STATIC BOOLEAN Hash(CONST VOID *P,UINTN N,UINT8 Out[32]){return Sha256HashAll(P,N,Out);}
@@ -109,7 +106,7 @@ index 147fc3a..52fb729 100644
  EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,EFI_HANDLE ExitImage,CONST PIANO_RAW_LINUX_REPORT **Out){
   if(!Out)return EFI_INVALID_PARAMETER;*Out=NULL;
   if(!ExitImage)return EFI_INVALID_PARAMETER;
-@@ -223,11 +293,13 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,EFI_HAN
+@@ -225,11 +295,13 @@ EFI_STATUS PianoRawLinuxPrepare(PIANO_PRODUCT_OWNERS *O,EFI_HANDLE Image,EFI_HAN
   .Dtb=RAW_DTB,.Initrd=RAW_INITRD,.InitrdBytes=P->Ramdisk.Bytes,.Image=Image,.Identity=mRaw.Identity,.Token=mRaw.Token,
   .ExitImage=ExitImage,.ExitIdentity=mRaw.ExitIdentity};
   if(!Hash(Kernel,(UINTN)P->Kernel.Bytes,R.KernelSha)||!Hash(Bytes+P->Ramdisk.Offset,(UINTN)P->Ramdisk.Bytes,R.InitrdSha))return EFI_DEVICE_ERROR;
@@ -121,5 +118,5 @@ index 147fc3a..52fb729 100644
   E=PianoProductMemoryApplyDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
 + E=ApplyLiveMemory(Tree,&Live);if(E!=EFI_SUCCESS)return E;
   E=PianoPanelSelectDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
-  E=PianoProductBootObjectsApplyGunyah(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
-  INT32 Chosen=FdtPathOffset(Tree,"/chosen");if(Chosen<0)return EFI_COMPROMISED_DATA;
+  E=PianoBluetoothAddressApplyDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
+  E=PianoRtcOffsetApplyDtb(Tree,Capacity);if(E!=EFI_SUCCESS)return E;
