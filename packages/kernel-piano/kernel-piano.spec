@@ -96,8 +96,8 @@ if [ -f board.dtb ]; then
 fi
 test -s %{buildroot}/boot/dtb/qcom/sm8750-xiaomi-piano.dtb
 
-# Modules keep the kernel's own release string (7.3.3-piano-sunuefi-cachy); the
-# RPM version alone would not match the modules' vermagic.
+# Modules keep the kernel's own release string (7.3.3-piano-sunuefi-cachy-optimize);
+# the RPM version alone would not match the modules' vermagic.
 cp -a lib/modules/. %{buildroot}%{_prefix}/lib/modules/
 test -s "$(find %{buildroot}%{_prefix}/lib/modules -name 'modules.dep' | head -n 1)"
 
