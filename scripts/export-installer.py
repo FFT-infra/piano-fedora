@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ("install-f2fs.py", "update-f2fs.py", "plan-first-partition.py", "prepare-device-boot.py",
            "verify-native-boot.py", "apply-patches.py", "piano_artifacts.py", "piano_sparse.py",
            "piano_gpt.py", "piano_memory.py")
-TOOLS = ("install_piano.py", "provision_piano_bluetooth.py", "provision_piano_ssh.py", "compose_piano_dtb.py",
+TOOLS = ("install_piano.py", "provision_piano_ssh.py", "compose_piano_dtb.py",
          "package_sparse_images.py")
 # 脚本按路径加载的同目录模块（`spec_from_file_location("piano_gpt", …/piano_gpt.py)`）
 # 不一定走 import，按文件名文字再扫一遍。

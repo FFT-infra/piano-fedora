@@ -43,9 +43,11 @@ BUNDLE_ASSETS = {
 def load_source(source):
     pin = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["sunuefi"]["commit"]
     # install_piano.py 依赖同目录的 package_sparse_images.py（SunUEFI 8b0fc42
-    # 起）。它必须与另外四个工具一起出现在导出清单里，否则发布包里的
+    # 起）。它必须与另外三个工具一起出现在导出清单里，否则发布包里的
     # --sunuefi boot-tools/installer/sunuefi 会在第一次 load_source 时失败。
-    names = ("install_piano.py", "provision_piano_bluetooth.py", "provision_piano_ssh.py",
+    # SunUEFI 61b6c592 删掉了 provision_piano_bluetooth.py：蓝牙地址改由 BSP
+    # 启动时从原厂 persist 只读获取，安装器不再注入。
+    names = ("install_piano.py", "provision_piano_ssh.py",
              "compose_piano_dtb.py", "package_sparse_images.py")
     if (source / ".git").exists():
         actual = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
