@@ -1,17 +1,17 @@
 diff --git a/config/release.json b/config/release.json
-index 615a4c0..689ad93 100644
+index 80625e1..4edf2ad 100644
 --- a/config/release.json
 +++ b/config/release.json
 @@ -8,7 +8,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "5e123af532541cf15b2032072e6ac6708d74449f",
-+    "target_tree": "9149949590aabe6c853393b71fc4fba589a19de2",
+-    "target_tree": "760dbfd88cdb91270c86a59562de68450483120b",
++    "target_tree": "49be9d140539d4f7cb4c432ae2de7795202956bc",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0095-rpmsg-glink-hold-early-messages.patch b/patches/linux/7.3/0095-rpmsg-glink-hold-early-messages.patch
+diff --git a/patches/linux/7.3/0102-rpmsg-glink-hold-early-messages.patch b/patches/linux/7.3/0102-rpmsg-glink-hold-early-messages.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..4d95732301eb7f5776af90f3cabdeb75930f39c6
 GIT binary patch
@@ -96,32 +96,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index baa7b39..d0c415a 100644
+index c97f2c5..3a76a02 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "5e123af532541cf15b2032072e6ac6708d74449f",
+-  "target_tree": "760dbfd88cdb91270c86a59562de68450483120b",
 -  "original_target_commit": "44e358f4c6c37275dfb1142052981db2ea48fc7f",
-+  "target_tree": "9149949590aabe6c853393b71fc4fba589a19de2",
++  "target_tree": "49be9d140539d4f7cb4c432ae2de7795202956bc",
 +  "original_target_commit": "9d40b65c88b876e0618ca4408ffa5c6361cca111",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -759,6 +759,14 @@
+@@ -815,6 +815,14 @@
        "original_parent": "6c8e0c6dff33057fe64f9855d9fcf026abee9dd7",
        "committer_date": "2026-10-25T18:51:05+08:00",
-       "tree": "5e123af532541cf15b2032072e6ac6708d74449f"
+       "tree": "760dbfd88cdb91270c86a59562de68450483120b"
 +    },
 +    {
-+      "file": "0095-rpmsg-glink-hold-early-messages.patch",
++      "file": "0102-rpmsg-glink-hold-early-messages.patch",
 +      "sha256": "397f28bd9f788e02b9b1989412ad216847aeafc4fe5a80edfbb67cbcc5188f88",
 +      "original_commit": "9d40b65c88b876e0618ca4408ffa5c6361cca111",
 +      "original_parent": "44e358f4c6c37275dfb1142052981db2ea48fc7f",
 +      "committer_date": "2026-10-25T18:58:59+08:00",
-+      "tree": "9149949590aabe6c853393b71fc4fba589a19de2"
++      "tree": "49be9d140539d4f7cb4c432ae2de7795202956bc"
      }
    ],
    "provenance": {

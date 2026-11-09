@@ -19,19 +19,19 @@ byte-identical.
 series.json and config/release.json move their target_tree together.
 ---
 diff --git a/config/release.json b/config/release.json
-index 41e2ad7..682ec18 100644
+index f0a5c2a..8a87830 100644
 --- a/config/release.json
 +++ b/config/release.json
 @@ -8,7 +8,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "573e90c54711b54b6ae3751e935374106f3b4f2a",
-+    "target_tree": "831a5659eb1b785885321b4c248ffa67f580fd53",
+-    "target_tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93",
++    "target_tree": "b772d7a848ef993aed7e3f179104f89516828e8b",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0088-spi-geni-gpi-dma-deep-idle.patch b/patches/linux/7.3/0088-spi-geni-gpi-dma-deep-idle.patch
+diff --git a/patches/linux/7.3/0095-spi-geni-gpi-dma-deep-idle.patch b/patches/linux/7.3/0095-spi-geni-gpi-dma-deep-idle.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..4264a1279043ee7a919ea3ae7c7ef73f7443b0e9
 GIT binary patch
@@ -92,32 +92,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 201f767..99e84c4 100644
+index 306fbb3..5081075 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "573e90c54711b54b6ae3751e935374106f3b4f2a",
+-  "target_tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93",
 -  "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
-+  "target_tree": "831a5659eb1b785885321b4c248ffa67f580fd53",
++  "target_tree": "b772d7a848ef993aed7e3f179104f89516828e8b",
 +  "original_target_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -703,6 +703,14 @@
+@@ -759,6 +759,14 @@
        "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
        "committer_date": "2026-10-24T18:30:00+08:00",
-       "tree": "573e90c54711b54b6ae3751e935374106f3b4f2a"
+       "tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93"
 +    },
 +    {
-+      "file": "0088-spi-geni-gpi-dma-deep-idle.patch",
++      "file": "0095-spi-geni-gpi-dma-deep-idle.patch",
 +      "sha256": "8ccef216bbd292600a5ba08e9d3876b83b614a98e733465cbb6ca9eb9c6862ad",
 +      "original_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
 +      "original_parent": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
 +      "committer_date": "2026-10-25T03:50:00+08:00",
-+      "tree": "831a5659eb1b785885321b4c248ffa67f580fd53"
++      "tree": "b772d7a848ef993aed7e3f179104f89516828e8b"
      }
    ],
    "provenance": {

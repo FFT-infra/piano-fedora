@@ -51,7 +51,10 @@ def main():
     if sha256(restored / ".config") != record["config_sha256"]:
         raise ValueError("SDK configuration differs from the sealed kernel")
     sealed_config = (restored / ".config").read_text()
-    # 编译外部模块仍使用 Ubuntu 的同一 LLVM 工具链，Fedora 只编用户态程序。
+    # 编译外部模块使用 SunUEFI 固定下载的 LLVM 工具链（支持 -mtune=oryon-1），Fedora 只编用户态程序。
+    sys.path.insert(0, str(sun / "tools"))
+    from host import prepare_kernel_llvm
+    kernel_env = prepare_kernel_llvm.environment()
     build = sun / "build/kernels/fedora-runtime"
     build.mkdir(parents=True)
     shutil.copy2(restored / ".config", build / ".config")
@@ -61,7 +64,7 @@ def main():
     # 构建的。
     command = ["make", "-C", prepared["worktree"], "O=" + str(build),
                "ARCH=arm64", "LLVM=1", "LLVM_IAS=1", "LOCALVERSION="]
-    run([*command, "-j4", "modules_prepare"])
+    run([*command, "-j4", "modules_prepare"], env=kernel_env)
     after_config = (build / ".config").read_text()
     if comparable_config(after_config) != comparable_config(sealed_config):
         # syncconfig 会重写 .config；把差异打出来，否则只能看到一条哈希不符。
@@ -72,13 +75,13 @@ def main():
         raise ValueError("module preparation changed the kernel configuration:\n"
                          + "\n".join(list(changed)[:40]))
     uapi = output / "uapi"
-    run([*command, "headers_install", "INSTALL_HDR_PATH=" + str(uapi)])
+    run([*command, "headers_install", "INSTALL_HDR_PATH=" + str(uapi)], env=kernel_env)
     loop = output / "v4l2loopback"
     shutil.copytree(sun / "upstream/v4l2loopback", loop,
                     ignore=shutil.ignore_patterns(".git"))
-    run([*command, "-j4", "M=" + str(loop), "modules"])
+    run([*command, "-j4", "M=" + str(loop), "modules"], env=kernel_env)
     module = loop / "v4l2loopback.ko"
-    release = subprocess.check_output(["modinfo", "-F", "vermagic", str(module)], text=True)
+    release = subprocess.check_output(["modinfo", "-F", "vermagic", str(module)], text=True, env=kernel_env)
     if release.split()[0] != record["kernel_release"]:
         raise ValueError("external module vermagic differs from the selected kernel")
     proof = {"kernel_manifest_sha256": kernel_hash,
