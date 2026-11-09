@@ -1,4 +1,5 @@
 """固定来源的手指滤波校准与触控载荷，供标准构建和增量 RPM 复用。"""
+import difflib
 import importlib.util
 import json
 import shutil
@@ -68,11 +69,17 @@ def stage_payload(source, pin, payload, touch_proof, camera_proof, put, sha256, 
         # factory INI and demands the matrix file match byte for byte, so a
         # regenerated INI can never leave a stale calibration on the device.
         shipped = ROOT / "packages/xiaomi-piano-thp/usr/share/piano/touch" / f"piano-{lcd}.json"
-        generated = json.dumps(module.extract(ini), indent=2) + "\n"
+        extracted = module.extract(ini)
+        extracted.pop("pen", None)
+        generated = json.dumps(extracted, indent=2) + "\n"
         if not shipped.is_file():
             raise ValueError("matrix finger calibration is missing: " + str(shipped))
         if shipped.read_text() != generated:
-            raise ValueError("matrix finger calibration differs from the factory INI: " + shipped.name)
+            diff = "".join(difflib.unified_diff(
+                shipped.read_text().splitlines(keepends=True),
+                generated.splitlines(keepends=True),
+                fromfile=str(shipped), tofile="generated", n=3))
+            raise ValueError(f"matrix finger calibration differs from the factory INI: {shipped.name}\n{diff}")
         calibration[shipped.relative_to(ROOT / "packages/xiaomi-piano-thp").as_posix()] = sha256(shipped)
     wrapper = payload / "usr/lib/piano/touch-input"
     text = wrapper.read_text()
