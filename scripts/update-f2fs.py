@@ -26,6 +26,28 @@ def update_plan(upstream, device, bundle, root_install, boot, stock_boot):
     return plan, snapshot
 
 
+def wait_fastboot_enumerated(serial, runner=subprocess.run, attempts=120, delay=1):
+    """等原厂 bootloader 重新出现在 fastboot 里，不打开数据端点。
+
+    `fastboot -s <serial> getvar` 在设备出现前会一直等。旧代码给它 2 秒并循环
+    重试，原厂 bootloader 的 USB 重枚举实测要 8 秒，于是第一次调用就被杀掉；
+    被杀之后这条 USB 端点不再响应，后面 30 次重试全部超时，只能重置端口或
+    重新插拔（2026-11-09 真机复现）。`fastboot devices` 只读 USB 描述符，不会
+    碰到这个端点，用它轮询到设备出现，再发一次真正的 getvar。
+    """
+    for attempt in range(attempts):
+        try:
+            listing = runner(["fastboot", "devices"], capture_output=True, text=True, timeout=20).stdout
+        except subprocess.TimeoutExpired:
+            listing = ""
+        if any(line.split()[:1] == [serial] for line in listing.splitlines() if line.strip()):
+            return
+        if attempt == attempts - 1:
+            break
+        time.sleep(delay)
+    raise RuntimeError("factory fastboot did not enumerate: " + serial)
+
+
 def execute_update(upstream, device, plan, bundle, root_install, boot, stock_boot, session):
     fresh, snapshot = update_plan(upstream, device, bundle, root_install, boot, stock_boot)
     require(fresh == plan, "device, GPT, memory map, slot or inputs changed since the reviewed update plan")
@@ -53,15 +75,9 @@ def execute_update(upstream, device, plan, bundle, root_install, boot, stock_boo
     try:
         stage("current_gpt_inputs_and_memory_description_validated")
         device.reboot_bootloader()
-        # 工厂 bootloader 的 USB 重枚举；只等待有限时间，不扫描其他序列号。
-        for attempt in range(30):
-            try:
-                device.call(["fastboot", "-s", identity["factory_serial"], "getvar", "product"], timeout=2)
-                break
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                if attempt == 29:
-                    raise
-                time.sleep(1)
+        # 只等这一台序列号出现，不扫描其他设备。
+        wait_fastboot_enumerated(identity["factory_serial"])
+        device.call(["fastboot", "-s", identity["factory_serial"], "getvar", "product"])
         installer.factory(device, identity, slot)
         partitions = {row["name"]: row for row in plan["partition_plan"]["partitions"]}
         for name in plan["targets"]:
