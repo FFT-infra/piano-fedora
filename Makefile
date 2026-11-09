@@ -44,6 +44,7 @@ test:
 	python3 tests/check_sensor_runtime.py
 	python3 tests/check_ssc_retry.py
 	python3 tests/check_camerad_adapter.py
+	python3 tests/check_camera_start.py
 	python3 tests/check_ffmpeg_port.py
 	python3 tests/check_ffmpeg_install.py
 	python3 tests/check_initramfs.py

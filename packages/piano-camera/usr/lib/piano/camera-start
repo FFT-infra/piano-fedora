@@ -47,7 +47,11 @@ wait_bound() {
 [ "$CAMERA_START" = 1 ] || { say "disabled by /etc/piano/camera.conf"; exit 0; }
 
 [ -e "$CAMSS/iommu_group" ] || die 'CAMSS has no IOMMU group (apps SMMU not bound?)'
-echo DMA > "$CAMSS/iommu_group/type" || die 'cannot switch the CAMSS IOMMU group to DMA'
+# 7.3 上这个属性在内核把组放进 DMA 域之后不可写，root 也是 EPERM。只有组不在
+# DMA 域时才需要切换，先读当前值，避免把"已经是 DMA"当成失败。
+if [ "$(cat "$CAMSS/iommu_group/type")" != DMA ]; then
+    echo DMA > "$CAMSS/iommu_group/type" || die 'cannot switch the CAMSS IOMMU group to DMA'
+fi
 
 modprobe system_heap
 modprobe cambistmclkcc_sm8750
