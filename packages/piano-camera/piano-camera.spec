@@ -3,7 +3,7 @@
 
 Name:           piano-camera
 Version:        0.1.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Camera pipeline and NEON-accelerated v4l2loopback daemon for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -58,6 +58,10 @@ systemctl enable piano-camerad.service piano-camera.service || :
 %systemd_postun_with_restart piano-camerad.service piano-camera.service
 
 %changelog
+* Mon Nov 09 2026 FFT-infra <dev@piano.invalid> - 0.1.0-3
+- camera-start 只在 IOMMU 组不是 DMA 时才写 type（7.3 上该属性已只读，
+  已是 DMA 时写入返回 EPERM，旧逻辑让 piano-camera 在真机上 failed）
+
 * Mon Oct 20 2026 FFT-infra <dev@piano.invalid> - 0.1.0-2
 - 收纳 Fedora 侧两个 camerad 补丁（GCC 边界检查、相机自有 source pad 路由），
   运行时不再另建一份同名二进制
