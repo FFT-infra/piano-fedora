@@ -55,7 +55,8 @@ def main():
     meta.write_text(json.dumps(record, indent=2) + "\n")
     # Preserve the base package's dependency contract, including soname requirements.
     requirements = subprocess.check_output(["rpm", "-qp", "--requires", str(args.base_rpm)], text=True).splitlines()
-    builder.rpm_package("piano-runtime", payload, args.output, version="0.2.0",
+    builder.rpm_package("piano-runtime", payload, args.output,
+                        version=builder.RUNTIME_VERSION, release=builder.RUNTIME_RELEASE,
                         requires=tuple(r for r in requirements if not r.startswith("rpmlib(")))
     record["rpms"] = {p.name: sha256(p) for p in (args.output / "rpms").glob("*.rpm")}
     (args.output / "manifest.json").write_text(json.dumps(record, indent=2) + "\n")
