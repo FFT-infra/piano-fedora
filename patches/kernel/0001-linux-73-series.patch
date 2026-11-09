@@ -29,19 +29,19 @@ context lines as a single space, and apply-patches.py applies with
 --whitespace=error-all.
 ---
 diff --git a/config/release.json b/config/release.json
-index dac87b9..41e2ad7 100644
+index e1accd8..f0a5c2a 100644
 --- a/config/release.json
 +++ b/config/release.json
 @@ -8,7 +8,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "f5a4532aafb6e75a362a459340b1b9161104efe8",
-+    "target_tree": "573e90c54711b54b6ae3751e935374106f3b4f2a",
+-    "target_tree": "b0da508a1d10b5cfccb2ab93fa1c9a4177dedae8",
++    "target_tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0084-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0084-dpu-defer-slave-cleanup.patch
+diff --git a/patches/linux/7.3/0091-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0091-dpu-defer-slave-cleanup.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..3ced082b1f0c352588cfd77ebb7a8ea87c56c1a8
 GIT binary patch
@@ -95,7 +95,7 @@ ONK^nzflLH7*SG-M^>wrW
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0085-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0085-media-iris-decode-order-and-deblocking.patch
+diff --git a/patches/linux/7.3/0092-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0092-media-iris-decode-order-and-deblocking.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..53cb09ca783d72eed5c4a1ddd432894189ed1d4c
 GIT binary patch
@@ -195,7 +195,7 @@ M@rCgqG0?Ou0CZ1{cmMzZ
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0086-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0086-asoc-piano-speaker-gain-limit.patch
+diff --git a/patches/linux/7.3/0093-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0093-asoc-piano-speaker-gain-limit.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..494a46d46902ebc2cec68f7df62d4f1ddc844331
 GIT binary patch
@@ -238,7 +238,7 @@ wiXlB{az-!M6>PERA+#ib&4}E@3I$tGGYsqyP@x2k4-7N&QsSXfI?y5?0DRWp`v3p{
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0087-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0087-input-nt36532e-panel-vendor-misc.patch
+diff --git a/patches/linux/7.3/0094-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0094-input-nt36532e-panel-vendor-misc.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..26ff15244da36746589b6bca3323bc50305cc83a
 GIT binary patch
@@ -300,56 +300,56 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index d961152..201f767 100644
+index 3284aca..306fbb3 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "f5a4532aafb6e75a362a459340b1b9161104efe8",
--  "original_target_commit": "0edf3c66a47a10e5e1d83be9fdb7b11303f250d7",
-+  "target_tree": "573e90c54711b54b6ae3751e935374106f3b4f2a",
+-  "target_tree": "b0da508a1d10b5cfccb2ab93fa1c9a4177dedae8",
+-  "original_target_commit": "190da1bb63c1ef6c1291b314ae26eddc41b3c1ef",
++  "target_tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93",
 +  "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -671,6 +671,38 @@
-       "original_parent": "a20312b35e10bf3b903da5add40b9bbe1bcdca2d",
-       "committer_date": "2026-11-10T00:31:39+08:00",
-       "tree": "f5a4532aafb6e75a362a459340b1b9161104efe8"
+@@ -727,6 +727,38 @@
+       "original_parent": "d8be4a4706d5968384bee179522c84be0a661f42",
+       "committer_date": "2026-11-10T02:45:01+08:00",
+       "tree": "b0da508a1d10b5cfccb2ab93fa1c9a4177dedae8"
 +    },
 +    {
-+      "file": "0084-dpu-defer-slave-cleanup.patch",
++      "file": "0091-dpu-defer-slave-cleanup.patch",
 +      "sha256": "bc4ec8c9803116f39be6a06c6987c21b7f0ae633f413cdb24707b828e15c8fa5",
 +      "original_commit": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
-+      "original_parent": "0edf3c66a47a10e5e1d83be9fdb7b11303f250d7",
++      "original_parent": "190da1bb63c1ef6c1291b314ae26eddc41b3c1ef",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "5abffd9ad2a8a039a2076496a6b33400994ee3f9"
++      "tree": "c684ed1fb144761295ffe90b09cddf68393c2a30"
 +    },
 +    {
-+      "file": "0085-media-iris-decode-order-and-deblocking.patch",
++      "file": "0092-media-iris-decode-order-and-deblocking.patch",
 +      "sha256": "a5b907999a2313f310a32ac78fc10c25cce57ecd08cc2b3bbdb1441479e97667",
 +      "original_commit": "596c454653862c3007cb16b40b496230b213f6fb",
 +      "original_parent": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "56037f69116de9f37dc1d5e0b18b28718cfc995a"
++      "tree": "a1999a40dcb67457fde424a311936943f93aa9bf"
 +    },
 +    {
-+      "file": "0086-asoc-piano-speaker-gain-limit.patch",
++      "file": "0093-asoc-piano-speaker-gain-limit.patch",
 +      "sha256": "0f44f724d277efbb92caf40fdf1f2905cb5158997b44af3c98d113d001c3ac33",
 +      "original_commit": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "original_parent": "596c454653862c3007cb16b40b496230b213f6fb",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "3fc54f475966ee5ea9618f2d22dbb3019b324cb6"
++      "tree": "124d0fd5b883920a5e538fc95c870b6de1bec3f7"
 +    },
 +    {
-+      "file": "0087-input-nt36532e-panel-vendor-misc.patch",
++      "file": "0094-input-nt36532e-panel-vendor-misc.patch",
 +      "sha256": "a345e5f1227f3ef200d3a7c1d9f152d01bc8d50896ec1b2b5572e5024c8d0bdf",
 +      "original_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
 +      "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "committer_date": "2026-10-24T18:30:00+08:00",
-+      "tree": "573e90c54711b54b6ae3751e935374106f3b4f2a"
++      "tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93"
      }
    ],
    "provenance": {

@@ -1,17 +1,17 @@
 diff --git a/config/release.json b/config/release.json
-index 689ad93..9fd1b38 100644
+index 4edf2ad..06aff07 100644
 --- a/config/release.json
 +++ b/config/release.json
 @@ -8,7 +8,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "9149949590aabe6c853393b71fc4fba589a19de2",
-+    "target_tree": "620276444b711d1a3901360ea03ce6fbce4d3806",
+-    "target_tree": "49be9d140539d4f7cb4c432ae2de7795202956bc",
++    "target_tree": "a048fb4110ac44e820ca85f1868e3a463b0027df",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0096-soc-apr-gpr-callback-before-probe.patch b/patches/linux/7.3/0096-soc-apr-gpr-callback-before-probe.patch
+diff --git a/patches/linux/7.3/0103-soc-apr-gpr-callback-before-probe.patch b/patches/linux/7.3/0103-soc-apr-gpr-callback-before-probe.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..66fdda6078ffecd8b3ce059dbc2444898e82fe3d
 GIT binary patch
@@ -40,7 +40,7 @@ yaOrZAU?^B0s6gS;#-YtG)W-*ulEAi?7UhA;DQhl;S}t8(1ui2!QxiP{E-nC%is%CX
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0097-scsi-ufs-skip-refused-health-critical.patch b/patches/linux/7.3/0097-scsi-ufs-skip-refused-health-critical.patch
+diff --git a/patches/linux/7.3/0104-scsi-ufs-skip-refused-health-critical.patch b/patches/linux/7.3/0104-scsi-ufs-skip-refused-health-critical.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..1bd2f8c6e4c92a191992f2c752c176530b7becb1
 GIT binary patch
@@ -81,7 +81,7 @@ O0+*4VsfnHe7Z(8RS{+*e
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0098-ath12k-wcn7860-disable-qdss-cfg-miss.patch b/patches/linux/7.3/0098-ath12k-wcn7860-disable-qdss-cfg-miss.patch
+diff --git a/patches/linux/7.3/0105-ath12k-wcn7860-disable-qdss-cfg-miss.patch b/patches/linux/7.3/0105-ath12k-wcn7860-disable-qdss-cfg-miss.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..059d3ea4b85865cbb9547c8517b7f6f9fd64b4fe
 GIT binary patch
@@ -116,7 +116,7 @@ wC~$%RvSp~52y79^N1zZWO3Tj7$%!w>%u}#cFwo)B)m7j!(la&DGvML^0RQJ!DgXcg
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0099-drm-a6xx-rpmh-dependency-votes.patch b/patches/linux/7.3/0099-drm-a6xx-rpmh-dependency-votes.patch
+diff --git a/patches/linux/7.3/0106-drm-a6xx-rpmh-dependency-votes.patch b/patches/linux/7.3/0106-drm-a6xx-rpmh-dependency-votes.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..e4eddeb97e93f132cabf1b68d3ba03027e487fa4
 GIT binary patch
@@ -150,7 +150,7 @@ Oz-6RoYNBVr#RUL%D#Z8z
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0100-ath12k-scan-during-recovery.patch b/patches/linux/7.3/0100-ath12k-scan-during-recovery.patch
+diff --git a/patches/linux/7.3/0107-ath12k-scan-during-recovery.patch b/patches/linux/7.3/0107-ath12k-scan-during-recovery.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..e66da3e9de3d5879b72bbb5bd6f910cfc14f456c
 GIT binary patch
@@ -198,7 +198,7 @@ mV6c-EK_Xy7G`SQw5jOex`?~sCbLr|Ta2e^Dn&=sDaRC4!1Ft6l
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0101-mptcp-timer-ival-reset.patch b/patches/linux/7.3/0101-mptcp-timer-ival-reset.patch
+diff --git a/patches/linux/7.3/0108-mptcp-timer-ival-reset.patch b/patches/linux/7.3/0108-mptcp-timer-ival-reset.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..5cd2c73c0cd9015445b7092c6b6619685f280a8b
 GIT binary patch
@@ -226,7 +226,7 @@ qm|LJ=t6%_9hRbx2MqN9I`Jk`>>nzf==F-(w;4;!PHPJKR;sO9QZnEzH
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0102-drm-dpu-crtc-bandwidth-from-state.patch b/patches/linux/7.3/0102-drm-dpu-crtc-bandwidth-from-state.patch
+diff --git a/patches/linux/7.3/0109-drm-dpu-crtc-bandwidth-from-state.patch b/patches/linux/7.3/0109-drm-dpu-crtc-bandwidth-from-state.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..170a23190fdb1b2a9f1989f269c3217b264f3883
 GIT binary patch
@@ -277,7 +277,7 @@ ad%R<azptmW2A8g`0+*4VsfnHe7Z(7n8?EvH
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0103-iris-guard-null-hfi-sys-ops.patch b/patches/linux/7.3/0103-iris-guard-null-hfi-sys-ops.patch
+diff --git a/patches/linux/7.3/0110-iris-guard-null-hfi-sys-ops.patch b/patches/linux/7.3/0110-iris-guard-null-hfi-sys-ops.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..9323c87f98d5ddefc497f48dd44c0d1a0acaf58f
 GIT binary patch
@@ -309,7 +309,7 @@ wv#wocUP)1WaY<rHX|X2A=bVtDAwILHP$RRbP}7=AS66|{NYB(n&wz^y0NKx8SpWb4
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0104-iris-cancel-sys-error-work.patch b/patches/linux/7.3/0104-iris-cancel-sys-error-work.patch
+diff --git a/patches/linux/7.3/0111-iris-cancel-sys-error-work.patch b/patches/linux/7.3/0111-iris-cancel-sys-error-work.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..d79c31c89dced35ce65225ddfc84d973b69db9dc
 GIT binary patch
@@ -339,7 +339,7 @@ fE77$pOGzz@Pf1PIwC2*)Rp2txGd0mO;Nk)R&}8sM
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0105-iris-disable-irq-nosync.patch b/patches/linux/7.3/0105-iris-disable-irq-nosync.patch
+diff --git a/patches/linux/7.3/0112-iris-disable-irq-nosync.patch b/patches/linux/7.3/0112-iris-disable-irq-nosync.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..013ad0ee1f2a10935a7edc3a75489482d56dcf20
 GIT binary patch
@@ -368,7 +368,7 @@ WlUk&K%P+dR3S35drY3p@TwDNk4gPKb
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0106-drm-dpu-mdss-kernel-doc.patch b/patches/linux/7.3/0106-drm-dpu-mdss-kernel-doc.patch
+diff --git a/patches/linux/7.3/0113-drm-dpu-mdss-kernel-doc.patch b/patches/linux/7.3/0113-drm-dpu-mdss-kernel-doc.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..386a79b6d90ce57570e86e6bf37790c673b167d2
 GIT binary patch
@@ -396,7 +396,7 @@ WveY6_n$y));4;!PHPJKR;sOA#vjMXJ
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0107-dt-bindings-regdma-conditional.patch b/patches/linux/7.3/0107-dt-bindings-regdma-conditional.patch
+diff --git a/patches/linux/7.3/0114-dt-bindings-regdma-conditional.patch b/patches/linux/7.3/0114-dt-bindings-regdma-conditional.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..aff04a6294ac0c0ecb3e5beb39a68ad95c520cf8
 GIT binary patch
@@ -420,7 +420,7 @@ tAkTml78K=U`k^Q_9mz)u3b~0Do+YWd#a0SNT)MgnTt<4PCVB>3TmVe(dr|-Z
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0108-usb-ucsi-connector-before-notify.patch b/patches/linux/7.3/0108-usb-ucsi-connector-before-notify.patch
+diff --git a/patches/linux/7.3/0115-usb-ucsi-connector-before-notify.patch b/patches/linux/7.3/0115-usb-ucsi-connector-before-notify.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..59bfd864f28131a21a1a414e5036358295f774c1
 GIT binary patch
@@ -462,7 +462,7 @@ V6*57_>FO$Q8R?mt=oxTv0RZx&niT*5
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0109-drm-dp-link-training-after-reinit.patch b/patches/linux/7.3/0109-drm-dp-link-training-after-reinit.patch
+diff --git a/patches/linux/7.3/0116-drm-dp-link-training-after-reinit.patch b/patches/linux/7.3/0116-drm-dp-link-training-after-reinit.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..86b5f18040a0dbc1324fbcfc094711fc8554a73d
 GIT binary patch
@@ -494,7 +494,7 @@ LdZs3N23%YK1+foT
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0110-drm-dp-serialize-hpd-state.patch b/patches/linux/7.3/0110-drm-dp-serialize-hpd-state.patch
+diff --git a/patches/linux/7.3/0117-drm-dp-serialize-hpd-state.patch b/patches/linux/7.3/0117-drm-dp-serialize-hpd-state.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..b61e1b2c6c57003f97a47fae122789ce828db6d4
 GIT binary patch
@@ -531,7 +531,7 @@ GaRC6a>g4YL
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0111-qcom-tzmem-do-once-sleepable.patch b/patches/linux/7.3/0111-qcom-tzmem-do-once-sleepable.patch
+diff --git a/patches/linux/7.3/0118-qcom-tzmem-do-once-sleepable.patch b/patches/linux/7.3/0118-qcom-tzmem-do-once-sleepable.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..02747b74e0bbf582332ffd8b9545fe970ff4b79b
 GIT binary patch
@@ -575,7 +575,7 @@ QbafTDjPy)R^bEMT0AuKRIsgCw
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0112-clk-rpm-enable-before-orphans.patch b/patches/linux/7.3/0112-clk-rpm-enable-before-orphans.patch
+diff --git a/patches/linux/7.3/0119-clk-rpm-enable-before-orphans.patch b/patches/linux/7.3/0119-clk-rpm-enable-before-orphans.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..d6d5163ce2173db8e6f2029e26d3f20575a58b69
 GIT binary patch
@@ -607,7 +607,7 @@ n<~ms8Afp`NIVwg&c6<g>;WZi|pfsqftH5QXXKJEnz{Ldsu!N7o
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0113-phy-qmp-combo-typec-mux-committed.patch b/patches/linux/7.3/0113-phy-qmp-combo-typec-mux-committed.patch
+diff --git a/patches/linux/7.3/0120-phy-qmp-combo-typec-mux-committed.patch b/patches/linux/7.3/0120-phy-qmp-combo-typec-mux-committed.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..06f0697ac7761939edf04752a518d32e8c1ddee8
 GIT binary patch
@@ -668,168 +668,168 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index d0c415a..47817d0 100644
+index 3a76a02..d5a6fc6 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "9149949590aabe6c853393b71fc4fba589a19de2",
+-  "target_tree": "49be9d140539d4f7cb4c432ae2de7795202956bc",
 -  "original_target_commit": "9d40b65c88b876e0618ca4408ffa5c6361cca111",
-+  "target_tree": "620276444b711d1a3901360ea03ce6fbce4d3806",
++  "target_tree": "a048fb4110ac44e820ca85f1868e3a463b0027df",
 +  "original_target_commit": "f8f655de8cd43ded8afacb38a04b67bf69595d47",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -767,6 +767,150 @@
+@@ -823,6 +823,150 @@
        "original_parent": "44e358f4c6c37275dfb1142052981db2ea48fc7f",
        "committer_date": "2026-10-25T18:58:59+08:00",
-       "tree": "9149949590aabe6c853393b71fc4fba589a19de2"
+       "tree": "49be9d140539d4f7cb4c432ae2de7795202956bc"
 +    },
 +    {
-+      "file": "0096-soc-apr-gpr-callback-before-probe.patch",
++      "file": "0103-soc-apr-gpr-callback-before-probe.patch",
 +      "sha256": "0fc9a8ecc9920d1b4f72efda80d76f556779d25b7644accb0f856554d05b159b",
 +      "original_commit": "34b7d8b8b44499290f4911dd23935abed1d6920f",
 +      "original_parent": "9d40b65c88b876e0618ca4408ffa5c6361cca111",
 +      "committer_date": "2026-10-25T19:08:48+08:00",
-+      "tree": "922f1639f2d03e16902be9e9266d38b3910db130"
++      "tree": "0b259ba5a4c92a294efc30069afe41191a492ded"
 +    },
 +    {
-+      "file": "0097-scsi-ufs-skip-refused-health-critical.patch",
++      "file": "0104-scsi-ufs-skip-refused-health-critical.patch",
 +      "sha256": "2df941d4fc824f7527032405d42295495f394776fba73d393869253937eaa8cf",
 +      "original_commit": "fa46a88f9ac3f1078bc28261b6c61ca0638e9033",
 +      "original_parent": "34b7d8b8b44499290f4911dd23935abed1d6920f",
 +      "committer_date": "2026-10-25T19:08:48+08:00",
-+      "tree": "54b8fdade7fe8fc51f20ce3dd026069c2e85c5b4"
++      "tree": "d79ce0201cc05c06ece4a7578d8924c4e57a6183"
 +    },
 +    {
-+      "file": "0098-ath12k-wcn7860-disable-qdss-cfg-miss.patch",
++      "file": "0105-ath12k-wcn7860-disable-qdss-cfg-miss.patch",
 +      "sha256": "dc5263b3cbd45040c75b74b2cdfaf4f90b69586ef29431242bfc03cbd75d53df",
 +      "original_commit": "b490a5ca8c89c054689b9e9ca55ade8233e813e5",
 +      "original_parent": "fa46a88f9ac3f1078bc28261b6c61ca0638e9033",
 +      "committer_date": "2026-10-25T19:08:48+08:00",
-+      "tree": "b7c2bfdb944966aafa5cf1171ed788587e2161fd"
++      "tree": "14687fb7627fc3e48d0bfc49086298e514bcb598"
 +    },
 +    {
-+      "file": "0099-drm-a6xx-rpmh-dependency-votes.patch",
++      "file": "0106-drm-a6xx-rpmh-dependency-votes.patch",
 +      "sha256": "c0751462d5ac94a8a6a46dba163b126e8de7955e902a5b472b71495788395c50",
 +      "original_commit": "5d1f4bbf74ee4009cdec638393d10c7d440b48a5",
 +      "original_parent": "b490a5ca8c89c054689b9e9ca55ade8233e813e5",
 +      "committer_date": "2026-10-25T19:08:48+08:00",
-+      "tree": "01296e9b29aa7f7b09a4f7da08e0ae383499d3d6"
++      "tree": "e70ddb6e608c0e937bb8a08dee4b506c20b3ffe9"
 +    },
 +    {
-+      "file": "0100-ath12k-scan-during-recovery.patch",
++      "file": "0107-ath12k-scan-during-recovery.patch",
 +      "sha256": "1b9d6bfeeb4feb84c4402f0f538ee3ed2eaee8fac895452597e84b6c193b0d23",
 +      "original_commit": "1d3e678e3d5e46b7d11f85f25e294280ce2835cf",
 +      "original_parent": "5d1f4bbf74ee4009cdec638393d10c7d440b48a5",
 +      "committer_date": "2026-10-25T19:08:48+08:00",
-+      "tree": "e2158b6809f354f64a8789837d7491ecd1915467"
++      "tree": "736e2dda8123058c1039c67bda22b0344204866f"
 +    },
 +    {
-+      "file": "0101-mptcp-timer-ival-reset.patch",
++      "file": "0108-mptcp-timer-ival-reset.patch",
 +      "sha256": "6cce3267879df91dd7e1c23adb7639d9c0073570a0af2a20ed57f8b71fd4feaf",
 +      "original_commit": "2f9b8a403597cac70b82bb1ee99e5411dd283edc",
 +      "original_parent": "1d3e678e3d5e46b7d11f85f25e294280ce2835cf",
 +      "committer_date": "2026-10-25T19:08:48+08:00",
-+      "tree": "1968faeaec33201fe77c229cca0e3b3a93ff4790"
++      "tree": "13429ab13518c16aee0dff19f0b8f12a91e4e862"
 +    },
 +    {
-+      "file": "0102-drm-dpu-crtc-bandwidth-from-state.patch",
++      "file": "0109-drm-dpu-crtc-bandwidth-from-state.patch",
 +      "sha256": "caf542524362342f57f4bd82c31ee47eeff5b03520b17fb7c37d037266379b5c",
 +      "original_commit": "94f2cd2bc0f9efe6ca51cfb14c03803a85e5dad1",
 +      "original_parent": "2f9b8a403597cac70b82bb1ee99e5411dd283edc",
 +      "committer_date": "2026-10-25T19:08:48+08:00",
-+      "tree": "ecb5751ff71857d7691625c5a7e277ec7019673b"
++      "tree": "85f5c762e313491e6f8f8ecc3f1e102ec858e833"
 +    },
 +    {
-+      "file": "0103-iris-guard-null-hfi-sys-ops.patch",
++      "file": "0110-iris-guard-null-hfi-sys-ops.patch",
 +      "sha256": "ccf4c2f887ad7899b31e7f14f53a0de6c8e4dcf058e330c18977e8e2d57bf6a8",
 +      "original_commit": "693c3f76eb973f42404150bb64c35b0b1ebd6870",
 +      "original_parent": "94f2cd2bc0f9efe6ca51cfb14c03803a85e5dad1",
 +      "committer_date": "2026-10-25T19:08:48+08:00",
-+      "tree": "fb544112aeebeb8e63766cfd84e627985d07e92f"
++      "tree": "2365175a61b8b0e0a9aec70cc40106861d0e8920"
 +    },
 +    {
-+      "file": "0104-iris-cancel-sys-error-work.patch",
++      "file": "0111-iris-cancel-sys-error-work.patch",
 +      "sha256": "ee20fd53c785705f5a099fdfdd7c8bdac0542a6a927a39e299c3afd19e2b907c",
 +      "original_commit": "91588ab8d831be5b405f77c69a3322d6d2a7e613",
 +      "original_parent": "693c3f76eb973f42404150bb64c35b0b1ebd6870",
 +      "committer_date": "2026-10-25T19:08:48+08:00",
-+      "tree": "7ba7d13454a5485271728dda90730a9978aff177"
++      "tree": "d7ee4cd875bf3053c732d84ab233aec2fe10c5da"
 +    },
 +    {
-+      "file": "0105-iris-disable-irq-nosync.patch",
++      "file": "0112-iris-disable-irq-nosync.patch",
 +      "sha256": "e9107823c4a17441c68fe0b2dc0e90d7a747105ddd8cf21cd6ef7ac0127718ff",
 +      "original_commit": "206983d95d4ddb0c262d31dd3103807c7da9fe2a",
 +      "original_parent": "91588ab8d831be5b405f77c69a3322d6d2a7e613",
 +      "committer_date": "2026-10-25T19:08:48+08:00",
-+      "tree": "b07f786591c1241ee294147dba067da47a727c68"
++      "tree": "cd8cf645b23e524d14bd428e9cae9da569231b1b"
 +    },
 +    {
-+      "file": "0106-drm-dpu-mdss-kernel-doc.patch",
++      "file": "0113-drm-dpu-mdss-kernel-doc.patch",
 +      "sha256": "51409f9be9b7bc0bb47fba5ef44e48b7062693f121ac6a86b40a5399d5e62613",
 +      "original_commit": "0d257a20b1de34e3d7a5e6d13a5d691a6283a929",
 +      "original_parent": "206983d95d4ddb0c262d31dd3103807c7da9fe2a",
 +      "committer_date": "2026-10-25T19:08:48+08:00",
-+      "tree": "f6ef43e376bcf6bd84b5a112bcbea3d576ece3cd"
++      "tree": "bb93a30aef21bffdba57cb8958a0761e21947249"
 +    },
 +    {
-+      "file": "0107-dt-bindings-regdma-conditional.patch",
++      "file": "0114-dt-bindings-regdma-conditional.patch",
 +      "sha256": "ba0acb53d0bffe21a5eb3ae7a8dd00fdc8eb265d6d99b48c83088d2ba5e9651b",
 +      "original_commit": "0cc236ef611c723c7d6b2a4a1a1ab62cb0e705ee",
 +      "original_parent": "0d257a20b1de34e3d7a5e6d13a5d691a6283a929",
 +      "committer_date": "2026-10-25T19:08:49+08:00",
-+      "tree": "b4ad4e80cf3ef6cde5f7957e895a10d4c05c6a8b"
++      "tree": "419a698b4b3bc273226923466f01a5998d3553b4"
 +    },
 +    {
-+      "file": "0108-usb-ucsi-connector-before-notify.patch",
++      "file": "0115-usb-ucsi-connector-before-notify.patch",
 +      "sha256": "ce0bef8806fcc1af213c6308e74a97a19125d330131446c35ad4054a742cf92a",
 +      "original_commit": "803d70201aab1541fcf171d461c17414b4e3db71",
 +      "original_parent": "0cc236ef611c723c7d6b2a4a1a1ab62cb0e705ee",
 +      "committer_date": "2026-10-25T19:08:49+08:00",
-+      "tree": "05d87c0dc6f5647254cdf22d6fbb8caf5d01028c"
++      "tree": "4779ecb1cabe7f0780c12ba29055a7167f5e4c3f"
 +    },
 +    {
-+      "file": "0109-drm-dp-link-training-after-reinit.patch",
++      "file": "0116-drm-dp-link-training-after-reinit.patch",
 +      "sha256": "26b2ed92294c8ad7541f3b41768cda5a9d575dcb497b34dc31ab3db7dd6b1769",
 +      "original_commit": "90fa8f01d093c981a0b21a9bbad6b91c0b68d095",
 +      "original_parent": "803d70201aab1541fcf171d461c17414b4e3db71",
 +      "committer_date": "2026-10-25T19:08:49+08:00",
-+      "tree": "46beaf9e0c88d55ec6b5c3e284eb2631ed811c7b"
++      "tree": "b520b9a3fa69458b62b62ebc7e33413a64fc4328"
 +    },
 +    {
-+      "file": "0110-drm-dp-serialize-hpd-state.patch",
++      "file": "0117-drm-dp-serialize-hpd-state.patch",
 +      "sha256": "765dbbe6aaf5cb10e4e9e30bd25f1e4196f1a3147eb72d7ed609d45a09e34dd8",
 +      "original_commit": "da614c1204a0a636d6036bfaa027498a8fe576d3",
 +      "original_parent": "90fa8f01d093c981a0b21a9bbad6b91c0b68d095",
 +      "committer_date": "2026-10-25T19:08:49+08:00",
-+      "tree": "c91a5d872327b5091626bee6991b6415da0a44d6"
++      "tree": "5a22d8bb77a34686d2ea824084e6df2da9822023"
 +    },
 +    {
-+      "file": "0111-qcom-tzmem-do-once-sleepable.patch",
++      "file": "0118-qcom-tzmem-do-once-sleepable.patch",
 +      "sha256": "31f3bf7c20f79e81403108a4ce604c72ec0d4635e1664d378ff0dff96fdce2c6",
 +      "original_commit": "54ef9562f6f11bb762d19c55df324dffe30c4d43",
 +      "original_parent": "da614c1204a0a636d6036bfaa027498a8fe576d3",
 +      "committer_date": "2026-10-25T19:08:49+08:00",
-+      "tree": "7b523fa6a205e57d6b6c0a58fe2de331c38f7ebd"
++      "tree": "23b928293e007dab0eac00b0d342e85e93558b7c"
 +    },
 +    {
-+      "file": "0112-clk-rpm-enable-before-orphans.patch",
++      "file": "0119-clk-rpm-enable-before-orphans.patch",
 +      "sha256": "4fd368f3a7fdd5d88d2d51aeb8dde56d310c65ecbc480e1b9a7a94ce2e02db73",
 +      "original_commit": "ac7353d78cc6b7e48683862e4cb6643be97267c5",
 +      "original_parent": "54ef9562f6f11bb762d19c55df324dffe30c4d43",
 +      "committer_date": "2026-10-25T19:08:49+08:00",
-+      "tree": "fdfe39e29085e1efbb29b2a261ad111d2ba23345"
++      "tree": "ad47b9ec8ced693af39e8b0fcf3ba13723b61894"
 +    },
 +    {
-+      "file": "0113-phy-qmp-combo-typec-mux-committed.patch",
++      "file": "0120-phy-qmp-combo-typec-mux-committed.patch",
 +      "sha256": "0ea12aea3bff133f49202955ae49eca11d039e14422c15c0552d5e75a632984c",
 +      "original_commit": "f8f655de8cd43ded8afacb38a04b67bf69595d47",
 +      "original_parent": "ac7353d78cc6b7e48683862e4cb6643be97267c5",
 +      "committer_date": "2026-10-25T19:08:49+08:00",
-+      "tree": "620276444b711d1a3901360ea03ce6fbce4d3806"
++      "tree": "a048fb4110ac44e820ca85f1868e3a463b0027df"
      }
    ],
    "provenance": {

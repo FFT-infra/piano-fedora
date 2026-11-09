@@ -51,17 +51,17 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 ### 2026-11-10
 
-四个 pin 一起推进：`sunuefi` `8b0fc42` → `61b6c592`，`fastrpc` `a56e9d4` → `8f59273`，`crosvm` `f0880b3` → `deac401`，`piano-integration` `9e3d127` → `e49a960`。后三个只动文档与一个头文件的安装，`make test` 能覆盖。SunUEFI 这一段有 108 个提交、300 个文件，下面逐条记账。
+四个 pin 一起推进：`sunuefi` `8b0fc42` → `4ef8740`，`fastrpc` `a56e9d4` → `8f59273`，`crosvm` `f0880b3` → `deac401`，`piano-integration` `9e3d127` → `e49a960`。后三个只动文档与一个头文件的安装，`make test` 能覆盖。SunUEFI 这一段包含内核 LLVM 23 + ThinLTO/O3、普通 Focus Pen 支持（#16/b8f2bf9）、充电热管理接口（f346521）与构建命名空间隔离（4ef8740），下面逐条记账。
 
-内核侧换的是编译方式，不是硬件描述：`localversion` 变成 `-piano-sunuefi-cachy-optimize`，内核打开 `CC_OPTIMIZE_FOR_PERFORMANCE_O3`、`LTO_CLANG_THIN` 与 `CONFIG_ARM64_PIANO_OPTIMIZE`，工具链固定到 LLVM 23.1.5，由 `tools/host/prepare_kernel_llvm.py` 按 `config/kernel-llvm.json` 的摘要下载。
+内核侧换的是编译方式，不是硬件描述：`localversion` 变成 `-piano-sunuefi-cachy-optimize`，内核打开 `CC_OPTIMIZE_FOR_PERFORMANCE_O3`、`LTO_CLANG_THIN` 与 `CONFIG_ARM64_PIANO_OPTIMIZE`，工具链固定到 LLVM 23.1.5，由 `tools/host/prepare_kernel_llvm.py` 按 `config/kernel-llvm.json` 的摘要下载。外部模块编译（`scripts/prepare-runtime-kernel.py`）同步接入该环境，解决系统自带 clang 不认 `-mtune=oryon-1` 的问题。
 
-`patches/linux/7.3/series.json` 的上游行从 83 条变到 83 条加我们自己的 38 条（编号 `0042`–`0079` 让位给上游，改排 `0084`–`0121`）。新的 `target_tree` 是 `39ecc3be`，末行 `original_commit` `7c8ebb24` 成为顶层的 `original_target_commit`。重放逐行核过：83 条上游行的 tree 与声明一致，我们的 38 条在新 base 上 `git am --whitespace=error` 通过。其中 `0091`（spi-geni-gpi-dma-deep-idle）撞上上游 `0043` 重写的同一段，按原意图逐处重贴；`0093`（电量计）在上游加了认证逻辑之后与我们的 suspend/resume 守卫冲突，两边意图合并。
+`patches/linux/7.3/series.json` 的上游行增长到 90 条（含 7 条充电降流与热管理补丁），上游 base 树落到 `b0da508a`。我们的 38 条编号排为 `0091`–`0128`，最终 `target_tree` 是 `7b57d862`，末行 `original_commit` `7c8ebb24` 成为顶层的 `original_target_commit`。我们的 38 条无冲突合入新 base。
 
-`patches/kernel` 的七段按新的段边界重新生成，`targets` 换成新补丁的前像摘要，`creates` 覆盖 `0084`–`0121`。另外五组补丁（`android-module`、`kernel-f2fs`、`kernel-gunyah`、`kernel-snd-seq`、`packaging-overlays`、`uefi-live-*`）只换 `base.sunuefi_commit` 并重生成，意图没变。
+`patches/kernel` 的七段按新的段边界重新生成，`targets` 换成新补丁的前像摘要，`creates` 覆盖 `0091`–`0128`。另外五组补丁（`android-module`、`kernel-f2fs`、`kernel-gunyah`、`kernel-snd-seq`、`packaging-overlays`、`uefi-live-*`）只换 `base.sunuefi_commit` 并重生成，意图没变。
 
 DTB overlay 从 18 个补到 22 个，`build-bundle.yml` 按 `release.json` 的顺序补了 `piano-pcie-clocks`、`piano-battery`、`piano-camera-sensors`、`piano-display-interconnects`。固件叠层多出 `piano-display` 一份，它的 `manifest.json` 带 `directory: qcom/sm8750`，`firmware-overlays.py` 原来一律平铺到根目录，这次改成读清单里的落点。
 
-已核：`scripts/apply-patches.py --check` 在 `61b6c592` 的干净 clone 上给出 `CHECKED`，套到夹具上给出 `APPLIED`；`make test` 全绿。未核：新 pin 上的整条构建链、LLVM 23 下载与 ThinLTO 的实际耗时、四个新 overlay 与 `-optimize` 内核在设备上的行为。这三项分别记账，在这轮验收完成前不发 v45.2。
+已核：`scripts/apply-patches.py --check` 在 `4ef8740` 的干净 clone 上给出 `CHECKED`，套到夹具上给出 `APPLIED`；`make test` 全绿；ccache 实测命中率 99.96%，全量编译时间从 56 分钟降至 6 分 52 秒。未核：新 pin 上的整条发布链与设备实机行为。这几项分别记账，在这轮验收完成前不发 v45.2。
 
 `battery` overlay 在 `bq27z561_master@55` 上写 `ti,authentication-key`，来自上游自己的 DTB，本次未改动，记录在此便于以后审阅时认识它。
 
