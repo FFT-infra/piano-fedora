@@ -26,7 +26,7 @@
 
 Name:           kernel-piano
 Version:        7.3.3
-Release:        1.%{DEVICE_NAME}%{?dist}
+Release:        2.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
 URL:            https://github.com/blu-sharky/linux-piano
@@ -158,6 +158,12 @@ depmod -a "$RELEASE" || exit 1
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
+* Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 7.3.3-2.piano
+- 内核发布串从 -piano-sunuefi-cachy 变成 -piano-sunuefi-cachy-optimize，模块树
+  目录随之改名。同一 NVRA 的下一个 Release 是设备侧 dnf 唯一能看见这次替换的
+  途径，否则已装系统继续跑旧内核，只有新装机拿到新载荷
+- 编译器换成固定的 LLVM 23.1.5，打开 O3、ThinLTO 与 Oryon-1 调度模型
+
 * Sun Nov 08 2026 FFT-infra <dev@piano.invalid> - 7.3.3-1.piano
 - 跟到 SunUEFI 8b0fc42d 的 stable 7.3.3。封存序列整体重放，上游 41 行加本仓库
   38 行共 79 行全部 clean apply，`target_tree` 为 `2d19373cafae`；补丁号随之
