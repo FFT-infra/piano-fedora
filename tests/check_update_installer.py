@@ -166,13 +166,17 @@ def run_execute(work, device, plan, snapshot, fail_plan=None, tamper=None):
         target.write_bytes(b"changed after manifest creation")
     returned = plan if fail_plan is None else fail_plan
     original = update.update_plan
+    original_wait = update.wait_fastboot_enumerated
     update.update_plan = lambda *a, **k: (returned, snapshot)
+    update.wait_fastboot_enumerated = lambda *a, **k: None
     try:
-        # update_plan 已被打桩，upstream 不参与真实执行路径。
+        # update_plan 已被打桩，upstream 不参与真实执行路径；fastboot 重枚举的
+        # 等待也用桩，测试不碰真实 USB。
         return update.execute_update(SimpleNamespace(), device, plan, bundle, root_install,
                                      boot, stock_boot, session)
     finally:
         update.update_plan = original
+        update.wait_fastboot_enumerated = original_wait
 
 
 def expect_reject(work, plan, snapshot, label, device):
@@ -273,6 +277,36 @@ def check_stale_plan(base):
     print("OK: stale plan 在 reboot 前被拒绝，无任何设备调用")
 
 
+def check_fastboot_wait():
+    """bootloader 重枚举期间只能轮询不碰数据端点的探针。
+
+    旧实现给 `fastboot -s <serial> getvar` 2 秒超时并重试：原厂 bootloader 的
+    重枚举实测要 8 秒，第一次调用就被杀掉，之后这条 USB 端点不再响应。这里
+    验证等待阶段只发 `fastboot devices`，设备出现后立刻返回；设备一直不出现
+    则报错，且从不提前结束一次 getvar。
+    """
+    calls = []
+
+    def runner(argv, **kwargs):
+        calls.append(list(argv))
+        assert argv == ["fastboot", "devices"], argv
+        return SimpleNamespace(stdout="SN-TEST-1\tfastboot\n" if len(calls) >= 3 else "")
+
+    update.wait_fastboot_enumerated("SN-TEST-1", runner=runner, delay=0)
+    assert len(calls) == 3, len(calls)
+
+    calls.clear()
+    try:
+        update.wait_fastboot_enumerated("SN-OTHER", runner=runner, attempts=2, delay=0)
+    except RuntimeError as error:
+        assert "SN-OTHER" in str(error), error
+    else:
+        raise AssertionError("wait_fastboot_enumerated returned without seeing the serial")
+    assert len(calls) == 2, len(calls)
+    assert all("-s" not in argv for argv in calls), calls
+    print("OK: fastboot 重枚举只轮询 fastboot devices，不提前结束 getvar 的等待")
+
+
 def main():
     scratch = scratch_root()
     scratch.mkdir(parents=True, exist_ok=True)
@@ -283,6 +317,7 @@ def main():
         check_happy_path(base)
         check_transfer_failure(base)
         check_stale_plan(base)
+        check_fastboot_wait()
     print("OK: 已有分区更新安装器的执行路径测试全部通过")
     return 0
 
