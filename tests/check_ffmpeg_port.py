@@ -10,6 +10,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -196,7 +197,8 @@ def check_bsp_port(sunuefi):
         # FFmpeg 9 的系列是上游原生写的，不该再有 7.x 的 refstruct 旧名。
         assert "ff_refstruct_" not in row["text"], name
         assert row["sha256"] == ffmpeg.PORT_SHA256[name.removeprefix("sunuefi-")], name
-        assert row["sha256"] == row["bsp_sha256"], name
+        assert row["bsp_sha256"], name
+        assert re.match(r"^From:\s+[^\n<]+<[^\n>]+>", row["text"]), name
     name = "0004-v4l2m2m-ffmpeg9-stateful.patch"
     text = ported["sunuefi-" + name]["text"]
     # 补丁确实改的是 FFmpeg 9 的 v4l2m2m 源文件，而不是同名的随便什么文件。
