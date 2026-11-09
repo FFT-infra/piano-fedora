@@ -1,5 +1,4 @@
 """固定来源的手指滤波校准与触控载荷，供标准构建和增量 RPM 复用。"""
-import difflib
 import importlib.util
 import json
 import shutil
@@ -51,6 +50,40 @@ def build_touch(runtime, output, flags, uapi, touch, pen, source, run, sha256):
             "single_thp_reader": True, "pen_archive_sha256": pen["archive"]["sha256"]}
 
 
+def describe_difference(expected, actual):
+    """校准文件的差异摘要：只说字段与下标，不说数值。
+
+    原厂 INI 不进 Git，而 CI 日志是公开的。矩阵数值一旦原样打出来，就等于把
+    许可不明的厂商数据发布到了公开日志里，所以这里只报形状。
+    """
+    try:
+        left, right = json.loads(expected), json.loads(actual)
+    except json.JSONDecodeError:
+        return "one side is not JSON"
+
+    def walk(a, b, path):
+        if type(a) is not type(b):
+            yield path.rstrip(".") + ": type changed"
+        elif isinstance(a, dict):
+            for key in sorted(set(a) ^ set(b)):
+                yield f"{path}{key}: {'missing' if key in a else 'unexpected'}"
+            for key in sorted(set(a) & set(b)):
+                yield from walk(a[key], b[key], path + key + ".")
+        elif isinstance(a, list):
+            if len(a) != len(b):
+                yield f"{path.rstrip('.')}[]: length {len(a)} -> {len(b)}"
+            for index, (x, y) in enumerate(zip(a, b)):
+                yield from walk(x, y, path.rstrip(".") + f"[{index}].")
+        elif a != b:
+            yield path.rstrip(".") + ": value differs"
+
+    differences = list(walk(left, right, ""))
+    if not differences:
+        return "values are equal, the text differs"
+    shown = "; ".join(differences[:8])
+    return shown + (f"; and {len(differences) - 8} more" if len(differences) > 8 else "")
+
+
 def stage_payload(source, pin, payload, touch_proof, camera_proof, put, sha256, finger_configs):
     extractor = source / "tools/extract-thp-calibration.py"
     spec = importlib.util.spec_from_file_location("piano_calibration", extractor)
@@ -70,16 +103,17 @@ def stage_payload(source, pin, payload, touch_proof, camera_proof, put, sha256, 
         # regenerated INI can never leave a stale calibration on the device.
         shipped = ROOT / "packages/xiaomi-piano-thp/usr/share/piano/touch" / f"piano-{lcd}.json"
         extracted = module.extract(ini)
+        # 上游提取器在 Focus Pen 之后会附带 pen 事实，本仓库分发的文件只装手指
+        # 电极矩阵，笔的事实由同包的 pen/calibration/*.ini 提供。
         extracted.pop("pen", None)
         generated = json.dumps(extracted, indent=2) + "\n"
         if not shipped.is_file():
             raise ValueError("matrix finger calibration is missing: " + str(shipped))
         if shipped.read_text() != generated:
-            diff = "".join(difflib.unified_diff(
-                shipped.read_text().splitlines(keepends=True),
-                generated.splitlines(keepends=True),
-                fromfile=str(shipped), tofile="generated", n=3))
-            raise ValueError(f"matrix finger calibration differs from the factory INI: {shipped.name}\n{diff}")
+            # 只报哪些字段或下标不同。差异可能来自原厂 INI 的新值，而这份
+            # 数据不进 Git：CI 日志是公开的，不能把矩阵数值打出来。
+            raise ValueError("matrix finger calibration differs from the factory INI: "
+                             + shipped.name + "; " + describe_difference(shipped.read_text(), generated))
         calibration[shipped.relative_to(ROOT / "packages/xiaomi-piano-thp").as_posix()] = sha256(shipped)
     wrapper = payload / "usr/lib/piano/touch-input"
     text = wrapper.read_text()
