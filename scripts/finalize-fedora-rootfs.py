@@ -762,8 +762,11 @@ def main():
     # keyboard/cpufreq 这几组手动拉起驱动的 unit；piano-touch 由 79-piano-touch
     # udev 规则在 /proc/nvt_thp_stream 出现时激活，unit 本身没有 [Install]。
     # 这两类都不再由这里 enable。
+    # ADSP 改由内核自动启动：打包时 package_release.py 删掉 ADSP 节点上的
+    # qcom,no-auto-boot，上游随之去掉了 piano-adsp.service。这里再 enable 它
+    # 会让镜像停在「Unit piano-adsp.service does not exist」。
     services = ["NetworkManager.service", "sshd.service", "bluetooth.service",
-                "piano-adsp.service", "piano-camera.service",
+                "piano-camera.service",
                 "piano-camerad.service", "adsprpcd-sensorspd.service",
                 "piano-fake-tablet-mode.service", "xiaomi-charger-mode.service",
                 "librevm-daemon.service", "uperf-linux.service",
