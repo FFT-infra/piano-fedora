@@ -176,10 +176,11 @@ def build(args):
                                              "camerad-owned-pix-route.patch")}}
     pen_files, pen_proof = runtime.build_pen_core(build, flags)
     helpers = dict(pen_files)
-    for name, (relative, pin, destination) in (runtime.PUBLIC_SOURCES | runtime.BSP_SOURCES).items():
+    bsp_sources = getattr(runtime, "BSP_SOURCES", {})
+    for name, (relative, pin, destination) in (runtime.PUBLIC_SOURCES | bsp_sources).items():
         if name == "piano-camerad":
             continue
-        source = (sun if name in runtime.BSP_SOURCES else public) / relative
+        source = (sun if name in bsp_sources else public) / relative
         if pin and sha256(source) != pin:
             raise ValueError("locked helper changed: " + name)
         entry = build / (name + "-entry.c")
