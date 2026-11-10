@@ -49,6 +49,7 @@
       "plasma-desktop",
       "plasma-workspace",
       "plasma-login-manager",
+      "qt6-qtsensors",
       "dolphin",
       "konsole",
       "pipewire",
@@ -77,7 +78,24 @@
       "kind": "kconfig",
       "source": "scripts/profiles/desktops/kde/powerdevilrc",
       "target": "etc/xdg/powerdevilrc"
-    }
+    },
+    "environment": {
+      "KWIN_DRM_FORCE_SCALING_MODE": "FULL"
+    },
+    "user_config": [
+      {
+        "source": "scripts/profiles/desktops/kde/kwinoutputconfig.json",
+        "target": ".config/kwinoutputconfig.json"
+      },
+      {
+        "source": "scripts/profiles/desktops/kde/kcminputrc",
+        "target": ".config/kcminputrc"
+      },
+      {
+        "source": "scripts/profiles/desktops/kde/kscreenlockerrc",
+        "target": ".config/kscreenlockerrc"
+      }
+    ]
   },
   "niri": {
     "label": "niri",
