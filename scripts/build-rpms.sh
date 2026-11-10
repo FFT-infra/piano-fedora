@@ -115,6 +115,8 @@ PACKAGES_TO_BUILD=(
 if [ "$HOST_ARCH" = "aarch64" ]; then
     PACKAGES_TO_BUILD+=(
         "piano-camera"
+        "piano-fingerprint"
+        "piano-libfprint"
         "xiaomi-piano-thp"
         "sm8750-video-accel"
         "uperf-linux"
@@ -236,6 +238,12 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
                 --exclude='__pycache__' --exclude='*.pyc' \
                 --transform "s,^\.,${pkg}-${PKG_VERSION}," \
                 -C "$PACKAGES_DIR/$pkg" .
+            # 本地 Source0 之外还带远程 Source 的 spec（依赖按提交取用）也要
+            # 拉取，否则 rpmbuild 在 %prep 阶段才发现缺文件。
+            if grep -qE '^[[:space:]]*Source[1-9][0-9]*:[[:space:]]*(https?://|%\{url\})' "$SPEC_FILE"; then
+                echo "--> Fetching remote dependency sources with spectool..."
+                spectool -g -C "$BUILD_TMP/SOURCES" "$SPEC_FILE"
+            fi
         fi
 
         echo "--> Building RPM and SRPM for $pkg..."
@@ -243,24 +251,33 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
                  --define "_annobin_gcc_plugin %{nil}" \
                  -ba "$SPEC_FILE"
 
-        # iio-sensor-proxy-ssc 的 BuildRequires 里有 libssc，而 libssc 是本矩阵
-        # 刚编出来的包，镜像里没有。CI 在 Fedora 容器里以 root 直接跑，没有
-        # sudo；本地在主机上跑才走 sudo。两种情况都要把刚编的 libssc 装上，
-        # 否则下一个包会以 "Failed build dependencies" 失败。
-        if [ "$pkg" = "libssc" ] && [ -d "$BUILD_TMP/RPMS/aarch64" ]; then
-            LIBSSC_RPM=$(find "$BUILD_TMP/RPMS/aarch64" -name "libssc-[0-9]*.rpm" | head -n 1)
-            if [ -n "$LIBSSC_RPM" ]; then
+        # iio-sensor-proxy-ssc 的 BuildRequires 里有 libssc，piano-libfprint 的
+        # BuildRequires 里有 piano-fingerprint，两者都是本矩阵刚编出来的包，
+        # 镜像里没有。CI 在 Fedora 容器里以 root 直接跑，没有 sudo；本地在
+        # 主机上跑才走 sudo。两种情况都要把刚编的包装上，否则下一个包会以
+        # "Failed build dependencies" 失败。
+        case "$pkg" in
+        libssc|piano-fingerprint)
+            PREREQ_RPM=""
+            for candidate in "$BUILD_TMP"/RPMS/aarch64/"$pkg"-[0-9]*.rpm; do
+                if [ -f "$candidate" ]; then
+                    PREREQ_RPM="$candidate"
+                    break
+                fi
+            done
+            if [ -n "$PREREQ_RPM" ]; then
                 RUN_AS=()
                 if [ "$(id -u)" -ne 0 ]; then
                     RUN_AS=(sudo -n)
                 fi
                 if "${RUN_AS[@]}" true 2>/dev/null; then
-                    echo "--> Installing host prerequisite libssc for dependent builds..."
+                    echo "--> Installing host prerequisite $pkg for dependent builds..."
                     "${RUN_AS[@]}" rpm --define "_pkgverify_level none" \
-                        -Uvh --force "$LIBSSC_RPM"
+                        -Uvh --force "$PREREQ_RPM"
                 fi
             fi
-        fi
+            ;;
+        esac
     fi
 done
 

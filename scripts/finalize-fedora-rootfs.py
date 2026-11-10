@@ -856,6 +856,7 @@ def main():
     # clean 矩阵显式列出硬件包。聚合 runtime 仍为旧 bundle 提供
     # librevm/crosvm/VA-API，但它不再是这些载荷的唯一来源。
     required = {"piano-fedora-configs", "alsa-xiaomi-piano", "piano-camera",
+                "piano-fingerprint", "piano-libfprint",
                 "xiaomi-piano-thp", "sm8750-video-accel", "uperf-linux",
                 "libssc", "iio-sensor-proxy-ssc", "xiaomi-piano-firmware",
                 "kernel-piano", "systemd", *piano_desktop.required_packages(context)}

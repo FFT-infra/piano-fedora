@@ -40,6 +40,8 @@ PIANO_PACKAGES = [
     "piano-fedora-configs",
     "alsa-xiaomi-piano",
     "piano-camera",
+    "piano-fingerprint",
+    "piano-libfprint",
     "xiaomi-piano-thp",
     "sm8750-video-accel",
     "uperf-linux",

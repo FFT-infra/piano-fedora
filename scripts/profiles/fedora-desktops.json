@@ -13,6 +13,8 @@
       "pipewire",
       "wireplumber",
       "iio-sensor-proxy",
+      "fprintd",
+      "fprintd-pam",
       "tuned",
       "tuned-ppd",
       "mesa-piano-vulkan-drivers",
