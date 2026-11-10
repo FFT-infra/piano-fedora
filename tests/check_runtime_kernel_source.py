@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """runtime 模块构建只认重放出来的 7.3 源码树，不再有 Gunyah 重放证明。"""
+import hashlib
 import importlib.util
 import json
 import sys
@@ -35,7 +36,33 @@ def main():
     assert "release-7.2.9" not in source
     workflow = (ROOT / ".github/workflows/build-device-runtime.yml").read_text()
     assert "kernel-gunyah-source.json" not in workflow
-    print("OK: runtime source replay reads the 7.3 manifest and has no Gunyah proof")
+    # 相机高像素依赖 loopback 的补丁序列：缺了补丁模块仍能编过，设备上只是
+    # 把消费端尺寸钳回预览值，没有任何报错，所以这里锁两条路径。
+    assert 'sun / "patches/v4l2loopback/0.15.4/series.json"' in source
+    assert "apply_patch_series" in source
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        target = root / "src"
+        target.mkdir()
+        (target / "a.c").write_text("old\n")
+        diff = root / "0001-example.patch"
+        diff.write_text("--- a/a.c\n+++ b/a.c\n@@ -1 +1 @@\n-old\n+new\n")
+        digest = hashlib.sha256(diff.read_bytes()).hexdigest()
+        series = root / "series.json"
+        series.write_text(json.dumps(
+            {"schema_version": 1, "patches": [{"file": diff.name, "sha256": digest}]}))
+        assert runtime.apply_patch_series(series, target) == [{"file": diff.name, "sha256": digest}]
+        assert (target / "a.c").read_text() == "new\n"
+        # 摘要不符必须停下：否则补丁被换掉也会静默编进模块。
+        series.write_text(json.dumps(
+            {"schema_version": 1, "patches": [{"file": diff.name, "sha256": "0" * 64}]}))
+        try:
+            runtime.apply_patch_series(series, target)
+        except ValueError as error:
+            assert "checksum" in str(error)
+        else:
+            raise AssertionError("a changed patch checksum was accepted")
+    print("OK: runtime source replay reads the 7.3 manifest, applies the loopback series")
 
 
 if __name__ == "__main__":

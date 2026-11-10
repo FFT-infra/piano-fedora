@@ -21,6 +21,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -89,6 +90,27 @@ def _require(profile, desktop):
     if policy["kind"] != "logind-only" and not policy.get("source"):
         raise DesktopError(
             f"desktop {desktop!r} power_policy={policy['kind']} needs a source file")
+    # 可选项，但写了就要完整：文件必须真的在仓库里，目标不许逃出 home。
+    for entry in profile.get("user_config") or []:
+        if sorted(entry) != ["source", "target"] or not entry["target"]:
+            raise DesktopError(
+                f"desktop {desktop!r} user_config entries need exactly source and target")
+        target = entry["target"]
+        if target.startswith("/") or ".." in target.split("/"):
+            raise DesktopError(
+                f"desktop {desktop!r} user_config target must stay under home: {target!r}")
+        if not (ROOT / entry["source"]).is_file():
+            raise DesktopError(
+                f"desktop {desktop!r} user_config source is missing: {entry['source']}")
+    environment = profile.get("environment") or {}
+    if not isinstance(environment, dict):
+        raise DesktopError(
+            f"desktop {desktop!r} environment must map variable names to values")
+    for key, value in environment.items():
+        if not re.fullmatch(r"[A-Z_][A-Z0-9_]*", key) or not isinstance(value, str) \
+                or "\n" in value:
+            raise DesktopError(
+                f"desktop {desktop!r} environment entry is invalid: {key!r}")
     # 不可构建的档位（denial 坑位）显式写 null，不能是一个看起来能用的空列表。
     # server 档是合法的空列表：它只装 base_packages，没有桌面会话。
     if profile["buildable"] and profile["dnf_packages"] is None:
@@ -313,6 +335,67 @@ def dconf_profile_required(context):
     return context["profile"]["power_policy"]["kind"] == "dconf"
 
 
+def environment_files(context):
+    """桌面档声明的 /etc/environment.d 变量。
+
+    systemd 的用户管理器只从这里取环境变量，`kwin_wayland` 这类会话内的
+    服务继承的就是它。KDE 面板的源分辨率不是生成出来的 DRM 模式，KWin
+    不带 `KWIN_DRM_FORCE_SCALING_MODE=FULL` 时会拒绝按它缩放。
+    """
+    values = context["profile"].get("environment") or {}
+    if not values:
+        return {}
+    return {"etc/environment.d/60-piano-display.conf":
+            "".join(f"{key}={value}\n" for key, value in values.items())}
+
+
+def environment_required(context):
+    """装配后必须存在的环境变量文件。"""
+    return sorted(environment_files(context))
+
+
+def user_config_files(context, user):
+    """桌面档声明的每用户配置，键是 rootfs 相对路径。
+
+    KWin 的输出配置只认 `~/.config`，没有 /etc/xdg 级别的落点；登录用户
+    的名字在这里决定路径，和 login_files() 一样由调用方给出。
+    """
+    return {f"home/{user}/{entry['target']}":
+            (ROOT / entry["source"]).read_text(encoding="utf-8")
+            for entry in context["profile"].get("user_config") or []}
+
+
+def stage_user_config(root, context, user, sudo_aware=True):
+    """把 user_config_files() 写进 rootfs，属主跟随 home 目录。
+
+    KWin 运行时会重写 kwinoutputconfig.json；root 名下的文件会让它写不
+    进去，失败只出现在会话日志里。所以这里不写默认属主，直接 chown。
+    """
+    root = Path(root)
+    files = user_config_files(context, user)
+    if not files:
+        return []
+    home = root / "home" / user
+    try:
+        owner = (home.stat().st_uid, home.stat().st_gid)
+    except FileNotFoundError as exc:
+        raise DesktopError(
+            f"home directory for {user!r} is missing; stage user config after useradd"
+        ) from exc
+    for name, text in files.items():
+        target = root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if sudo_aware and os.geteuid() != 0 and _is_root_owned(target.parent):
+            subprocess.run(["sudo", "tee", str(target)], input=text,
+                           text=True, check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(["sudo", "chown", f"{owner[0]}:{owner[1]}", str(target)],
+                           check=True)
+        else:
+            target.write_text(text, encoding="utf-8")
+            os.chown(target, *owner)
+    return sorted(files)
+
+
 def repo_args(context, key_paths=None):
     """额外仓库的 dnf 参数（只用 --repofrompath，不写设备侧持久配置）。
 
@@ -453,6 +536,18 @@ def validate_against_rootfs(root, context, *, require_enabled=True):
 
     for name in power_required(context):
         want((root / name).is_file(), f"power policy file staged: {name}")
+
+    for name in environment_required(context):
+        want((root / name).is_file(), f"desktop environment file staged: {name}")
+
+    home = root / "home" / "piano"
+    home_uid = home.stat().st_uid if home.is_dir() else None
+    for name in user_config_files(context, "piano"):
+        path = root / name
+        want(path.is_file(), f"user config staged: {name}")
+        if path.is_file() and home_uid is not None:
+            want(path.stat().st_uid == home_uid,
+                 f"user config is owned by the login user: {name}")
 
     if require_enabled:
         for unit in enable_units(context):

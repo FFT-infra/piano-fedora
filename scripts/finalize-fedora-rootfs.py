@@ -462,6 +462,7 @@ def stage_piano_hardware_fixes(root, context):
         # dconf 文件由 piano-fedora-configs 这个 RPM 安装，这里不写第二份。
         # 纯 logind 档位没有文件。原来这里写死一份 org.gnome.* 契约。
         **piano_desktop.power_files(context),
+        **piano_desktop.environment_files(context),
     }
     for name, text in files.items():
         target = safe_destination(root, name)
@@ -782,6 +783,9 @@ def main():
     # 自动登录的落盘文件由桌面档决定（GDM custom.conf / SDDM autologin /
     # greetd config.toml），这里不再写死 GDM 那一种。
     login_files = piano_desktop.stage_login(root, context, DEFAULT_PIANO_LOGIN, sudo_aware=False)
+    # 每用户配置（KWin 输出/输入/锁屏）在 useradd 之后写，属主跟随 home。
+    user_config = piano_desktop.stage_user_config(
+        root, context, DEFAULT_PIANO_LOGIN, sudo_aware=False)
     # 解除早期对 qbootctl 的屏蔽，开机自动执行向 ABL 标记成功槽位，彻底根治 fastboot 掉入
     qboot_mask = root / "etc/systemd/system/qbootctl.service"
     if qboot_mask.is_symlink() and qboot_mask.readlink() == Path("/dev/null"):
@@ -856,6 +860,7 @@ def main():
     # clean 矩阵显式列出硬件包。聚合 runtime 仍为旧 bundle 提供
     # librevm/crosvm/VA-API，但它不再是这些载荷的唯一来源。
     required = {"piano-fedora-configs", "alsa-xiaomi-piano", "piano-camera",
+                "piano-fingerprint", "piano-libfprint",
                 "xiaomi-piano-thp", "sm8750-video-accel", "uperf-linux",
                 "libssc", "iio-sensor-proxy-ssc", "xiaomi-piano-firmware",
                 "kernel-piano", "systemd", *piano_desktop.required_packages(context)}
@@ -876,6 +881,7 @@ def main():
                   "session_files": context["profile"]["session"]["session_files"],
                   "power_policy": context["profile"]["power_policy"]["kind"],
                   "login_files": login_files,
+                  "user_config_files": user_config,
               },
               "desktop_validation": desktop_checks,
               "kernel_release": m["kernel_release"], "kernel_commit": m["source_commit"],

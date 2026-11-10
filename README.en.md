@@ -29,9 +29,9 @@ Fedora 45 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are not verified yet |
 | Dual boot | ✅ | The combined BOOT lives in `boot_a`. Linux→Android uses `piano-next-boot android --reboot`. Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two round trips are verified on device, see [known issues](docs/known-issues.md#双系统切换) |
 | Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally. 1906 axis events, 22 proximity events and 18 tip events were captured, see [known issues](docs/known-issues.md#手写笔) |
-| Fingerprint | ❌ | Side-mounted capacitive, Goodix. Authentication runs in the TEE's `gfpia` TA. Mainline has neither the control driver nor a libfprint backend, so the sensor is not usable short-term. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
-| IR | ❌ | Consumer IR blaster (QUPv3 SE15). Mainline's `ir-spi` driver is complete. Our DT has no IR node, and the kernel is built without `LIRC`. Unrelated to TEE and fixable. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
-| HDR | ❌ | The panel supports HDR10, but msm attaches no `HDR_OUTPUT_METADATA` and has no colorop pipeline. The current msm static-HDR series only covers DP/eDP, not the internal DSI panel. Waiting on upstream. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| Fingerprint | ❌ | Side-mounted capacitive, Goodix. Authentication runs in the TEE's `gfpia` TA. The kernel side is in place: `uio_piano_fingerprint`, `qcomtee` and `/dev/tee0` are all present, and so is the DT node. What is missing is the libfprint backend. Upstream has it, this repository has not wired it in yet. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| IR | ✅ | The consumer IR blaster (QUPv3 SE15) is wired to the standard `ir-spi` driver and LIRC. `/dev/lirc0` and `/sys/class/rc/rc0` exist, and `ir-ctl` can send. Optical output is not measured. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| HDR | ❌ | The panel supports HDR10. DSI-1 attaches `HDR_OUTPUT_METADATA`, and the CRTC exposes `GAMMA_LUT`, `DEGAMMA_LUT` and `CTM`. The full HDR output path is not verified. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
 
 ## Desktops
 

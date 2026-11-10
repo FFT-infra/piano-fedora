@@ -40,12 +40,14 @@ test:
 	python3 tests/check_iris_source.py
 	python3 tests/check_production_kernel.py
 	python3 tests/check_kernel_ccache.py
+	python3 tests/check_kernel_config_assertions.py
 	python3 tests/check_runtime_kernel_source.py
 	python3 tests/check_fastrpc_runtime.py
 	python3 tests/check_sensor_runtime.py
 	python3 tests/check_ssc_retry.py
 	python3 tests/check_camerad_adapter.py
 	python3 tests/check_camera_start.py
+	python3 tests/check_camera_photo.py
 	python3 tests/check_ffmpeg_port.py
 	python3 tests/check_ffmpeg_install.py
 	python3 tests/check_initramfs.py
@@ -58,10 +60,13 @@ test:
 	python3 tests/check_image_workflow.py
 	python3 tests/check_runtime_extras.py
 	python3 tests/check_finger_orientation.py
+	python3 tests/check_fingerprint_package.py
+	python3 tests/check_libfprint_package.py
 	python3 tests/check_rootfs_finalize.py
 	python3 tests/check_default_password.py
 	python3 tests/check_clean_rootfs.py
 	python3 tests/check_desktop_profiles.py
+	python3 tests/check_tuned_profiles.py
 	python3 tests/check_desktop_runtime.py
 	python3 tests/check_package_ownership.py
 	python3 tests/check_flash_script_guard.py

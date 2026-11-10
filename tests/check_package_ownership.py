@@ -26,6 +26,7 @@ MACROS = {
     "%{_unitdir}": "/usr/lib/systemd/system",
     "%{_userunitdir}": "/usr/lib/systemd/user",
     "%{_datadir}": "/usr/share",
+    "%{_licensedir}": "/usr/share/licenses",
     "%{_sysconfdir}": "/etc",
     "%{_prefix}": "/usr",
     "%{_libdir}": "/usr/lib64",

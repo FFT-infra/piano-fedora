@@ -9,7 +9,7 @@
 | 档位 | 会话 | 登录 | 电源策略 | 自动旋转 | 验收状态 |
 |---|---|---|---|---|---|
 | `gnome` | GNOME 51（Workstation 环境） | GDM 自动登录 | dconf（`00-power`） | 走 Mutter，已实机验证 | 已登录桌面（实测），旋转已实测 |
-| `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，需 `qt6-qtsensors` | 已登录桌面（实测），旋转已实测 |
+| `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，`qt6-qtsensors` 在包集合里 | 已登录桌面（实测），旋转已实测 |
 | `niri` | niri | greetd `[initial_session]` | 仅 logind | 无，需手动 `transform` | 已登录桌面（实测），镜像需重建 |
 | `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 无，需手动 rotate | 已登录桌面（实测），镜像需重建 |
 | `server` | 无 | 无 | 仅 logind | — | 只用于测试装配，不进 Release |
@@ -73,6 +73,27 @@
 四档关掉自动睡眠。电源键与合盖已由 `piano-power-button` 统一接管，桌面再自己
 睡一次会和它抢同一个事件。
 
+## KDE 默认值
+
+KWin 的显示、输入与锁屏设置只在 `~/.config` 下，没有 `/etc/xdg` 级别的落点。
+profile 的 `user_config` 列出文件与目标，装配时按 home 目录的属主落盘，KWin
+运行时能改写的文件不会被 root 持有：
+
+| 文件 | 内容 |
+| --- | --- |
+| `~/.config/kwinoutputconfig.json` | DSI-1 用 3200x2136@120、scale 2、`autoRotation: InTabletMode`、亮度 0.8 |
+| `~/.config/kcminputrc` | `Xiaomi Touchpad` 自然滚动 |
+| `~/.config/kscreenlockerrc` | `Autolock=false`、`LockOnResume=true` |
+
+`kwinoutputconfig.json` 里同一个连接器写两条，一条 `edidIdentifier` 为空、一条
+为 `XMI 129 0 0 2025 0`。KWin 先按 EDID 标识查，查不到再按连接器名查，两条
+覆盖面板 EDID 可读与不可读两种情况。
+
+`/etc/environment.d/60-piano-display.conf` 写 `KWIN_DRM_FORCE_SCALING_MODE=FULL`。
+KWin 默认只缩放自己生成模式的输出；DSI-1 的模式来自 DRM，没有这个变量时它拒绝
+按 scale 2 放大。上游同一时期还写 `QT_SCALE_FACTOR=2`，这里没有跟：输出的
+scale 与 `QT_SCALE_FACTOR` 会叠加，界面会放大两次。
+
 ## 自动旋转
 
 `piano-fake-tablet-mode` 把 `SW_TABLET_MODE` 暴露给桌面，判定依据是 logind
@@ -86,7 +107,7 @@
   `transform` 从 0 变成 1，屏幕跟着转。
 - KDE（KWin）依赖 `qt6-qtsensors`。Fedora 45 的 `kwin` 包声明了
   `iio-sensor-proxy`，没声明 `qt6-qtsensors`。这个包不在位时，Plasma 6 不出现
-  「自动」旋转选项。
+  「自动」旋转选项，所以 KDE 档的包集合里单独列了它。
 - niri 与 Hyprland 的合成器不读传感器。niri 要在 `output` 段里手动写
   `transform "90"` 之类的值。Hyprland 用 `hyprctl keyword monitor` 或配置里的
   `transform`。两档没有自动旋转是预期行为，不是缺陷。

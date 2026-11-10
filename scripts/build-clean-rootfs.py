@@ -40,6 +40,8 @@ PIANO_PACKAGES = [
     "piano-fedora-configs",
     "alsa-xiaomi-piano",
     "piano-camera",
+    "piano-fingerprint",
+    "piano-libfprint",
     "xiaomi-piano-thp",
     "sm8750-video-accel",
     "uperf-linux",
@@ -660,6 +662,9 @@ def execute(plan_data):
     #    就得在两个后端各改一处。
     print(f"--> Staging {context['desktop']} autologin configuration...")
     staged_login = piano_desktop.stage_login(root, context, DEFAULT_USER, sudo_aware=False)
+    # 每用户配置（KDE 的 KWin 输出/输入/锁屏）必须在 useradd 之后落盘，
+    # 属主跟随 home 目录；finalize 会用同一份声明再写一次。
+    piano_desktop.stage_user_config(root, context, DEFAULT_USER, sudo_aware=False)
 
     # 4. 屏蔽未适配的磁盘休眠目标，锁定为 deep 挂起
     for unit in ("hibernate.target", "hybrid-sleep.target", "suspend-then-hibernate.target"):
@@ -696,7 +701,8 @@ def execute(plan_data):
     # 电源策略：KDE 的 powerdevilrc 由这里落盘；GNOME 的 dconf 文件由
     # piano-fedora-configs 这个 RPM 安装，构建器不写第二个写者；
     # /etc/dconf/profile/user 同样由 dconf 包自带（已含 system-db:local）。
-    power = piano_desktop.power_files(context)
+    power = {**piano_desktop.power_files(context),
+             **piano_desktop.environment_files(context)}
     for relative, text in power.items():
         target = root / relative
         target.parent.mkdir(parents=True, exist_ok=True)

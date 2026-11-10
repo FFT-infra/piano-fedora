@@ -62,6 +62,12 @@ def check_schema_is_enforced():
          "without a session command"),
         (lambda row: row["display_manager"]["autologin"].pop("session"),
          "without a session name"),
+        (lambda row: row["user_config"][0].update(target="/etc/kwinoutputconfig.json"),
+         "stay under home"),
+        (lambda row: row["user_config"][0].update(source="scripts/profiles/missing"),
+         "user_config source is missing"),
+        (lambda row: row.update(environment={"lower-case": "x"}),
+         "environment entry is invalid"),
     ]
     try:
         for mutate, message in cases:
@@ -290,6 +296,83 @@ def check_kde_power_policy_is_safe():
     assert policy.get(display, "TurnOffDisplayIdleTimeoutSec") == "300"
 
 
+def check_kde_desktop_defaults():
+    """KDE 的显示、输入与锁屏默认值与上游一致，且只有 KDE 声明它们。"""
+    import configparser
+
+    context = piano_desktop.load("kde", "44")
+    files = piano_desktop.user_config_files(context, "piano")
+    assert sorted(files) == [
+        "home/piano/.config/kcminputrc",
+        "home/piano/.config/kscreenlockerrc",
+        "home/piano/.config/kwinoutputconfig.json",
+    ], sorted(files)
+
+    output = json.loads(files["home/piano/.config/kwinoutputconfig.json"])
+    outputs = next(row["data"] for row in output if row["name"] == "outputs")
+    setups = next(row["data"] for row in output if row["name"] == "setups")
+    assert len(outputs) == len(setups) == 2, output
+    for index, entry in enumerate(outputs):
+        assert entry["connectorName"] == "DSI-1", entry
+        assert entry["mode"] == {"width": 3200, "height": 2136,
+                                 "refreshRate": 120000}, entry
+        assert entry["scale"] == 2, entry
+        assert entry["autoRotation"] == "InTabletMode", entry
+        assert entry["brightness"] == 0.8, entry
+        assert setups[index]["outputs"][0]["outputIndex"] == index, setups[index]
+    # 同一块面板两种身份：内核没读到 EDID 时用空标识，读到真实 EDID 时
+    # 用 XMI 129 0 0 2025 0，两者必须指向同一份输出配置。
+    assert {entry["edidIdentifier"] for entry in outputs} == {
+        "", "XMI 129 0 0 2025 0"}, outputs
+
+    input_config = configparser.ConfigParser(interpolation=None)
+    input_config.read_string(files["home/piano/.config/kcminputrc"])
+    touchpad = "Libinput][5593][161][Xiaomi Touchpad"
+    assert input_config.get(touchpad, "NaturalScroll") == "true", input_config.items(touchpad)
+
+    locker = configparser.ConfigParser(interpolation=None)
+    locker.read_string(files["home/piano/.config/kscreenlockerrc"])
+    assert locker.get("Daemon", "Autolock") == "false", locker.items("Daemon")
+    assert locker.get("Daemon", "LockOnResume") == "true", locker.items("Daemon")
+
+    # 面板源模式不是生成出来的 DRM 模式，KWin 需要 FULL 才肯按它缩放。
+    assert piano_desktop.environment_files(context) == {
+        "etc/environment.d/60-piano-display.conf":
+            "KWIN_DRM_FORCE_SCALING_MODE=FULL\n"}, piano_desktop.environment_files(context)
+
+    # autoRotation 只有 KWin 能读到传感器时才出现；kwin 自己没声明这个包。
+    assert "qt6-qtsensors" in context["profile"]["dnf_packages"], \
+        "KDE 档没有装 qt6-qtsensors，Plasma 不会提供自动旋转"
+
+    # KWin 的键对其它桌面没有意义：别的档位既不写每用户配置，也不带
+    # 桌面专用环境变量。
+    for desktop in ("gnome", "niri", "hyprland", "server"):
+        other = piano_desktop.load(desktop, "44")
+        assert piano_desktop.user_config_files(other, "piano") == {}, desktop
+        assert piano_desktop.environment_files(other) == {}, desktop
+        assert piano_desktop.environment_required(other) == [], desktop
+
+
+def check_user_config_follows_the_home_owner():
+    """每用户配置写成 home 目录的属主：KWin 运行时要改写这些文件。"""
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        context = piano_desktop.load("kde", "44")
+        try:
+            piano_desktop.stage_user_config(root, context, "piano", sudo_aware=False)
+        except piano_desktop.DesktopError as error:
+            assert "useradd" in str(error), error
+        else:
+            raise AssertionError("user config was staged without a home directory")
+        home = root / "home" / "piano"
+        home.mkdir(parents=True)
+        staged = piano_desktop.stage_user_config(root, context, "piano", sudo_aware=False)
+        assert staged == sorted(piano_desktop.user_config_files(context, "piano")), staged
+        for name in staged:
+            assert (root / name).stat().st_uid == home.stat().st_uid, name
+            assert (root / name).stat().st_gid == home.stat().st_gid, name
+
+
 def check_validate_against_rootfs_reports_paths():
     """装配后核对：缺一条就带具体路径报错，不猜。"""
     with tempfile.TemporaryDirectory() as temporary:
@@ -317,6 +400,11 @@ def check_validate_against_rootfs_reports_paths():
                          "etc/xdg/powerdevilrc"):
             (root / relative).parent.mkdir(parents=True, exist_ok=True)
             (root / relative).write_text("fixture")
+        for relative in piano_desktop.environment_files(context):
+            (root / relative).parent.mkdir(parents=True, exist_ok=True)
+            (root / relative).write_text("fixture")
+        (root / "home/piano").mkdir(parents=True)
+        piano_desktop.stage_user_config(root, context, "piano", sudo_aware=False)
         # 装配脚本在 enable 之前核对，所以放宽启用检查；finalizer 在 enable
         # 之后核对，那一步必须看到 .wants 链接。
         checks = piano_desktop.validate_against_rootfs(root, context, require_enabled=False)
@@ -495,6 +583,8 @@ def main():
     check_no_desktop_literals_outside_the_profile()
     check_power_files_match_the_declared_kind()
     check_kde_power_policy_is_safe()
+    check_kde_desktop_defaults()
+    check_user_config_follows_the_home_owner()
     check_validate_against_rootfs_reports_paths()
     check_gdm_enable_is_the_display_manager_alias()
     check_build_rootfs_expands_the_profile()

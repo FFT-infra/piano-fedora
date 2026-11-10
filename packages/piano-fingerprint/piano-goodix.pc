@@ -1,0 +1,10 @@
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib64
+includedir=${prefix}/include
+
+Name: piano-goodix
+Description: Piano signed-TA fingerprint transport
+Version: 1.0
+Libs: -L${libdir}/piano-goodix -lpiano-goodix -pthread -lm
+Cflags: -I${includedir}/piano-goodix

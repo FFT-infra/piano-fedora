@@ -29,6 +29,25 @@ def run(command, **kw):
     subprocess.run([str(x) for x in command], check=True, **kw)
 
 
+def apply_patch_series(series, target):
+    """按 series.json 的 sha256 校验后套用，参数与上游 runtime 构建一致。
+
+    锁定的 v4l2loopback 缺两个消费端要用的能力：`S_FMT` 会把请求钳回生产端
+    尺寸，`VIDIOC_SUBSCRIBE_EVENT` 不认 `V4L2_EVENT_SOURCE_CHANGE`。上游的
+    三份补丁解决这两点，本脚本此前直接编未打补丁的源码。缺补丁时相机的
+    高像素路径在设备上退化成预览尺寸，且没有报错。
+    """
+    applied = []
+    for entry in json.loads(series.read_text())["patches"]:
+        patch = series.parent / entry["file"]
+        if sha256(patch) != entry["sha256"]:
+            raise ValueError("v4l2loopback patch checksum differs: " + str(patch))
+        run(["patch", "--batch", "--forward", "--fuzz=0",
+             "--no-backup-if-mismatch", "-p1", "-i", patch], cwd=target)
+        applied.append({"file": entry["file"], "sha256": entry["sha256"]})
+    return applied
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     for name in ("sunuefi", "kernel", "sdk", "output"):
@@ -80,6 +99,7 @@ def main():
     loop = output / "v4l2loopback"
     shutil.copytree(sun / "upstream/v4l2loopback", loop,
                     ignore=shutil.ignore_patterns(".git"))
+    patches = apply_patch_series(sun / "patches/v4l2loopback/0.15.4/series.json", loop)
     run([*command, "-j4", "M=" + str(loop), "modules"], env=kernel_env)
     module = loop / "v4l2loopback.ko"
     release = subprocess.check_output(["modinfo", "-F", "vermagic", str(module)], text=True, env=kernel_env)
@@ -88,6 +108,7 @@ def main():
     proof = {"kernel_manifest_sha256": kernel_hash,
              "kernel_release": record["kernel_release"], "kernel_commit": record["source_commit"],
              "module_sha256": sha256(module), "vermagic": release.strip(),
+             "v4l2loopback_patches": patches,
              "sdk_config_sha256": sha256(build / ".config"),
              "module_symvers_sha256": sha256(build / "Module.symvers"), "device_tested": False}
     (output / "manifest.json").write_text(json.dumps(proof, indent=2) + "\n")
