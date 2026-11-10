@@ -132,11 +132,22 @@ jobs:
               '--artifacts', 'artifacts/kernels/release',
           ], check=True)
           config = Path('build/kernels/release/.config').read_text().splitlines()
-          for name in ('F2FS_FS', 'F2FS_FS_XATTR', 'F2FS_FS_POSIX_ACL',
-                       'F2FS_FS_SECURITY', 'SECURITY_NETWORK', 'SECURITY_SELINUX',
-                       'GUNYAH', 'GUNYAH_HYPERCALLS', 'GUNYAH_TIMER', 'GUNYAH_PLATFORM_HOOKS',
-                       'GUNYAH_QCOM_PLATFORM', 'GUNYAH_QCOM_TRUSTED_VM', 'GUNYAH_IRQFD', 'GUNYAH_IOEVENTFD'):
-              assert 'CONFIG_' + name + '=y' in config, name
+          required = {
+              # Root filesystem and policy: the image cannot boot without them.
+              'F2FS_FS': 'y', 'F2FS_FS_XATTR': 'y', 'F2FS_FS_POSIX_ACL': 'y',
+              'F2FS_FS_SECURITY': 'y', 'SECURITY_NETWORK': 'y', 'SECURITY_SELINUX': 'y',
+              'GUNYAH': 'y', 'GUNYAH_HYPERCALLS': 'y', 'GUNYAH_TIMER': 'y',
+              'GUNYAH_PLATFORM_HOOKS': 'y', 'GUNYAH_QCOM_PLATFORM': 'y',
+              'GUNYAH_QCOM_TRUSTED_VM': 'y', 'GUNYAH_IRQFD': 'y', 'GUNYAH_IOEVENTFD': 'y',
+              # Hardware the desktop depends on. LIRC and IR_SPI have silently
+              # dropped out of the configuration before; the rest are the same
+              # kind of platform-fragment default that can regress unnoticed.
+              'LIRC': 'y', 'IR_SPI': 'm', 'SND_SEQUENCER': 'm',
+              'ARM64_PIANO_OPTIMIZE': 'y', 'LEDS_CLASS_FLASH': 'm',
+              'UIO_PIANO_FINGERPRINT': 'm',
+          }
+          for name, value in required.items():
+              assert 'CONFIG_' + name + '=' + value in config, (name, value)
           assert 'CONFIG_LSM="selinux"' in config
           assert any('rootfstype=f2fs' in line for line in config if line.startswith('CONFIG_CMDLINE='))
           print('Fedora F2FS/SELinux configuration verified before the long build')
