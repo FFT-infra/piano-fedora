@@ -1,6 +1,6 @@
 # 与上游的功能差距
 
-这份清单来自 2026-11-10 的一次只读核对：对照 `build/test-sources/sunuefi`（pin `4ef8740`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。每项写明证据与核对命令，下次接手不用重新猜。下面全是待办，不是已经做完的事。
+这份清单来自 2026-11-10 的一次只读核对：对照 `build/test-sources/sunuefi`（pin `4ef8740`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。每项写明证据与核对命令，下次接手不用重新猜。除电源策略已在本分支实现，其余仍是待办。
 
 | 项 | 我们的现状 | 上游 | 要做的 | 优先级 |
 | --- | --- | --- | --- | --- |
@@ -8,7 +8,7 @@
 | 相机闪光灯 | `/sys/class/leds/:flash-0`、`:flash-1` 存在，`leds_qcom_flash` 已加载，`piano-camerad` 不支持 | `piano-camera-ctl capture rear --flash` 同步补光拍照 | `piano-camera` 补 flash 控制与拍照协议 | P1 |
 | 相机 JPEG 直出 | 只出 NV12 到 v4l2loopback | `photo/jpeg.c`，CLI 直接写 JPEG | 同上，跟闪光灯一起做 | P1 |
 | 相机高像素 | 只有 binned 输出 | `quad/`（Rust worker）做 quad bayer 合成 | 单独评估，要引入 Rust 工具链 | P2 |
-| 电源策略 | `tuned` 与 `power-profiles-daemon` 都没装，GNOME 电源面板没有性能模式 | tuned 三档 profile 加 `tuned-ppd` drop-in | 加 `tuned`、`tuned-ppd` 与三份 profile | P1 |
+| 电源策略 | 原样：`tuned` 与 `power-profiles-daemon` 都没装，GNOME 电源面板没有性能模式 | tuned 三档 profile 加 `tuned-ppd` drop-in，但上游 profile 直接写 cpufreq/devfreq | 已做：`tuned-ppd` 三档 profile 桥到 uperf-linux 的模式 | 完成 |
 | 中文环境 | `LANG=C.UTF-8`，没装 `glibc-langpack-zh`，输入源只有 `[('xkb', 'us')]` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | 加 langpack、写 `/etc/locale.conf`、给输入源默认值 | P1 |
 | mutter 触摸崩溃 | 库存 `mutter-51.1-1.fc45` | `0003-wayland-touch-ignore-cancelled-grab.patch` | 先在 Fedora 上确认崩溃可复现，再决定要不要重编 mutter | P2 |
 | KDE 桌面默认值 | 只带 `powerdevilrc` | `kwinoutputconfig.json`（scale 2、`autoRotation: InTabletMode`）、`kcminputrc`、`QT_SCALE_FACTOR` | KDE 镜像上实测后再决定 | P2 |
@@ -32,9 +32,13 @@
 
 ## 电源策略
 
-`rpm -q tuned power-profiles-daemon` 两个都是 not installed，`/usr/lib/systemd/system` 里也没有对应的 unit，因此 GNOME 设置里的性能模式面板是空的。Fedora 45 仓库有 `tuned 2.28.0` 与 `tuned-ppd 2.28.0`。
+原状是 `rpm -q tuned power-profiles-daemon` 两个都 not installed，`/usr/lib/systemd/system` 里也没有对应 unit，GNOME 设置里的性能模式面板是空的。Fedora 45 仓库有 `tuned 2.28.0` 与 `tuned-ppd 2.28.0`，Fedora 41 起后者的定位就是 PPD 的默认实现，所以走 `tuned-ppd` 而不是 `power-profiles-daemon`。
 
-上游的 `linux/desktops/gnome/power-overlay` 提供了 `piano-power-saver`/`piano-balanced`/`piano-performance` 三份 tuned profile、`etc/tuned/piano-ppd.conf` 与 `tuned-ppd.service.d/50-piano-ppd.conf`。这几份是纯配置，搬过来改路径即可。
+照搬上游的 profile 不行。上游 `piano-{power-saver,balanced,performance}` 在 `[sysfs]` 里直接写 `scaling_max_freq` 与 `3d00000.gpu/max_freq`；这台机器上这些文件归 `uperf-linux` 管，它开机接管两个簇与 GPU，外部写入几秒内就被覆盖。实测把 `policy0/scaling_max_freq` 写成 1785600，3 秒后回到 2745600。GPU 上限更麻烦：被写成 342000000 之后切回 balanced 不会恢复，等于一直压着。
+
+所以这里的 profile 只切 uperf 自己的模式，`uperfctl mode powersave|balance|performance` 与 GNOME 的三档一一对应。TuneD 的 script 插件只接受 profile 目录里的脚本，目录外的路径会被记成 error 并忽略，所以每档带一个 `apply.sh`，真正的切换逻辑在 `/usr/lib/piano/piano-power-mode`，带重试以覆盖开机时 daemon 还没起来的窗口。
+
+已在设备上核对：`net.hadess.PowerProfiles` 列出三档、`Driver` 为 `tuned`；用 `busctl set-property` 切档后 `tuned-adm active`、`/run/uperf-linux/cur_powermode` 跟着变，GPU 上限全程停在 1100000000。未核对：GNOME 设置面板的实际显示（这台机器的截图通道坏了），以及重启后首启时序。
 
 ## 中文环境
 
@@ -79,6 +83,7 @@ README 与 `known-issues.md` 里红外、HDR、指纹三节还是旧的判断，
 ```
 sudo python3 ~/Lab/Bridge/tmp/drm-props.py /dev/dri/card2 /dev/dri/card2   # 连接器与 CRTC 属性
 busctl introspect net.hadess.SensorProxy /net/hadess/SensorProxy
+busctl get-property net.hadess.PowerProfiles /net/hadess/PowerProfiles net.hadess.PowerProfiles Profiles
 rpm -q mutter libfprint fprintd tuned power-profiles-daemon glibc-langpack-zh
 fc-list :lang=zh | wc -l
 lsmod | grep -E 'ir_spi|uio_piano_fingerprint|qcomtee|leds_qcom_flash'

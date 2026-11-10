@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        11%{?dist}
+Release:        12%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -37,6 +37,8 @@ for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
 - Interconnect bwmon and RPMh stats module auto-loading
 - Dual-boot SunUEFI / Android return launchers and polkit rules
 - CPU schedutil 2ms rate limit tuning for instantaneous touch response
+- TuneD profiles and the tuned-ppd power mode mapping for GNOME, bridged to
+  uperf-linux's own power modes
 - Static tablet chassis identification for systemd and desktop
 
 %prep
@@ -101,6 +103,7 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_libexecdir}/piano-physical-platform
 %{_libexecdir}/xiaomi-charger-mode
 %{_prefix}/lib/piano/power-button
+%{_prefix}/lib/piano/piano-power-mode
 %{_prefix}/lib/piano/first-boot-ssh-key
 %{_prefix}/lib/piano/piano-ram-hardware-prepare
 %{_prefix}/lib/piano/piano-disk-hardware-prepare
@@ -116,6 +119,14 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 
 %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf
 %{_prefix}/lib/tmpfiles.d/cpufreq-schedutil.conf
+%config(noreplace) %{_sysconfdir}/tuned/piano-ppd.conf
+%{_prefix}/lib/tuned/profiles/piano-power-saver/tuned.conf
+%{_prefix}/lib/tuned/profiles/piano-power-saver/apply.sh
+%{_prefix}/lib/tuned/profiles/piano-balanced/tuned.conf
+%{_prefix}/lib/tuned/profiles/piano-balanced/apply.sh
+%{_prefix}/lib/tuned/profiles/piano-performance/tuned.conf
+%{_prefix}/lib/tuned/profiles/piano-performance/apply.sh
+%{_unitdir}/tuned-ppd.service.d/50-piano-ppd.conf
 %{_datadir}/piano/machine-info
 
 %{_datadir}/applications/org.sunuefi.ReturnAndroid.desktop
@@ -149,6 +160,11 @@ rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service piano-power-button.service
 
 %changelog
+* Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 0.1.0-12
+- 补上 GNOME 的三档电源策略：三份 piano tuned profile 与 piano-ppd.conf，
+  由 tuned-ppd.service.d 的 BindReadOnlyPaths 呈现给 tuned-ppd，不动 tuned
+  自己拥有的 conffile
+
 * Sun Nov 08 2026 FFT-infra <dev@piano.invalid> - 0.1.0-11
 - 用同名 modprobe 配置遮住 alsa-lib 的 dist-alsa.conf，不再加载内核没有的 snd-seq
 

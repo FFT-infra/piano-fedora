@@ -13,6 +13,8 @@
       "pipewire",
       "wireplumber",
       "iio-sensor-proxy",
+      "tuned",
+      "tuned-ppd",
       "mesa-piano-vulkan-drivers",
       "mesa-piano-libGL",
       "mesa-piano-libEGL"

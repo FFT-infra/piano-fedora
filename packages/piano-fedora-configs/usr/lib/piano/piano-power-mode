@@ -1,0 +1,31 @@
+#!/bin/bash
+# Map a GNOME power mode onto uperf-linux's own power mode.
+#
+# tuned-ppd translates GNOME's three modes into the three tuned profiles in
+# /usr/lib/tuned/profiles/piano-*, and those profiles call this helper. The
+# actual cpufreq and devfreq writes belong to uperf-linux: it starts at boot and
+# rewrites any value another process puts in scaling_max_freq or the GPU
+# ceiling. Switching its mode is the only way to change the policy that sticks.
+#
+# The daemon may still be starting when tuned applies a profile at boot, so the
+# call is retried for a few seconds before giving up.
+set -u
+
+mode=${1:-}
+case "$mode" in
+    powersave|balance|performance) ;;
+    *)
+        echo "usage: $0 powersave|balance|performance" >&2
+        exit 2
+        ;;
+esac
+
+for _ in $(seq 1 10); do
+    if /usr/bin/uperfctl mode "$mode" >/dev/null 2>&1; then
+        exit 0
+    fi
+    sleep 1
+done
+
+echo "piano-power-mode: uperfctl mode $mode did not succeed" >&2
+exit 1
