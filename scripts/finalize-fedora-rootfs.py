@@ -336,6 +336,41 @@ Persistent=false
 WantedBy=timers.target
 """
 
+# 显示子系统比 graphical.target 晚几百毫秒才注册出 msm 的 DRM 节点，
+# 显示管理器抢在前面时 gnome-shell 只会看到 simpledrm 或半初始化的节点，
+# 随后以「No GPUs found」退出或撞上 mutter 的 KMS 断言。等 msm 的 card
+# 出现再交出启动权，四个桌面档都用同一个 display-manager 别名排序。
+PIANO_WAIT_DISPLAY = """#!/bin/sh
+# 等到显示控制器自己的 DRM 设备注册完。GPU 那张卡叫 adreno，显示器这张
+# 的驱动目录叫 msm_dpu；只看卡存在会命中没完成 KMS 初始化的中间态。
+# 最多等 20 秒，超时也放行，免得一次探测失败把图形界面永远挡住。
+i=0
+while [ "$i" -lt 200 ]; do
+    for card in /sys/class/drm/card[0-9]*; do
+        [ -e "$card/device/driver" ] || continue
+        case $(basename "$(readlink -f "$card/device/driver")") in
+            msm_dpu|msm) exit 0 ;;
+        esac
+    done
+    i=$((i + 1))
+    sleep 0.1
+done
+echo "piano-wait-display: no msm_dpu DRM device after 20s" >&2
+exit 0
+"""
+
+PIANO_WAIT_DISPLAY_UNIT = """[Unit]
+Description=Wait for the msm DRM device before the display manager
+DefaultDependencies=no
+After=systemd-udevd.service
+Before=display-manager.service
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/piano-wait-display
+[Install]
+WantedBy=graphical.target
+"""
+
 # 自建服务跑在 init_t，没有域宏可用（镜像里没有 selinux-policy-devel），
 # 所以策略模块是手写的定向 allow；每条规则对应真机上一条 AVC。
 PIANO_SELINUX_UNIT = """[Unit]
@@ -409,6 +444,7 @@ def stage_piano_hardware_fixes(root, context):
     scripts = {
         "usr/libexec/piano-clock-restore": PIANO_CLOCK_RESTORE,
         "usr/libexec/piano-clock-save": PIANO_CLOCK_SAVE,
+        "usr/libexec/piano-wait-display": PIANO_WAIT_DISPLAY,
     }
     files = {
         **scripts,
@@ -416,6 +452,7 @@ def stage_piano_hardware_fixes(root, context):
         "usr/lib/systemd/system/piano-clock-restore.service": PIANO_CLOCK_RESTORE_UNIT,
         "usr/lib/systemd/system/piano-clock-save.service": PIANO_CLOCK_SAVE_UNIT,
         "usr/lib/systemd/system/piano-clock-save.timer": PIANO_CLOCK_SAVE_TIMER,
+        "usr/lib/systemd/system/piano-wait-display.service": PIANO_WAIT_DISPLAY_UNIT,
         "usr/lib/systemd/system/piano-selinux-policy.service": PIANO_SELINUX_UNIT,
         # sysinit 阶段那次在真机上没有留下痕迹（单元显示成功但时钟仍是 1970），
         # 所以在 multi-user 阶段再校正一次：两条路都走，任一条生效即可。
@@ -772,6 +809,7 @@ def main():
                 "librevm-daemon.service", "uperf-linux.service",
                 "piano-clock-restore.service", "piano-clock-save.service",
                 "piano-clock-save.timer", "piano-selinux-policy.service",
+                "piano-wait-display.service",
                 "piano-first-boot-ssh-key.service",
                 "piano-pstore-save.service", "qbootctl.service",
                 "piano-power-button.service",
