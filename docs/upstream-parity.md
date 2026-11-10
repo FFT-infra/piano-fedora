@@ -1,13 +1,13 @@
 # 与上游的功能差距
 
-这份清单来自 2026-11-10 的一次只读核对：对照 `build/test-sources/sunuefi`（pin `4ef8740`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。每项写明证据与核对命令，下次接手不用重新猜。电源策略、中文环境、闪光灯与 JPEG、指纹桌面接入、构建断言、文档口径已在本分支完成，其余见各行状态。
+这份清单来自 2026-11-10 的一次只读核对：对照 `build/test-sources/sunuefi`（pin `4ef8740`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。每项写明证据与核对命令，下次接手不用重新猜。电源策略、中文环境、相机高像素与静态拍摄、指纹桌面接入、构建断言、文档口径已在本分支完成，其余见各行状态。
 
 | 项 | 我们的现状 | 上游 | 要做的 | 优先级 |
 | --- | --- | --- | --- | --- |
 | 指纹用户态 | 完成：`piano-fingerprint` 原生客户端加 `piano-libfprint`，fprintd 认到 `Goodix fingerprint sensor`；录入没测 | `patches/libfprint/1.94.100/` 把 Goodix 接进标准 libfprint | — | 完成 |
-| 相机闪光灯 | 完成：`piano-camera-ctl capture rear --flash` 开补光灯拍照 | 上游用闪光同步，我们用常亮补光 | — | 完成 |
+| 相机闪光灯 | 完成：`capture rear --flash`，有收敛预览时走上游频闪，没有时常亮补光 | 帧同步频闪 | — | 完成 |
 | 相机 JPEG 直出 | 完成：`piano-camera-ctl capture --output FILE` 直出 JPEG | `photo/jpeg.c` | — | 完成 |
-| 相机高像素 | 拍到 4080x3060，仍是 binned 输出 | `quad/`（Rust worker）做 quad bayer 合成 | 上游 camerad 要从 loopback 侧改输出尺寸，锁定的 v4l2loopback 把消费端 `S_FMT` 钳回生产端尺寸，也不发 `SOURCE_CHANGE` | P2 |
+| 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成，实机出帧 | `quad/` 与 v4l2loopback 生产者协商 | — | 完成 |
 | 电源策略 | 完成：`tuned-ppd` 三档 profile 桥到 uperf-linux 的模式 | 上游 profile 直接写 cpufreq/devfreq | — | 完成 |
 | 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 写 `zh_CN.UTF-8`，输入源默认带 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | — | 完成 |
 | mutter 触摸崩溃 | 库存 `mutter-51.1-1.fc45` | 补丁在 51.1 源码上干净套用 | 崩溃未复现，这版不重编 mutter | P2 |
@@ -57,15 +57,17 @@ Not Authorized: net.reactivated.fprint.device.verify
 
 闪光灯硬件在：`ls /sys/class/leds` 有 `:flash-0`、`:flash-1`，`leds_qcom_flash`、`v4l2_flash_led_class`、`led_class_flash` 都在加载，`piano-camera-flash.dtso` 也一直在 overlay 列表里。后摄的两个闪光通道以 ancillary media link 挂在 `s5kjn1` 上，`/dev/v4l-subdev33`、`/dev/v4l-subdev34` 就是它们。
 
-这一版在 `piano-camerad` 里加了静态拍摄：`/run/piano-camerad/control.sock`（`SOCK_SEQPACKET`，root:video 0660）收 `capture <camera> [flash]`，守护进程停掉预览、把 ISP 输出切到传感器分辨率、等自动曝光收敛后把帧写进 memfd，用 `SCM_RIGHTS` 交给客户端；客户端 `piano-camera-ctl` 编码 JPEG。拍完恢复预览尺寸，正在看预览的应用会短暂停一下再继续。
+静态拍摄在同一个控制面上：`/run/piano-camerad/control.sock`（`SOCK_SEQPACKET`，root:video 0660）收 `capture <camera> [flash]`。守护进程停掉预览，切到该传感器最大的普通模式（后摄 4080x3060、前摄 3264x2448），等自动曝光收敛后把 NV12 帧写进只读 memfd，用 `SCM_RIGHTS` 交给客户端；`piano-camera-ctl` 编码 JPEG。拍完恢复预览尺寸，正在看预览的应用会短暂停一下再继续。
 
-`--flash` 走常亮补光而不是上游的闪光同步：把 `V4L2_CID_FLASH_LED_MODE` 设成 TORCH，等曝光在亮灯条件下收敛，拍完关灯。上游用帧同步把频闪压在曝光窗口里；我们没有帧同步事件，常亮更稳，代价是补光期间多耗一点电。
+`--flash` 有两种走法。loopback 上有已收敛的预览流时走上游的帧同步频闪：冻结 3A，按曝光窗口算脉冲长度，等一帧的曝光区间落在灯亮区间里，输出跟随预览尺寸。没有这样的预览流时，控制口自己起流、自动曝光在暗场里会把增益推到最大，一次满功率脉冲只会把整幅打到 255，所以改为常亮补光：把 `V4L2_CID_FLASH_LED_MODE` 设成 TORCH，让自动曝光在灯亮条件下收敛，拍完关灯。
 
-实机结果：`piano-camera-ctl capture rear --flash --output rear-f.jpg` 得到 4080x3060 的 JPEG，同一场景不开补光时整幅黑（平均亮度 0），开补光后平均亮度 89，桌面表面可见；前摄 `capture front` 直接可用。预览在拍摄后自动恢复。
+实机结果：后摄 `capture rear --flash --output` 得到 4080x3060 的 JPEG，同一暗场不开补光时平均亮度 1.3，开补光后 94 到 122；前摄 `capture front` 得到 3264x2448。拍摄期间 ffmpeg 在读 `/dev/video40`，拍完预览继续出帧，ffmpeg 正常结束。
 
 后摄传感器模式从 4080x3072 改成了 4080x3060。`s5kjn1` 驱动只报 4080x3060，`S_FMT` 写 3072 会被钳回 3060，`subdev_fmt()` 的读回校验因此返回 `EPIPE`，后摄预览在 7.3 内核上根本起不来。改到 3060 后预览与拍摄都正常，`tests/check_camera_photo.py` 锁住这个值。
 
-`quad/`（Rust 合成 worker，输出 50MP 级别的 quad bayer 合成图）没有接。上游 camerad 借 v4l2loopback 把输出尺寸放大：守护进程先按预览尺寸占住格式，应用用 `S_FMT` 请求 8160x6120，再由 `V4L2_EVENT_SOURCE_CHANGE` 通知切换。锁定的 v4l2loopback 两点都不支持。`vidioc_try_fmt_vid()` 在 `has_other_owners()` 为真时把消费端请求钳回生产端的格式，`vidioc_subscribe_event()` 对 `SOURCE_CHANGE` 返回 `EINVAL`。实测向节点请求 8160x6120，读回的是 1920x1440。把相机包换成上游 camerad 也拿不到高像素，静态拍摄还会退回预览尺寸，所以这一版继续用仓库里验证过的 daemon。要接 `quad/` 得先改 v4l2loopback 并重出 `kernel-piano`，不在本仓库能本地验证的范围内。
+高像素走 v4l2loopback 的生产者协商。runtime 的模块改成上游 0.15.4 的三份补丁（`patches/v4l2loopback/0.15.4/series.json`，按 sha256 校验后套用），补上消费端 `S_FMT` 协商与 `V4L2_EVENT_SOURCE_CHANGE`。相机用户态换成上游 `linux/userspace/camera`：守护进程把每个传感器模式注册给 loopback，应用请求 8160x6120 时后摄切到 `msm_vfe0_rdi0` 的 RAW10（SGRBG10），`quad/` 的 Rust worker 用随包的 demosaic 0.3.0（加一份 QPPG 修正）合成 NV12，实测每帧约 3.6 秒、工作内存约 950 MiB。
+
+设备证据来自同一份探针的前后对照。旧模块把消费端请求的 8160x6120 钳回 1920x1440，`SOURCE_CHANGE` 订阅返回 `EINVAL`；换模块后消费端读回 8160x6120，生产端收到事件重新协商，守护进程日志有 `output negotiated to 8160x6120 NV12`。抓到的帧是 74,908,800 字节，后摄曝光从 8 行加到 6412 行时同一场景平均亮度从 2.2 升到 255，说明帧内容是真实感光而不是黑帧。
 
 ## 电源策略
 

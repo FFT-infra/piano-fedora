@@ -3,21 +3,21 @@
 
 Name:           piano-camera
 Version:        0.1.0
-Release:        4%{?dist}
-Summary:        Camera pipeline and NEON-accelerated v4l2loopback daemon for Xiaomi Pad 8 Pro (piano)
+Release:        5%{?dist}
+Summary:        Camera pipeline and v4l2loopback daemon for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0
 URL:            https://github.com/FFT-infra/piano-fedora
 Source0:        %{name}-%{version}.tar.gz
-# 真机管线修复：GCC 边界检查与"相机拥有自己的 source pad"路由选择。运行时的
-# 旧聚合包曾经在 SunUEFI 上游树上打这两个补丁再静态编译；现在它们属于这里，
-# 由本 spec 统一构建，避免同名二进制出现两个 owner。
-Patch0:         camerad-gcc-bounds.patch
-Patch1:         camerad-owned-pix-route.patch
 
 ExclusiveArch:  aarch64
 
 BuildRequires:  gcc
+BuildRequires:  gcc-c++
 BuildRequires:  libjpeg-turbo-devel
+BuildRequires:  libyuv-devel
+BuildRequires:  cargo
+BuildRequires:  rust
+BuildRequires:  pkgconf-pkg-config
 BuildRequires:  systemd-rpm-macros
 Requires:       systemd
 
@@ -25,24 +25,41 @@ Provides:       piano-camera-daemon = %{version}-%{release}
 
 %description
 Camera hardware bring-up service and resident user-space relay daemon (piano-camerad)
-for Xiaomi Pad 8 Pro (SM8750 piano). Features handwritten 16-pixel parallel AArch64
-NEON NV12->BGRx conversion pipeline delivering 1.9ms low-latency frames into
-v4l2loopback nodes, bypassing Mesa GTK diagonal tearing artifacts.
+for Xiaomi Pad 8 Pro (SM8750 piano). Runs the sensors through the CAMSS hardware ISP
+and exposes preview and still capture on the v4l2loopback cameras. The rear full-frame
+mode keeps the whole Quad CFA sample from the sensor and converts it in software.
 
 %prep
 %autosetup -p1
 
 %build
-gcc %{optflags} -Isrc src/piano-camerad.c -lm -lpthread -o piano-camerad
-gcc %{optflags} -Isrc src/piano-camera-ctl.c -ljpeg -o piano-camera-ctl
+export CARGO_HOME=%{_builddir}/cargo-home
+# src/ 是 SunUEFI linux/userspace/camera 的副本；quad/vendor/demosaic 是锁定的
+# crates.io 0.3.0 加一份 QPPG 修正补丁，--offline 因此不需要网络。
+make -C src OUT=%{_builddir}/%{name}-%{version}/camera %{?_smp_mflags} \
+  CC=gcc CXX=g++ \
+  CFLAGS="%{optflags} -Wall -Wextra" \
+  CXXFLAGS="%{optflags} -Wall -Wextra" \
+  LDFLAGS="%{build_ldflags}"
 
 %install
 mkdir -p %{buildroot}%{_prefix}/lib/piano
 cp -a usr etc %{buildroot}/
-install -m 0755 piano-camerad %{buildroot}%{_prefix}/lib/piano/piano-camerad
-install -Dm0755 piano-camera-ctl %{buildroot}%{_bindir}/piano-camera-ctl
+install -m 0755 %{_builddir}/%{name}-%{version}/camera/piano-camerad \
+  %{buildroot}%{_prefix}/lib/piano/piano-camerad
+install -Dm0755 %{_builddir}/%{name}-%{version}/camera/piano-camera-ctl \
+  %{buildroot}%{_bindir}/piano-camera-ctl
+install -Dm0644 src/LICENSE-MIT \
+  %{buildroot}%{_licensedir}/piano-camera/LICENSE-MIT
+install -Dm0644 src/quad/LICENSE-MIT \
+  %{buildroot}%{_licensedir}/piano-quad/LICENSE-MIT
+install -Dm0644 src/quad/vendor/demosaic/LICENSE-MIT \
+  %{buildroot}%{_licensedir}/demosaic/LICENSE-MIT
 
 %files
+%{_licensedir}/piano-camera/LICENSE-MIT
+%{_licensedir}/piano-quad/LICENSE-MIT
+%{_licensedir}/demosaic/LICENSE-MIT
 %{_prefix}/lib/piano/piano-camerad
 %{_bindir}/piano-camera-ctl
 %{_prefix}/lib/piano/camera-start
@@ -62,6 +79,15 @@ systemctl enable piano-camerad.service piano-camera.service || :
 %systemd_postun_with_restart piano-camerad.service piano-camera.service
 
 %changelog
+* Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 0.1.0-5
+- 相机用户态换成上游 linux/userspace/camera：守护进程按 v4l2loopback 的
+  生产者协商处理 S_FMT/S_PARM，后摄 8160x6120 走 RDI 全幅 Quad CFA，由
+  libpiano-quad（Rust，demosaic 0.3.0 加 QPPG 修正）在软件里转成 NV12
+- 依赖 libyuv、libjpeg 与 Rust；quad/vendor/demosaic 随包，构建不联网
+- 静态拍摄沿用控制口的 capture <camera> [--flash]：自起流时按传感器原生
+  尺寸拍、等自动曝光收敛，--flash 在无预览流时用常亮补光，有已收敛的预览
+  时走上游的帧同步频闪
+
 * Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 0.1.0-4
 - 新增全分辨率静态拍摄：piano-camera-ctl capture <camera> [--flash]
   --output FILE|-，守护进程通过 /run/piano-camerad/control.sock 交付 NV12 帧，
@@ -72,7 +98,7 @@ systemctl enable piano-camerad.service piano-camera.service || :
 - camera-start 只在 IOMMU 组不是 DMA 时才写 type（7.3 上该属性已只读，
   已是 DMA 时写入返回 EPERM，旧逻辑让 piano-camera 在真机上 failed）
 
-* Mon Oct 20 2026 FFT-infra <dev@piano.invalid> - 0.1.0-2
+* Tue Oct 20 2026 FFT-infra <dev@piano.invalid> - 0.1.0-2
 - 收纳 Fedora 侧两个 camerad 补丁（GCC 边界检查、相机自有 source pad 路由），
   运行时不再另建一份同名二进制
 
