@@ -1,0 +1,94 @@
+# 与上游的功能差距
+
+这份清单来自 2026-11-10 的一次只读核对：对照 `build/test-sources/sunuefi`（pin `4ef8740`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。每项写明证据与核对命令，下次接手不用重新猜。下面全是待办，不是已经做完的事。
+
+| 项 | 我们的现状 | 上游 | 要做的 | 优先级 |
+| --- | --- | --- | --- | --- |
+| 指纹用户态 | `/dev/uio0`、`uio_piano_fingerprint`、`qcomtee`、`/dev/tee0` 都在，用户态没有后端 | `tools/build_piano_fingerprint.py` 与 `patches/libfprint/1.94.100/` 已把 Goodix 接进标准 libfprint、fprintd | 用 Fedora 的 libfprint 源码套上游补丁，链 `libpiano-goodix.a` 重编，补 udev 与 PAM | P1 |
+| 相机闪光灯 | `/sys/class/leds/:flash-0`、`:flash-1` 存在，`leds_qcom_flash` 已加载，`piano-camerad` 不支持 | `piano-camera-ctl capture rear --flash` 同步补光拍照 | `piano-camera` 补 flash 控制与拍照协议 | P1 |
+| 相机 JPEG 直出 | 只出 NV12 到 v4l2loopback | `photo/jpeg.c`，CLI 直接写 JPEG | 同上，跟闪光灯一起做 | P1 |
+| 相机高像素 | 只有 binned 输出 | `quad/`（Rust worker）做 quad bayer 合成 | 单独评估，要引入 Rust 工具链 | P2 |
+| 电源策略 | `tuned` 与 `power-profiles-daemon` 都没装，GNOME 电源面板没有性能模式 | tuned 三档 profile 加 `tuned-ppd` drop-in | 加 `tuned`、`tuned-ppd` 与三份 profile | P1 |
+| 中文环境 | `LANG=C.UTF-8`，没装 `glibc-langpack-zh`，输入源只有 `[('xkb', 'us')]` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | 加 langpack、写 `/etc/locale.conf`、给输入源默认值 | P1 |
+| mutter 触摸崩溃 | 库存 `mutter-51.1-1.fc45` | `0003-wayland-touch-ignore-cancelled-grab.patch` | 先在 Fedora 上确认崩溃可复现，再决定要不要重编 mutter | P2 |
+| KDE 桌面默认值 | 只带 `powerdevilrc` | `kwinoutputconfig.json`（scale 2、`autoRotation: InTabletMode`）、`kcminputrc`、`QT_SCALE_FACTOR` | KDE 镜像上实测后再决定 | P2 |
+| 罗盘 | `HasAccelerometer`/`AmbientLight`/`Proximity` 为 true，没有 Compass 接口 | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 查是 SSC 没上报还是硬件没有 | P3 |
+| 构建断言 | 只断言 F2FS、SELinux、Gunyah | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | 把已经依赖的配置项加进 `build-kernel.yml` | P1 |
+| 文档口径 | README 与 `known-issues.md` 仍写红外/HDR/指纹不可用 | — | 按下面的核对结果重写这三节 | P0 |
+
+## 指纹
+
+内核侧齐了：`/dev/uio0` 存在，`lsmod` 有 `uio_piano_fingerprint` 与 `qcomtee`，`dmesg` 打出 `QTEE version 5.2.0`，`/dev/tee0` 可读，`/proc/device-tree/soc/xiaomi_fingerprint` 有节点。DT overlay 一直在发，`tests/check_bundle_overlays.py` 也在断言 `xiaomi,piano-goodix-control`。
+
+缺的是用户态。Fedora 45 的 `libfprint-1.94.100-1.fc45`、`fprintd-1.94.5-6.fc45` 与上游 `config/fingerprint.json` 里 pin 的版本完全一致，所以不用搬上游分支，拿 Fedora 的源码套 `0001-piano-goodix-uio.patch`，把 `libpiano-goodix.a` 链进去重编即可。原生客户端由 `quic-teec`、`minkipc`、`qcbor` 三个纯 C 源码构建，没有发行版依赖。发布走现有的 COPR，另外要补 `fprintd.service.d` 的 `DeviceAllow=char-uio rw char-tee rw char-bsg rw` 与 PAM 接入。
+
+## 相机
+
+闪光灯硬件在：`ls /sys/class/leds` 有 `:flash-0`、`:flash-1`，`leds_qcom_flash`、`v4l2_flash_led_class`、`led_class_flash` 都在加载，`piano-camera-flash.dtso` 也一直在 overlay 列表里。`packages/piano-camera/src/piano-camerad.c` 里 `flash` 出现 0 次，`JPEG` 只有一次注释，所以应用侧拿不到闪光灯，也拿不到直出照片。
+
+上游对应的是 2958 行的 camerad，外加 `photo/`（协议、JPEG、时序）和 `piano-camera-ctl`，`piano-camera-ctl capture rear --flash --output FILE` 就是一次带补光的拍照。`quad/` 是 Rust 写的合成 worker，接进 Fedora 要加 cargo，单独排。
+
+日常预览与取帧不受影响，两颗传感器现在都能正常出图。
+
+## 电源策略
+
+`rpm -q tuned power-profiles-daemon` 两个都是 not installed，`/usr/lib/systemd/system` 里也没有对应的 unit，因此 GNOME 设置里的性能模式面板是空的。Fedora 45 仓库有 `tuned 2.28.0` 与 `tuned-ppd 2.28.0`。
+
+上游的 `linux/desktops/gnome/power-overlay` 提供了 `piano-power-saver`/`piano-balanced`/`piano-performance` 三份 tuned profile、`etc/tuned/piano-ppd.conf` 与 `tuned-ppd.service.d/50-piano-ppd.conf`。这几份是纯配置，搬过来改路径即可。
+
+## 中文环境
+
+`/etc/locale.conf` 是 `LANG=C.UTF-8`，`glibc-langpack-zh` 没装，连 `glibc-langpack-en` 也没有。`gsettings get org.gnome.desktop.input-sources sources` 返回 `[('xkb', 'us')]`，`ibus-libpinyin` 装了、`ibus-daemon` 也在跑，只是没人把它加进输入源。
+
+字体已经在：`google-noto-sans-cjk-vf-fonts`、`google-noto-serif-cjk-vf-fonts`、`default-fonts-cjk-*` 都装了，`fc-list :lang=zh` 有 61 条。这一项不用动。
+
+要补的就是三处：`glibc-langpack-zh` 进 profile、`/etc/locale.conf` 写 `LANG=zh_CN.UTF-8`、输入源默认值按上游 `defaults.ini` 的 `[('xkb', 'us'), ('ibus', 'libpinyin')]` 给。这是产品取向问题，跟着上游默认中文的话，成本只有这三处。
+
+## mutter
+
+Fedora 45 是 `mutter-51.1-1.fc45`。上游三个补丁里只有 `0003-wayland-touch-ignore-cancelled-grab` 对得上：它的提交说明写着 "Two Piano crash dumps from Mutter 51.0 show a NULL first member of MetaWaylandTouchInfo ... The same unchecked dereference is present in upstream 51.1"，改的是 `touch_can_grab_surface()` 里 `focus_surface` 为空时的解引用。要做就得重编 mutter 走 COPR，先得在 Fedora 上确认崩溃能复现。
+
+`0001-kms-empty-gamma-bypass` 针对的是 48.7 的 `SetCrtcGamma` 空数组路径。我们的 CRTC 上 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM` 都在，这条路径会不会踩到还没验。
+
+## 桌面默认值
+
+`DisplayConfig.GetCurrentState` 给出的逻辑显示器是 `scale 2.6666667461395264`，GNOME 按 239x163mm 自动选了分数缩放，界面可用。上游 `defaults.ini` 写死 `scaling-factor=uint32 2`、KDE 侧 `QT_SCALE_FACTOR=2`，那是它的口味，照搬会把界面放大一档。这一项不算缺口。
+
+KDE 的 `kwinoutputconfig.json`（scale 2、`autoRotation: InTabletMode`、亮度 0.8）与 `kcminputrc`（`Xiaomi Touchpad` 自然滚动）对我们 KDE 镜像可能有用，设备上只装了 GNOME 镜像，没法验证，先记在这里。
+
+## 罗盘
+
+`iio-sensor-proxy` 在跑，带 `/etc/systemd/system/iio-sensor-proxy.service.d/piano.conf`，`busctl introspect net.hadess.SensorProxy` 有 `HasAccelerometer`、`HasAmbientLight`、`HasProximity`，没有 `Compass` 相关的接口。`tests/check_sensor_runtime.py` 断言过 `ssc-compass` 标记已编进二进制，所以是 SSC 侧没上报，或者这颗设备本来就没有磁力计。属排查，先不做改动。
+
+## 构建断言
+
+设备上实测的配置：`CONFIG_LIRC=y`、`CONFIG_IR_SPI=m`、`CONFIG_SND_SEQUENCER=m`、`CONFIG_ARM64_PIANO_OPTIMIZE=y`、`CONFIG_LEDS_CLASS_FLASH=m`、`CONFIG_UIO_PIANO_FINGERPRINT=m`。`build-kernel.yml` 现在只断言 F2FS、SELinux、Gunyah 三组，历史上 `LIRC` 与 `IR_SPI` 真的掉过一次。把已经依赖上的项补进断言，是几行的事。
+
+## 文档口径
+
+README 与 `known-issues.md` 里红外、HDR、指纹三节还是旧的判断，和上面核对的设备状态对不上：
+
+- 红外：设备上 `/dev/lirc0`、`/sys/class/rc/rc0/lirc0` 都在，`dmesg` 有 `rc rc0: lirc_dev: driver ir-spi registered at minor = 0, no receiver, raw IR transmitter`，`ir_spi` 与 `rc_core` 已加载。文档写的"DT 缺 IR 节点、内核没编 LIRC"不成立。上游自己的说法是接口就绪、光学输出未实测，照这个口径写。
+- HDR：DSI-1 连接器属性里有 `HDR_OUTPUT_METADATA`，同时有 `Colorspace`、`max bpc`，CRTC 上有 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM`。文档写的"msm 没有挂 HDR_OUTPUT_METADATA"不成立；能不能真出 HDR 画面还没在 KDE 里验过。
+- 指纹：控制驱动与 DT 都在，"主线没有对应的控制驱动"这句话要改；正确的说法是内核与 DT 就绪、用户态还没接。
+
+## 核对方法
+
+设备侧只读，没改任何配置：
+
+```
+sudo python3 ~/Lab/Bridge/tmp/drm-props.py /dev/dri/card2 /dev/dri/card2   # 连接器与 CRTC 属性
+busctl introspect net.hadess.SensorProxy /net/hadess/SensorProxy
+rpm -q mutter libfprint fprintd tuned power-profiles-daemon glibc-langpack-zh
+fc-list :lang=zh | wc -l
+lsmod | grep -E 'ir_spi|uio_piano_fingerprint|qcomtee|leds_qcom_flash'
+zcat /proc/config.gz | grep -E 'CONFIG_LIRC|CONFIG_IR_SPI|CONFIG_UIO_PIANO|CONFIG_ARM64_PIANO'
+```
+
+上游侧对照的是 `build/test-sources/sunuefi`（`4ef8740`）的 `tools/build_piano_fingerprint.py`、`linux/userspace/camera/`、`linux/desktops/`、`patches/libfprint/` 与 `docs/status.md`。
+
+## 核对过但不需要做的
+
+- mutter `0002-color-no-edid-standard-profile`：DSI-1 的 EDID 是 384 字节、头 `00 ff ff ff ff ff ff 00` 的合法 EDID，不落在这个补丁覆盖的场景里。
+- 中文字体：CJK 字体已随 `google-noto-*-cjk-vf-fonts` 和 `default-fonts-cjk-*` 装上。
+- GNOME 缩放默认值：自动分数缩放在这台面板上给出 2.67，可用，不需要写死。
