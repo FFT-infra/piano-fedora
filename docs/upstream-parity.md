@@ -7,11 +7,11 @@
 | 指纹用户态 | 完成：`piano-fingerprint` 原生客户端加 `piano-libfprint`，fprintd 认到 `Goodix fingerprint sensor`；录入没测 | `patches/libfprint/1.94.100/` 把 Goodix 接进标准 libfprint | — | 完成 |
 | 相机闪光灯 | 完成：`piano-camera-ctl capture rear --flash` 开补光灯拍照 | 上游用闪光同步，我们用常亮补光 | — | 完成 |
 | 相机 JPEG 直出 | 完成：`piano-camera-ctl capture --output FILE` 直出 JPEG | `photo/jpeg.c` | — | 完成 |
-| 相机高像素 | 拍到 4080x3060，仍是 binned 输出 | `quad/`（Rust worker）做 quad bayer 合成 | 单独评估，要引入 Rust 工具链 | P2 |
+| 相机高像素 | 拍到 4080x3060，仍是 binned 输出 | `quad/`（Rust worker）做 quad bayer 合成 | 上游 camerad 要从 loopback 侧改输出尺寸，锁定的 v4l2loopback 把消费端 `S_FMT` 钳回生产端尺寸，也不发 `SOURCE_CHANGE` | P2 |
 | 电源策略 | 完成：`tuned-ppd` 三档 profile 桥到 uperf-linux 的模式 | 上游 profile 直接写 cpufreq/devfreq | — | 完成 |
 | 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 写 `zh_CN.UTF-8`，输入源默认带 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | — | 完成 |
 | mutter 触摸崩溃 | 库存 `mutter-51.1-1.fc45` | 补丁在 51.1 源码上干净套用 | 崩溃未复现，这版不重编 mutter | P2 |
-| KDE 桌面默认值 | 只带 `powerdevilrc` | `kwinoutputconfig.json`、`kcminputrc`、`QT_SCALE_FACTOR` | 没有 KDE 镜像可验证，这版不加 | P2 |
+| KDE 桌面默认值 | 完成：`kwinoutputconfig.json`、`kcminputrc`、`kscreenlockerrc` 落进 `~/.config`，`/etc/environment.d` 设 `KWIN_DRM_FORCE_SCALING_MODE=FULL` | 同名文件写 scale 2、`InTabletMode`、自然滚动，另设 `QT_SCALE_FACTOR=2` | `QT_SCALE_FACTOR` 没有跟：与输出 scale 叠加会放大两次 | 完成 |
 | 罗盘 | 可用：`/net/hadess/SensorProxy/Compass` 上 `HasCompass=true` | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 之前查的是父对象，接口在子对象上 | 完成 |
 | 构建断言 | 完成：`build-kernel.yml` 断言 20 项，`check_kernel_config_assertions.py` 锁住 | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | — | 完成 |
 | 文档口径 | 完成：README 与 `known-issues.md` 的红外/HDR/指纹三节按实机状态重写 | — | — | 完成 |
@@ -65,7 +65,7 @@ Not Authorized: net.reactivated.fprint.device.verify
 
 后摄传感器模式从 4080x3072 改成了 4080x3060。`s5kjn1` 驱动只报 4080x3060，`S_FMT` 写 3072 会被钳回 3060，`subdev_fmt()` 的读回校验因此返回 `EPIPE`，后摄预览在 7.3 内核上根本起不来。改到 3060 后预览与拍摄都正常，`tests/check_camera_photo.py` 锁住这个值。
 
-`quad/`（Rust 合成 worker，输出 50MP 级别的 quad bayer 合成图）没有接。当前的 4080x3060 仍然是 binned 输出，要真正上高像素得补 cargo 构建和 worker，单独排。
+`quad/`（Rust 合成 worker，输出 50MP 级别的 quad bayer 合成图）没有接。上游 camerad 借 v4l2loopback 把输出尺寸放大：守护进程先按预览尺寸占住格式，应用用 `S_FMT` 请求 8160x6120，再由 `V4L2_EVENT_SOURCE_CHANGE` 通知切换。锁定的 v4l2loopback 两点都不支持。`vidioc_try_fmt_vid()` 在 `has_other_owners()` 为真时把消费端请求钳回生产端的格式，`vidioc_subscribe_event()` 对 `SOURCE_CHANGE` 返回 `EINVAL`。实测向节点请求 8160x6120，读回的是 1920x1440。把相机包换成上游 camerad 也拿不到高像素，静态拍摄还会退回预览尺寸，所以这一版继续用仓库里验证过的 daemon。要接 `quad/` 得先改 v4l2loopback 并重出 `kernel-piano`，不在本仓库能本地验证的范围内。
 
 ## 电源策略
 
@@ -97,9 +97,19 @@ Fedora 45 是 `mutter-51.1-1.fc45`。上游三个补丁里只有 `0003-wayland-t
 
 ## 桌面默认值
 
-`DisplayConfig.GetCurrentState` 给出的逻辑显示器是 `scale 2.6666667461395264`，GNOME 按 239x163mm 自动选了分数缩放，界面可用。上游 `defaults.ini` 写死 `scaling-factor=uint32 2`、KDE 侧 `QT_SCALE_FACTOR=2`，那是它的口味，照搬会把界面放大一档。这一项不算缺口。
+GNOME 侧 `DisplayConfig.GetCurrentState` 给出的逻辑显示器是 `scale 2.6666667461395264`，按 239x163mm 自动选了分数缩放，界面可用。上游 `defaults.ini` 写死 `scaling-factor=uint32 2`，那是它的口味，照搬会把界面缩小一档。这一项不算缺口。
 
-KDE 的 `kwinoutputconfig.json`（scale 2、`autoRotation: InTabletMode`、亮度 0.8）与 `kcminputrc`（`Xiaomi Touchpad` 自然滚动）是每个用户 `~/.config` 下的文件，没有 `/etc/xdg` 级别的落点。设备上只有 GNOME 镜像，既没法验证这两个值，也没法验证 `QT_SCALE_FACTOR=2` 与 KWin 自己 scale 2 叠加后的效果。这一版不加，等有 KDE 镜像实测再说。
+KDE 侧的默认值补上了。KWin 的输出、输入与锁屏设置只在 `~/.config` 下，没有 `/etc/xdg` 级别的落点，所以 profile 多了 `user_config` 一项：列出源文件与目标路径，装配时按 `home/piano` 的属主落盘，KWin 运行时能改写。
+
+| 文件 | 内容 |
+| --- | --- |
+| `~/.config/kwinoutputconfig.json` | DSI-1 3200x2136@120、scale 2、`autoRotation: InTabletMode`、亮度 0.8 |
+| `~/.config/kcminputrc` | `Xiaomi Touchpad` 自然滚动 |
+| `~/.config/kscreenlockerrc` | `Autolock=false`、`LockOnResume=true` |
+
+`/etc/environment.d/60-piano-display.conf` 加 `KWIN_DRM_FORCE_SCALING_MODE=FULL`。KWin 默认只缩放自己生成的模式，DSI-1 的模式来自 DRM，没有这个变量时它不肯按 scale 2 放大。上游的 `QT_SCALE_FACTOR=2` 没有跟：输出 scale 与它会叠加，界面放大两次。
+
+实机核对：`kscreen-doctor -o` 报 DSI-1 `3200x2136@120`、几何 `1600x1068`、scale 2、`Auto Rotate Policy: inTabletMode`；`kwinoutputconfig.json` 被 KWin 回写成运行时值；`kreadconfig6` 读出 `Autolock=false`、`LockOnResume=true`；KWin 进程的环境里有 `KWIN_DRM_FORCE_SCALING_MODE=FULL`。把平板横竖转 90°，屏幕跟随旋转。触控板自然滚动要接键盘盖，没测到。
 
 ## 罗盘
 
