@@ -38,7 +38,9 @@
 
 所以这里的 profile 只切 uperf 自己的模式，`uperfctl mode powersave|balance|performance` 与 GNOME 的三档一一对应。TuneD 的 script 插件只接受 profile 目录里的脚本，目录外的路径会被记成 error 并忽略，所以每档带一个 `apply.sh`，真正的切换逻辑在 `/usr/lib/piano/piano-power-mode`，带重试以覆盖开机时 daemon 还没起来的窗口。
 
-已在设备上核对：`net.hadess.PowerProfiles` 列出三档、`Driver` 为 `tuned`；用 `busctl set-property` 切档后 `tuned-adm active`、`/run/uperf-linux/cur_powermode` 跟着变，GPU 上限全程停在 1100000000。未核对：GNOME 设置面板的实际显示（这台机器的截图通道坏了），以及重启后首启时序。
+已在设备上核对：设置里的电源面板出现 Performance／Balanced／Power Saver 三档，从界面点选之后 `net.hadess.PowerProfiles` 的 `ActiveProfile`、`tuned-adm active` 与 `/run/uperf-linux/cur_powermode` 三者同步变化，GPU 上限全程停在 1100000000。未核对：重启后的首启时序。
+
+界面这一条要在图形会话里试。从 SSH 起 `gnome-control-center` 时，进程属于 inactive session，PPD 的 `net.hadess.PowerProfiles.switch-profile` 只对 active session 放行（策略里 `allow_inactive=no`、`allow_active=yes`），调用会被拒成 `Unauthorized`，面板却已经把单选圈画到新档位，看起来像切了实际没切。从 shell 概览里启动就不会有这个问题。
 
 ## 中文环境
 
