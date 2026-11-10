@@ -376,52 +376,25 @@ loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255）�
 
 ## 指纹、红外与 HDR
 
-这三项以前被合写成一句"依赖闭源 TEE 固件，主线不支持"。逐项核实后，只有指纹跟 TEE 有关，红外与 HDR 各有其他原因。
+三项分开记，结论不一样。
 
 ### 指纹
 
-侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。主线没有
-`drivers/input/fingerprint/` 这个目录，厂商树里的 `mi_fp` 也只做电源、复位、
-中断和 netlink 上报，图像采集与比对全在 TA 里。把 `mi_fp` 移植过来不解决任何实质问题。
+侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。内核侧已经通：`uio_piano_fingerprint` 与 `qcomtee` 已加载，`dmesg` 打出 `QTEE version 5.2.0`，`/dev/uio0`、`/dev/tee0` 与 `/proc/device-tree/soc/xiaomi_fingerprint` 都在，DT overlay 也一直在发。
 
-主线的 QSEECOM 只白名单 `qcom.tz.uefisecapp` 一个应用，不提供通用 TA 客户端
-接口，任何第三方 TA（含 `gfpia`）都无法通过 QSEECOM 启动。`drivers/tee/qcomtee/`
-自 6.18 起在主线，但走 object-IPC，与 piano 的 legacy QSEECom HAL 协议不同，
-不能替代。
-
-用户态没有 libfprint 后端能驱动 `gfpia`。唯一跑通的 Goodix + QSEE 完整栈针对
-的是另一颗 TA（`gfenu`）、另一套传感器，且明确未上游。
+不能用的原因是用户态没接。上游把 Goodix 客户端做成静态库，链进打过补丁的 libfprint，再经 fprintd 暴露成标准接口。本仓库还没有这一步，所以现在刷指纹没有服务认领它。
 
 ### 红外
 
-消费级红外发射器，接在 QUPv3 SE15（SPI `0x89c000`）。它不是结构光、ToF 或
-接近传感器，这个设备**只发不收**。"没有 IR 输入设备节点"不能作为它不支持
-的判据，正确的检查是 `/dev/lirc0` 存在且能发码。
+消费级红外发射器，接在 QUPv3 SE15（SPI `0x89c000`），只发不收。设备上 `/dev/lirc0` 与 `/sys/class/rc/rc0` 存在，`dmesg` 记录 `rc rc0: lirc_dev: driver ir-spi registered at minor = 0, no receiver, raw IR transmitter`，`ir_spi` 与 `rc_core` 已加载，内核里 `CONFIG_LIRC=y`、`CONFIG_IR_SPI=m`。
 
-主线 `drivers/media/rc/ir-spi.c` 完整实现了 CIR 发射，但当前这条链上有四处
-缺口叠在一起：
-
-- 设备上 `/dev/lirc*` 与 `/sys/class/rc/` 都不存在。
-- 内核配置是 `CONFIG_RC_CORE=m` 但 `# CONFIG_LIRC is not set`，而 `IR_SPI`
-  依赖 `LIRC`。
-- DT 里没有 SE15 的节点：设备上唯一的 SPI 设备是触控
-  （`/soc/qcom,qupv3_1_geni_se@ac0000/spi@a88000/touchscreen@0`），
-  `0x89c000` 那段不存在。
-- 主线驱动认的 compatible 是 `ir-spi-led`，而厂商 DT 写的是 `ir-spi`。
-
-要让红外出 `/dev/lirc0`，需要补 SE15 控制器节点、修正 compatible 字符串、
-打开 `CONFIG_LIRC` 与 `CONFIG_IR_SPI`。原厂的波形是 32 位 SPI 字、1.92 MHz 采样、
-40% 占空比，主线驱动是 16 bits/pulse、默认 50%，载波会有偏差。要完全一致，还要小改驱动。
+发码用 `ir-ctl -d /dev/lirc0 --carrier=38000 --send=remote.txt`。光学输出没有实测，手边也没有接收端可以做回环，所以能确认的是设备节点与驱动路径，不是"能当遥控器用"。
 
 ### HDR
 
-面板硬件支持 HDR10，30bpp DSC 传输。Linux 侧没有输出路径：msm 不挂
-`HDR_OUTPUT_METADATA` 属性，也没有接 DRM 的 colorop 管线。SM8750 的 DSPP
-gamma 块直到 2026 年 9 月才修好。目前唯一的 msm 静态 HDR 系列只覆盖 DP 与
-eDP，内屏走 DSI，用不上。
+面板支持 HDR10。DSI-1 连接器的属性里有 `HDR_OUTPUT_METADATA`、`Colorspace`、`max bpc`，CRTC 上有 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM`，比早先记录的"msm 没挂属性"要多一些。
 
-面板驱动也不在主线（`drivers/gpu/drm/panel/` 里没有 nt36532），本仓库的补丁只把 `display_info.bpc` 报对，提交信息自己写明"不声称支持 HDR 或
-12-bit 传输"。这一项要等上游 DRM 层的实质推进，本机单方面做不了。
+整条输出链路没有验证：没在 KDE 里开过 HDR，也没量过色深与色调映射。这一节只记录到属性存在。
 
 ## 内核在线升级
 

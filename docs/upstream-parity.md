@@ -1,34 +1,71 @@
 # 与上游的功能差距
 
-这份清单来自 2026-11-10 的一次只读核对：对照 `build/test-sources/sunuefi`（pin `4ef8740`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。每项写明证据与核对命令，下次接手不用重新猜。除电源策略已在本分支实现，其余仍是待办。
+这份清单来自 2026-11-10 的一次只读核对：对照 `build/test-sources/sunuefi`（pin `4ef8740`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。每项写明证据与核对命令，下次接手不用重新猜。电源策略、中文环境、闪光灯与 JPEG、指纹桌面接入、构建断言、文档口径已在本分支完成，其余见各行状态。
 
 | 项 | 我们的现状 | 上游 | 要做的 | 优先级 |
 | --- | --- | --- | --- | --- |
-| 指纹用户态 | `/dev/uio0`、`uio_piano_fingerprint`、`qcomtee`、`/dev/tee0` 都在，用户态没有后端 | `tools/build_piano_fingerprint.py` 与 `patches/libfprint/1.94.100/` 已把 Goodix 接进标准 libfprint、fprintd | 用 Fedora 的 libfprint 源码套上游补丁，链 `libpiano-goodix.a` 重编，补 udev 与 PAM | P1 |
-| 相机闪光灯 | `/sys/class/leds/:flash-0`、`:flash-1` 存在，`leds_qcom_flash` 已加载，`piano-camerad` 不支持 | `piano-camera-ctl capture rear --flash` 同步补光拍照 | `piano-camera` 补 flash 控制与拍照协议 | P1 |
-| 相机 JPEG 直出 | 只出 NV12 到 v4l2loopback | `photo/jpeg.c`，CLI 直接写 JPEG | 同上，跟闪光灯一起做 | P1 |
-| 相机高像素 | 只有 binned 输出 | `quad/`（Rust worker）做 quad bayer 合成 | 单独评估，要引入 Rust 工具链 | P2 |
-| 电源策略 | 原样：`tuned` 与 `power-profiles-daemon` 都没装，GNOME 电源面板没有性能模式 | tuned 三档 profile 加 `tuned-ppd` drop-in，但上游 profile 直接写 cpufreq/devfreq | 已做：`tuned-ppd` 三档 profile 桥到 uperf-linux 的模式 | 完成 |
-| 中文环境 | `LANG=C.UTF-8`，没装 `glibc-langpack-zh`，输入源只有 `[('xkb', 'us')]` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | 加 langpack、写 `/etc/locale.conf`、给输入源默认值 | P1 |
-| mutter 触摸崩溃 | 库存 `mutter-51.1-1.fc45` | `0003-wayland-touch-ignore-cancelled-grab.patch` | 先在 Fedora 上确认崩溃可复现，再决定要不要重编 mutter | P2 |
-| KDE 桌面默认值 | 只带 `powerdevilrc` | `kwinoutputconfig.json`（scale 2、`autoRotation: InTabletMode`）、`kcminputrc`、`QT_SCALE_FACTOR` | KDE 镜像上实测后再决定 | P2 |
-| 罗盘 | `HasAccelerometer`/`AmbientLight`/`Proximity` 为 true，没有 Compass 接口 | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 查是 SSC 没上报还是硬件没有 | P3 |
-| 构建断言 | 只断言 F2FS、SELinux、Gunyah | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | 把已经依赖的配置项加进 `build-kernel.yml` | P1 |
-| 文档口径 | README 与 `known-issues.md` 仍写红外/HDR/指纹不可用 | — | 按下面的核对结果重写这三节 | P0 |
+| 指纹用户态 | 完成：`piano-fingerprint` 原生客户端加 `piano-libfprint`，fprintd 认到 `Goodix fingerprint sensor`；录入没测 | `patches/libfprint/1.94.100/` 把 Goodix 接进标准 libfprint | — | 完成 |
+| 相机闪光灯 | 完成：`piano-camera-ctl capture rear --flash` 开补光灯拍照 | 上游用闪光同步，我们用常亮补光 | — | 完成 |
+| 相机 JPEG 直出 | 完成：`piano-camera-ctl capture --output FILE` 直出 JPEG | `photo/jpeg.c` | — | 完成 |
+| 相机高像素 | 拍到 4080x3060，仍是 binned 输出 | `quad/`（Rust worker）做 quad bayer 合成 | 单独评估，要引入 Rust 工具链 | P2 |
+| 电源策略 | 完成：`tuned-ppd` 三档 profile 桥到 uperf-linux 的模式 | 上游 profile 直接写 cpufreq/devfreq | — | 完成 |
+| 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 写 `zh_CN.UTF-8`，输入源默认带 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | — | 完成 |
+| mutter 触摸崩溃 | 库存 `mutter-51.1-1.fc45` | 补丁在 51.1 源码上干净套用 | 崩溃未复现，这版不重编 mutter | P2 |
+| KDE 桌面默认值 | 只带 `powerdevilrc` | `kwinoutputconfig.json`、`kcminputrc`、`QT_SCALE_FACTOR` | 没有 KDE 镜像可验证，这版不加 | P2 |
+| 罗盘 | 可用：`/net/hadess/SensorProxy/Compass` 上 `HasCompass=true` | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 之前查的是父对象，接口在子对象上 | 完成 |
+| 构建断言 | 完成：`build-kernel.yml` 断言 20 项，`check_kernel_config_assertions.py` 锁住 | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | — | 完成 |
+| 文档口径 | 完成：README 与 `known-issues.md` 的红外/HDR/指纹三节按实机状态重写 | — | — | 完成 |
 
 ## 指纹
 
 内核侧齐了：`/dev/uio0` 存在，`lsmod` 有 `uio_piano_fingerprint` 与 `qcomtee`，`dmesg` 打出 `QTEE version 5.2.0`，`/dev/tee0` 可读，`/proc/device-tree/soc/xiaomi_fingerprint` 有节点。DT overlay 一直在发，`tests/check_bundle_overlays.py` 也在断言 `xiaomi,piano-goodix-control`。
 
-缺的是用户态。Fedora 45 的 `libfprint-1.94.100-1.fc45`、`fprintd-1.94.5-6.fc45` 与上游 `config/fingerprint.json` 里 pin 的版本完全一致，所以不用搬上游分支，拿 Fedora 的源码套 `0001-piano-goodix-uio.patch`，把 `libpiano-goodix.a` 链进去重编即可。原生客户端由 `quic-teec`、`minkipc`、`qcbor` 三个纯 C 源码构建，没有发行版依赖。发布走现有的 COPR，另外要补 `fprintd.service.d` 的 `DeviceAllow=char-uio rw char-tee rw char-bsg rw` 与 PAM 接入。
+这一版把原生客户端做成了 `piano-fingerprint` 包：`src/` 是 SunUEFI `linux/userspace/fingerprint` 的副本，依赖 `quic-teec`、`minkipc`、`QCBOR` 三个固定提交，产出静态的 `piano-fingerprint-ctl`，外加给 libfprint 链接的 `libpiano-goodix.a` 与 `piano-goodix.pc`。实机装包后三条命令都过：
+
+```
+sudo piano-fingerprint-ctl info
+{"sensor":"Goodix","sensor_type":5,"command_address_bits":64,"device_info_ok":true}
+sudo piano-fingerprint-ctl initialize
+{"sensor":"Goodix",...,"max_templates":5,"rows":132,"columns":24,"models_loaded":true,"sensor_initialized":true}
+sudo piano-fingerprint-ctl list 0
+{"fingers":[]}
+```
+
+桌面接入做成了 `piano-libfprint` 包。Fedora 45 的 `libfprint-1.94.100-1.fc45` 与上游 pin 是同一份源码：`v1.94.100` 解引用后就是 `80a4b5ec`。包拿官方 tarball 套 `0001-piano-goodix-uio.patch`，静态链 `libpiano-goodix.a`，再加一条 meson 1.12 的 `foreach` 兼容补丁（关掉 introspection 时上游的 else 分支一定会被求值）。用 `Provides`/`Obsoletes` 顶掉发行版 `libfprint`，附一份 fprintd drop-in：
+
+```
+DeviceAllow=char-uio rw
+DeviceAllow=char-tee rw
+DeviceAllow=char-bsg rw
+StateDirectory=piano-goodix
+```
+
+实机装上后 fprintd 认到一颗设备：
+
+```
+$ fprintd-list piano
+found 1 devices
+Device at /net/reactivated/Fprint/Device/0
+Using device /net/reactivated/Fprint/Device/0
+ListEnrolledFingers failed: GDBus.Error:net.reactivated.Fprint.Error.PermissionDenied:
+Not Authorized: net.reactivated.fprint.device.verify
+```
+
+最后一行是 polkit 拒绝未授权会话读模板，不是驱动错误。`/var/lib/piano-goodix` 由 `StateDirectory` 建好，权限 `root:root 0700`。录入要按一次屏下传感器，这一项没测。镜像里带的是发行版的 `fprintd-pam`，没有替用户自动跑 `authselect`。
 
 ## 相机
 
-闪光灯硬件在：`ls /sys/class/leds` 有 `:flash-0`、`:flash-1`，`leds_qcom_flash`、`v4l2_flash_led_class`、`led_class_flash` 都在加载，`piano-camera-flash.dtso` 也一直在 overlay 列表里。`packages/piano-camera/src/piano-camerad.c` 里 `flash` 出现 0 次，`JPEG` 只有一次注释，所以应用侧拿不到闪光灯，也拿不到直出照片。
+闪光灯硬件在：`ls /sys/class/leds` 有 `:flash-0`、`:flash-1`，`leds_qcom_flash`、`v4l2_flash_led_class`、`led_class_flash` 都在加载，`piano-camera-flash.dtso` 也一直在 overlay 列表里。后摄的两个闪光通道以 ancillary media link 挂在 `s5kjn1` 上，`/dev/v4l-subdev33`、`/dev/v4l-subdev34` 就是它们。
 
-上游对应的是 2958 行的 camerad，外加 `photo/`（协议、JPEG、时序）和 `piano-camera-ctl`，`piano-camera-ctl capture rear --flash --output FILE` 就是一次带补光的拍照。`quad/` 是 Rust 写的合成 worker，接进 Fedora 要加 cargo，单独排。
+这一版在 `piano-camerad` 里加了静态拍摄：`/run/piano-camerad/control.sock`（`SOCK_SEQPACKET`，root:video 0660）收 `capture <camera> [flash]`，守护进程停掉预览、把 ISP 输出切到传感器分辨率、等自动曝光收敛后把帧写进 memfd，用 `SCM_RIGHTS` 交给客户端；客户端 `piano-camera-ctl` 编码 JPEG。拍完恢复预览尺寸，正在看预览的应用会短暂停一下再继续。
 
-日常预览与取帧不受影响，两颗传感器现在都能正常出图。
+`--flash` 走常亮补光而不是上游的闪光同步：把 `V4L2_CID_FLASH_LED_MODE` 设成 TORCH，等曝光在亮灯条件下收敛，拍完关灯。上游用帧同步把频闪压在曝光窗口里；我们没有帧同步事件，常亮更稳，代价是补光期间多耗一点电。
+
+实机结果：`piano-camera-ctl capture rear --flash --output rear-f.jpg` 得到 4080x3060 的 JPEG，同一场景不开补光时整幅黑（平均亮度 0），开补光后平均亮度 89，桌面表面可见；前摄 `capture front` 直接可用。预览在拍摄后自动恢复。
+
+后摄传感器模式从 4080x3072 改成了 4080x3060。`s5kjn1` 驱动只报 4080x3060，`S_FMT` 写 3072 会被钳回 3060，`subdev_fmt()` 的读回校验因此返回 `EPIPE`，后摄预览在 7.3 内核上根本起不来。改到 3060 后预览与拍摄都正常，`tests/check_camera_photo.py` 锁住这个值。
+
+`quad/`（Rust 合成 worker，输出 50MP 级别的 quad bayer 合成图）没有接。当前的 4080x3060 仍然是 binned 输出，要真正上高像素得补 cargo 构建和 worker，单独排。
 
 ## 电源策略
 
@@ -52,7 +89,9 @@
 
 ## mutter
 
-Fedora 45 是 `mutter-51.1-1.fc45`。上游三个补丁里只有 `0003-wayland-touch-ignore-cancelled-grab` 对得上：它的提交说明写着 "Two Piano crash dumps from Mutter 51.0 show a NULL first member of MetaWaylandTouchInfo ... The same unchecked dereference is present in upstream 51.1"，改的是 `touch_can_grab_surface()` 里 `focus_surface` 为空时的解引用。要做就得重编 mutter 走 COPR，先得在 Fedora 上确认崩溃能复现。
+Fedora 45 是 `mutter-51.1-1.fc45`。上游三个补丁里只有 `0003-wayland-touch-ignore-cancelled-grab` 对得上：它的提交说明写着 "Two Piano crash dumps from Mutter 51.0 show a NULL first member of MetaWaylandTouchInfo ... The same unchecked dereference is present in upstream 51.1"，改的是 `touch_can_grab_surface()` 里 `focus_surface` 为空时的解引用。
+
+拿 mutter 51.1 官方源码核对过：`src/wayland/meta-wayland-touch.c:662` 就是 `touch_info->focus_surface->surface`，补丁 `patch --fuzz=0 --dry-run` 干净套用。这一版不重编 mutter：设备上没复现过这个崩溃，而发布一份替换系统 compositor 的包，需要先把崩溃场景跑出来，不然只是把一个未验证的二进制塞进镜像。
 
 `0001-kms-empty-gamma-bypass` 针对的是 48.7 的 `SetCrtcGamma` 空数组路径。我们的 CRTC 上 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM` 都在，这条路径会不会踩到还没验。
 
@@ -60,11 +99,18 @@ Fedora 45 是 `mutter-51.1-1.fc45`。上游三个补丁里只有 `0003-wayland-t
 
 `DisplayConfig.GetCurrentState` 给出的逻辑显示器是 `scale 2.6666667461395264`，GNOME 按 239x163mm 自动选了分数缩放，界面可用。上游 `defaults.ini` 写死 `scaling-factor=uint32 2`、KDE 侧 `QT_SCALE_FACTOR=2`，那是它的口味，照搬会把界面放大一档。这一项不算缺口。
 
-KDE 的 `kwinoutputconfig.json`（scale 2、`autoRotation: InTabletMode`、亮度 0.8）与 `kcminputrc`（`Xiaomi Touchpad` 自然滚动）对我们 KDE 镜像可能有用，设备上只装了 GNOME 镜像，没法验证，先记在这里。
+KDE 的 `kwinoutputconfig.json`（scale 2、`autoRotation: InTabletMode`、亮度 0.8）与 `kcminputrc`（`Xiaomi Touchpad` 自然滚动）是每个用户 `~/.config` 下的文件，没有 `/etc/xdg` 级别的落点。设备上只有 GNOME 镜像，既没法验证这两个值，也没法验证 `QT_SCALE_FACTOR=2` 与 KWin 自己 scale 2 叠加后的效果。这一版不加，等有 KDE 镜像实测再说。
 
 ## 罗盘
 
-`iio-sensor-proxy` 在跑，带 `/etc/systemd/system/iio-sensor-proxy.service.d/piano.conf`，`busctl introspect net.hadess.SensorProxy` 有 `HasAccelerometer`、`HasAmbientLight`、`HasProximity`，没有 `Compass` 相关的接口。`tests/check_sensor_runtime.py` 断言过 `ssc-compass` 标记已编进二进制，所以是 SSC 侧没上报，或者这颗设备本来就没有磁力计。属排查，先不做改动。
+可用。Compass 接口不在 `/net/hadess/SensorProxy` 上，而在子对象 `/net/hadess/SensorProxy/Compass`：
+
+```
+busctl introspect net.hadess.SensorProxy /net/hadess/SensorProxy/Compass
+.HasCompass  property  b  true
+```
+
+之前的核对只 introspect 了父对象，所以写成了"没有 Compass 接口"。SSC 侧也确认有磁力计：`ssccli --sensor magnetometer` 有读数，`ssccli --sensor compass` 给出方位角。
 
 ## 构建断言
 
