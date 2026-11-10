@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        12%{?dist}
+Release:        13%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND Apache-2.0 AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -39,6 +39,7 @@ for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
 - CPU schedutil 2ms rate limit tuning for instantaneous touch response
 - TuneD profiles and the tuned-ppd power mode mapping for GNOME, bridged to
   uperf-linux's own power modes
+- Chinese default locale and the pinyin input source for GNOME
 - Static tablet chassis identification for systemd and desktop
 
 %prep
@@ -120,6 +121,8 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_prefix}/lib/tmpfiles.d/piano-machine-info.conf
 %{_prefix}/lib/tmpfiles.d/cpufreq-schedutil.conf
 %config(noreplace) %{_sysconfdir}/tuned/piano-ppd.conf
+%config(noreplace) %{_sysconfdir}/locale.conf
+%config(noreplace) %{_sysconfdir}/dconf/db/local.d/00-input-sources
 %{_prefix}/lib/tuned/profiles/piano-power-saver/tuned.conf
 %{_prefix}/lib/tuned/profiles/piano-power-saver/apply.sh
 %{_prefix}/lib/tuned/profiles/piano-balanced/tuned.conf
@@ -160,6 +163,10 @@ rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service piano-power-button.service
 
 %changelog
+* Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 0.1.0-13
+- 默认中文：`/etc/locale.conf` 写 `zh_CN.UTF-8`，GNOME 输入源默认带
+  `ibus`/`libpinyin`，配合 base 包里的 `glibc-langpack-zh`
+
 * Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 0.1.0-12
 - 补上 GNOME 的三档电源策略：三份 piano tuned profile 与 piano-ppd.conf，
   由 tuned-ppd.service.d 的 BindReadOnlyPaths 呈现给 tuned-ppd，不动 tuned

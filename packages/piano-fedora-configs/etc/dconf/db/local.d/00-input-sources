@@ -1,0 +1,5 @@
+# Keyboard layout plus the pinyin IME, matching upstream's GNOME defaults.
+# ibus-libpinyin is already in the base set and ibus-daemon starts with the
+# session; without this key the input source list only offers 'us'.
+[org/gnome/desktop/input-sources]
+sources=[('xkb', 'us'), ('ibus', 'libpinyin')]
