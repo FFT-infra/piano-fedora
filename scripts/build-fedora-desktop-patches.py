@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import urllib.request
@@ -56,17 +57,22 @@ def replace_once(text, old, new):
 
 
 def add_patches(text, patch_names):
-    """Add Patch999, Patch998, ... in list order.
+    """Append patches to the spec's contiguous Patch0..N chain.
 
-    GSD needs two independent patches; KWin and GTK3 need one each.  Refuse
-    to guess if any slot is already occupied, so a Fedora spec change stops
-    the build instead of silently dropping a patch.
+    %autopatch stops at the first undefined PatchN, so Patch999 alone never
+    runs.  Continue from the existing contiguous chain instead; a gap means
+    the Fedora spec changed shape in a way this script should not guess at.
     """
     if not patch_names:
         raise ValueError("package has no patches")
+    used = sorted(int(match.group(1))
+                  for match in re.finditer(r"^Patch(\d+):", text, re.MULTILINE))
+    if used and used != list(range(used[-1] + 1)):
+        raise ValueError(f"existing Patch numbers are not contiguous from 0: {used}")
+    start = used[-1] + 1 if used else 0
     lines = []
     for offset, patch_name in enumerate(patch_names):
-        slot = 999 - offset
+        slot = start + offset
         marker = f"Patch{slot}:"
         if marker in text:
             raise ValueError(f"spec already carries {marker}")

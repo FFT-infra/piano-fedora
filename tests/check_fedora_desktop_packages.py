@@ -90,8 +90,8 @@ def test_gsd_spec_rewrite(module):
     rewritten = module.adapt_gsd(GSD_SPEC)
     assert "Name:           gnome-settings-daemon-piano" in rewritten
     assert "Release:        1.piano1%{?dist}" in rewritten
-    assert "Patch999:        piano-ambient-profile.patch" in rewritten
-    assert "Patch998:        piano-keyboard-backlight.patch" in rewritten
+    assert "Patch0:        piano-ambient-profile.patch" in rewritten
+    assert "Patch1:        piano-keyboard-backlight.patch" in rewritten
     assert ("%autosetup -p1 -n gnome-settings-daemon-"
             "%{gnome_tarball_version}") in rewritten
     assert "%find_lang gnome-settings-daemon --with-gnome" in rewritten
@@ -109,12 +109,16 @@ def test_gsd_spec_rewrite(module):
 
 
 def test_same_name_specs(module):
-    kwin = module.adapt_kwin("Name:    kwin\nRelease: 3%{?dist}\n%prep\n%changelog\n")
+    kwin = module.adapt_kwin(
+        "Name:    kwin\nRelease: 3%{?dist}\nPatch0: upstream.patch\n"
+        "%prep\n%changelog\n")
     assert "Release: 3.piano1%{?dist}" in kwin
-    assert "Patch999:        piano-kwin-hdr.patch" in kwin
-    gtk3 = module.adapt_gtk3("Name:    gtk3\nRelease: %autorelease\n%prep\n%changelog\n")
+    assert "Patch1:        piano-kwin-hdr.patch" in kwin
+    gtk3 = module.adapt_gtk3(
+        "Name:    gtk3\nRelease: %autorelease\n"
+        "Patch0: first.patch\nPatch1: second.patch\n%prep\n%changelog\n")
     assert "Release: 6.piano1%{?dist}" in gtk3
-    assert "Patch999:        piano-gtk3-xi2.patch" in gtk3
+    assert "Patch2:        piano-gtk3-xi2.patch" in gtk3
 
 
 def test_rewrites_refuse_drifted_specs(module):
@@ -128,13 +132,15 @@ def test_rewrites_refuse_drifted_specs(module):
             pass
         else:
             raise AssertionError(f"drifted spec was accepted: {call.__name__}")
-    for bad in ("%prep\n%prep\n", "Patch999: old.patch\n%prep\n"):
+    for bad in ("%prep\n%prep\n", "Patch999: old.patch\n%prep\n",
+                "Patch0: first.patch\nPatch2: third.patch\n%prep\n"):
         try:
             module.add_patches(bad, ["a.patch", "b.patch"])
         except ValueError:
             pass
         else:
-            raise AssertionError("an occupied or duplicated %prep section was accepted")
+            raise AssertionError("an occupied, gapped, or duplicated %prep "
+                                 "section was accepted")
 
 
 def test_workflow_wires_extras():
