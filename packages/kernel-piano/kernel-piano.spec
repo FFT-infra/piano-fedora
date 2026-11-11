@@ -52,6 +52,10 @@ Requires:       python3
 Requires:       kmod
 Requires:       busybox
 Requires:       util-linux
+# %posttrans 用 systemd-ukify 重打 ESP 上的 UKI，stub 由 systemd-boot-unsigned
+# 提供。两个都缺时设备侧升级只能放弃写 ESP，新内核不会生效。
+Requires:       systemd-ukify
+Requires:       systemd-boot-unsigned
 
 %description
 Mainline Linux kernel adapted for Xiaomi Pad 8 Pro (SM8750 piano):
@@ -114,14 +118,13 @@ if [ -f manifest.json ]; then
         %{buildroot}%{_datadir}/piano/kernel-manifest-%{version}-%{release}.json
 fi
 
-# 设备侧重建 initramfs 与重打 ESP 容器的那套工具。它们必须和内核同版本发布：
-# 容器格式、manifest 判据都是跟这个内核一起演进的，分开升级会出现两套契约。
+# 设备侧重建 initramfs 与重打 ESP UKI 的那套工具。它们必须和内核同版本发布：
+# UKI 段布局、manifest 判据都是跟这个内核一起演进的，分开升级会出现两套契约。
 install -d %{buildroot}%{_prefix}/lib/piano
 install -m 0755 piano-tools/f2fs-disk-bootstrap \
                piano-tools/piano-kernel-esp-update %{buildroot}%{_prefix}/lib/piano/
 install -m 0644 piano-tools/build-initramfs.py \
-               piano-tools/piano_artifacts.py \
-               piano-tools/piano_boot_container.py %{buildroot}%{_prefix}/lib/piano/
+               piano-tools/piano_artifacts.py %{buildroot}%{_prefix}/lib/piano/
 
 %files
 /boot/vmlinuz-%{version}-%{release}
@@ -136,15 +139,14 @@ install -m 0644 piano-tools/build-initramfs.py \
 %{_prefix}/lib/piano/piano-kernel-esp-update
 %{_prefix}/lib/piano/build-initramfs.py
 %{_prefix}/lib/piano/piano_artifacts.py
-%{_prefix}/lib/piano/piano_boot_container.py
 
 %posttrans
-# 设备侧升级：depmod 之后重建 initramfs，再把新内核重新打成 ESP 上固件实际
-# 读取的 boot.img。镜像构建（dnf --installroot）里没有 ESP 载荷，直接跳过；
-# 判据是 board.dtb 在不在，而不是靠调用方传参，因为 %posttrans 拿不到上下文。
-ESP=/boot/efi/EFI/Piano/stable
-if [ ! -f "$ESP/board.dtb" ]; then
-    echo "piano: no ESP payload at $ESP; skipping the boot.img rebuild"
+# 设备侧升级：depmod 之后重建 initramfs，再把新内核重新打进 ESP 上固件实际
+# 读取的 UKI。镜像构建（dnf --installroot）里没有 ESP 载荷，直接跳过；
+# 判据是 UKI 在不在，而不是靠调用方传参，因为 %posttrans 拿不到上下文。
+ESP=/boot/efi/EFI/Linux
+if [ ! -f "$ESP/sunuefi.efi" ]; then
+    echo "piano: no ESP payload at $ESP; skipping the UKI rebuild"
     exit 0
 fi
 # installonly 让新旧内核共存，manifest 也按 NVRA 各存一份。这里读刚装上的

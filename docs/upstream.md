@@ -49,6 +49,22 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 3. 改 pin 之前核对所有消费路径、构建容器和依赖。重新生成受影响的内核、运行时、root 文件系统、initramfs、ESP 和 BOOT。清单同步更新。
 4. 下载并核对实际产物，更新部署入口。构建、文件验证和实机行为分别记账。不能继承上游另一台设备的结果。
 
+### 2026-11-12
+
+三个 pin 推进：`sunuefi` `c720568` → `3a7e5c1b`，`crosvm` → `1eb6337c`，`piano-integration` → `d9178221`。后两个只动 recipe、tools、打包与文档，`device/`、`kernel/`、`initramfs/` 没有变化，按纯 pin 前进处理。
+
+SunUEFI 的 `59e52548`（`feat(boot)!`）删掉了 Android boot v2 的 Linux 启动路径。固件改为用 `PianoApplicationRunFile` 直接加载 `\EFI\Linux\sunuefi.efi`，ESP 上不再有 systemd-boot、BLS 或 `Image` + `initramfs` + `board.dtb` 三件载荷。内核、initramfs、DTB 与 cmdline 打进 UKI，由 `systemd-ukify` 组装，节区是 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname`。
+
+DT 交接同时换了实现。`PianoDeviceTreeFixup.c` 实现 `EFI_DT_FIXUP_PROTOCOL`，在 `APPLY_FIXUPS` 下依次改写内存、面板、蓝牙地址、RTC 偏移与 Gunyah 资源管理器；`systemd-stub` 带 `RESERVE_MEMORY` 调用它，载荷 DTB 的 `/memory` 在启动时被换成设备当次布局，并按 `DramBytes` 与固定保留区校验。raw Linux 交接走同一个协议。我们自己的 `patches/uefi-live-memory` 与 `patches/uefi-live-rm` 已被上游覆盖，两组退役，不再参与 `apply-patches` 与固件哈希。
+
+上游 7.3 封存序列从 92 条增到 104 条。新增的 12 条里，11 条是充电、温控与 FFC，收进封存序列；`0095-input-nt36532e-matrix.patch` 把手指矩阵解码搬进内核，没有时域滤波，还会撞我们已有的 `0108-input-nt36532e-panel-vendor-misc.patch`，这一条排除。我们自己的 35 条整体后移为 `0105`–`0139`，`0095` 留空号。
+
+`build_piano_full_kernel.py` 的 `command_line()` 改成从 `config/release.json` 读整条 cmdline，`CONFIG_CMDLINE` 清空、`CONFIG_CMDLINE_FORCE` 改为 `n`。`patches/kernel/0001` 把那份配置里的 `rootfstype=ext4` 换成 `f2fs`，根类型由 UKI 的 `.cmdline` 节区携带，不再靠编译期 `CONFIG_CMDLINE`。
+
+ESP 载荷随之改成单个 UKI。`build-esp-image.py` 只写 `/EFI/Linux/sunuefi.efi`，`verify-bundle.py` 核对同一路径，`release-assets.py` 的成员表去掉 `boot_sunuefi.img`。`kernel-piano` 的 `%posttrans` 与 `scripts/piano-kernel-esp-update` 改成重建 initramfs、重打 UKI、原子替换并留 `.bak`。
+
+已核：`scripts/apply-patches.py --check` 在 HEAD 的新 clone 上给出 `CHECKED`；`make test` 全绿；`fedora-finger.patch` 对 HEAD 派生的触控源码 9 个 hunk 全部套上。未核：新 pin 的内核与固件编译、整条发布链、UKI 启动与设备实机行为。
+
 ### 2026-11-11
 
 两个 pin 推进：`sunuefi` `4ef8740` → `c720568ea492e839040ea72c5bc79afb6812465d`，`dtc` `b1e46c0` → `774adc25940050fb06f241b1a2a98e7421e6ed7b`。`crosvm` 与 `piano-integration` 不动。

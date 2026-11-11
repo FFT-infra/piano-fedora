@@ -145,7 +145,6 @@ Windows 上用 7-Zip 打开 `.tar.zst`。分片先合并：`copy /b piano-<tag>-
 | --- | --- | --- |
 | `sunuefi_esp.img` | SunUEFI ESP 分区镜像 | `sunuefi_esp` |
 | `root-install/pianoroot.f2fs.sparse.img` | 已写入设备配置的根文件系统 | `sunuefi_root` |
-| `boot_sunuefi.img` | ESP 内部的 Linux 载荷 | 不刷任何分区 |
 | `PianoUEFI-product.img`、`uefi-source.json` | 产品固件与来源记录 | 不刷入，首装校验用 |
 | `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt` | 一键脚本与说明 | 不刷入 |
 | `make-device-boot.sh`、`boot-tools/`、`host-boot-tool/`、`scripts/` | 生成设备专用 BOOT | 不刷入 |
@@ -153,6 +152,8 @@ Windows 上用 7-Zip 打开 `.tar.zst`。分片先合并：`copy /b piano-<tag>-
 | bundle 与组件 manifest | 来源绑定与内核、运行时记录 | 不刷入，供校验 |
 
 `root-install/` 里的 sparse 镜像已写入设备配置并恢复 SELinux 标签。没有指定 `root_size_mib` 时，sparse 镜像保持封存容量，首次启动再扩满 `sunuefi_root`。Release 固定使用 Android Slot A（`_a`）。B 槽设备要用同一次 bundle run 自己跑 `prepare-install.yml` 的 `_b`。
+
+Linux 内核不在归档里单独出现。它在 `sunuefi_esp.img` 的 `/EFI/Linux/sunuefi.efi`，由固件直接加载。
 
 镜像里没有 `authorized_keys`。管理公钥在刷写时用 `--ssh-key` 注入，手动路径见[第五节](#五-手动刷写-linux)，脚本路径见[第六节](#六-一键脚本)。
 
@@ -184,7 +185,7 @@ Windows 上用 7-Zip 打开 `.tar.zst`。分片先合并：`copy /b piano-<tag>-
 
 原厂 ABL 不实现 `fastboot fetch`，所以归档不教这条命令。它只会返回一个 0 字节文件。
 
-不要用 `boot_sunuefi.img` 顶替 `boot_linux.img`。前者是 ESP 内部的 Linux 载荷，ABL 无法加载。
+`boot_a` 只写 `device-boot/boot_linux.img`。`sunuefi_esp.img` 是分区镜像，ABL 不认，刷进 `boot_a` 也放不下。
 
 ### 6. 暂存目录
 
@@ -194,7 +195,6 @@ Windows 上用 7-Zip 打开 `.tar.zst`。分片先合并：`copy /b piano-<tag>-
 piano-install/
 ├── README-INSTALL.txt
 ├── SHA256SUMS
-├── boot_sunuefi.img
 ├── sunuefi_esp.img
 ├── PianoUEFI-product.img
 ├── flash-linux.sh
@@ -475,7 +475,7 @@ fastboot reboot
 
 每条命令都必须打印 `OKAY`。出现 `FAILED`，立刻停下，不要继续后面的步骤。
 
-`boot_a` 要写的是 `prepare-device-boot.py` 用本机原厂 BOOT 重打包出的 `device-boot/boot_linux.img`，不是归档里的 `boot_sunuefi.img`。后者是 ESP 内部的 Linux 载荷（Header v2 容器，没有 `SUNUEFI-NEXTv1` 请求页），只有 SunUEFI 固件从 ESP 里加载。把它刷进 `boot_a`，ABL 会拒绝整条链，平板停在 Fastboot。
+`boot_a` 要写的是 `prepare-device-boot.py` 用本机原厂 BOOT 重打包出的 `device-boot/boot_linux.img`。归档里没有另一个能直接刷的 Linux 内核文件：内核与 initramfs 都在 `sunuefi_esp.img` 的 `/EFI/Linux/sunuefi.efi` 里，由 SunUEFI 固件加载。`sunuefi_esp.img` 是整分区镜像，只能写 `sunuefi_esp`。写进 `boot_a` 会让 ABL 停在 Fastboot。
 
 合体 BOOT 保持上游的 unsigned AVB NONE 元数据。`prepare-device-boot.py` 不补 `os_version`，也不重新签名。Slot A 的 ABL 直接加载这份镜像。同一份未签名镜像已在真机上完成 Android→Linux→Android 往返。不要自行补 `os_version` 或 RSA4096 footer：`piano-boot-repack` 的 probe/request/adopt 会把首块与包装器里保存的原厂头逐字节比较。改了偏移 16，Android 侧的引导助手就认不出当前 BOOT，`switch linux` 会直接失败。
 
@@ -523,9 +523,9 @@ systemctl --failed    # 输出为空
 `uname -r` 的正确值是这一版 ESP 里实际装的内核，不是随便一个 7.2.9。两处可以查到，两边必须一致：
 
 ```sh
-# 1) ESP 镜像里的内核字符串（刷写前就能查，不需要设备）
-mtype -i sunuefi_esp.img ::/EFI/Piano/stable/Image > Image.bin
-strings -a Image.bin | grep -m1 -oE '[0-9.]+-piano[^ ]*g[0-9a-f]+'
+# 1) ESP 镜像里 UKI 的内核版本（刷写前就能查，不需要设备）
+mtype -i sunuefi_esp.img ::/EFI/Linux/sunuefi.efi > sunuefi.efi
+strings -a sunuefi.efi | grep -m1 -oE '[0-9.]+-piano[^ ]*g[0-9a-f]+'
 
 # 2) 设备启动后的实际内核
 uname -r
@@ -602,7 +602,7 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 8. 刷入系统根分区：`fastboot -S 128M flash sunuefi_root pianoroot.f2fs.sparse.img`。
 9. 自动重启：`fastboot reboot`。
 
-`device-boot/boot_linux.img` 由 `scripts/prepare-device-boot.py` 用本机原厂 BOOT 重打包产生。`device-boot/boot_linux.img` 不在归档里，必须自己生成一次。一键脚本按 `boot_linux.img`、`device-boot/boot_linux.img` 的顺序在暂存目录里找它，也可以用 `--boot` 指定。归档里的 `boot_sunuefi.img` 是 ESP 内部的 Linux 载荷，一键脚本会明确拒绝它。
+`device-boot/boot_linux.img` 由 `scripts/prepare-device-boot.py` 用本机原厂 BOOT 重打包产生。`device-boot/boot_linux.img` 不在归档里，必须自己生成一次。一键脚本按 `boot_linux.img`、`device-boot/boot_linux.img` 的顺序在暂存目录里找它，也可以用 `--boot` 指定。归档里没有可以直接刷的 Linux 内核文件，一键脚本不会把 `sunuefi_esp.img` 当 BOOT。
 
 脚本不写 `dtbo_a`、`init_boot_a`、`vendor_boot_a`、`vbmeta_a`，也不擦除 `userdata`。
 
@@ -614,9 +614,9 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 `update-f2fs.py` 复用锁定上游的只读设备/GPT 解析、工厂 Fastboot 身份检查和本仓库的材料校验。`update-f2fs.py` 只传输 ESP 与 F2FS root 文件系统，不写 GPT、userdata 与持久 BOOT。完整 root 文件系统会替换 Linux 文件，个人文件先备份。
 
-先确认原 Android 能从当前活动槽完整启动并提供 root ADB。历史的 init_boot/DTBO 试验不算恢复完成的证据。计划阶段会核对主备 GPT/CRC、分区类型、当前槽、原 BOOT、源码清单、管理配置与实际 sparse 容量，并以只读方式取得 Android 的 `/sys/firmware/fdt`，检查 Linux 实际使用的 RAM 地图与固定保留区：交付件带 `uefi-live-memory` 补丁时按原厂实时地图核对，否则要求 payload 地图逐段落在原厂地图内。含义见[上游核对](upstream.md)。
+先确认原 Android 能从当前活动槽完整启动并提供 root ADB。历史的 init_boot/DTBO 试验不算恢复完成的证据。计划阶段会核对主备 GPT/CRC、分区类型、当前槽、原 BOOT、源码清单、管理配置与实际 sparse 容量，并以只读方式取得 Android 的 `/sys/firmware/fdt`，记录设备当前的 RAM 区间与固定保留区。安装侧不拿交付件的 DTB 去比这份地图：固件在每次启动时用 `EFI_DT_FIXUP_PROTOCOL` 把 `/memory` 换成设备当次布局，并按容量与固定保留区校验。记录只用于计划与审计。含义见[上游跟踪](upstream.md)。
 
-缺 FDT 或比较失败就停下，不要跳过检查。
+缺 FDT 或解析失败就停下，不要跳过检查。
 
 `stock-recovery/boot.img` 是设备当前槽的原厂 BOOT。执行器要求它 96 MiB 且摘要与设备一致。原厂 ABL 不实现 `fastboot fetch`，从 Android 侧读：
 
@@ -664,18 +664,16 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 sudo dnf upgrade --refresh
 ```
 
-升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再把新内核、新 initramfs 与 ESP 上原有的 `board.dtb` 重新打成 Android boot v2 容器，原子替换 `/boot/efi/EFI/Piano/stable/boot.img`。重启后固件读到的是新内核。
+升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再用 `systemd-ukify` 把新内核、新 initramfs、ESP 里现有 UKI 的 `.dtb` 与 `.cmdline`、新的 `.osrel` 与 `.uname` 组装成新的 `/boot/efi/EFI/Linux/sunuefi.efi`。重启后固件读到的是新内核。
 
-这条路径已在真机上验证：`7.2.9-1` 升到 `7.2.9-3` 之后重启，`uname -r` 是新内核，桌面正常起，`v4l2loopback` 从新模块树的 `updates/` 加载。
+旧 `boot.img` 链上的 `7.2.9-1` → `7.2.9-3` 升级验过一次。UKI 链还没有真机记录，升级后重启、`uname -r`、桌面与模块加载都要在设备上重验。
 
-任何一步失败时，`boot.img` 保持原样，设备继续用上一个内核启动。审计记录写在 `/var/lib/piano/kernel-esp/<release>.json`。
+任何一步失败时，旧 UKI 保持原样，设备继续用上一个内核启动。审计记录写在 `/var/lib/piano/kernel-esp/<release>.json`。
 
-已经装好但起不来的内核没有自动回滚。回滚靠 `boot.img.bak`：
+已经装好但起不来的内核没有自动回滚。回滚靠 `sunuefi.efi.bak`：
 
 ```sh
-sudo cp /boot/efi/EFI/Piano/stable/boot.img.bak /boot/efi/EFI/Piano/stable/boot.img
-sudo cp /boot/efi/EFI/Piano/stable/Image.bak /boot/efi/EFI/Piano/stable/Image
-sudo cp /boot/efi/EFI/Piano/stable/initramfs.bak /boot/efi/EFI/Piano/stable/initramfs
+sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi
 ```
 
 `dnf history undo` 只回滚 RPM，不动 ESP。完整语义见 [COPR 软件源](copr-repository.md)。

@@ -12,12 +12,12 @@ import piano_sparse
 
 PROJECT = Path(__file__).resolve().parents[1]
 
-REQUIRED = {"sunuefi_esp.img", "boot_sunuefi.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst",
+REQUIRED = {"sunuefi_esp.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst",
             "pianoroot.f2fs.sparse.img", "initramfs.tar.zst",
             "root-image-manifest.json", "kernel-manifest.json", "initramfs-manifest.json",
             "esp-manifest.json", "runtime-manifest.json", "mesa-manifest.json",
             "ffmpeg-manifest.json", "rootfs-manifest.json", "source-runs.json", "uefi-source.json"}
-ASSETS = {"sunuefi_esp.img": "esp.img", "boot_sunuefi.img": "boot.img",
+ASSETS = {"sunuefi_esp.img": "esp.img",
           "PianoUEFI-product.img": "PianoUEFI-product.img"}
 
 
@@ -37,14 +37,9 @@ def verify(root):
     esp = read("esp-manifest.json")
     if esp["kernel_manifest_sha256"] != kernel_hash:
         raise ValueError("ESP and rootfs use different kernel manifests")
-    # 载荷四个文件在 /EFI/Piano/stable/ 下；引导链是固件直接执行的
-    # systemd-boot（BOOTAA64.EFI）、它 chainload 的 LinuxBoot.efi，以及
-    # systemd-boot 读的两份配置。缺任何一份这台机器都起不来。实测条目名由
-    # 上游 `loader.conf` 的 `default linux.conf` 决定，不是 systemd-boot 的
-    # 默认命名。
-    expected_paths = {"/EFI/Piano/stable/" + p for p in ("Image", "board.dtb", "initramfs", "boot.img")} | {
-        "/EFI/BOOT/BOOTAA64.EFI", "/EFI/Piano/LinuxBoot.efi",
-        "/loader/loader.conf", "/loader/entries/linux.conf"}
+    # 固件直接执行 /EFI/Linux/sunuefi.efi。内核、initramfs、板级 DTB 与
+    # cmdline 都在这个 UKI 的 PE 段里，ESP 不再有第二个载荷文件。
+    expected_paths = {"/EFI/Linux/sunuefi.efi"}
     if set(esp["esp_files"]) != expected_paths:
         raise ValueError("ESP layout differs from the actual firmware loader")
     for asset, packaged in ASSETS.items():
@@ -98,9 +93,6 @@ def verify(root):
     decoded = piano_sparse.inspect(transport)
     if (decoded["expanded_bytes"], decoded["expanded_sha256"]) != (image["bytes"], image["sha256"]):
         raise ValueError("root transport does not decode to the sealed image")
-    with (root / "boot_sunuefi.img").open("rb") as f:
-        if f.read(8) != b"ANDROID!":
-            raise ValueError("Linux boot payload is not an Android boot container")
     inventory = {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
                  for p in sorted(root.iterdir()) if p.is_file()
                  and p.name not in ("bundle-manifest.json", "SHA256SUMS")}

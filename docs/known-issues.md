@@ -48,8 +48,8 @@ probe。旋转时的 DSC flush 超时属于同一类时序余量不足，重试�
 UEFI 的两份面板描述文件、`PianoFactoryPanel.h` 的选择表一致。
 
 UEFI 按原厂 ABL 的 `msm_drm.dsi_display0` 改写面板 `compatible`，实机
-`/proc/device-tree` 读回是 `xiaomi,piano-csot-nt36532`。ESP 上的 `board.dtb` 出厂
-只有 `xiaomi,piano-boe-nt36532`，整份文件没有 `piano-csot` 字样，所以这个值是 UEFI
+`/proc/device-tree` 读回是 `xiaomi,piano-csot-nt36532`。板级 DTB 的基准只有
+`xiaomi,piano-boe-nt36532`，整份文件没有 `piano-csot` 字样，所以这个值是 UEFI
 写进去的。
 
 看似矛盾，实际不矛盾：内核面板驱动内部的两个函数名与 `of_match` 的对应关系是反的。
@@ -255,13 +255,10 @@ Android 实测运行在 SELinux Permissive，启动参数带 `selinux=permissive
 固定源码已包含 SC8541/MCA 直充支持，设备参数 cp_charge、hv_charge、
 charge_current、mipps_auth、charge_policy 都开启。参数开启不等于实际达到
 45 W。
-补丁 0036 是这条驱动的历史参考，对应实现已经在固定内核里，不要重复套用。
 
-已有遥测是高电量下的一次采样：电量 94%，MCA USB online、PD_PPS，约
-8.60–8.74 V，sysfs 电压乘电流估算输入 12.075–21.429 W。双电池都 Charging，
-温度 32.8–35.5 °C 与 31.9–34.4 °C。SC8541 online 始终为 0。低电量直充与
-最高 45 W 未证明，也没有外置功率计读数。要记录功率与温度，需要真实充电器、
-线材和负载。
+上游 A16 这一轮的 11 条充电、温控与 FFC 补丁已经收进封存序列：`0093`、`0094`、`0096`–`0104`。覆盖停充保留温控、关机充电、MCA 会话恢复、bq27xxx 挂起恢复、Gen4 测温、满电重充、原厂温度、皮肤温控策略、PMIC GLINK 注册时序、带认证的 FFC 与 FFC 停充失败退出。补丁 0036 是这条驱动的历史参考，对应实现已经在固定内核里，不要重复套用。
+
+已有遥测来自旧内核，是高电量下的一次采样：电量 94%，MCA USB online、PD_PPS，约 8.60–8.74 V，sysfs 电压乘电流估算输入 12.075–21.429 W。双电池都 Charging，温度 32.8–35.5 °C 与 31.9–34.4 °C。SC8541 online 始终为 0。新补丁的关机充电、温控降流与 FFC 都还没有真机记录，低电量直充与最高 45 W 也没有证明，没有外置功率计读数。要记录功率与温度，需要真实充电器、线材和负载。
 
 ## 传感器与自动旋转
 
@@ -285,6 +282,8 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 防误触、绘图应用效果、充电与重连仍需分别验证。
 
 ## 触屏、网络、音频与相机
+
+内核手指矩阵解码（上游 `0095`）这一轮没有收。触控仍走用户态 THP 读取加 `nvt_finger_filter.cpp` 的 5 级滤波，`/proc/nvt_thp_status` 保持 `kernel_input: disabled`，不会出现第二个输入设备。
 
 ### piano-usb.service 每次开机失败
 
@@ -394,7 +393,9 @@ loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255）�
 
 面板支持 HDR10。DSI-1 连接器的属性里有 `HDR_OUTPUT_METADATA`、`Colorspace`、`max bpc`，CRTC 上有 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM`，比早先记录的"msm 没挂属性"要多一些。
 
-整条输出链路没有验证：没在 KDE 里开过 HDR，也没量过色深与色调映射。这一节只记录到属性存在。extras 的 KWin 带退出 HDR 恢复背光的补丁，内核封存序列里也有上游的 HDR identity gamma 补丁；两者组合还没在真机上开关过。默认配置把 HDR 与广色域保持关闭，验证失败也不影响普通桌面。
+extras 的 KWin 带退出 HDR 恢复背光的补丁，内核封存序列里也有上游的 HDR identity gamma 补丁。2026-11-12 在冷启动后的补丁版 KWin（`kwin-6.8.2-3.piano1.fc45`）上开关过两轮：`kscreen-doctor` 同一条命令带 `hdr.enable` 与 `wcg.enable` 时驱动接受配置，`/sys/class/backlight/ktz8866-backlight/brightness` 从 1024 升到 2047；同一条命令带两个 `disable` 后回到 1024 并稳定。两轮都是 1024 → 2047 → 1024，关 HDR 后背光没有停在最大值。单独提交 `hdr.enable` 会被驱动拒绝并打印 `applying config failed`，开关要带 `wcg` 一起提交。补丁只管 HDR 切回 SDR 时把硬件背光写回去，不改这条属性提交路径。
+
+没量过色深与色调映射，HDR 画面本身不算验证过。默认配置把 HDR 与广色域保持关闭。
 
 ### 键盘背光
 
@@ -402,14 +403,9 @@ loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255）�
 
 ## 内核在线升级
 
-`dnf upgrade` 现在会带上 `kernel-piano`。事务收尾时，`%posttrans` 重建 initramfs 并重打 ESP 上的 `boot.img`。这条路径在平板上跑过一次真实升级
-（`7.2.9-1` → `7.2.9-3`）：`%posttrans` 重建了 initramfs，ESP 上的 `Image`、
-`initramfs` 与 `boot.img` 都换了，`.bak` 三份都在，重启后 `uname -r` 是新的
-内核，`graphical.target` 起来，`systemctl --failed` 为空，`v4l2loopback` 从新
-模块树的 `updates/` 加载。
+`dnf upgrade` 现在会带上 `kernel-piano`。事务收尾时，`%posttrans` 重建 initramfs，再用 `systemd-ukify` 重打 ESP 上的 `/EFI/Linux/sunuefi.efi`。旧的 `boot.img` 链在平板上跑过一次真实升级（`7.2.9-1` → `7.2.9-3`）：`%posttrans` 重建了 initramfs，ESP 上的 `Image`、`initramfs` 与 `boot.img` 都换了，`.bak` 三份都在，重启后 `uname -r` 是新的内核，`graphical.target` 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载。UKI 链的替换还没有真机记录。
 
-写盘失败时，旧 `boot.img` 保持不动，设备继续用旧内核启动。装好但起不
-来的内核没有自动回滚，回滚方式见 `docs/copr-repository.md`。
+写盘失败时，旧 UKI 保持不动，设备继续用旧内核启动。装好但起不来的内核没有自动回滚，回滚方式见 `docs/copr-repository.md`。
 
 挂起路径上每次会打 4 条 `qdss already disabled` / `qdss already unprepared`
 （`drivers/clk/clk.c` 的 `clk_core_disable` / `clk_core_unprepare`，从

@@ -14,14 +14,7 @@
 
 让内核内建 F2FS 支持，这是 F2FS 根分区能挂载的前提。
 
-上游 `build_piano_full_kernel.py` 的配置策略只允许三个已审阅的覆盖
-（Bluetooth UHID、flash、early-CPUCP），其余一律拒绝：
-
-    Local full fragment may override only CONFIG_CMDLINE
-    Only reviewed Bluetooth/flash/early-CPUCP configuration overrides are supported
-
-所以不能往 `linux/configs/piano-full.config` 里追加 `CONFIG_F2FS_FS=y`，
-也不能只把 rootfstype 改成 f2fs——两条路都会在配置校验阶段被拒。
+上游 `build_piano_full_kernel.py` 只接受脚本里登记过的配置覆盖组，其余一律拒绝。所以不能往 `linux/configs/piano-full.config` 里追加 `CONFIG_F2FS_FS=y`。根类型由 `config/release.json` 的 cmdline 指定，`CONFIG_CMDLINE` 是空的，改它不会生效。
 
 `kernel-f2fs/` 里的补丁按上游自己的扩展点做三件事：
 

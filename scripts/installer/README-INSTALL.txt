@@ -49,8 +49,7 @@ Required Files in this Folder:
 - flash-linux.sh / flash-linux.bat (one-step scripts)
 - README-INSTALL.txt               (this guide)
 - make-device-boot.sh              (builds device-boot/ from this tablet's boot_a image)
-- boot_sunuefi.img                 (ESP-internal Linux payload; NOT a boot_a image)
-- sunuefi_esp.img                  (SunUEFI EFI System Partition)
+- sunuefi_esp.img                  (SunUEFI EFI System Partition holding the Linux UKI)
 - PianoUEFI-product.img            (SunUEFI product firmware; first-install check)
 - uefi-source.json                 (UEFI source pin and patch digests)
 - SHA256SUMS                       (checksums of everything in this folder)
@@ -172,9 +171,9 @@ Step 4 - Flash, one command at a time (each must print OKAY):
    boots the stock Android image. Do not add os_version, and do not re-sign the
    image: piano-boot-repack compares the wrapper header byte-for-byte, and a
    patched os_version breaks the Android boot-assistant module.
-   NEVER flash boot_sunuefi.img to boot_a. That file is the Linux payload inside
-   the ESP (Header v2). SunUEFI loads it; the ABL does not. If you flash it to
-   boot_a, the tablet sticks in Fastboot with no bootable slot.
+   The ESP payload /EFI/Linux/sunuefi.efi is not a boot_a image. SunUEFI loads
+   it; the ABL does not. If you flash it to boot_a, the tablet sticks in
+   Fastboot with no bootable slot.
 
 Step 5 - Verify after reboot:
    Confirm: the GNOME desktop appears; "uname -r" shows the release kernel;

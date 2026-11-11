@@ -21,7 +21,7 @@ build-image
   └─ 核对 rootfs 模块树 == 封存内核 manifest
 
 build-bundle
-  └─ sunuefi_esp.img + boot_sunuefi.img
+  └─ sunuefi_esp.img（/EFI/Linux/sunuefi.efi）+ PianoUEFI-product.img
 ```
 
 四步之间要显式传 run id，链路不会自己去找"最新的那个"：

@@ -89,6 +89,9 @@ def test_extras_workflows_and_scripts():
         text = script.read_text()
         assert "copr.fedorainfracloud.org:xinyang26:piano-fedora-extras" in text
         assert script.stat().st_mode & 0o111, f"{script} is not executable"
+    # 原版同名包已经满足 meta 的裸 Requires，单装 meta 不会换包；脚本必须显式
+    # 升级 KWin/GTK3，让 priority=1 有机会选中 .piano1 构建。
+    assert "dnf upgrade -y kwin gtk3" in INSTALL.read_text()
 
 
 def main():

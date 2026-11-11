@@ -120,13 +120,12 @@ def check_script(path):
 def check_boot_image_selection():
     """boot_a 只能写 prepare-device-boot.py 产出的 boot_linux.img。
 
-    实机教训（2026-10-20）：deploy-bundle 的 boot_sunuefi.img 是 ESP 内部的
-    Linux 载荷，Header v2、os_version=0、没有 AVB footer 和 SUNUEFI-NEXTv1
-    请求页。SunUEFI 固件能加载它，ABL 不能。把它写进 boot_a，ABL 拒绝整条
-    引导链，平板停在 Fastboot，活动槽被标记 unbootable。
+    实机教训（2026-10-20）：ESP 内部的 Linux 载荷只有 SunUEFI 固件能加载，
+    ABL 不能。把它写进 boot_a，ABL 拒绝整条引导链，平板停在 Fastboot，活动槽
+    被标记 unbootable。早期归档里这份载荷叫 boot_sunuefi.img；现在它是
+    /EFI/Linux/sunuefi.efi 里的 UKI，同样不能当 boot_a 镜像。
 
-    `ab24a6a` 只改了 shell 脚本和文档，Windows 脚本与 ZIP 内的 README 仍把
-    boot_sunuefi.img 当 boot_a 镜像刷。这里对三个文件一起加约束，避免再漏一个。
+    这里对 shell 脚本、Windows 脚本与 ZIP 内的 README 一起加约束。
     """
     failures = []
     sh = (ROOT / "scripts/installer/flash-linux.sh").read_text(encoding="utf-8")
@@ -164,14 +163,17 @@ def check_boot_image_selection():
     if "fastboot flash boot_a boot_sunuefi.img" in readme:
         failures.append(
             "README-INSTALL.txt: manual flash still writes boot_sunuefi.img to boot_a")
-    if "NEVER flash boot_sunuefi.img to boot_a" not in readme:
+    if "NEVER flash boot_sunuefi.img to boot_a" in readme:
         failures.append(
-            "README-INSTALL.txt: does not warn that boot_sunuefi.img is not a "
+            "README-INSTALL.txt: still names the retired boot_sunuefi.img")
+    if "/EFI/Linux/sunuefi.efi" not in readme or "not a boot_a image" not in readme:
+        failures.append(
+            "README-INSTALL.txt: does not warn that the ESP payload is not a "
             "boot_a image")
     # 每条手动 flash 命令都要带 -S；漏一条就够让用户踩到挂死。
     for lineno, line in enumerate(readme.splitlines(), 1):
         stripped = line.strip()
-        if stripped.startswith("fastboot flash ") and "boot_sunuefi.img" not in stripped:
+        if stripped.startswith("fastboot flash "):
             failures.append(
                 f"README-INSTALL.txt:{lineno}: manual flash without -S 128M: {stripped}")
 

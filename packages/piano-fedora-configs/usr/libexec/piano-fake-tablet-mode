@@ -3,6 +3,7 @@
 # Expose SW_TABLET_MODE to the running desktop (Mutter/KWin) for auto-rotation
 # and tablet gestures.
 
+import fcntl
 import os
 import signal
 import subprocess
@@ -18,6 +19,11 @@ GREETER_USERS = ("gdm", "sddm", "plasmalogin", "greetd", "lightdm")
 # 会话的类型。wayland 与 x11 都算"桌面已经起来"；tty 是文本登录，不算。
 GRAPHICAL_TYPES = ("wayland", "x11", "mir")
 GRAPHICAL_CLASSES = ("user", "greeter")
+# 上游 0037 让 hid-nanosic-wn8030 按键盘盖插拔上报 SW_TABLET_MODE。这个节点
+# 是盖子状态的真值，虚拟开关只能跟随它，不能自己按"有图形会话"猜。
+REAL_TABLET_MODE_NAME = "Nanosic WN8030 tablet mode"
+# _IOR('E', 0x1b, an eight-byte bitmap): read the current switch state.
+EVIOCGSW = (2 << 30) | (8 << 16) | (ord('E') << 8) | 0x1b
 
 _ui = None
 _stopping = False
@@ -38,6 +44,27 @@ def get_real_lid_device():
         except Exception:
             continue
     return None
+
+
+def find_real_tablet_mode():
+    """返回上游驱动注册的真实平板模式节点，找不到返回 None。"""
+    for path in evdev.list_devices():
+        try:
+            dev = evdev.InputDevice(path)
+            if dev.name != REAL_TABLET_MODE_NAME:
+                continue
+            if ecodes.SW_TABLET_MODE in dev.capabilities().get(ecodes.EV_SW, []):
+                return dev
+        except Exception:
+            continue
+    return None
+
+
+def read_switch(fd, code):
+    """读 EV_SW 位图里某一位的当前值，不依赖事件流。"""
+    bitmap = bytearray(8)
+    fcntl.ioctl(fd, EVIOCGSW, bitmap, True)
+    return bool(int.from_bytes(bitmap, sys.byteorder) & (1 << code))
 
 
 def set_tablet_mode(enabled):
@@ -131,13 +158,25 @@ def main():
     enabled = False
     try:
         while not _stopping:
+            cover = find_real_tablet_mode()
             if graphical_user_session_running():
                 if shell_ticks < USER_SHELL_DELAY_TICKS:
                     shell_ticks += 1
-                if not enabled and shell_ticks == USER_SHELL_DELAY_TICKS:
-                    set_tablet_mode(True)
-                    enabled = True
-                    log("SW_TABLET_MODE=ON")
+                # 键盘盖接上时上游节点报 OFF，此时不能置 ON；libinput 会因此
+                # 屏蔽触控板（#22）。没有真实节点时才退回旧的会话启发式。
+                want = shell_ticks == USER_SHELL_DELAY_TICKS
+                if cover is not None:
+                    try:
+                        want = read_switch(cover.fd, ecodes.SW_TABLET_MODE)
+                    except OSError as error:
+                        log(f"cannot read {cover.path}: {error}; keeping session heuristic")
+                        want = shell_ticks == USER_SHELL_DELAY_TICKS
+                    cover.close()
+                if want != enabled:
+                    set_tablet_mode(want)
+                    enabled = want
+                    log(f"SW_TABLET_MODE={'ON' if want else 'OFF'}; "
+                        f"{'cover' if cover is not None else 'session'} state changed")
             else:
                 shell_ticks = 0
                 if enabled:

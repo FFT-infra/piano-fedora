@@ -37,7 +37,7 @@ Flashing utility for Fedora 44 Linux on Xiaomi Pad 8 Pro (piano).
 Options:
   -y, --yes            Skip safety confirmation prompt (non-interactive)
   --boot <file>        Device-specific boot_a image (boot_linux.img from
-                       prepare-device-boot.py). Never the bundle's boot_sunuefi.img.
+                       prepare-device-boot.py). Never the ESP payload.
   --esp <file>         Path to SunUEFI ESP image (sunuefi_esp.img)
   --root <file>        Path to the prepared rootfs transport (pianoroot.f2fs.sparse.img)
   --root-sha256sums <file>
@@ -262,11 +262,11 @@ find_file() {
 }
 
 # Auto-detect the boot_a image.
-# deploy-bundle/boot_sunuefi.img is the Linux payload that lives inside the
-# ESP (EFI/Piano/stable/boot.img): a Header v2 container with no SUNUEFI-NEXTv1
-# page. SunUEFI's UEFI firmware loads it from the ESP; ABL cannot. Writing
-# it to boot_a leaves the tablet in Fastboot with no bootable slot, so it is
-# never used here. boot_a takes the device-specific image that
+# The ESP payload (/EFI/Linux/sunuefi.efi inside sunuefi_esp.img) is a UKI.
+# SunUEFI's firmware loads it from the ESP; ABL cannot. Older archives named a
+# copy of the old boot-container payload boot_sunuefi.img; writing either one
+# to boot_a leaves the tablet in Fastboot with no bootable slot, so neither is
+# ever used here. boot_a takes the device-specific image that
 # prepare-device-boot.py repacks from the stock 96 MiB BOOT.
 if [ -z "$BOOT_IMG" ]; then
     if FOUND=$(find_file "boot_linux.img"); then
@@ -275,7 +275,7 @@ if [ -z "$BOOT_IMG" ]; then
         BOOT_IMG="$FOUND"
     fi
 elif [ "$(basename "$BOOT_IMG")" = "boot_sunuefi.img" ]; then
-    echo -e "${RED}[ERROR] --boot is the bundle's boot_sunuefi.img, which is the ESP payload, not a boot_a image.${NC}"
+    echo -e "${RED}[ERROR] --boot is the ESP payload from an older bundle, not a boot_a image.${NC}"
     echo "Pass device-boot/boot_linux.img from prepare-device-boot.py instead."
     exit 1
 fi

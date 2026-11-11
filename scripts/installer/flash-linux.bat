@@ -101,10 +101,10 @@ echo [INFO] Target partitions boot_a, sunuefi_esp, sunuefi_root verified.
 
 REM 4. Image file validation
 REM boot_a takes the device-specific boot_linux.img that prepare-device-boot.py
-REM repacks from this tablet's stock 96 MiB BOOT. The deploy-bundle's
-REM boot_sunuefi.img is the Linux payload inside the ESP: Header v2,
-REM no SUNUEFI-NEXTv1 request page. SunUEFI loads it from the ESP; the ABL
-REM does not, and rejects the whole chain when it is written to boot_a.
+REM repacks from this tablet's stock 96 MiB BOOT. The ESP payload
+REM (/EFI/Linux/sunuefi.efi inside sunuefi_esp.img) is a UKI: SunUEFI loads it
+REM from the ESP; the ABL does not, and rejects the whole chain when it is
+REM written to boot_a.
 set "BOOT_IMG="
 if exist "boot_linux.img" set "BOOT_IMG=boot_linux.img"
 if not defined BOOT_IMG if exist "device-boot\boot_linux.img" set "BOOT_IMG=device-boot\boot_linux.img"
@@ -114,8 +114,8 @@ if not defined BOOT_IMG (
     echo stock BOOT, then keep boot_linux.img or device-boot\boot_linux.img
     echo next to this installer.
     echo.
-    echo boot_sunuefi.img is the ESP payload, not a boot_a image. Flashing it
-    echo leaves the tablet in Fastboot with no bootable slot.
+    echo The ESP payload is not a boot_a image. Flashing it leaves the tablet
+    echo in Fastboot with no bootable slot.
     pause
     exit /b 1
 )
@@ -160,8 +160,8 @@ if not exist "root-install\SHA256SUMS" (
 echo [INFO] Verifying deploy-bundle and root-install integrity...
 REM boot_linux.img is device-specific: prepare-device-boot.py produces it from
 REM this tablet's stock BOOT, so it is not in the deploy-bundle SHA256SUMS.
-REM Only the deploy-bundle's own boot_sunuefi.img is covered there. It does get
-REM its own SHA256SUMS in device-boot\, and a missing one stops the installer:
+REM It gets its own SHA256SUMS in device-boot\, and a missing one stops the
+REM installer:
 REM boot_a decides whether the tablet boots at all.
 for %%F in ("%BOOT_IMG%") do (
     set "BOOT_DIR=%%~dpF"

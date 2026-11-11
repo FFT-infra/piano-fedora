@@ -7,8 +7,8 @@ COPR 公开实例没有打开二进制上传（`/build/create/rpm-upload` 不存
 
 kernel-piano 也在同一批里发布，仓库不再排除它。设备上 `dnf upgrade` 装上
 新内核之后，包自己的 `%posttrans` 会 depmod、重建 initramfs，并把新内核
-重新打成 ESP 上固件读取的 `boot.img`；写失败时旧文件保持不动，设备继续用
-上一个内核启动。
+重新打进 ESP 上固件读取的 UKI；写失败时旧文件保持不动，设备继续用上一个
+内核启动。
 
 默认只做校验（dry-run）。真正上传必须显式给 `--execute`。
 """
@@ -33,7 +33,7 @@ USERSPACE = (
     "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
 )
 # 内核包：与用户态包一起发布。装到设备上之后由包自己的 %posttrans 重建
-# initramfs 并重打 ESP 的 boot.img，所以不需要在仓库层面排除。
+# initramfs 并重打 ESP 的 UKI，所以不需要在仓库层面排除。
 KERNEL_PACKAGES = ("kernel-piano",)
 REQUIRED = USERSPACE + KERNEL_PACKAGES
 
@@ -398,9 +398,9 @@ def ensure_project(binary, config, project):
         "--description",
         f"Fedora {RELEASEVER} aarch64 packages for Xiaomi Pad 8 Pro (piano)",
         "--instructions",
-        "kernel-piano upgrades replace the Image in the ESP boot container: "
-        "the package's %posttrans rebuilds the initramfs and repacks boot.img. "
-        "Keep a copy of the ESP boot.img if you want a manual rollback.",
+        "kernel-piano upgrades rebuild the UKI on the ESP: the package's "
+        "%posttrans rebuilds the initramfs and repacks /EFI/Linux/sunuefi.efi. "
+        "Keep a copy of that file if you want a manual rollback.",
     ], check=False)
     if created.returncode:
         # 并发创建或权限问题：再看一次列表，真的没有才算失败。

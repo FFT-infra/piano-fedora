@@ -177,7 +177,7 @@ jobs:
           print(f"esp_size_mib={value}")
           PY
 
-      - name: Create the upstream-compatible ESP and Linux boot payload
+      - name: Create the ESP with the Linux UKI
         env:
           # ESP 容量只在 product.json 定义，这里不写第二份。
           ESP_SIZE_MIB: ${{ steps.product.outputs.esp_size_mib }}
@@ -243,13 +243,13 @@ jobs:
           # commands. Keeping generic esp.img/boot.img here forced the
           # installer and manual instructions onto two naming contracts.
           sudo cp build/packaged/esp.img bundle/sunuefi_esp.img
-          sudo cp build/packaged/boot.img bundle/boot_sunuefi.img
-          sudo cp build/packaged/PianoUEFI-product.img bundle/
-          # Retired generic names stay out of the release artifact. If a
-          # consumer still reads them, fail here instead of publishing two
-          # identities for the same payload.
+          sudo cp build/packaged/PianoUEFI-product.img bundle/PianoUEFI-product.img
+          # Retired names stay out of the release artifact. If a consumer still
+          # reads them, fail here instead of publishing two identities for the
+          # same payload: the Linux kernel now lives inside /EFI/Linux/sunuefi.efi.
           test ! -e bundle/esp.img
           test ! -e bundle/boot.img
+          test ! -e bundle/boot_sunuefi.img
           cp build/in/image/pianoroot.f2fs.img.zst bundle/
           # 封存镜像与设备容量无关。直接可刷的 sparse 随 bundle 一起发布，
           # 装机不需要再跑 prepare-install 去按本机分区容量重算一份。

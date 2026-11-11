@@ -99,18 +99,16 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 
 `usb-typec`、`ufs-mcq`、`dsp-resources`、`cdsp-fastrpc` 在 2026-11-08 补进 `build-bundle.yml`。`displayport`、`bluetooth-nvm`、`ir-spi-controller` 更早就有，本文到 2026-11-10 才补齐。`pcie-clocks`、`battery`、`camera-sensors`、`display-interconnects` 随 SunUEFI `61b6c592` 一起来，同时进了工作流。
 
-没有 overlay，对应的内核代码合了也不生效。这些项的真机验收还没做完：`piano-cma`、`piano-ufs-mcq` 一旦不合，表现为开不了机，回退是刷回上一版 bundle，或把 ESP 上的 `board.dtb` 与 `boot.img` 一起换回上一版。
+没有 overlay，对应的内核代码合了也不生效。这些项的真机验收还没做完：`piano-cma`、`piano-ufs-mcq` 一旦不合，表现为开不了机，回退是刷回上一版 bundle 里的 `sunuefi_esp.img`。
 
-## 启动读的是 boot.img 里的 DT
+## 启动读的是 UKI 里的 DT
 
-ESP 的 `EFI/Piano/stable/` 下 `board.dtb` 和 `boot.img` 都含 DT，启动时只读一份：
+板级 DTB 由厂商 `board.dtb` 与 `config/release.json` 里的 overlay 合成，打进 `/EFI/Linux/sunuefi.efi` 的 `.dtb` 节区。`/EFI/Piano/stable/` 与单独的 `board.dtb` 不再是启动输入。
 
-- `uefi/components/os-boot/PianoEspBootSource.c:134` 打开的只有 `\EFI\Piano\stable\boot.img`，`board.dtb` 不在启动路径上。
-- `board.dtb` 是下次内核安装的输入。`scripts/piano-kernel-esp-update:124` 读 ESP 上的 `board.dtb`，和新 `Image`、`initramfs` 一起用 mkbootimg 打成新的 `boot.img`（header v2，页 4096）。
+- 固件只打开 `\EFI\Linux\sunuefi.efi`，按 PE 节区取内核、initramfs、DTB 与 cmdline。
+- 内置的 `EFI_DT_FIXUP_PROTOCOL` 在每次启动时改写这份 DTB。`/memory` 换成设备本次的 RAM 布局，面板 `compatible`、蓝牙地址、RTC 偏移与 Gunyah 资源管理器的 `reg`、`interrupts` 也在这里更新。载荷里的这些值只是构建时的占位，不是设备实际值。
 
-2026-11-08 实测：把 ESP 的 `board.dtb` 换成带新 overlay 的版本再重启，`/proc/device-tree` 里 `qcom,pmic_glink` 的 compatible、`ufshc` 的 `reg-names`、PCIe 的 `interrupt-map` 一项没变；解开同一台设备的 `boot.img`，里面嵌的 DT 正好等于换之前那份 `board.dtb`。
-
-换 `board.dtb` 只换了下次打包的输入，`boot.img` 不重打，重启读到的还是旧 DT。验收一个 DT 改动要同时换这两份，或者直接重打 `boot.img`。
+改 DT 要重打 UKI。只换 ESP 上某一个文件不会生效。`kernel-piano` 的 `%posttrans` 用 ESP 里现有 UKI 的 `.dtb` 重新组装，板级 overlay 保持不变；换 overlay 要重新构建 bundle 或手工重打 UKI。
 
 ## oracle 校验
 

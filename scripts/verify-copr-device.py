@@ -9,7 +9,7 @@
 才会真的启用仓库并试跑一次 `dnf upgrade --assumeno`。
 
 内核升级由 kernel-piano 自己的 %posttrans 收尾：它重建 initramfs 并重打
-ESP 上固件读取的 boot.img，所以这里断言 kernel-piano 可见、且 dry-run 的
+ESP 上固件读取的 UKI，所以这里断言 kernel-piano 可见、且 dry-run 的
 升级计划里带着它，而不是像以前那样断言它被排除。
 
 默认值对应 packages/piano-fedora-configs 里随包发布的 .repo。

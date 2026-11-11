@@ -103,7 +103,6 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     raw = b"verified fixture raw bytes".ljust(4096, b"\0")
     for name in ("sunuefi_esp.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst"):
         (root / name).write_bytes(b"fixture")
-    (root / "boot_sunuefi.img").write_bytes(b"ANDROID!fixture")
     # 四档共用的 initramfs 归档；它是平台资产，bundle 缺了就不完整。
     (root / "initramfs.tar.zst").write_bytes(b"fixture")
     write("kernel-manifest.json", {"kernel_release": "fixture"})
@@ -119,17 +118,13 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
                                                 "hevc_v4l2m2m": " V..... hevc_v4l2m2m"}})
     write("rootfs-manifest.json", {**identity, "releasever": "45", **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
                                                 for name in ("runtime", "mesa", "ffmpeg")}})
-    # esp-manifest.json is produced upstream and keeps its internal esp.img /
-    # boot.img keys; verify-bundle maps them to the release asset names.
+    # esp-manifest.json 由上游 package_release.py 产出；内核与板级 DTB 都在
+    # UKI 里，ESP 只有一个载荷文件。
     write("esp-manifest.json", {"kernel_manifest_sha256": kernel,
-          "esp_files": ["/EFI/Piano/stable/" + name for name in ("Image", "board.dtb", "initramfs", "boot.img")]
-                       + ["/EFI/BOOT/BOOTAA64.EFI", "/EFI/Piano/LinuxBoot.efi",
-                          "/loader/loader.conf", "/loader/entries/linux.conf"],
+          "esp_files": ["/EFI/Linux/sunuefi.efi"],
           "files": {
               "esp.img": {"sha256": digest(root / "sunuefi_esp.img"),
                            "bytes": (root / "sunuefi_esp.img").stat().st_size},
-              "boot.img": {"sha256": digest(root / "boot_sunuefi.img"),
-                            "bytes": (root / "boot_sunuefi.img").stat().st_size},
               "PianoUEFI-product.img": {"sha256": digest(root / "PianoUEFI-product.img"),
                                          "bytes": (root / "PianoUEFI-product.img").stat().st_size},
           }})
@@ -153,12 +148,10 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
             "product": {"sha256": digest(root / "PianoUEFI-product.img"),
                         "bytes": (root / "PianoUEFI-product.img").stat().st_size},
             "evidence": {"kind": "successful-actions-build-log", "log_sha256": "2" * 64}}
-    # 交付包绑定的 UEFI 项目补丁：内存与 Gunyah RM 交接都要能在 uefi-source.json
-    # 里查到，否则 bundle 可以拿一个新的 product 配旧的来源清单。
-    uefi_sources = {"patches/uefi-live-memory/series.json",
-                    "patches/uefi-live-memory/0001-adopt-live-memory-map.patch",
-                    "patches/uefi-live-rm/series.json",
-                    "patches/uefi-live-rm/0001-adopt-live-resource-manager-caps.patch"}
+    # 交付包绑定的 UEFI 项目补丁要能在 uefi-source.json 里查到，否则 bundle
+    # 可以拿一个新的 product 配旧的来源清单。
+    uefi_sources = {"patches/uefi-ufs/series.json",
+                    "patches/uefi-ufs/0001-ufs-power-resume-retry.patch"}
     assert uefi_sources <= set(uefi["project_source_sha256"]), "UEFI handoff patches are not bound to the product"
     write("uefi-source.json", uefi)
 
@@ -177,9 +170,9 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
                     {"project_source_sha256": {key: value for key, value in uefi["project_source_sha256"].items()
                                                 if key not in uefi_sources}},
                     {"project_source_sha256": {**uefi["project_source_sha256"],
-                                               "patches/uefi-live-memory/series.json": "0" * 64}},
+                                               "patches/uefi-ufs/series.json": "0" * 64}},
                     {"project_source_sha256": {**uefi["project_source_sha256"],
-                                               "patches/uefi-live-rm/0001-adopt-live-resource-manager-caps.patch": "0" * 64}}):
+                                               "patches/uefi-ufs/0001-ufs-power-resume-retry.patch": "0" * 64}}):
         write("uefi-source.json", {**uefi, **changed})
         try:
             verify()
@@ -603,14 +596,16 @@ def check_bundle_asset_names():
     verifier = (ROOT / "scripts/verify-bundle.py").read_text()
     installer = (ROOT / "scripts/install-f2fs.py").read_text()
     updater = (ROOT / "scripts/update-f2fs.py").read_text()
-    for name in ("sunuefi_esp.img", "boot_sunuefi.img"):
+    for name in ("sunuefi_esp.img", "PianoUEFI-product.img"):
         assert f"bundle/{name}" in bundle, f"build-bundle does not emit {name}"
         assert name in verifier, f"verify-bundle does not require {name}"
         assert name in installer, f"first-install installer does not read {name}"
         assert name in (ROOT / "docs/artifacts.md").read_text(), f"artifact docs omit {name}"
         assert name in (ROOT / "docs/installation.md").read_text(), f"install docs omit {name}"
+    # 内核在 ESP 的 UKI 里，boot_sunuefi.img 这个名字已经退役。
     assert "test ! -e bundle/esp.img" in bundle
     assert "test ! -e bundle/boot.img" in bundle
+    assert "test ! -e bundle/boot_sunuefi.img" in bundle
     # bundle 的文件集合由 scripts/release-assets.py 的成员表定义，发布时多一个
     # 文件就失败。这里核对 build-bundle 与 verify-bundle 真的产出每一份。
     loader = importlib.util.spec_from_file_location(
@@ -628,7 +623,6 @@ def check_bundle_asset_names():
         if name in release_assets.BUNDLE_MEMBERS:
             assert name in verifier, f"verify-bundle does not require {name}"
     assert "initramfs.tar.zst" in verifier, "verify-bundle does not require initramfs.tar.zst"
-    assert 'bundle / "boot_sunuefi.img"' in (ROOT / "scripts/piano_memory.py").read_text()
     assert 'bundle / "sunuefi_esp.img"' in updater
     assert 'bundle / "esp.img"' not in installer
     assert 'bundle / "boot.img"' not in updater
@@ -644,7 +638,7 @@ def check_esp_reproducible(tmp):
     mtools 认 SOURCE_DATE_EPOCH，所以 workflow 必须钉住它。
     """
     bundle = (ROOT / ".github/workflows/build-bundle.yml").read_text()
-    step = bundle.split("Create the upstream-compatible ESP and Linux boot payload", 1)
+    step = bundle.split("Create the ESP with the Linux UKI", 1)
     assert len(step) == 2, "build-bundle no longer packages the ESP"
     body = step[1].split("- name:", 1)[0]
     assert "package_release.py" in body

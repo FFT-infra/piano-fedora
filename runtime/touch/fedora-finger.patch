@@ -85,7 +85,7 @@
 @@ -1362,7 +1305,7 @@
  			fprintf(stderr, "no framebuffer painting: %s\n", strerror(-ret));
  	}
- 	if (opt.mode == MODE_INPUT) {
+ 	if (opt.mode == MODE_INPUT && !kernel_hand_input) {
 -		ret = ui_open();
 +		ret = piano_finger_open(getenv("PIANO_FINGER_CALIBRATION"));
  		if (ret) {
@@ -146,6 +146,6 @@
  	}
  	print_stats(now_s() - start);
  	print_diagnostics(now_s() - start, 1);
--	return st.csum_ok || pen_stats.frames29 ? 0 : 3;
-+	return finger_failed ? 1 : (st.csum_ok || pen_stats.frames29 ? 0 : 3);
+-	return st.csum_ok || pen_stats.frames29 || kernel_hand_input ? 0 : 3;
++	return finger_failed ? 1 : (st.csum_ok || pen_stats.frames29 || kernel_hand_input ? 0 : 3);
  }

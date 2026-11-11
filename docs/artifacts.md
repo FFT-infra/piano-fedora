@@ -12,7 +12,7 @@
 | FFmpeg RPM | host-check 调用的 build-ffmpeg.yml | 固定 Fedora 源 RPM，沿用 SunUEFI BSP 补丁启用 H.264/HEVC v4l2m2m 解码器。build-ffmpeg 是 workflow_call 复用件，实际 run 的 workflow_id 是 host-check。原生构建及设备解码仍待验证 |
 | 设备运行时 RPM | build-device-runtime.yml | Fedora 原生触控/笔、相机程序、传感器、BOOT 请求工具、拓扑与设备配置。另含 VA-API、crosvm、LibreVM 和平台配置 RPM。ABI 匹配的 `v4l2loopback` 不在这一侧，由 `build-piano-rpms.yml` 编进 `kernel-piano` |
 | 设备 rootfs、initramfs、F2FS raw 镜像 | build-image.yml | 同一 job 安装设备、Mesa 与 FFmpeg RPM，核对已安装包及解码器注册。随后运行上游完整 rootfs 检查，配置服务，清理身份，设置 SELinux 标签，最后完整读回验证 |
-| ESP、Linux boot.img、交付集合 | build-bundle.yml | 从集成记录取得准确内核，调用上游 DTB/mkbootimg/ESP 包装，核对全部文件和展开 root 镜像 |
+| ESP（含 UKI）、交付集合 | build-bundle.yml | 从集成记录取得准确内核，调用上游 DTB/ukify/ESP 包装，核对全部文件和展开 root 镜像 |
 
 ## 一致性要求
 
@@ -42,17 +42,17 @@ clean root 文件系统的 `kernel-piano` 与内核压缩包必须来自同一�
 
 每档各有一个 `build-bundle` run，artifact 名是 `deploy-bundle-<档位>`。`verify-bundle.py`、`prepare-root-capacity.py` 与 `flash-linux.sh` 只认规范名，bundle 内部文件名不随档位变化。档位维度只出现在 artifact 名与归档名上。
 
-最终 deploy-bundle 包含 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、`initramfs.tar.zst`、`diagnostic-abl-storage.tar.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。
+最终 deploy-bundle 包含 `sunuefi_esp.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、`initramfs.tar.zst`、`diagnostic-abl-storage.tar.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。
 
-`initramfs.tar.zst` 由 build-image 用固定时间戳与 owner 打出，四档逐字节相同。`initramfs.tar.zst` 是 `build-bundle` 解包后重新打进 `boot_sunuefi.img` 的中间产物，不进 Release 归档。
+`initramfs.tar.zst` 由 build-image 用固定时间戳与 owner 打出，四档逐字节相同。`initramfs.tar.zst` 是 `build-bundle` 解包后重新打进 UKI `.initrd` 节区的中间产物，不进 Release 归档。
 
 deploy-bundle 自带 sparse。Release 归档里带的是 `prepare-install` 产出的 prepared root，两者内容相同，prepared root 带着设备配置与 SELinux 标签。
 
-上游 `esp-manifest.json` 里仍用内部键 `esp.img`、`boot.img`。`verify-bundle.py` 会显式映射，不要求归档保留第二套文件名。`verify-bundle.py` 流式展开压缩 root 文件系统，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
+上游 `esp-manifest.json` 用 `esp.img` 指代 ESP 镜像，`esp_files` 只列 `/EFI/Linux/sunuefi.efi`，UKI 的节区、`ukify` 与 stub 摘要记在 `uki` 字段。`verify-bundle.py` 把 `esp.img` 映射成 `sunuefi_esp.img`，不要求归档保留第二套文件名。它还流式展开压缩 root 文件系统，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
 
-Linux boot.img 是 ESP 上的 Linux 载荷。合体 BOOT 含当前 Android 内核，必须用本机当前 stock BOOT、Slot A 和 generation 另行包装。通用构建产物不包含这些个人设备输入。
+ESP 上只有 `/EFI/Linux/sunuefi.efi` 一个 Linux 载荷。它是 UKI，内核、initramfs、板级 DTB 与 cmdline 都在 PE 节区里。合体 BOOT 含当前 Android 内核，必须用本机当前 stock BOOT、Slot A 和 generation 另行包装。通用构建产物不包含这些个人设备输入。
 
-已装系统升级内核不需要 deploy-bundle。`kernel-piano` 提供 `kernel-core`。`dnf upgrade` 装上之后，`kernel-piano` 的 `%posttrans` 重建 initramfs，并重打 ESP 上的 `boot.img`。语义与回滚见 [COPR 软件源](copr-repository.md)。
+已装系统升级内核不需要 deploy-bundle。`kernel-piano` 提供 `kernel-core`。`dnf upgrade` 装上之后，`kernel-piano` 的 `%posttrans` 重建 initramfs，并重打 ESP 上的 UKI。语义与回滚见 [COPR 软件源](copr-repository.md)。
 
 ## 参考来源
 
@@ -102,7 +102,7 @@ piano-<tag>-<档位>.sha256             这一档已上传文件的摘要
 
 归档里：
 
-- 平台镜像 `sunuefi_esp.img`、`boot_sunuefi.img`、`PianoUEFI-product.img`。
+- 平台镜像 `sunuefi_esp.img`、`PianoUEFI-product.img`。
 - 这一档的 `root-install/`，含 sparse root、清单与摘要。
 - 组件 manifest 与 bundle manifest。
 - `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt`、`make-device-boot.sh`。
@@ -120,7 +120,7 @@ piano-<tag>-<档位>.sha256             这一档已上传文件的摘要
 deploy-bundle 里有三类文件不进归档。
 
 - 完整镜像 `pianoroot.f2fs.img.zst` 与封存镜像 `pianoroot.f2fs.sparse.img` 的 root 内容与 `root-install` 里的相同，不能直接刷。同一份 root 发三种形态，用户分不清该下哪个，还把每档归档撑大。
-- `initramfs.tar.zst` 是 `build-bundle` 解包用的中间产物，内容与 `boot_sunuefi.img` 里那份逐字节相同。
+- `initramfs.tar.zst` 是 `build-bundle` 解包用的中间产物，内容与 UKI `.initrd` 节区里那份逐字节相同。
 - `diagnostic-abl-storage.tar.zst` 是 ABL 只读探针的调试件，manifest 自标 `device_tested: false`，装机脚本不读它的内容。
 
 这三类文件都能从对应的 workflow artifact 取。
@@ -165,7 +165,7 @@ GitHub 的单个 release asset 必须小于 2 GiB，所以归档超限时按 190
 
 ## 尚需验证
 
-主机构建验收已通过，覆盖组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷和 boot.img 组件。设备上的 Fedora 已启动过一次。首次分区、恢复材料及 Android 往返仍需各自的设备证明；未完成项见[已知问题](known-issues.md)。
+主机构建验收已通过，覆盖组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷与 UKI 节区。设备上的 Fedora 已启动过一次。首次分区、恢复材料及 Android 往返仍需各自的设备证明；未完成项见[已知问题](known-issues.md)。
 
 上游安装器保留 ext4 合同。piano-fedora 新增独立的 F2FS 初装入口和本机 BOOT 文件准备入口。工具路径、Actions 材料、破坏性操作门禁和真机验收边界见[维护与验收](internals.md)与[首次安装](installation.md)。新增实现的构建、包装和设备验收状态分别以对应 manifest 与会话记录为准。
 

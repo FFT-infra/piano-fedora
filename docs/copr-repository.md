@@ -8,17 +8,15 @@
 
 核对方法见下面的[启用仓库](#启用仓库)一节，或在设备上跑 `python3 scripts/verify-copr-device.py`。
 
-**内核怎么升级。** 固件只读 ESP 的 `/EFI/Piano/stable/boot.img`（`PianoEspBootSource.c` 里的固定路径）。用户态 `dnf upgrade` 本身只改 `/usr/lib/modules`，两者本来是脱钩的。`kernel-piano` 的 `%posttrans` 把这条链接上。升级事务收尾时，`%posttrans` 先跑 `depmod -a <release>`，再用刚装上的内核重建 initramfs。最后 `%posttrans` 把新内核、新 initramfs 和 ESP 上原有的 `board.dtb` 重新打成 Android boot v2 容器，原子替换 `boot.img`。重启之后固件读到的是新内核。
+**内核怎么升级。** 固件从 ESP 的 `/EFI/Linux/sunuefi.efi` 加载 Linux，`PianoProductCore.c` 用 `PianoApplicationRunFile` 直接打开这个文件，没有编译期哈希或 Android boot v2 解析。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，两者本来脱钩。`kernel-piano` 的 `%posttrans` 把这条链接上。事务收尾时，`%posttrans` 先跑 `depmod -a <release>`，再用刚装上的内核重建 initramfs。最后用 `systemd-ukify` 把新内核、新 initramfs、ESP 里现有 UKI 的 `.dtb` 与 `.cmdline`、新的 `.osrel` 与 `.uname` 组装成新的 `/EFI/Linux/sunuefi.efi`。重启之后固件读到的是新内核。
 
-不需要重编固件，依据在固件自己的代码里。`PianoRawLinuxLoadStable()` 把 `boot.img` 自身的 sha256 存进 `AcceptedSha`。固件不要求这份文件由谁签发，只要求它能被解析成 Android boot v2 容器。
+不需要重编固件。固件只按固定路径加载一个 PE 文件，开机校验交给 `systemd-stub` 与内核。换内核不改固件，也不改 ESP 上的路径名。
 
-`board.dtb` 用的是 ESP 上那份，不是内核包里的 `/boot/dtb/qcom/sm8750-xiaomi-piano.dtb`。两者不是同一个文件。ESP 上那份叠加过板级 dtbo，内核包里的只是单板 DTB。
+`.dtb` 与 `.cmdline` 沿用 ESP 里现有 UKI 的节区，不是内核包里的 `/boot/dtb/qcom/sm8750-xiaomi-piano.dtb`。板级 overlay 已经在打包 bundle 时合成进那份 DTB。在线升级只复用现有 DTB，换 overlay 要换整个 bundle。
 
-**失败边界。** 任何一步失败，`boot.img` 保持原样，设备继续用上一个内核启动。写入顺序是：先打 `.boot.img.new` 并 fsync，再逐段解包比对。比对通过后把旧文件复制成 `boot.img.bak`，最后用 `os.replace` 换上去。
+**失败边界。** 任何一步失败，旧 UKI 保持原样，设备继续用上一个内核启动。写入顺序是：先写 `.sunuefi.efi.new` 并 fsync，重新读出六个语义节区与预期比对；通过后把旧文件复制成 `sunuefi.efi.bak`，最后用 `os.replace` 换上去。PE 时间戳每次不同，判断文件有没有变只看 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname` 六段内容。
 
-**实机记录。** `7.2.9-1` → `7.2.9-3` 在平板上走过一次。事务收尾时重建 initramfs（6 个早期模块），ESP 的 `Image`、`initramfs`、`boot.img` 三份都换掉，各留一份 `.bak`，审计记录写到 `/var/lib/piano/kernel-esp/<release>.json`。重启后 `uname -r` 是升级后的 `7.2.9` release，`graphical.target` 与 GDM 起来，`systemctl --failed` 为空。`v4l2loopback` 从新模块树的 `updates/` 加载，`/dev/video40`、`/dev/video41` 都在。
-
-同一条路径也从 COPR 走过一次 `dnf reinstall kernel-piano`。设备连上 Wi-Fi，包从 `copr:copr.fedorainfracloud.org:xinyang26:piano-fedora` 下载，公钥同源拉取并校验。事务成功，审计记录里 `changed` 三项全为 `false`，`boot.img` 摘要没变。同样的输入重打出的容器逐字节相同，所以重复触发不会重写 43 MB。
+**实机记录。** `7.2.9-1` → `7.2.9-3` 的在线升级是在旧的 `boot.img` 链上验的。UKI 链的重打与替换还没有真机记录：主机侧能证明 `apply-patches` 与 `make test` 通过，证明不了设备能起。升级后重启、`uname -r`、桌面与模块加载都要在设备上重验。审计记录写到 `/var/lib/piano/kernel-esp/<release>.json`。
 
 挂起与唤醒各测了两轮，都能回到桌面，`systemctl --failed` 保持为空。挂起路径上每次会打 4 条 `qdss already disabled/unprepared` 的 clk 警告（`amba_pm_runtime_suspend` 对 coresight qdss 重复 disable）。这条警告不影响唤醒，没有对应的故障现象。
 
@@ -27,15 +25,11 @@ manifest 的名字带 NVRA。`kernel-piano` 是 installonly，升级时新旧版
 已经装好但起不来的内核没有自动回滚。上游没有 boot counter（`PianoNvJournal` 是现成的双槽 NV journal，只是没有人往里写尝试计数），回滚只能手工做：
 
 ```bash
-# 恢复上一个容器，重启即回到旧内核
-sudo cp /boot/efi/EFI/Piano/stable/boot.img.bak /boot/efi/EFI/Piano/stable/boot.img
-sudo cp /boot/efi/EFI/Piano/stable/Image.bak /boot/efi/EFI/Piano/stable/Image
-sudo cp /boot/efi/EFI/Piano/stable/initramfs.bak /boot/efi/EFI/Piano/stable/initramfs
+# 恢复上一个 UKI，重启即回到旧内核
+sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi
 ```
 
-`dnf history undo` 只回滚 RPM，不动 ESP，所以单跑它不会让设备回到旧内核。`kernel-piano` 提供 `kernel-core`，旧模块树与 `/boot/vmlinuz-*` 在 `installonly_limit` 之内会保留下来。要把它们重新装进 ESP，得再走一次打包。
-
-`Image.efi` 那条路仍然帮不上忙。`PianoProductOsController.c` 里定义了 `\EFI\Piano\stable\Image.efi` + `piano.dtb` + `initramfs.cpio` 的加载路径。这个模块没有绑定到产品调用链，而且它对三份载荷做编译期固定哈希与长度校验。接上它之后，换内核反而必须重编固件。
+`dnf history undo` 只回滚 RPM，不动 ESP，所以单跑它不会让设备回到旧内核。`kernel-piano` 提供 `kernel-core`，旧模块树与 `/boot/vmlinuz-*` 在 `installonly_limit` 之内会保留下来。要把它们重新装进 ESP，得再走一次重打。
 
 ## 为什么是 COPR 重建，而不是上传二进制
 
@@ -75,7 +69,7 @@ sudo dnf makecache
 sudo dnf upgrade --refresh
 ```
 
-内核升级会重写 ESP 的 `boot.img`。升级前先确认电量充足，不要在升级事务中间断电。
+内核升级会重写 ESP 的 `/EFI/Linux/sunuefi.efi`。升级前先确认电量充足，不要在升级事务中间断电。
 
 ## 可选的 extras 软件源
 
@@ -95,11 +89,12 @@ sudo dnf upgrade --refresh
 sudo dnf copr enable -y xinyang26/piano-fedora-extras
 sudo dnf config-manager setopt \
   'copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras'.priority=1
+sudo dnf upgrade kwin gtk3
 sudo dnf install --allowerasing piano-gnome-extras   # 或 piano-kde-extras
 sudo dconf update
 ```
 
-`priority=1` 让 extras 的数字小于 Fedora 仓库，DNF5 因此优先用 `.piano1` 的 KWin/GTK3，哪怕 Fedora 后来发了更高版本。代价是 Fedora 对这几个包的更新会被遮住，直到 extras 按新 SRPM 重编。手动 `dnf copr enable` 不会自动写这个优先级，要自己补上。
+`priority=1` 让 extras 的数字小于 Fedora 仓库，DNF5 因此优先用 `.piano1` 的 KWin/GTK3，哪怕 Fedora 后来发了更高版本。代价是 Fedora 对这几个包的更新会被遮住，直到 extras 按新 SRPM 重编。手动 `dnf copr enable` 不会自动写这个优先级，要自己补上。meta 包只写裸 `Requires`，原版已装时依赖就算满足，所以装 meta 前先 `dnf upgrade kwin gtk3`，否则只装 meta 不换组件。
 
 卸载回退：
 
@@ -113,7 +108,7 @@ sudo dnf distro-sync --repo fedora
 
 `distro-sync` 把同名的 KWin/GTK3 换回 Fedora 版本。GSD 用 `sudo dnf swap gnome-settings-daemon-piano gnome-settings-daemon --repo fedora`。先加 `--assumeno` 看清楚要动的包。
 
-这套包还没有跑过本轮的真机验收。自动亮度、键盘背光与 KDE HDR 的验收命令见 [桌面档](desktops.md#extras-可选组件)。
+增量安装与 KDE HDR 的补丁版 KWin 已在真机验过：2026-11-12 冷启动后两轮开关 HDR/WCG，背光 1024 → 2047 → 1024，关 HDR 后回到开启前的值。自动亮度与键盘背光这轮没验，手边没有悬浮键盘。验收命令见[桌面档](desktops.md#extras-可选组件)。
 
 ## 核对与回滚
 
@@ -167,7 +162,7 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 
 ## 边界
 
-- COPR 覆盖全部 10 个包，包括内核。ESP 上的 `boot.img` 由 `kernel-piano` 的 `%posttrans` 维护，但 `board.dtb` 不换。它来自固件的板级叠加，升级路径只复用 ESP 上已有那份。
+- COPR 覆盖全部 10 个包，包括内核。ESP 上的 `/EFI/Linux/sunuefi.efi` 由 `kernel-piano` 的 `%posttrans` 维护，`.dtb` 节区沿用现有 UKI。板级 overlay 不在这条升级路径上更新。
 - 设备的 `.repo` 只指向项目自己的 COPR。Hyprland 档位在构建期另加第三方源
   `lionheartp/Hyprland`（Fedora 44 官方仓库没有 Hyprland 及其配套组件）。仓库以
   `--repofrompath` 临时加入并校验公钥，不写进镜像的持久配置。四档里只有
