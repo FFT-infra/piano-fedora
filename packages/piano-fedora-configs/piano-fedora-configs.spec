@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        13%{?dist}
+Release:        14%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND BSD-2-Clause-Patent AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -163,6 +163,10 @@ rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service piano-power-button.service
 
 %changelog
+* Thu Nov 12 2026 FFT-infra <dev@piano.invalid> - 0.1.0-14
+- 虚拟平板模式跟随上游 nanosic 的 `Nanosic WN8030 tablet mode` 节点。键盘盖
+  接上时不把 `SW_TABLET_MODE` 置 ON，避免 libinput 屏蔽悬浮键盘触控板（#22）
+
 * Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 0.1.0-13
 - 默认中文：`/etc/locale.conf` 写 `zh_CN.UTF-8`，GNOME 输入源默认带
   `ibus`/`libpinyin`，配合 base 包里的 `glibc-langpack-zh`

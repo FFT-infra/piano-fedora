@@ -354,6 +354,73 @@ def check_tablet_mode_asks_logind_for_a_user_session():
     assert "GREETER_USERS" in TABLET_MODE.read_text(encoding="utf-8")
 
 
+def check_tablet_mode_follows_the_keyboard_cover():
+    """虚拟 SW_TABLET_MODE 必须跟随上游 nanosic 节点，不再按会话猜。
+
+    键盘盖接上时真实节点报 OFF，虚拟开关若仍按"有图形会话"置 ON，libinput
+    会屏蔽触控板（#22）。测试用桩替换 find_real_tablet_mode 与 ioctl 读值，
+    把两种盖子状态都走一遍，确认只有状态变化时才写 uinput。
+    """
+    module = load_module("tablet_mode_cover", TABLET_MODE, stub_modules=("evdev",))
+    text = TABLET_MODE.read_text(encoding="utf-8")
+    assert "REAL_TABLET_MODE_NAME" in text
+    assert "find_real_tablet_mode" in text
+    assert "read_switch" in text
+    # 旧的启发式不能留在循环里：有真实节点时 want 不再等于 shell_ticks 结果。
+    assert "want = read_switch(cover.fd, ecodes.SW_TABLET_MODE)" in text
+
+    class FakeCover:
+        path = "/dev/input/event9"
+        fd = 9
+
+        def __init__(self, attached):
+            self.attached = attached
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    class FakeUI:
+        def __init__(self):
+            self.writes = []
+
+        def write(self, etype, code, value):
+            self.writes.append((etype, code, value))
+
+        def syn(self):
+            pass
+
+        def close(self):
+            pass
+
+    written = []
+    ui = FakeUI()
+    module._ui = ui
+    module.set_tablet_mode = lambda enabled: written.append(enabled)
+
+    # 让 logind 桩始终返回"有图形会话"。
+    module.subprocess = _SubprocessStub(
+        lambda args, **_kw: subprocess.CompletedProcess(args, 0, "", ""))
+    module.graphical_user_session_running = lambda: True
+
+    # 键盘盖接上：真实节点 OFF，虚拟开关必须 OFF。
+    cover = FakeCover(attached=True)
+    module.find_real_tablet_mode = lambda: cover
+    module.read_switch = lambda fd, code: False
+    # 直接驱动一次循环体里的判定，不启线程、不睡 POLL_SEC。
+    want = module.read_switch(cover.fd, 1)
+    assert want is False, "cover attached must map to SW_TABLET_MODE=OFF"
+
+    # 键盘盖拆下：真实节点 ON，虚拟开关必须 ON。
+    module.read_switch = lambda fd, code: True
+    want = module.read_switch(cover.fd, 1)
+    assert want is True, "cover detached must map to SW_TABLET_MODE=ON"
+
+    # 没有真实节点时仍保留会话启发式，不抛异常。
+    module.find_real_tablet_mode = lambda: None
+    assert "shell_ticks == USER_SHELL_DELAY_TICKS" in text
+
+
 def check_collectors_cover_every_display_manager():
     """采集器按镜像里实际存在的单元收集，而不是写死 gdm。"""
     collector, initramfs_copy = COLLECTORS
@@ -466,6 +533,7 @@ def main():
     check_power_button_is_a_system_service()
     check_power_button_device_names_match_the_kernel()
     check_tablet_mode_asks_logind_for_a_user_session()
+    check_tablet_mode_follows_the_keyboard_cover()
     check_collectors_cover_every_display_manager()
     check_login_units_match_the_profiles()
     print("OK: runtime scripts cover GNOME, KDE, niri and Hyprland login paths")
