@@ -71,29 +71,34 @@ def build_meta(spec, output, releasever):
               "--define", "debug_package %{nil}")
     rpm_dir = output / "rpms"
     srpm_dir = output / "srpms"
+    # rpmbuild 给二进制包加 arch 子目录（noarch/），而 extras 清单、校验、
+    # artifact 与 COPR 发布都要求 rpms/ 是平的。二进制先落在私有 topdir，
+    # 再按文件名复制一份到 rpms/；SRPM 本身就落在 srpms/ 根，不用动。
     run("rpmbuild", "-ba", *common,
-        "--define", "_rpmdir " + str(rpm_dir),
+        "--define", "_rpmdir " + str(top / "RPMS"),
         "--define", "_srcrpmdir " + str(srpm_dir),
         str(spec))
-    rpms = [path for path in rpm_dir.glob("**/*.rpm")
-            if rpm_name(path) == name]
+    built = [path for path in (top / "RPMS").glob("**/*.rpm")
+             if rpm_name(path) == name]
     srpms = [path for path in srpm_dir.glob("*.src.rpm")
              if rpm_name(path) == name]
-    if len(rpms) != 1 or len(srpms) != 1:
+    if len(built) != 1 or len(srpms) != 1:
         raise ValueError(f"{name}: expected one RPM and one SRPM, "
-                         f"got {len(rpms)} and {len(srpms)}")
+                         f"got {len(built)} and {len(srpms)}")
+    rpm = rpm_dir / built[0].name
+    shutil.copy2(built[0], rpm)
     row = {
         "source_package": name,
         "binary_package": name,
-        "release": rpm_release(rpms[0]),
-        "nevra": rpm_nevra(rpms[0]),
+        "release": rpm_release(rpm),
+        "nevra": rpm_nevra(rpm),
         "desktops": ["gnome"] if name == "piano-gnome-extras" else ["kde"],
-        "rpms": {rpms[0].name: {"bytes": rpms[0].stat().st_size,
-                                "sha256": sha256(rpms[0])}},
+        "rpms": {rpm.name: {"bytes": rpm.stat().st_size,
+                            "sha256": sha256(rpm)}},
         "srpms": {srpms[0].name: {"bytes": srpms[0].stat().st_size,
                                   "sha256": sha256(srpms[0])}},
     }
-    return row, rpms[0], srpms[0]
+    return row, rpm, srpms[0]
 
 
 def main():
