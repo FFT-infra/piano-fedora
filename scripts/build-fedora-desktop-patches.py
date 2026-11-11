@@ -242,7 +242,8 @@ def build_one(entry, sun, output):
     spec = specs[0]
     verify(spec, entry["spec_sha256"], "spec")
 
-    tarballs = sorted((top / "SOURCES").glob("*.tar.*"))
+    tarballs = sorted(path for path in (top / "SOURCES").glob("*.tar.*")
+                      if path.suffix not in (".sig", ".asc"))
     if len(tarballs) != 1:
         raise ValueError(f"{source}: expected one source tarball")
     verify(tarballs[0], entry["tarball_sha256"], "source tarball")
