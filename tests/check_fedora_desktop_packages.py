@@ -66,6 +66,9 @@ GSD_SPEC = """Name:           gnome-settings-daemon
 Release:        %autorelease
 Source0:        https://download.gnome.org/sources/%{name}/%{gnome_major_version}/%{name}-%{gnome_tarball_version}.tar.xz
 
+%description
+GNOME settings daemon.
+
 %prep
 %autosetup -p1 -n %{name}-%{gnome_tarball_version}
 
@@ -93,6 +96,7 @@ def test_gsd_spec_rewrite(module):
     assert "Release:        1.piano1%{?dist}" in rewritten
     assert "Patch0:        piano-ambient-profile.patch" in rewritten
     assert "Patch1:        piano-keyboard-backlight.patch" in rewritten
+    assert rewritten.index("Patch0:") < rewritten.index("%description")
     assert ("%autosetup -p1 -n gnome-settings-daemon-"
             "%{gnome_tarball_version}") in rewritten
     assert "%find_lang gnome-settings-daemon --with-gnome" in rewritten
@@ -134,7 +138,8 @@ def test_rewrites_refuse_drifted_specs(module):
         else:
             raise AssertionError(f"drifted spec was accepted: {call.__name__}")
     for bad in ("%prep\n%prep\n", "Patch999: old.patch\n%prep\n",
-                "Patch0: first.patch\nPatch2: third.patch\n%prep\n"):
+                "Patch0: first.patch\nPatch2: third.patch\n%prep\n",
+                "Name: foo\n"):
         try:
             module.add_patches(bad, ["a.patch", "b.patch"])
         except ValueError:

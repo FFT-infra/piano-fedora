@@ -62,6 +62,10 @@ def add_patches(text, patch_names):
     %autopatch stops at the first undefined PatchN, so Patch999 alone never
     runs.  Continue from the existing contiguous chain instead; a gap means
     the Fedora spec changed shape in a way this script should not guess at.
+
+    Patch tags must live in the main preamble.  Inserting them before %prep
+    is too late: Fedora specs put %description first, and rpm treats the
+    lines after that as description text, silently ignoring the tags.
     """
     if not patch_names:
         raise ValueError("package has no patches")
@@ -74,10 +78,14 @@ def add_patches(text, patch_names):
     for offset, patch_name in enumerate(patch_names):
         slot = start + offset
         marker = f"Patch{slot}:"
-        if marker in text:
+        if re.search(rf"^{marker}", text, re.MULTILINE):
             raise ValueError(f"spec already carries {marker}")
         lines.append(f"{marker}        {patch_name}")
-    return replace_once(text, "%prep\n", "\n".join(lines) + "\n\n%prep\n")
+    section = re.search(r"^%(?:description|package|prep)\b.*$", text, re.MULTILINE)
+    if section is None:
+        raise ValueError("spec has no section marker to anchor patch tags")
+    return replace_once(text, section.group(0) + "\n",
+                        "\n".join(lines) + "\n\n" + section.group(0) + "\n")
 
 
 def add_changelog(text, version, release, note):
