@@ -21,6 +21,10 @@ dnf copr enable -y "$PROJECT"
 # DNF5 priority: lower number wins. Fedora repos default to 99, so the
 # patched same-name KWin/GTK3 stay selected even after Fedora moves ahead.
 dnf config-manager setopt "${REPO_ID}.priority=1"
+# The meta package only Requires the bare names, and the stock build already
+# satisfies those. Explicitly upgrade the same-name components so priority=1
+# selects the .piano1 builds instead of leaving the Fedora versions installed.
+dnf upgrade -y kwin gtk3
 dnf install -y --allowerasing "$meta"
 if command -v dconf >/dev/null 2>&1; then
     dconf update

@@ -95,11 +95,12 @@ sudo dnf upgrade --refresh
 sudo dnf copr enable -y xinyang26/piano-fedora-extras
 sudo dnf config-manager setopt \
   'copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras'.priority=1
+sudo dnf upgrade kwin gtk3
 sudo dnf install --allowerasing piano-gnome-extras   # 或 piano-kde-extras
 sudo dconf update
 ```
 
-`priority=1` 让 extras 的数字小于 Fedora 仓库，DNF5 因此优先用 `.piano1` 的 KWin/GTK3，哪怕 Fedora 后来发了更高版本。代价是 Fedora 对这几个包的更新会被遮住，直到 extras 按新 SRPM 重编。手动 `dnf copr enable` 不会自动写这个优先级，要自己补上。
+`priority=1` 让 extras 的数字小于 Fedora 仓库，DNF5 因此优先用 `.piano1` 的 KWin/GTK3，哪怕 Fedora 后来发了更高版本。代价是 Fedora 对这几个包的更新会被遮住，直到 extras 按新 SRPM 重编。手动 `dnf copr enable` 不会自动写这个优先级，要自己补上。meta 包只写裸 `Requires`，原版已装时依赖就算满足，所以装 meta 前先 `dnf upgrade kwin gtk3`，否则只装 meta 不换组件。
 
 卸载回退：
 
