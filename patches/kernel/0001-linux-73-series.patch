@@ -1,47 +1,17 @@
-From 4f59763fe0e501ba2e404433b0b6cba6c59ce3cf Mon Sep 17 00:00:00 2001
-From: piano-fedora <dev@piano.invalid>
-Date: Sat, 24 Oct 2026 18:45:46 +0800
-Subject: [PATCH] linux: carry the Iris, DPU, amplifier and panel-vendor work
- into the 7.3 series
-
-7.3 prepares the release kernel by replaying one sealed mail series from the
-public baseline; it no longer merges a stable branch, so there is no
-merge_stable tuple to append our patches to. Their content has to live in the
-series itself.
-
-Register four patches there. The Iris one is required by the VA-API backend,
-which refuses to decode without the decode-order-output capability. The DPU one
-keeps the bonded slave's shared-CTL reset after both timing engines stop; 7.3
-moved that cleanup to the top of the phys disable, so the slave now stops its
-own engine and leaves the cleanup to the virtual encoder. The amplifier one is
-unchanged from the 7.2.9 tree and still applies as-is. The touch one exports
-the panel ID pin as panel_vendor and republishes the THP stream as a character
-device, so the userspace reader can resolve the panel vendor from the path it
-opened instead of assuming CSOT.
-
-series.json is a strict chain: each row pins the original commit, its parent,
-the resulting tree and an ISO committer date, and the last row's tree must equal
-target_tree. config/release.json carries that same target_tree, so both move
-together.
-
-The patch files are stored as binary diffs because a mail patch keeps blank
-context lines as a single space, and apply-patches.py applies with
---whitespace=error-all.
----
 diff --git a/config/release.json b/config/release.json
-index e1accd8..f0a5c2a 100644
+index 09be113..f207288 100644
 --- a/config/release.json
 +++ b/config/release.json
 @@ -8,7 +8,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "b0da508a1d10b5cfccb2ab93fa1c9a4177dedae8",
-+    "target_tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93",
+-    "target_tree": "e188f4582c2ede46d6d5d6b8649fd0f0316a3343",
++    "target_tree": "1fce03206146251b9818497e136cc8ba15088ba1",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0091-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0091-dpu-defer-slave-cleanup.patch
+diff --git a/patches/linux/7.3/0093-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0093-dpu-defer-slave-cleanup.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..3ced082b1f0c352588cfd77ebb7a8ea87c56c1a8
 GIT binary patch
@@ -95,7 +65,7 @@ ONK^nzflLH7*SG-M^>wrW
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0092-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0092-media-iris-decode-order-and-deblocking.patch
+diff --git a/patches/linux/7.3/0094-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0094-media-iris-decode-order-and-deblocking.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..53cb09ca783d72eed5c4a1ddd432894189ed1d4c
 GIT binary patch
@@ -195,7 +165,7 @@ M@rCgqG0?Ou0CZ1{cmMzZ
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0093-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0093-asoc-piano-speaker-gain-limit.patch
+diff --git a/patches/linux/7.3/0095-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0095-asoc-piano-speaker-gain-limit.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..494a46d46902ebc2cec68f7df62d4f1ddc844331
 GIT binary patch
@@ -238,7 +208,7 @@ wiXlB{az-!M6>PERA+#ib&4}E@3I$tGGYsqyP@x2k4-7N&QsSXfI?y5?0DRWp`v3p{
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0094-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0094-input-nt36532e-panel-vendor-misc.patch
+diff --git a/patches/linux/7.3/0096-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0096-input-nt36532e-panel-vendor-misc.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..26ff15244da36746589b6bca3323bc50305cc83a
 GIT binary patch
@@ -300,56 +270,56 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 3284aca..306fbb3 100644
+index fa2fc82..b85b55a 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "b0da508a1d10b5cfccb2ab93fa1c9a4177dedae8",
--  "original_target_commit": "190da1bb63c1ef6c1291b314ae26eddc41b3c1ef",
-+  "target_tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93",
+-  "target_tree": "e188f4582c2ede46d6d5d6b8649fd0f0316a3343",
+-  "original_target_commit": "79e32ae2694bd74626b78f4201719f2e7e56b560",
++  "target_tree": "1fce03206146251b9818497e136cc8ba15088ba1",
 +  "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -727,6 +727,38 @@
-       "original_parent": "d8be4a4706d5968384bee179522c84be0a661f42",
-       "committer_date": "2026-11-10T02:45:01+08:00",
-       "tree": "b0da508a1d10b5cfccb2ab93fa1c9a4177dedae8"
+@@ -743,6 +743,38 @@
+       "original_parent": "6dd902833b08f9c765d0cb8c0c9a38f7bdb6cd38",
+       "committer_date": "2026-11-10T20:30:13+08:00",
+       "tree": "e188f4582c2ede46d6d5d6b8649fd0f0316a3343"
 +    },
 +    {
-+      "file": "0091-dpu-defer-slave-cleanup.patch",
++      "file": "0093-dpu-defer-slave-cleanup.patch",
 +      "sha256": "bc4ec8c9803116f39be6a06c6987c21b7f0ae633f413cdb24707b828e15c8fa5",
 +      "original_commit": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
-+      "original_parent": "190da1bb63c1ef6c1291b314ae26eddc41b3c1ef",
++      "original_parent": "79e32ae2694bd74626b78f4201719f2e7e56b560",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "c684ed1fb144761295ffe90b09cddf68393c2a30"
++      "tree": "338ba802f3e462cd4fc166cae15d9d5c48cf94ab"
 +    },
 +    {
-+      "file": "0092-media-iris-decode-order-and-deblocking.patch",
++      "file": "0094-media-iris-decode-order-and-deblocking.patch",
 +      "sha256": "a5b907999a2313f310a32ac78fc10c25cce57ecd08cc2b3bbdb1441479e97667",
 +      "original_commit": "596c454653862c3007cb16b40b496230b213f6fb",
 +      "original_parent": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "a1999a40dcb67457fde424a311936943f93aa9bf"
++      "tree": "9818c9fbbfd56c648c596ba9a1358875af7023fa"
 +    },
 +    {
-+      "file": "0093-asoc-piano-speaker-gain-limit.patch",
++      "file": "0095-asoc-piano-speaker-gain-limit.patch",
 +      "sha256": "0f44f724d277efbb92caf40fdf1f2905cb5158997b44af3c98d113d001c3ac33",
 +      "original_commit": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "original_parent": "596c454653862c3007cb16b40b496230b213f6fb",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "124d0fd5b883920a5e538fc95c870b6de1bec3f7"
++      "tree": "65fd341a69e66260bc915ca03a0cd30ce3795e2d"
 +    },
 +    {
-+      "file": "0094-input-nt36532e-panel-vendor-misc.patch",
++      "file": "0096-input-nt36532e-panel-vendor-misc.patch",
 +      "sha256": "a345e5f1227f3ef200d3a7c1d9f152d01bc8d50896ec1b2b5572e5024c8d0bdf",
 +      "original_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
 +      "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "committer_date": "2026-10-24T18:30:00+08:00",
-+      "tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93"
++      "tree": "1fce03206146251b9818497e136cc8ba15088ba1"
      }
    ],
    "provenance": {

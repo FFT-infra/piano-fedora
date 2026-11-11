@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-11-10",
+  "checked_date": "2026-11-11",
   "note": "只列构建链实际读取的上游；研究与后端参考单独记录在 docs/upstreams.json。vendor-kernel 与 vendor-blobs 只被对照任务读取，不进任何出货产物。",
   "sources": {
     "dtc": {
       "url": "https://github.com/dgibson/dtc.git",
       "ref": "main",
-      "commit": "54e547173bf0f2a4cc35eba8b5738caf38b9230f",
+      "commit": "774adc25940050fb06f241b1a2a98e7421e6ed7b",
       "role": "设备树打包工具：保留覆盖层目标节点已有 phandle 的 libfdt 1.8.1"
     },
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "4ef87402e9d58465af871e4c4f4a5de87599d81c",
+      "commit": "c720568ea492e839040ea72c5bc79afb6812465d",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
-      "checked_date": "2026-11-10"
+      "checked_date": "2026-11-11"
     },
     "linux-piano": {
       "url": "https://github.com/blu-sharky/linux-piano.git",
@@ -79,7 +79,7 @@
     "crosvm": {
       "url": "https://github.com/google/crosvm.git",
       "ref": "main",
-      "commit": "deac4016929e01e08ea33f3ba15ed3df2b7e536c",
+      "commit": "2331f7b0e77a715cab726fb67b171d92881e2a7f",
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {
@@ -91,7 +91,7 @@
     "piano-integration": {
       "url": "https://github.com/yzddmr6/xiaomipad-8pro-mainline.git",
       "ref": "main",
-      "commit": "e49a960ef820f85a2b01252a4462a28dd2375dea",
+      "commit": "7fe59ccf63a912437e4f2c0f5d1896fde0eacd18",
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者"
     },
     "uperf": {

@@ -3,7 +3,7 @@
   "target": "sunuefi",
   "note": "覆盖层用锁定内核的 dt-bindings 预处理，保留标签目标及局部引用；打包需要 libfdt 1.8.1，避免旧版覆盖基树 phandle。",
   "base": {
-    "sunuefi_commit": "4ef87402e9d58465af871e4c4f4a5de87599d81c"
+    "sunuefi_commit": "c720568ea492e839040ea72c5bc79afb6812465d"
   },
   "patches": [
     {

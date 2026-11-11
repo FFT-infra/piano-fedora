@@ -1,37 +1,17 @@
-From b3aa31113de2a931a2d08159cc3782e217c2bcba Mon Sep 17 00:00:00 2001
-From: piano-fedora <dev@piano.invalid>
-Date: Sun, 25 Oct 2026 04:10:00 +0800
-Subject: [PATCH] linux: carry the GPI DMA deep-idle fix into the 7.3 series
-
-The NT36532E touch controller is read over GENI SPI in GPI DMA mode. On
-SM8750 the system low power domain is entered while the DMA runs and
-stalls it, so 5450-byte reads take 2.46 ms or 4.85 ms instead of
-2.0-2.7 ms. The stalled transactions are the host-side cause of a
-whole-screen washout on the TDDI panel while the touch firmware scans.
-
-yzddmr6/linux-sm8750-piano 322fd1bfbda9 fixes this by holding a 2000 us
-CPU latency limit from prepare_message to unprepare_message in GPI mode
-only. It is rebased onto the 7.3 tree here: the only difference from
-upstream is hunk context, which this tree shifts by the extra
-struct geni_spi_desc block above spi_geni_master. The code is otherwise
-byte-identical.
-
-series.json and config/release.json move their target_tree together.
----
 diff --git a/config/release.json b/config/release.json
-index f0a5c2a..8a87830 100644
+index f207288..187aac7 100644
 --- a/config/release.json
 +++ b/config/release.json
 @@ -8,7 +8,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93",
-+    "target_tree": "b772d7a848ef993aed7e3f179104f89516828e8b",
+-    "target_tree": "1fce03206146251b9818497e136cc8ba15088ba1",
++    "target_tree": "036172297d31dddd6bd5e54fe707ff2e16360083",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0095-spi-geni-gpi-dma-deep-idle.patch b/patches/linux/7.3/0095-spi-geni-gpi-dma-deep-idle.patch
+diff --git a/patches/linux/7.3/0097-spi-geni-gpi-dma-deep-idle.patch b/patches/linux/7.3/0097-spi-geni-gpi-dma-deep-idle.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..4264a1279043ee7a919ea3ae7c7ef73f7443b0e9
 GIT binary patch
@@ -92,32 +72,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 306fbb3..5081075 100644
+index b85b55a..5a3f161 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93",
+-  "target_tree": "1fce03206146251b9818497e136cc8ba15088ba1",
 -  "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
-+  "target_tree": "b772d7a848ef993aed7e3f179104f89516828e8b",
++  "target_tree": "036172297d31dddd6bd5e54fe707ff2e16360083",
 +  "original_target_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -759,6 +759,14 @@
+@@ -775,6 +775,14 @@
        "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
        "committer_date": "2026-10-24T18:30:00+08:00",
-       "tree": "4de9ceadb69487988b2594e7fc9f1b168d9e3f93"
+       "tree": "1fce03206146251b9818497e136cc8ba15088ba1"
 +    },
 +    {
-+      "file": "0095-spi-geni-gpi-dma-deep-idle.patch",
++      "file": "0097-spi-geni-gpi-dma-deep-idle.patch",
 +      "sha256": "8ccef216bbd292600a5ba08e9d3876b83b614a98e733465cbb6ca9eb9c6862ad",
 +      "original_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
 +      "original_parent": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
 +      "committer_date": "2026-10-25T03:50:00+08:00",
-+      "tree": "b772d7a848ef993aed7e3f179104f89516828e8b"
++      "tree": "036172297d31dddd6bd5e54fe707ff2e16360083"
      }
    ],
    "provenance": {

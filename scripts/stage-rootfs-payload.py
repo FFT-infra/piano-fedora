@@ -172,7 +172,7 @@ def stage_hardware(rootfs, sunuefi):
         "usr/lib/piano/piano_dma_contexts.py": (sunuefi / CONTEXT_CHECKER, CONTEXT_CHECKER_SHA256),
         "usr/lib/piano/piano-ram-hardware-prepare": (
             sunuefi / HARDWARE_PREPARE,
-            "a171ece910b51b7a9586c58277df78957709a4fff559245c9919d3f8432c925c"),
+            "48f7b97f3858c2760363ab86cad99ab9a152339b3142c92b1ebfc9a489911bf6"),
         # Fedora 44 的 /usr/local/sbin 是 bin 兼容链接；写 canonical 路径。
         "usr/local/bin/piano-debug-bootstrap": (
             sunuefi / "linux/userspace/piano-debug-bootstrap",

@@ -3,7 +3,7 @@
   "target": "sunuefi",
   "note": "按顺序应用。每个补丁的 targets 是应用前该文件必须匹配的摘要；上游更新后不匹配会报错退出，不静默跳过。creates 必须与实际新建的文件完全一致。",
   "base": {
-    "sunuefi_commit": "4ef87402e9d58465af871e4c4f4a5de87599d81c"
+    "sunuefi_commit": "c720568ea492e839040ea72c5bc79afb6812465d"
   },
   "patches": [
     {
@@ -21,7 +21,7 @@
       "summary": "硬件准备与调试引导接受 F2FS 根分区，不再只认 ext4",
       "targets": {
         "linux/userspace/piano-debug-bootstrap": "e374307a81e4b4efc31c056cb47a129923cd55265a96214268a3ea14f6d75063",
-        "linux/userspace/piano-ram-hardware-prepare": "dd81bd71a2636a3dc5cd273a037a9797c875832da89b709a22bc22d0ff3010e8"
+        "linux/userspace/piano-ram-hardware-prepare": "d55afc216ce0996b0eaf2505d92334ebdceb0c021821c1bdad56643558011de5"
       },
       "creates": []
     },

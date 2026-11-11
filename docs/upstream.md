@@ -49,6 +49,18 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 3. 改 pin 之前核对所有消费路径、构建容器和依赖。重新生成受影响的内核、运行时、root 文件系统、initramfs、ESP 和 BOOT。清单同步更新。
 4. 下载并核对实际产物，更新部署入口。构建、文件验证和实机行为分别记账。不能继承上游另一台设备的结果。
 
+### 2026-11-11
+
+两个 pin 推进：`sunuefi` `4ef8740` → `c720568ea492e839040ea72c5bc79afb6812465d`，`dtc` `b1e46c0` → `774adc25940050fb06f241b1a2a98e7421e6ed7b`。`crosvm` 与 `piano-integration` 不动。
+
+SunUEFI 的 7.3 封存序列从 90 条增到 92 条，新增上游的 `0091-dpu-hdr-identity-gamma.patch` 与 `0092-nanosic-detachable-leds.patch`。公开基线树是 `a3d0b8db615452e89f37be4454c80262c06ecc99`，92 条之后的上游树是 `e188f4582c2ede46d6d5d6b8649fd0f0316a3343`，末行提交 `79e32ae2694bd74626b78f4201719f2e7e56b560`。
+
+我们自己的 38 条整体后移为 `0093`–`0130`，补丁内容不变，首条的 `original_parent` 改成新的上游末行提交。合并后的最终树是 `7a0b0da0fde1b932dca480505fb5e96f2ce93cc6`，末行 `original_commit` 为 `7c8ebb2458d7`。`patches/kernel` 的七段按 `0093`–`0096`、`0097`、`0098`–`0103`、`0104`、`0105`–`0122`、`0123`、`0124`–`0130` 重新生成。
+
+`linux/userspace/piano-ram-hardware-prepare` 在新 pin 上多了 NixOS stage 1 的启动检查，根类型仍然只认 ext4。`patches/kernel-f2fs/0002` 重新套用后保留 F2FS 分支，目标摘要与 `scripts/stage-rootfs-payload.py` 的校验摘要一起更新。其余五组非内核补丁只换 `base.sunuefi_commit`，内容不变。
+
+已核：`scripts/apply-patches.py --check` 在 `c720568` 的新 clone 上给出 `CHECKED`；`make test` 全绿。未核：新 pin 的内核编译、整条发布链与设备实机行为，按发布台账分别记账。
+
 ### 2026-11-10
 
 四个 pin 一起推进：`sunuefi` `8b0fc42` → `4ef8740`，`fastrpc` `a56e9d4` → `8f59273`，`crosvm` `f0880b3` → `deac401`，`piano-integration` `9e3d127` → `e49a960`。后三个只动文档与一个头文件的安装，`make test` 能覆盖。SunUEFI 这一段包含内核 LLVM 23 + ThinLTO/O3、普通 Focus Pen 支持（#16/b8f2bf9）、充电热管理接口（f346521）与构建命名空间隔离（4ef8740），下面逐条记账。

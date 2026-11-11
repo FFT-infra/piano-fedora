@@ -37,10 +37,10 @@ index 0b049c8..c91993c 100755
      esac
  }
 diff --git a/linux/userspace/piano-ram-hardware-prepare b/linux/userspace/piano-ram-hardware-prepare
-index 0ed7ae7..d366292 100755
+index 7cf9a0b..04a8a3d 100755
 --- a/linux/userspace/piano-ram-hardware-prepare
 +++ b/linux/userspace/piano-ram-hardware-prepare
-@@ -120,13 +120,17 @@ def require_ram(proc=Path('/proc'), run=Path('/run')):
+@@ -130,13 +130,17 @@ def require_ram(proc=Path('/proc'), run=Path('/run'), sysfs=Path('/sys')):
          policy = json.loads(Path('/etc/piano/root-policy.json').read_text())
          label_mode = policy.get('mode') == 'label'
          partuuid = policy.get('root_partuuid', '')
@@ -60,7 +60,7 @@ index 0ed7ae7..d366292 100755
              raise Refused('root is not the explicitly configured Linux partition')
          device = (run / 'piano-root-device').read_text().strip()
          if not re.fullmatch(r'/dev/sd[a-z]+[0-9]+', device):
-@@ -148,7 +152,8 @@ def require_ram(proc=Path('/proc'), run=Path('/run')):
+@@ -158,7 +162,8 @@ def require_ram(proc=Path('/proc'), run=Path('/run'), sysfs=Path('/sys')):
                      raise Refused('ambiguous mounted root identity')
                  values[key] = value
              if (values.get('PART_ENTRY_NAME') != 'sunuefi_root'
