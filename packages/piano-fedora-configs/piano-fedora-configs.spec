@@ -4,7 +4,7 @@ Name:           piano-fedora-configs
 Version:        0.1.0
 Release:        13%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
-License:        MIT AND Apache-2.0 AND GPL-2.0-only
+License:        MIT AND BSD-2-Clause-Patent AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
 Source0:        %{name}-%{version}.tar.gz
 BuildArch:      noarch

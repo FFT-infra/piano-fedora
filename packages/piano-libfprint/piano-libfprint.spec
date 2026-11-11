@@ -7,7 +7,7 @@ Name:           piano-libfprint
 Version:        1.94.100
 Release:        2%{?dist}
 Summary:        libfprint with the Piano Goodix signed-TA driver
-License:        LGPL-2.1-or-later AND NIST-PD
+License:        LGPL-2.1-or-later AND NIST-PD AND BSD-3-Clause
 URL:            https://gitlab.freedesktop.org/libfprint/libfprint
 Source0:        %{url}/-/archive/v%{version}/libfprint-v%{version}.tar.gz
 Source1:        20-piano.conf

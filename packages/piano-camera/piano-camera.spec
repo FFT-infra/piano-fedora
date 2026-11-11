@@ -5,7 +5,7 @@ Name:           piano-camera
 Version:        0.1.0
 Release:        5%{?dist}
 Summary:        Camera pipeline and v4l2loopback daemon for Xiaomi Pad 8 Pro (piano)
-License:        MIT AND Apache-2.0
+License:        MIT
 URL:            https://github.com/FFT-infra/piano-fedora
 Source0:        %{name}-%{version}.tar.gz
 

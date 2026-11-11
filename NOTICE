@@ -55,3 +55,10 @@ Copyright (c) 2026 phxinyang
 
 这组数据自提交 `4649de7` 起就在公开仓库与公开 COPR 中，发布 Release 不增加暴露面。
 
+## 厂商固件与校准数据
+
+`xiaomi-piano-firmware` 与 `xiaomi-piano-thp` 中的厂商固件、面板/笔校准数值和
+`p81c-radio.json` 不是开源内容，未授予再分发许可，仅按设备所有者自用的场景分发。
+`xiaomi-piano-firmware` 用 `LicenseRef-Xiaomi-Proprietary` 标记整包。权利方提出
+异议时，这些文件会从仓库与发布物中移除。
+

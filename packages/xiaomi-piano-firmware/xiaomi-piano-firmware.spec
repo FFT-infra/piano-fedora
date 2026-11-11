@@ -11,10 +11,10 @@ Name:           xiaomi-piano-firmware
 Version:        20261110
 Release:        1%{?dist}
 Summary:        Firmware binaries for Xiaomi Pad 8 Pro (piano)
-# 厂商没有给出书面许可。这里按 Fedora 处理同类不可再分发固件的写法标注
-# （`linux-firmware` 用的就是 LicenseRef-Callaway-Redistributable-no-modification-permitted），
+# 厂商没有给出书面许可。包内只有部分文件来自 linux-firmware，按 LICENSES/
+# 里的原条款分发；stock ROM 的文件没有再分发许可。整包用 proprietary 标记，
 # 只按“设备所有者自用”分发，详见仓库根目录的 NOTICE。
-License:        LicenseRef-Callaway-Redistributable-no-modification-permitted
+License:        LicenseRef-Xiaomi-Proprietary
 URL:            https://github.com/blu-sharky/piano-firmware
 Source0:        https://github.com/blu-sharky/piano-firmware/archive/05fc37c09ca8146eecfc4920f8485479db140ae5/piano-firmware-05fc37c.tar.gz
 Source1:        https://github.com/slwyts/Project-SunUEFI/archive/%{sunuefi_commit}/Project-SunUEFI-%{sunuefi_commit}.tar.gz
