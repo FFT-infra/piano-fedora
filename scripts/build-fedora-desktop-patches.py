@@ -149,9 +149,12 @@ PACKAGES = (
             ("gnome-settings-daemon/0001-power-optional-device-ambient-profile-51.patch",
              "b32b0ef0451bc5b86884a84d84b769ce7bfb73cb8e5a2b4006c3b8bb017306ff",
              "piano-ambient-profile.patch"),
-            ("gnome-settings-daemon/50.1/"
+            # 50.1 的原始补丁和 ambient 补丁都在 gsd_power_manager_stop() 里插入
+            # 清理代码，直接叠加时后一个 hunk 匹配不上。这份本地补丁以 51.1 +
+            # ambient 补丁为基线重排了那个 hunk，其余改动与 SunUEFI 补丁相同。
+            ("repo:patches/gnome-settings-daemon/51.1/"
              "0001-power-refresh-keyboard-backlight-after-hotplug.patch",
-             "15eb6f30e09158c7dec34faf19ad6f22dbebf1c29f248862e5d77ef6014e1e8e",
+             "98cdaf76fbfa28bce72adafbfc38dd5a3f9eaca86e5cf73d157b98e62a89724b",
              "piano-keyboard-backlight.patch"),
         ],
         "runtime": ("gnome-settings-daemon-piano",),
@@ -243,7 +246,10 @@ def build_one(entry, sun, output):
 
     patch_proofs = []
     for patch_rel, patch_sha, patch_name in entry["patches"]:
-        patch = sun / "patches" / patch_rel
+        if patch_rel.startswith("repo:"):
+            patch = ROOT / patch_rel.removeprefix("repo:")
+        else:
+            patch = sun / "patches" / patch_rel
         verify(patch, patch_sha, "patch")
         shutil.copyfile(patch, top / "SOURCES" / patch_name)
         patch_proofs.append({"file": patch_name, "upstream": patch_rel,

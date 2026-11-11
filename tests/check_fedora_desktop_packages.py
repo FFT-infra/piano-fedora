@@ -45,7 +45,8 @@ def test_package_table(module):
             assert HEX64.match(entry[key]), f"{name}: {key} is not a sha256"
         assert entry["patches"], name
         for patch_file, patch_sha, copied in entry["patches"]:
-            assert patch_file.endswith(".patch") and HEX64.match(patch_sha), name
+            assert str(patch_file).endswith(".patch"), name
+            assert HEX64.match(patch_sha), name
             assert copied.endswith(".patch") and "/" not in copied, name
         assert set(entry["required"]) <= set(entry["runtime"]), name
         assert entry["desktops"], name
@@ -181,7 +182,10 @@ def test_sunuefi_patch_hashes(module):
         return
     for entry in module.PACKAGES:
         for relative, expected, _ in entry["patches"]:
-            path = patches / relative
+            if relative.startswith("repo:"):
+                path = ROOT / relative.removeprefix("repo:")
+            else:
+                path = patches / relative
             assert path.is_file(), f"missing patch: {path}"
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             assert digest == expected, f"{path} changed: {digest}"

@@ -2,6 +2,14 @@
 
 上游按 commit 锁定，改动走这里的补丁，不 fork。
 
+## gnome-settings-daemon
+
+`gnome-settings-daemon/51.1/` 是 extras 构建用的本地补丁，不参与
+`apply-patches.py`。自动亮度补丁与键盘背光补丁都在
+`gsd_power_manager_stop()` 里插入清理代码，50.1 的原始键盘背光补丁叠在
+51.1 的 ambient 补丁上时有一个 hunk 对不上。这里保存以 51.1 + ambient
+补丁为基线重排后的版本，其余改动与 SunUEFI 的 50.1 补丁一致。
+
 ## kernel-f2fs
 
 让内核内建 F2FS 支持，这是 F2FS 根分区能挂载的前提。
