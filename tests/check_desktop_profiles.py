@@ -27,8 +27,8 @@ def load_module(name, path):
 def check_gnome_names_unchanged():
     """GNOME 的派生名必须与改动前的字面量逐字节相同。
 
-    发布链、`verify-new-image.sh`、`package-release-bundle.sh` 与文档都按这些
-    名字找文件。参数化之后名字由 profile 生成，所以要在源头锁住它们。
+    发布链与文档都按这些名字找文件。参数化之后名字由 profile 生成，所以要在
+    源头锁住它们。
     """
     names = piano_desktop.artifact_names(piano_desktop.load("gnome", "44"))
     assert names["rootfs_dir"] == "fedora-44-gnome", names

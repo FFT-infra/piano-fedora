@@ -1,4 +1,4 @@
-.PHONY: test test-device-media plan plan-desktop clean build-rpms release-bundle selinux
+.PHONY: test test-device-media plan plan-desktop clean build-rpms selinux
 
 test:
 	python3 tests/check_audio_stack.py
@@ -73,7 +73,6 @@ test:
 	python3 tests/check_first_boot_ssh_key.py
 	python3 tests/check_kernel_package.py
 	python3 tests/check_package_replaces.py
-	python3 tests/check_release_provenance.py
 	python3 tests/check_manual_flash_flow.py
 	python3 tests/check_next_boot_helper.py
 
@@ -96,9 +95,6 @@ clean:
 
 build-rpms:
 	./scripts/build-rpms.sh
-
-release-bundle:
-	./scripts/package-release-bundle.sh
 
 # rootfs/selinux/piano_hardware.pp 是本仓库唯一的已提交生成物：运行时
 # semodule -i 加载的是编译后的模块，.te 本身不会被设备读取。改动 .te 之后

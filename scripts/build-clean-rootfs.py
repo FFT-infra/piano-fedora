@@ -789,10 +789,8 @@ def execute(plan_data):
     print("--> Checkpointing the rpm database after the audit...")
     prune_rpm_transient(root)
 
-    # 审计通过后可选地打成 F2FS 镜像。这一步以前是缺失的：
-    # `--execute` 只产出 rootfs 目录，而 package-release-bundle.sh 去
-    # build/clean-distros/ 找 .img/.img.zst，找不到就静默回退到历史镜像，
-    # 于是“纯净装配链”从未真正出现在任何 release 里。
+    # 审计通过后可选地打成 F2FS 镜像。`--execute` 只产出 rootfs 目录，
+    # 发布链还需要 raw 镜像与压缩包，所以在这里一次做完。
     image_res = None
     if plan_data.get("build_image"):
         image_res = build_image(out, root, plan_data, context)
@@ -819,10 +817,10 @@ def build_image(out, root, plan_data, context):
     size_mib = int(plan_data.get("root_size_mib") or 8192)
     artifacts = piano_desktop.artifact_names(context)
     img = out / artifacts["image"]
-    # The name matters: package-release-bundle.sh reads root-image-manifest.json
-    # from the image's directory to cross-check that the ESP kernel and the
-    # rootfs modules are the same build. Writing only image-manifest.json left
-    # that check silently skipped.
+    # The name matters: build-bundle reads root-image-manifest.json from the
+    # image's directory to cross-check that the ESP kernel and the rootfs
+    # modules are the same build. Writing only image-manifest.json leaves that
+    # check without its input.
     manifest = out / "root-image-manifest.json"
     tool = ROOT / "scripts" / "build-f2fs-image.py"
     if not tool.is_file():
