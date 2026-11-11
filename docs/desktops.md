@@ -129,7 +129,9 @@ scale 与 `QT_SCALE_FACTOR` 会叠加，界面会放大两次。
 
 GNOME meta 写入 `20-piano-ambient`，只把 `org.gnome.settings-daemon.plugins.power` 的 `ambient-enabled` 改成 `true`。默认的 `00-power` 仍是 `false`，卸载 extras 后按文件名顺序回到默认值。不启用 extras 的 GNOME 不读自动亮度，KDE 的 HDR 与广色域保持默认关闭。
 
-这几个包还没有跑过真机验收。自动亮度看 `net.hadess.SensorProxy` 的 `LightLevel` 与 `/sys/class/backlight/ktz8866-backlight/brightness` 是否跟随；键盘背光在接上/取下键盘盖时看 `/sys/class/leds` 与 UPower 设备；KDE HDR 用 `kscreen-doctor -o` 看 DSI-1 的 HDR 开关与背光是否恢复。
+KDE HDR 的补丁版 KWin 已经在真机验过。2026-11-12 冷启动后跑了两轮 `hdr` 与 `wcg` 同批开关，背光 1024 → 2047 → 1024，关 HDR 后回到开启前的值。细节见[已知问题](known-issues.md#hdr)。
+
+自动亮度与键盘背光这轮还没验。自动亮度看 `net.hadess.SensorProxy` 的 `LightLevel` 与 `/sys/class/backlight/ktz8866-backlight/brightness` 是否跟随；键盘背光在接上/取下键盘盖时看 `/sys/class/leds` 与 UPower 设备。手边没有悬浮键盘，键盘背光的热插拔与睡眠唤醒恢复拿不到真机结果。
 
 2026-11-11 在默认 GNOME 档核对过原版组件：`gnome-settings-daemon-51.1-1.fc45`、`kwin-6.8.2-3.fc45`、`gtk3-3.24.52-6.fc45`，`gnome-settings-daemon-piano` 与两个 meta 包都没有安装，`ambient-enabled` 为 `false`。
 
