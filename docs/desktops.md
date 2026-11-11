@@ -131,6 +131,8 @@ GNOME meta 写入 `20-piano-ambient`，只把 `org.gnome.settings-daemon.plugins
 
 这几个包还没有跑过真机验收。自动亮度看 `net.hadess.SensorProxy` 的 `LightLevel` 与 `/sys/class/backlight/ktz8866-backlight/brightness` 是否跟随；键盘背光在接上/取下键盘盖时看 `/sys/class/leds` 与 UPower 设备；KDE HDR 用 `kscreen-doctor -o` 看 DSI-1 的 HDR 开关与背光是否恢复。
 
+2026-11-11 在默认 GNOME 档核对过原版组件：`gnome-settings-daemon-51.1-1.fc45`、`kwin-6.8.2-3.fc45`、`gtk3-3.24.52-6.fc45`，`gnome-settings-daemon-piano` 与两个 meta 包都没有安装，`ambient-enabled` 为 `false`。
+
 ## 第三方软件源
 
 只有 Hyprland 档位启用第三方仓库 `copr-hyprland`

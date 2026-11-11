@@ -19,13 +19,13 @@
 | 键盘背光热插拔 | extras 的 GSD 带 50.1 补丁，背光设备随键盘盖插拔更新 | 背光走 UPower/GNOME | 同上，接上/取下键盘盖，看 `/sys/class/leds` 与 UPower | P2 |
 | KDE HDR/广色域 | extras 的 KWin 带退出 HDR 恢复背光补丁，配置默认关闭 | KWin 可切换，退出 HDR 恢复背光 | 真机开关 HDR，看背光是否回到开启前的值 | P2 |
 | 指纹录入 | 用户态已接，`piano-fingerprint-ctl` 与 fprintd 都可用；录入没测 | libfprint/fprintd 完整录入与认证 | `fprintd-enroll` 走完一次，再 `fprintd-verify` | P2 |
-| 相机隐私灯 | overlay 在，视频流是否触发还没验 | 随前后摄视频流启停 | 开前摄/后摄流，看绿灯 | P2 |
-| 相机录像 | `piano-camera-ctl` 只有静态拍摄，loopback 连录没验 | 预览、录像、AE/AF/AWB | 用 `ffmpeg -f v4l2` 或相机应用录一段 | P2 |
+| 相机隐私灯 | 完成：前后摄各录 4 秒，`/sys/class/leds/green/brightness` 从 0 到 4，流结束回 0 | 随前后摄视频流启停 | — | 完成 |
+| 相机录像 | 完成：`ffmpeg` 从 `/dev/video40` 与 `/dev/video41` 各录 4 秒，1920x1440@30，各 120 帧 | 预览、录像、AE/AF/AWB | — | 完成 |
 | 手写笔进阶 | 只验了位置、压感、倾斜、proximity | 捏握、震动、磁吸识别、笔电量、充满停电、跨系统重配 | 用 `libinput debug-events` 或 `evtest` 记录实际事件，缺的再开范围 | P3 |
 | exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编成 y，挂载没测 | 读写 | 真机挂载两种 U 盘并读写 | P3 |
 | 10-bit 与 144 Hz | 面板与驱动支持，没量过色深与刷新率 | 面板 10bpc，144 Hz 可选 | 只验，不改默认（KDE 120，GNOME 可到 144） | P3 |
 
-真正缺代码的只有自动亮度与键盘背光，已经放进 extras；HDR 的 KWin 补丁也已存在。指纹录入、隐私灯、录像、手写笔进阶与存储挂载是验收项，不是新的适配项。测出真实缺口再单独开范围，不在这轮顺手改。
+真正缺代码的只有自动亮度与键盘背光，已经放进 extras；HDR 的 KWin 补丁也已存在。隐私灯与录像已在 2026-11-11 的真机上验过。指纹录入、手写笔进阶与存储挂载仍是验收项，不是新的适配项。测出真实缺口再单独开范围，不在这轮顺手改。
 
 ## 指纹
 
