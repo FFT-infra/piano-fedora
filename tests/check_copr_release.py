@@ -382,6 +382,80 @@ def test_graphics_are_in_the_publish_order(module):
         assert name not in module.REQUIRED, f"{name} 不该出现在 piano-rpms 的必需清单里"
 
 
+def make_extras(directory, *, status="PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED",
+                release="3.piano1", source="gnome-settings-daemon",
+                device_tested=False, drop_file=None):
+    directory = Path(directory)
+    (directory / "rpms").mkdir(parents=True)
+    (directory / "srpms").mkdir()
+    rows = {
+        "gnome-settings-daemon-piano": ("gnome-settings-daemon", "51.1", "1.piano1",
+                                        ["gnome"]),
+        "kwin": ("kwin", "6.8.2", release, ["kde"]),
+        "gtk3": ("gtk3", "3.24.52", "6.piano1", ["gnome", "kde"]),
+        "piano-gnome-extras": ("piano-gnome-extras", "0.1.0", "1.fc45", ["gnome"]),
+        "piano-kde-extras": ("piano-kde-extras", "0.1.0", "1.fc45", ["kde"]),
+    }
+    files, srpms, packages = {}, {}, {}
+    for name, (source_name, version, rel, desktops) in rows.items():
+        if name == "gnome-settings-daemon-piano":
+            source_name = source
+        rpm = f"{name}-{version}-{rel}.fc45.aarch64.rpm"
+        srpm = f"{name}-{version}-{rel}.fc45.src.rpm"
+        rpm_payload = f"{name} binary".encode()
+        srpm_payload = f"{name} source".encode()
+        files[rpm] = {"bytes": len(rpm_payload),
+                      "sha256": __import__("hashlib").sha256(rpm_payload).hexdigest()}
+        srpms[srpm] = {"bytes": len(srpm_payload),
+                       "sha256": __import__("hashlib").sha256(srpm_payload).hexdigest()}
+        if rpm != drop_file:
+            (directory / "rpms" / rpm).write_bytes(rpm_payload)
+        (directory / "srpms" / srpm).write_bytes(srpm_payload)
+        packages[name] = {
+            "binary_package": name,
+            "source_package": source_name,
+            "release": rel,
+            "desktops": desktops,
+            "nevra": f"{name}-{version}-{rel}.fc45.aarch64",
+        }
+    manifest = {
+        "status": status,
+        "device_tested": device_tested,
+        "packages": packages,
+        "files": files,
+        "srpms": srpms,
+    }
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    return directory
+
+
+def test_extras_contract(module, tmp):
+    good = make_extras(tmp / "extras-good")
+    info = module.verify_extras(good)
+    assert set(info["packages"]) == set(module.EXTRAS_ORDER), info
+    assert info["source_packages"]["gnome-settings-daemon-piano"] == \
+        "gnome-settings-daemon", info
+    assert len(info["srpms"]) == len(module.EXTRAS_ORDER), info
+
+    def rejected(**changes):
+        candidate = make_extras(tmp / ("extras-bad-" + str(len(list(tmp.iterdir())))), **changes)
+        expect_error(module, lambda: module.verify_extras(candidate), "")
+
+    rejected(status="PIANO_RPMS_BUILT")
+    rejected(device_tested=True)
+    rejected(release="3.fc45")
+    rejected(source="gnome-settings-daemon-piano")
+    rejected(drop_file="kwin-6.8.2-3.piano1.fc45.aarch64.rpm")
+
+
+def test_extras_order(module):
+    assert module.EXTRAS_ORDER == ("gtk3", "kwin", "gnome-settings-daemon-piano",
+                                   "piano-gnome-extras", "piano-kde-extras")
+    for name in ("gtk3", "kwin", "gnome-settings-daemon-piano"):
+        assert name not in module.REQUIRED
+    assert module.EXTRAS_PROJECT == "xinyang26/piano-fedora-extras"
+
+
 def test_build_scripts_ship_srpms():
     """两个构建脚本必须打 -ba 并产出 srpms/，否则 COPR 无从重建。"""
     for path in (ROOT / "scripts/build-fedora-mesa.py",
@@ -541,12 +615,14 @@ def main():
         test_copr_config_is_private_and_removed(module, tmp, _MonkeyPatch())
         test_project_create_is_idempotent(module, tmp)
         test_submit_parses_every_created_build(module, tmp)
+        test_extras_contract(module, tmp)
     test_project_listing_formats(module)
     test_run_id_validation(module, _MonkeyPatch())
     test_failed_run_rejected(module, _MonkeyPatch())
     test_missing_credentials(module, _MonkeyPatch())
     test_build_failure_is_not_success(module)
     test_graphics_are_in_the_publish_order(module)
+    test_extras_order(module)
     test_build_scripts_ship_srpms()
     test_repo_file_contract()
     test_workflow_contract()

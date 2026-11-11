@@ -1,0 +1,111 @@
+name: build-piano-extras
+
+# Build the optional extras repository: GSD, KWin, GTK3 and the two meta
+# packages. The default image and default COPR never consume this artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      releasever:
+        description: "Fedora release (must match product.json)"
+        required: false
+        default: "45"
+  workflow_call:
+    inputs:
+      releasever:
+        description: "Fedora release (must match product.json)"
+        required: false
+        type: string
+        default: "45"
+
+permissions:
+  contents: read
+
+jobs:
+  extras:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require the requested release to match product.json
+        run: |
+          set -euo pipefail
+          expected="$(python3 -c 'import json;print(json.load(open("product.json"))["target"]["releasever"])')"
+          test "${{ inputs.releasever }}" = "$expected"
+
+      - name: Checkout the pinned SunUEFI tree
+        run: |
+          set -euo pipefail
+          python3 scripts/checkout-sources.py --output build/sources --mode check
+          test -d build/sources/sunuefi/patches
+
+      - name: Build the extras packages in Fedora
+        env:
+          PIANO_RELEASE: ${{ inputs.releasever }}
+        run: |
+          set -euo pipefail
+          rm -rf build/piano-extras build/piano-extras-artifact
+          sudo podman run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            --env PIANO_RELEASE="$PIANO_RELEASE" \
+            "registry.fedoraproject.org/fedora:$PIANO_RELEASE" \
+            bash -euo pipefail -c '
+              dnf -y install rpm-build redhat-rpm-config dnf5-plugins rpmdevtools \
+                git curl tar xz zstd patch gcc gcc-c++ make meson ninja-build
+              git config --global --add safe.directory /workspace
+              git config --global --add safe.directory /workspace/build/sources/sunuefi
+              python3 scripts/build-piano-extras.py \
+                --sunuefi build/sources/sunuefi \
+                --output build/piano-extras \
+                --releasever "$PIANO_RELEASE"
+            '
+
+      - name: Verify the extras manifest
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+
+          root = Path("build/piano-extras")
+          manifest = json.loads((root / "manifest.json").read_text())
+          assert manifest["status"] == "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
+          expected = {"gnome-settings-daemon-piano", "kwin", "gtk3",
+                      "piano-gnome-extras", "piano-kde-extras"}
+          assert set(manifest["packages"]) == expected, sorted(manifest["packages"])
+          for name, row in manifest["packages"].items():
+              assert row["binary_package"] == name, (name, row)
+              assert row["desktops"], name
+              if name in {"gnome-settings-daemon-piano", "kwin", "gtk3"}:
+                  assert "piano1" in row["release"], (name, row["release"])
+          for kind, key, subdir, pattern in (
+                  ("RPM", "files", "rpms", "*.rpm"),
+                  ("SRPM", "srpms", "srpms", "*.src.rpm")):
+              recorded = manifest[key]
+              present = {p.name: p for p in (root / subdir).glob(pattern)}
+              assert set(present) == set(recorded), (kind, set(present) ^ set(recorded))
+              for filename, record in recorded.items():
+                  data = present[filename].read_bytes()
+                  assert len(data) == record["bytes"], filename
+                  assert hashlib.sha256(data).hexdigest() == record["sha256"], filename
+          assert len(manifest["srpms"]) == 5, sorted(manifest["srpms"])
+          print("OK: extras manifest has", len(manifest["files"]), "RPMs")
+          PY
+          rm -rf build/piano-extras-artifact
+          mkdir -p build/piano-extras-artifact/rpms build/piano-extras-artifact/srpms \
+            build/piano-extras-artifact/scripts
+          cp -a build/piano-extras/rpms/. build/piano-extras-artifact/rpms/
+          cp -a build/piano-extras/srpms/. build/piano-extras-artifact/srpms/
+          cp -a build/piano-extras/scripts/. build/piano-extras-artifact/scripts/
+          cp build/piano-extras/manifest.json build/piano-extras/desktop-manifest.json \
+            build/piano-extras-artifact/
+          test -f build/piano-extras-artifact/manifest.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: piano-extras
+          path: build/piano-extras-artifact/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

@@ -1,0 +1,136 @@
+name: publish-copr-extras
+
+# Publish the optional extras SRPMs to a separate COPR project. The default
+# piano-fedora project never receives these packages.
+on:
+  workflow_dispatch:
+    inputs:
+      extras_run_id:
+        description: "Successful build-piano-extras run that produced piano-extras"
+        required: true
+        default: ""
+      project:
+        description: "COPR project (owner/name)"
+        required: true
+        default: "xinyang26/piano-fedora-extras"
+      execute:
+        description: "false = validate only (dry-run); true = upload and wait for builds"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    if: ${{ !inputs.execute }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the exact extras run
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXTRAS_RUN: ${{ inputs.extras_run_id }}
+        run: |
+          set -euo pipefail
+          test -n "$EXTRAS_RUN" || { echo "extras_run_id is required" >&2; exit 2; }
+          python3 scripts/resolve-artifact-run.py \
+            --workflow build-piano-extras.yml \
+            --artifact piano-extras \
+            --run-id "$EXTRAS_RUN" \
+            --output-key extras_run
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-extras
+          path: build/in/piano-extras
+          run-id: ${{ steps.source.outputs.extras_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate the extras artifact without publishing
+        run: |
+          set -euo pipefail
+          python3 scripts/publish-copr.py \
+            --mode extras \
+            --extras build/in/piano-extras \
+            --project "${{ inputs.project }}" \
+            --record build/copr-extras-publication.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: copr-extras-publication
+          path: build/copr-extras-publication.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    if: ${{ inputs.execute }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the exact extras run
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXTRAS_RUN: ${{ inputs.extras_run_id }}
+        run: |
+          set -euo pipefail
+          test -n "$EXTRAS_RUN" || { echo "extras_run_id is required" >&2; exit 2; }
+          python3 scripts/resolve-artifact-run.py \
+            --workflow build-piano-extras.yml \
+            --artifact piano-extras \
+            --run-id "$EXTRAS_RUN" \
+            --output-key extras_run
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: piano-extras
+          path: build/in/piano-extras
+          run-id: ${{ steps.source.outputs.extras_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Require COPR credentials
+        env:
+          COPR_LOGIN: ${{ secrets.COPR_LOGIN }}
+          COPR_TOKEN: ${{ secrets.COPR_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$COPR_LOGIN" || { echo "COPR_LOGIN is not configured" >&2; exit 2; }
+          test -n "$COPR_TOKEN" || { echo "COPR_TOKEN is not configured" >&2; exit 2; }
+
+      - name: Install copr-cli
+        run: |
+          set -euo pipefail
+          python3 -m venv build/copr-venv
+          build/copr-venv/bin/pip install --quiet --disable-pip-version-check \
+            "copr-cli==2.4"
+          build/copr-venv/bin/copr-cli --version
+
+      - name: Publish the exact extras to COPR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COPR_LOGIN: ${{ secrets.COPR_LOGIN }}
+          COPR_TOKEN: ${{ secrets.COPR_TOKEN }}
+          COPR_CLI: build/copr-venv/bin/copr-cli
+        run: |
+          set -euo pipefail
+          python3 scripts/publish-copr.py \
+            --mode extras \
+            --extras build/in/piano-extras \
+            --project "${{ inputs.project }}" \
+            --record build/copr-extras-publication.json \
+            --execute
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: copr-extras-publication
+          path: build/copr-extras-publication.json
+          if-no-files-found: error
+          retention-days: 30

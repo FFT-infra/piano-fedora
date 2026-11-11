@@ -77,6 +77,14 @@ GRAPHICS = {
 # 而矩阵里的包名与它们不重叠，顺序只影响失败时先报哪一个。
 GRAPHICS_ORDER = ("mesa", "ffmpeg")
 
+# 可选 extras 仓库：默认不启用，只放桌面补丁和两个 meta 包。GSD 改名，
+# KWin/GTK3 保持同名、release 带 .piano1。GTK3 先编，两个 meta 最后。
+EXTRAS_ORDER = ("gtk3", "kwin", "gnome-settings-daemon-piano",
+                "piano-gnome-extras", "piano-kde-extras")
+EXTRAS_STATUS = "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
+EXTRAS_PROJECT = "xinyang26/piano-fedora-extras"
+DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3")
+
 
 class PublishError(Exception):
     pass
@@ -234,6 +242,86 @@ def verify_graphics(directory, name):
     }
 
 
+def verify_extras(directory):
+    """核对独立 extras artifact：状态、包集合、文件摘要与 SRPM 唯一性。
+
+    GSD 改名，KWin/GTK3 与 Fedora 同名但 release 必须带 piano1；两个 meta
+    包是 noarch，不要求 piano1。这里不依赖 piano-rpms 的 manifest，extras
+    可以单独构建、单独发布。
+    """
+    directory = Path(directory)
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.is_file():
+        raise PublishError(f"missing {manifest_path}")
+    manifest = json.loads(manifest_path.read_text())
+    problems = []
+    if manifest.get("status") != EXTRAS_STATUS:
+        problems.append(f"extras: unexpected status {manifest.get('status')!r}")
+    if manifest.get("device_tested") is not False:
+        problems.append("extras: device_tested must stay false until verification")
+    rows = manifest.get("packages")
+    if not isinstance(rows, dict):
+        rows = {}
+    if set(rows) != set(EXTRAS_ORDER):
+        problems.append(f"extras: packages are {sorted(rows)}, "
+                        f"expected {sorted(EXTRAS_ORDER)}")
+    for name in EXTRAS_ORDER:
+        row = rows.get(name)
+        if not isinstance(row, dict):
+            continue
+        if row.get("binary_package") != name:
+            problems.append(f"extras: {name} row names "
+                            f"{row.get('binary_package')!r}")
+        if name in DESKTOP_PACKAGES and "piano1" not in str(row.get("release", "")):
+            problems.append(f"extras: {name} release {row.get('release')!r} "
+                            "lacks piano1")
+        if not row.get("desktops"):
+            problems.append(f"extras: {name} has no desktop scope")
+    if rows.get("gnome-settings-daemon-piano", {}).get("source_package") \
+            != "gnome-settings-daemon":
+        problems.append("extras: GSD row does not record the Fedora source package")
+
+    for kind, key, subdir, pattern in (
+            ("RPM", "files", "rpms", "*.rpm"),
+            ("SRPM", "srpms", "srpms", "*.src.rpm")):
+        recorded = manifest.get(key)
+        if not isinstance(recorded, dict) or not recorded:
+            problems.append(f"extras: no {key}")
+            continue
+        present = {path.name: path for path in (directory / subdir).glob(pattern)}
+        if subdir == "rpms":
+            present = {name: path for name, path in present.items()
+                       if not name.endswith(".src.rpm")}
+        for filename, record in sorted(recorded.items()):
+            path = present.get(filename)
+            if path is None:
+                problems.append(f"extras: missing {kind} {filename}")
+            elif path.stat().st_size != record.get("bytes"):
+                problems.append(f"extras: {kind} {filename} size changed")
+            elif sha256(path) != record.get("sha256"):
+                problems.append(f"extras: {kind} {filename} sha256 changed")
+        for filename in sorted(set(present) - set(recorded)):
+            problems.append(f"extras: unrecorded {kind} {filename}")
+
+    srpms = sorted(manifest.get("srpms", {}))
+    if len(srpms) != len(EXTRAS_ORDER):
+        problems.append(f"extras: expected {len(EXTRAS_ORDER)} SRPMs, got {srpms}")
+    for name in EXTRAS_ORDER:
+        matching = [srpm for srpm in srpms if srpm.startswith(name + "-")]
+        if len(matching) != 1:
+            problems.append(f"extras: expected one SRPM for {name}, got {matching}")
+    if problems:
+        raise PublishError("; ".join(problems))
+    return {
+        "status": manifest["status"],
+        "packages": {name: rows[name]["nevra"] for name in EXTRAS_ORDER},
+        "source_packages": {name: rows[name]["source_package"]
+                            for name in EXTRAS_ORDER},
+        "srpms": srpms,
+        "manifest_sha256": sha256(manifest_path),
+    }
+
+
 def copr_cli():
     binary = os.environ.get("COPR_CLI") or "copr-cli"
     try:
@@ -384,27 +472,90 @@ def wait_for_builds(binary, config, project, build_ids, timeout=7200, interval=3
     return states
 
 
+def write_record(record, path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, indent=2) + "\n")
+
+
+def publish_extras(args):
+    project = args.project or EXTRAS_PROJECT
+    owner, separator, name = project.partition("/")
+    if not separator or not owner or not name:
+        raise PublishError("--project must be owner/name")
+    extras = verify_extras(args.extras)
+    record_path = Path(args.record or "build/copr-extras-publication.json")
+    record = {
+        "status": "VALIDATED",
+        "mode": "extras",
+        "project": project,
+        "chroot": CHROOT,
+        "packages": sorted(extras["packages"]),
+        "source_packages": extras["source_packages"],
+        "srpms": extras["srpms"],
+        "manifest_sha256": extras["manifest_sha256"],
+    }
+    if not args.execute:
+        write_record(record, record_path)
+        print(json.dumps({"status": "VALIDATED", "record": str(record_path)},
+                         indent=2))
+        return 0
+
+    binary = copr_cli()
+    config = write_copr_config(record_path.with_suffix(".copr.conf"), owner)
+    try:
+        record["project_state"] = ensure_project(binary, config, project)
+        outputs, ids = {}, []
+        for package in EXTRAS_ORDER:
+            output, build_id = submit(binary, config, project,
+                                      Path(args.extras) / "srpms", package)
+            outputs[package] = output
+            ids.append(build_id)
+        states = wait_for_builds(binary, config, project, ids, timeout=args.timeout)
+        record.update(status="PUBLISHED", build_ids=ids, build_states=states,
+                      outputs=outputs)
+    finally:
+        config.unlink(missing_ok=True)
+    write_record(record, record_path)
+    print(json.dumps({"status": "PUBLISHED", "builds": record["build_ids"],
+                      "record": str(record_path)}, indent=2))
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", required=True,
-                        help="成功的 host-check run，必须带 piano-rpms artifact")
+    parser.add_argument("--mode", choices=("default", "extras"), default="default")
+    parser.add_argument("--run-id", default="",
+                        help="默认模式：成功的 host-check run，必须带 piano-rpms artifact")
     parser.add_argument("--rpms", default="build/in/piano-rpms",
                         help="下载后的 piano-rpms artifact 目录")
+    parser.add_argument("--extras", default="build/in/piano-extras",
+                        help="解包后的 piano-extras artifact 目录")
     parser.add_argument("--mesa", default="build/in/mesa",
                         help="解包后的 piano-fedora-mesa artifact 目录")
     parser.add_argument("--ffmpeg", default="build/in/ffmpeg",
                         help="解包后的 piano-fedora-ffmpeg artifact 目录")
-    parser.add_argument("--project", default="xinyang26/piano-fedora")
+    parser.add_argument("--project", default="",
+                        help="默认模式用 xinyang26/piano-fedora，extras 模式用 "
+                             "xinyang26/piano-fedora-extras")
     parser.add_argument("--kernel-run-id", default="",
                         help="可选：要求 manifest 的内核 run 与此值一致")
-    parser.add_argument("--record", default="build/copr-publication.json")
+    parser.add_argument("--record", default="")
     parser.add_argument("--execute", action="store_true",
                         help="真正上传并等待构建；默认只校验")
     parser.add_argument("--timeout", type=int, default=7200)
     args = parser.parse_args()
-    owner, separator, name = args.project.partition("/")
+
+    if args.mode == "extras":
+        return publish_extras(args)
+
+    if not args.run_id:
+        raise PublishError("--run-id is required in default mode")
+    project = args.project or "xinyang26/piano-fedora"
+    owner, separator, name = project.partition("/")
     if not separator or not owner or not name:
         raise PublishError("--project must be owner/name")
+    record_path = Path(args.record or "build/copr-publication.json")
 
     run = verify_run(args.run_id)
     manifest = load_manifest(args.rpms)
@@ -419,7 +570,7 @@ def main():
         "status": "VALIDATED",
         "run_id": str(args.run_id),
         "run_url": run.get("html_url"),
-        "project": args.project,
+        "project": project,
         "chroot": CHROOT,
         "kernel_run": manifest["kernel_run"],
         "kernel_release": manifest["kernel_release"],
@@ -430,21 +581,21 @@ def main():
         "manifest_sha256": sha256(Path(args.rpms) / "piano-rpms-manifest.json"),
     }
     if not args.execute:
-        Path(args.record).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.record).write_text(json.dumps(record, indent=2) + "\n")
-        print(json.dumps({"status": "VALIDATED", "record": args.record}, indent=2))
+        write_record(record, record_path)
+        print(json.dumps({"status": "VALIDATED", "record": str(record_path)},
+                         indent=2))
         return 0
 
     binary = copr_cli()
-    config = write_copr_config(Path(args.record).with_suffix(".copr.conf"), owner)
+    config = write_copr_config(record_path.with_suffix(".copr.conf"), owner)
     try:
-        record["project_state"] = ensure_project(binary, config, args.project)
+        record["project_state"] = ensure_project(binary, config, project)
         outputs, ids = {}, []
         # 先发图形栈：设备 dnf upgrade 要能看见改名后的补丁版，
         # 而矩阵包的包名与它们不重叠，顺序只决定失败时先报哪一个。
         for name in GRAPHICS_ORDER:
             srpm_dir = Path(getattr(args, name)) / "srpms"
-            output, build_id = submit(binary, config, args.project,
+            output, build_id = submit(binary, config, project,
                                       srpm_dir, name,
                                       srpm_name=graphics[name]["srpm"])
             outputs[name] = output
@@ -452,19 +603,18 @@ def main():
         for package in BUILD_ORDER:
             if package not in packages:
                 raise PublishError(f"{package} was not built by this run")
-            output, build_id = submit(binary, config, args.project,
+            output, build_id = submit(binary, config, project,
                                       Path(args.rpms) / "srpms", package)
             outputs[package] = output
             ids.append(build_id)
-        states = wait_for_builds(binary, config, args.project, ids, timeout=args.timeout)
+        states = wait_for_builds(binary, config, project, ids, timeout=args.timeout)
         record.update(status="PUBLISHED", build_ids=ids, build_states=states,
                       outputs=outputs)
     finally:
         config.unlink(missing_ok=True)
-    Path(args.record).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.record).write_text(json.dumps(record, indent=2) + "\n")
+    write_record(record, record_path)
     print(json.dumps({"status": "PUBLISHED", "builds": record["build_ids"],
-                      "record": args.record}, indent=2))
+                      "record": str(record_path)}, indent=2))
     return 0
 
 

@@ -25,11 +25,17 @@ from pathlib import Path
 
 DEFAULT_REPO_ID = "copr:copr.fedorainfracloud.org:xinyang26:piano-fedora"
 DEFAULT_BASEURL = "https://download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/"
+EXTRAS_REPO_ID = "copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras"
+EXTRAS_BASEURL = "https://download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora-extras/"
 KERNEL_PACKAGE = "kernel-piano"
 # 图形栈的补丁版改用改名包，这里列的是仓库里必须出现的新名字，以及它们
 # 替代的 Fedora 原名。
 GRAPHICS_RENAMES = {"mesa-piano-dri-drivers": "mesa-dri-drivers",
                     "ffmpeg-piano": "ffmpeg-free"}
+EXTRAS_PACKAGES = {"gnome-settings-daemon-piano", "kwin", "gtk3",
+                   "piano-gnome-extras", "piano-kde-extras"}
+EXTRAS_DESKTOP = ("gnome-settings-daemon-piano", "kwin", "gtk3")
+EXTRAS_META = ("piano-gnome-extras", "piano-kde-extras")
 
 
 def run(args, *, check=True, sudo=False, binary=False, timeout=None):
@@ -56,8 +62,8 @@ def detect_releasever():
     return match.group(1)
 
 
-def repo_url(releasever, arch="aarch64"):
-    return f"{DEFAULT_BASEURL}fedora-{releasever}-{arch}/"
+def repo_url(releasever, arch="aarch64", base=DEFAULT_BASEURL):
+    return f"{base}fedora-{releasever}-{arch}/"
 
 
 def fetch(url):
@@ -89,7 +95,27 @@ def list_packages(baseurl):
         raise RuntimeError("repodata has no primary index")
     primary = fetch(baseurl + data["primary"])
     names = sorted(set(re.findall(r"<name>([^<]+)</name>", primary)))
-    return names, sorted(data)
+    return names, sorted(data), primary
+
+
+def package_releases(primary, names):
+    """从 primary 里取每个包发布的 release 与 arch。
+
+    extras 的 KWin/GTK3 与 Fedora 同名，只有 `.piano1` release 能说明设备
+    装的是补丁构建；meta 包则必须是 noarch。
+    """
+    records = {}
+    for block in re.findall(r'<package type="rpm">.*?</package>', primary, re.S):
+        name = re.search(r"<name>([^<]+)</name>", block)
+        arch = re.search(r"<arch>([^<]+)</arch>", block)
+        release = re.search(r'<version[^>]*\brel="([^"]+)"', block)
+        if not name or name.group(1) not in names:
+            continue
+        records.setdefault(name.group(1), []).append({
+            "arch": arch.group(1) if arch else "",
+            "release": release.group(1) if release else "",
+        })
+    return records
 
 
 def key_available(baseurl):
@@ -102,14 +128,15 @@ def key_available(baseurl):
     return result.stdout.strip() == "200"
 
 
-def repo_file_state():
-    path = Path("/etc/yum.repos.d/piano-fedora-copr.repo")
+def repo_file_state(path="/etc/yum.repos.d/piano-fedora-copr.repo"):
+    path = Path(path)
     if not path.is_file():
         return {"installed": False, "path": str(path)}
     text = path.read_text()
     return {
         "installed": True,
         "path": str(path),
+        "enabled": "enabled=1" in text,
         "gpgcheck": "gpgcheck=1" in text,
         "repo_gpgcheck_off": "repo_gpgcheck=0" in text,
         "excludes_kernel": f"exclude={KERNEL_PACKAGE}" in text,
@@ -164,37 +191,62 @@ def upgrade_dry_run():
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--report", type=Path, default=Path("copr-device-check.json"))
-    ap.add_argument("--repo-id", default=DEFAULT_REPO_ID)
+    ap.add_argument("--report", type=Path)
+    ap.add_argument("--repo-id")
+    ap.add_argument("--extras", action="store_true",
+                    help="核对默认关闭的 extras 仓库与 .piano1 桌面构建")
     ap.add_argument("--install-test", action="store_true",
                     help="额外执行一次 dnf upgrade --assumeno（不实际升级）")
     args = ap.parse_args()
 
     releasever = detect_releasever()
-    baseurl = repo_url(releasever)
+    baseurl = repo_url(releasever, base=EXTRAS_BASEURL if args.extras else DEFAULT_BASEURL)
+    repo_id = args.repo_id or (EXTRAS_REPO_ID if args.extras else DEFAULT_REPO_ID)
+    report = args.report or Path("copr-extras-device-check.json" if args.extras
+                                 else "copr-device-check.json")
     record = {"status": "UNKNOWN", "releasever": releasever, "baseurl": baseurl,
-              "repo_id": args.repo_id}
+              "repo_id": repo_id, "mode": "extras" if args.extras else "default"}
     problems = []
 
     try:
-        names, indexes = list_packages(baseurl)
+        names, indexes, primary = list_packages(baseurl)
         record["package_count"] = len(names)
         record["packages"] = names
         record["indexes"] = indexes
-        expected = {
-            "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
-            "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
-            "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
-            # 图形栈：这两个是本地重建的包，靠改名后声明 Provides/Conflicts
-            # 压过官方版本。仓库里没有它们，设备 dnf upgrade 就会装回官方版。
-            "mesa-piano-dri-drivers", "ffmpeg-piano",
-        }
-        missing = sorted(expected - set(names))
-        if missing:
-            problems.append("repository is missing: " + ", ".join(missing))
-        record["missing_packages"] = missing
-        # 改名是这两个包压过官方版的依据，名字错了就等于没发。
-        record["graphics_renames"] = graphics_renames(names)
+        if args.extras:
+            expected = EXTRAS_PACKAGES
+            missing = sorted(expected - set(names))
+            if missing:
+                problems.append("repository is missing: " + ", ".join(missing))
+            record["missing_packages"] = missing
+            releases = package_releases(primary, expected)
+            record["releases"] = releases
+            for name in EXTRAS_DESKTOP:
+                rows = releases.get(name, [])
+                if not any(".piano1" in row["release"] for row in rows):
+                    problems.append(f"{name} has no .piano1 release")
+            for name in EXTRAS_META:
+                rows = releases.get(name, [])
+                if not any(row["arch"] == "noarch" for row in rows):
+                    problems.append(f"{name} is not built as noarch")
+            if "gnome-settings-daemon" in names:
+                problems.append("extras repository still ships gnome-settings-daemon")
+        else:
+            expected = {
+                "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
+                "piano-camera", "piano-fingerprint", "piano-libfprint",
+                "xiaomi-piano-thp", "sm8750-video-accel",
+                "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
+                # 图形栈：这两个是本地重建的包，靠改名后声明 Provides/Conflicts
+                # 压过官方版本。仓库里没有它们，设备 dnf upgrade 就会装回官方版。
+                "mesa-piano-dri-drivers", "ffmpeg-piano",
+            }
+            missing = sorted(expected - set(names))
+            if missing:
+                problems.append("repository is missing: " + ", ".join(missing))
+            record["missing_packages"] = missing
+            # 改名是这两个包压过官方版的依据，名字错了就等于没发。
+            record["graphics_renames"] = graphics_renames(names)
     except (RuntimeError, OSError) as error:
         problems.append(f"cannot read repodata: {error}")
 
@@ -206,31 +258,38 @@ def main():
     except (RuntimeError, OSError) as error:
         problems.append(f"cannot reach pubkey: {error}")
 
-    record["repo_file"] = repo_file_state()
-    if record["repo_file"]["installed"]:
+    repo_path = ("/etc/yum.repos.d/"
+                 "_copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras.repo"
+                 if args.extras else "/etc/yum.repos.d/piano-fedora-copr.repo")
+    record["repo_file"] = repo_file_state(repo_path)
+    if record["repo_file"]["installed"] and args.extras:
+        if not record["repo_file"].get("gpgcheck"):
+            problems.append("installed extras .repo fails gpgcheck")
+    elif record["repo_file"]["installed"]:
         for key in ("gpgcheck", "repo_gpgcheck_off"):
             if not record["repo_file"].get(key):
                 problems.append(f"installed .repo fails {key}")
         if record["repo_file"]["excludes_kernel"]:
             problems.append("installed .repo still excludes kernel-piano")
 
-    try:
-        record["kernel_visibility"] = repoquery_kernel(baseurl)
-        if not record["kernel_visibility"]["listed"]:
-            problems.append("kernel-piano is not visible in the repository")
-    except (RuntimeError, OSError) as error:
-        problems.append(f"repoquery failed: {error}")
+    if not args.extras:
+        try:
+            record["kernel_visibility"] = repoquery_kernel(baseurl)
+            if not record["kernel_visibility"]["listed"]:
+                problems.append("kernel-piano is not visible in the repository")
+        except (RuntimeError, OSError) as error:
+            problems.append(f"repoquery failed: {error}")
 
-    # 仓库里只能有改名后的包。两个名字都在时，全新安装会优先选名字完全
-    # 匹配的 Fedora 包，补丁版就被绕过去了。发布记录里写了改名不等于仓库
-    # 里真的改了：唯一可信的是仓库自身。
-    for ours, row in record.get("graphics_renames", {}).items():
-        if not row["present"]:
-            continue  # 缺失已经在 missing_packages 里报过
-        if row["fedora_name_present"]:
-            fedora = GRAPHICS_RENAMES[ours]
-            problems.append(f"repository still ships {fedora} next to {ours}; "
-                            "a fresh install would pick the official build")
+        # 仓库里只能有改名后的包。两个名字都在时，全新安装会优先选名字完全
+        # 匹配的 Fedora 包，补丁版就被绕过去了。发布记录里写了改名不等于仓库
+        # 里真的改了：唯一可信的是仓库自身。
+        for ours, row in record.get("graphics_renames", {}).items():
+            if not row["present"]:
+                continue  # 缺失已经在 missing_packages 里报过
+            if row["fedora_name_present"]:
+                fedora = GRAPHICS_RENAMES[ours]
+                problems.append(f"repository still ships {fedora} next to {ours}; "
+                                "a fresh install would pick the official build")
 
     if args.install_test:
         try:
@@ -244,9 +303,9 @@ def main():
 
     record["problems"] = problems
     record["status"] = "PASS" if not problems else "FAIL"
-    args.report.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
+    report.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({"status": record["status"], "problems": problems,
-                      "report": str(args.report)}, indent=2))
+                      "report": str(report)}, indent=2))
     return 0 if not problems else 1
 
 

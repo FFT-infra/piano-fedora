@@ -14,6 +14,8 @@ test:
 	python3 tests/check_device_media.py
 	python3 tests/check_browser_video.py
 	python3 tests/check_copr_release.py
+	python3 tests/check_fedora_desktop_packages.py
+	python3 tests/check_extras_release.py
 	python3 tests/check_product.py
 	python3 tests/check_links.py
 	python3 tests/check_readme_parity.py

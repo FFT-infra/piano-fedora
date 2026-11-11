@@ -104,6 +104,16 @@ def sidecar_name(tag, desktop):
     return f"{ARCHIVE_STEM}-{_checked(tag, 'tag')}-{_checked(desktop, 'desktop')}.sha256"
 
 
+def extras_archive_name(tag):
+    """`extras-<tag>.tar.zst`，不带 `piano-` 前缀，避免被当成桌面档。"""
+    return f"extras-{_checked(tag, 'tag')}.tar.zst"
+
+
+def extras_sidecar_name(tag):
+    """`extras-<tag>.sha256`，列 extras 归档的分片。"""
+    return f"extras-{_checked(tag, 'tag')}.sha256"
+
+
 def members():
     """归档顶层条目，文件与目录各按名字排序。"""
     return sorted(ARCHIVE_FILES) + sorted(ARCHIVE_DIRS)
@@ -158,6 +168,10 @@ def main(argv=None):
     sidecar = sub.add_parser("sidecar-name", help="打印这一档的摘要文件名")
     sidecar.add_argument("tag")
     sidecar.add_argument("desktop")
+    extras = sub.add_parser("extras-archive-name", help="打印 extras 归档名")
+    extras.add_argument("tag")
+    extras_sidecar = sub.add_parser("extras-sidecar-name", help="打印 extras 摘要文件名")
+    extras_sidecar.add_argument("tag")
     sub.add_parser("bundled", help="打印从 deploy-bundle 复制进归档的文件")
     sub.add_parser("excluded", help="打印 deploy-bundle 里不进归档的文件")
     sub.add_parser("members", help="打印归档顶层条目")
@@ -173,6 +187,10 @@ def main(argv=None):
             print(archive_name(args.tag, args.desktop))
         elif args.command == "sidecar-name":
             print(sidecar_name(args.tag, args.desktop))
+        elif args.command == "extras-archive-name":
+            print(extras_archive_name(args.tag))
+        elif args.command == "extras-sidecar-name":
+            print(extras_sidecar_name(args.tag))
         elif args.command == "bundled":
             print("\n".join(BUNDLE_MEMBERS))
         elif args.command == "excluded":

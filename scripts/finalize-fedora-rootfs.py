@@ -553,6 +553,28 @@ def verify_power_overlay(root, context):
     raise ValueError(f"unknown power policy kind {kind!r}")
 
 
+def verify_stock_desktop(root, context):
+    """默认镜像必须装 Fedora 原版桌面组件。
+
+    extras 是单独的可选仓库，构建顺序或 profile 漏改都可能把补丁包带进
+    默认镜像。GSD 改名包必须不存在；同名的 KWin/GTK3/IBus 不能是 .piano1。
+    """
+    def nevra(name):
+        try:
+            value = chroot(root, "rpm", "-q", "--qf",
+                           "%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}", name).strip()
+        except subprocess.CalledProcessError:
+            return None
+        return value or None
+
+    if nevra("gnome-settings-daemon-piano") is not None:
+        raise ValueError("default image contains gnome-settings-daemon-piano")
+    for name in ("kwin", "gtk3", "ibus"):
+        value = nevra(name)
+        if value is not None and "piano1" in value:
+            raise ValueError("default image contains a piano desktop build: " + value)
+
+
 def verify_fastrpc_daemon(root, runtime_meta):
     """拒绝只装 FastRPC 库、漏掉服务实际执行文件的集成镜像。"""
     expected = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["fastrpc"]["commit"]
@@ -799,6 +821,7 @@ def main():
     hardware_files = stage_piano_hardware_fixes(root, context)
     diagnostic_files = stage_boot_diagnostics(root, context)
     verify_power_overlay(root, context)
+    verify_stock_desktop(root, context)
     # 驱动按标准 modalias 自动加载，上游已删掉 display/radio/audio/video/
     # keyboard/cpufreq 这几组手动拉起驱动的 unit；piano-touch 由 79-piano-touch
     # udev 规则在 /proc/nvt_thp_stream 出现时激活，unit 本身没有 [Install]。

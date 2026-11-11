@@ -1,0 +1,5 @@
+# Installed by piano-gnome-extras. The default image ships 00-power with
+# ambient-enabled=false; this later drop-in turns it on only when the user
+# explicitly installs the extras meta package.
+[org/gnome/settings-daemon/plugins/power]
+ambient-enabled=true

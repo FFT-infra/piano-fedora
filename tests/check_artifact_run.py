@@ -190,8 +190,10 @@ def test_every_resolved_workflow_is_registered_on_default_branch():
     default = {"host-check.yml", "build-kernel.yml", "build-device-runtime.yml",
                "build-mesa.yml", "build-rootfs.yml", "build-image.yml",
                "build-uefi.yml", "build-bundle.yml", "prepare-install.yml",
-               "package-install.yml", "build-ffmpeg.yml", "verify-f2fs.yml"}
-    reusable = {"build-ffmpeg.yml", "build-piano-rpms.yml", "package-install.yml"}
+               "package-install.yml", "build-ffmpeg.yml", "verify-f2fs.yml",
+               "build-piano-extras.yml"}
+    reusable = {"build-ffmpeg.yml", "build-piano-rpms.yml", "package-install.yml",
+                "build-piano-extras.yml"}
     failures = []
     for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
         text = path.read_text()

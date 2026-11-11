@@ -32,6 +32,10 @@ on:
         description: "只发一档时：prepare-install 成功 run；留空则按 tag commit 解析"
         required: false
         default: ""
+      extras_run:
+        description: "可选：build-piano-extras 成功 run；填了才发布 extras-<tag>.tar.zst"
+        required: false
+        default: ""
       publish:
         description: "转成公开 Release。默认 false，跑完停在 draft"
         required: false
@@ -288,6 +292,75 @@ jobs:
             release_record "$STAGE/$sidecar" "$sidecar"
             rm -rf build/in/bundle build/in/root-install
           done
+
+      - name: Add the optional extras archive
+        if: ${{ inputs.extras_run != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXTRAS_RUN: ${{ inputs.extras_run }}
+        run: |
+          set -euo pipefail
+          . scripts/release-upload.sh
+          run_id=$(python3 scripts/resolve-artifact-run.py \
+            --workflow build-piano-extras.yml \
+            --artifact piano-extras \
+            --run-id "$EXTRAS_RUN" \
+            --commit "${{ steps.src.outputs.commit }}")
+          gh run download "$run_id" -n piano-extras -D build/in/piano-extras
+          extras=build/in/piano-extras
+          test -f "$extras/manifest.json"
+          python3 - "$extras" <<'PYEOF'
+          import json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          manifest = json.loads((root / "manifest.json").read_text())
+          assert manifest["status"] == "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
+          expected = {"gnome-settings-daemon-piano", "kwin", "gtk3",
+                      "piano-gnome-extras", "piano-kde-extras"}
+          assert set(manifest["packages"]) == expected, sorted(manifest["packages"])
+          for name in ("gnome-settings-daemon-piano", "kwin", "gtk3"):
+              assert "piano1" in manifest["packages"][name]["release"], name
+          PYEOF
+
+          archive=build/extras-archive
+          rm -rf "$archive"
+          mkdir -p "$archive"
+          cp -a "$extras/rpms" "$extras/srpms" "$extras/scripts" "$archive/"
+          cp "$extras/manifest.json" "$extras/desktop-manifest.json" "$archive/"
+          cat > "$archive/README-extras.txt" <<'EOF'
+          可选的桌面补丁包。默认镜像不需要它。
+
+          安装（GNOME 或 KDE 二选一）：
+
+            sudo sh scripts/piano-extras-install.sh gnome
+            sudo sh scripts/piano-extras-install.sh kde
+
+          脚本会启用 xinyang26/piano-fedora-extras、把仓库优先级设为 1，再安装
+          对应的 meta 包。装完注销并重新登录。
+
+          卸载：
+
+            sudo sh scripts/piano-extras-uninstall.sh
+
+          仓库优先级会让 extras 的 KWin/GTK3 压过 Fedora 的更高版本，直到
+          extras 按新版本重编。默认镜像和默认 COPR 不含这些包。
+          EOF
+          python3 scripts/release-assets.py write-sums "$archive"
+          name=$(python3 scripts/release-assets.py extras-archive-name "$TAG")
+          tar -C "$archive" --sort=name --mtime=@0 --owner=0 --group=0 \
+            --numeric-owner -cf - . | zstd -10 -T0 --no-progress -o "$STAGE/$name"
+          mkdir -p build/verify-extras
+          tar -I zstd -xf "$STAGE/$name" -C build/verify-extras
+          diff -r "$archive" build/verify-extras
+          rm -rf build/verify-extras "$archive"
+
+          release_upload_split "$STAGE/$name" "$name"
+          sidecar=$(python3 scripts/release-assets.py extras-sidecar-name "$TAG")
+          awk -v want="$name" '$2 == want || $2 ~ "^" want "\\.part-[0-9]+$"' \
+            "$STAGE/RELEASE-SHA256SUMS" > "$STAGE/$sidecar"
+          test -s "$STAGE/$sidecar"
+          gh release upload "$TAG" "$STAGE/$sidecar"
+          release_record "$STAGE/$sidecar" "$sidecar"
 
       - name: Upload the release checksums
         env:
