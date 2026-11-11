@@ -367,8 +367,8 @@ def main():
         row, collected, built_srpms = build_one(entry, sun, output)
         packages[entry["binary"]] = row
         for name, path in collected.items():
-            shutil.copy2(path, rpm_dir / name)
-            files[name] = {"bytes": path.stat().st_size, "sha256": sha256(path)}
+            shutil.copy2(path, rpm_dir / path.name)
+            files[path.name] = {"bytes": path.stat().st_size, "sha256": sha256(path)}
         for path in built_srpms:
             shutil.copy2(path, srpm_dir / path.name)
             srpms[path.name] = {"bytes": path.stat().st_size, "sha256": sha256(path)}
