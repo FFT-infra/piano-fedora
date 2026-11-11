@@ -31,11 +31,10 @@ from pathlib import Path
 
 ARCHIVE_STEM = "piano"
 
-# 从 deploy-bundle 原样复制进归档的文件。三份镜像刷设备或供校验，其余是
+# 从 deploy-bundle 原样复制进归档的文件。两份镜像刷设备或供校验，其余是
 # 装机脚本与构建记录读的 manifest。
 BUNDLE_MEMBERS = (
     "PianoUEFI-product.img",
-    "boot_sunuefi.img",
     "sunuefi_esp.img",
     "bundle-manifest.json",
     "esp-manifest.json",
@@ -55,7 +54,7 @@ BUNDLE_MEMBERS = (
 # 两份 root 镜像与 root-install 里的 root 内容相同，也不能直接刷：装机的
 # 那份由 prepare-install 写好设备配置再扩容。同一份 root 发三种形态只会让
 # 人分不清该下哪个，还把归档撑大。`initramfs.tar.zst` 是 build-bundle 解包
-# 用的中间产物，内容与 `boot_sunuefi.img` 里那份相同；
+# 用的中间产物，内容与 `sunuefi_esp.img` 里 UKI 的那份相同；
 # `diagnostic-abl-storage.tar.zst` 是 ABL 只读探针的调试件，manifest 自标
 # `device_tested: false`，装机脚本不读。`SHA256SUMS` 对应的清单在归档里重新
 # 生成，只列归档里真实存在的文件。

@@ -74,9 +74,9 @@ def check_spec(failures):
                         "would leave the ESP booting the old Image")
     else:
         script = posttrans[1].split("%changelog", 1)[0]
-        if "EFI/Piano/stable" not in script:
+        if "EFI/Linux" not in script:
             failures.append("%posttrans does not name the ESP payload path")
-        if "board.dtb" not in script or "exit 0" not in script:
+        if "sunuefi.efi" not in script or "exit 0" not in script:
             failures.append("%posttrans does not skip a rootfs with no ESP payload")
         skip = script.split("exit 0", 1)[0]
         if "depmod" in skip or "piano-kernel-esp-update" in skip:
@@ -105,7 +105,7 @@ def check_spec(failures):
 
     # 内核升级所需的那套工具必须随本包发布，且路径与 %posttrans 里的一致。
     for name in ("f2fs-disk-bootstrap", "piano-kernel-esp-update",
-                 "build-initramfs.py", "piano_artifacts.py", "piano_boot_container.py"):
+                 "build-initramfs.py", "piano_artifacts.py"):
         if f"%{{_prefix}}/lib/piano/{name}" not in body:
             failures.append(f"kernel-piano.spec does not ship /usr/lib/piano/{name}")
     if "/usr/lib/piano/piano-kernel-esp-update" not in body:
@@ -118,6 +118,10 @@ def check_spec(failures):
                         "including updates/v4l2loopback.ko")
     if "Requires:       python3" not in body or "Requires:       kmod" not in body:
         failures.append("%posttrans needs python3 and kmod at runtime")
+    # UKI 重打需要 ukify 与 aa64 stub；缺任何一个设备侧升级都写不了 ESP。
+    for dependency in ("systemd-ukify", "systemd-boot-unsigned"):
+        if f"Requires:       {dependency}" not in body:
+            failures.append(f"%posttrans needs {dependency} at runtime")
 
 
 def check_tools(failures):

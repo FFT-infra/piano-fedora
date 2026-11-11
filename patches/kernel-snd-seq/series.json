@@ -2,14 +2,14 @@
   "schema_version": 1,
   "target": "sunuefi",
   "base": {
-    "sunuefi_commit": "c720568ea492e839040ea72c5bc79afb6812465d"
+    "sunuefi_commit": "3a7e5c1b799f305a8cf5972d733332a6c55174a1"
   },
   "patches": [
     {
       "file": "0001-enable-alsa-sequencer.patch",
       "summary": "Fedora 正式配置里把 ALSA sequencer 编成模块，alsa-lib 的 snd-seq 加载不再每次开机失败，/dev/snd/seq 可用",
       "targets": {
-        "tools/build_piano_full_kernel.py": "bf9c9db4f92372e1d3a2aead4fece7ddf4a2a501bf0b08f492e06508a1db1475"
+        "tools/build_piano_full_kernel.py": "293b9303d9522e52ee4c1788101bdfca44c6e651cbd1180be7fccdc3f91e2056"
       },
       "creates": []
     }

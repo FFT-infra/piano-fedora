@@ -399,7 +399,7 @@ def main():
 
         # The asset list must name the files the commands actually use. It
         # lives in the asset-prep chapter, which both install paths share.
-        for asset in ("boot_sunuefi.img", "sunuefi_esp.img",
+        for asset in ("sunuefi_esp.img",
                       "root-install/pianoroot.f2fs.sparse.img",
                       "root-install/SHA256SUMS", "SHA256SUMS"):
             if asset not in document:

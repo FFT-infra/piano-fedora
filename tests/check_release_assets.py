@@ -71,8 +71,8 @@ def test_bundle_members_and_exclusions_are_disjoint():
     bundled = set(release_assets.BUNDLE_MEMBERS)
     excluded = set(release_assets.EXCLUDED_BUNDLE_FILES)
     assert not bundled & excluded, sorted(bundled & excluded)
-    # 三份镜像必须进归档：装机要刷其中两份，首装要校验第三份。
-    for name in ("sunuefi_esp.img", "boot_sunuefi.img", "PianoUEFI-product.img"):
+    # 两份镜像必须进归档：一份交给 Android boot，一份刷进 ESP。
+    for name in ("sunuefi_esp.img", "PianoUEFI-product.img"):
         assert name in bundled, name
     # 两份 root 与两个构建中间件不进归档。
     for name in ("pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img",

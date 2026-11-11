@@ -85,7 +85,6 @@ def main():
         raise AssertionError("incomplete Fedora policy accepted")
     gunyah = namespace["GUNYAH_OVERRIDES"]
     # 直接走构建器用于 olddefconfig 结果的生产验证路径，逐项模拟被 Kconfig 丢弃。
-    command = "piano.root=LABEL=PIANOROOT rootfstype=f2fs"
     configured = {"CONFIG_" + key: value for key, value in namespace["REQUIRED"].items()}
     # 生产路径把平台片段、Fedora 策略和 Gunyah profile 合成同一个 modules
     # 字典再交给校验，所以这里也合并：只传其中一份会让另外两份提供的符号
@@ -93,15 +92,17 @@ def main():
     # 只有配上完整 profile 才通过完整性门槛。
     fragments = {**platform, **policy, **gunyah}
     configured.update(fragments)
-    configured["CONFIG_CMDLINE"] = json.dumps(command)
+    # 引导参数从 config/release.json 进 UKI 的 .cmdline，内核不再内嵌或强制它。
+    configured["CONFIG_CMDLINE"] = '""'
+    configured["CONFIG_CMDLINE_FORCE"] = "n"
     serialize = lambda values: "".join(key + "=" + value + "\n" for key, value in values.items())
     validate_config = namespace["validate_config"]
-    validate_config(serialize(configured), "CONFIG_MODULES=y\n", command, fragments)
+    validate_config(serialize(configured), "CONFIG_MODULES=y\n", fragments)
     for symbol in (required - derived) | helpers:
         dropped = dict(configured)
         dropped.pop(symbol)
         try:
-            validate_config(serialize(dropped), "CONFIG_MODULES=y\n", command, fragments)
+            validate_config(serialize(dropped), "CONFIG_MODULES=y\n", fragments)
         except ValueError as exc:
             assert symbol in str(exc), str(exc)
         else:
@@ -132,12 +133,12 @@ def main():
             raise AssertionError("incomplete Gunyah profile accepted: " + symbol)
     experimental = {**policy, **gunyah}
     configured.update(gunyah)
-    validate_config(serialize(configured), "CONFIG_MODULES=y\n", command, experimental)
+    validate_config(serialize(configured), "CONFIG_MODULES=y\n", experimental)
     for symbol in gunyah:
         dropped = dict(configured)
         dropped.pop(symbol)
         try:
-            validate_config(serialize(dropped), "CONFIG_MODULES=y\n", command, experimental)
+            validate_config(serialize(dropped), "CONFIG_MODULES=y\n", experimental)
         except ValueError as exc:
             assert symbol in str(exc), str(exc)
         else:

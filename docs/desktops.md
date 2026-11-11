@@ -185,4 +185,4 @@ make plan-desktop DESKTOP=niri RELEASEVER=45
   对它返回 `INPUTS_REQUIRED` 并以非零退出，不会产出镜像。
 - **内核在 COPR 里，四档共用。** 装机用归档里的 `kernel-piano`。
   装好之后由 `dnf upgrade` 升级，`kernel-piano` 的 `%posttrans` 重建 initramfs
-  并重打 ESP 的 `boot.img`。失败与回滚边界见 [COPR 软件源](copr-repository.md)。
+  并重打 ESP 的 `/EFI/Linux/sunuefi.efi`。失败与回滚边界见 [COPR 软件源](copr-repository.md)。

@@ -181,14 +181,13 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
                 cp -a "$DTB" "$STAGE/board.dtb"
             fi
             [ -f "$PAYLOAD/manifest.json" ] && cp -a "$PAYLOAD/manifest.json" "$STAGE/"
-            # 设备侧升级要用的那套工具跟内核一起发布：initramfs 构建器、容器
-            # 打包器与 manifest 判据都是跟这个内核一起演进的，分开发布会出现
+            # 设备侧升级要用的那套工具跟内核一起发布：initramfs 构建器、
+            # UKI 重打器与 manifest 判据都是跟这个内核一起演进的，分开发布会出现
             # 两套契约。放在 payload 的 piano-tools/ 下，由 spec 装到
             # /usr/lib/piano。
             mkdir -p "$STAGE/piano-tools"
             cp -a "$REPO_ROOT/scripts/build-initramfs.py" \
                  "$REPO_ROOT/scripts/piano_artifacts.py" \
-                 "$REPO_ROOT/scripts/piano_boot_container.py" \
                  "$REPO_ROOT/scripts/piano-kernel-esp-update" \
                  "$REPO_ROOT/initramfs/f2fs-disk-bootstrap" \
                  "$STAGE/piano-tools/"

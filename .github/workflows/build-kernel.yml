@@ -126,7 +126,7 @@ jobs:
           subprocess.run([
               'python3', 'tools/build_piano_full_kernel.py',
               '--worktree', record['worktree'], '--commit', record['actual_commit'],
-              '--root', 'LABEL=PIANOROOT', '--root-fstype', 'f2fs', '--fedora-policy',
+              '--root', 'LABEL=PIANOROOT', '--fedora-policy',
               '--configure-only', '--rebuild',
               '--build-dir', 'build/kernels/release',
               '--artifacts', 'artifacts/kernels/release',
@@ -149,7 +149,10 @@ jobs:
           for name, value in required.items():
               assert 'CONFIG_' + name + '=' + value in config, (name, value)
           assert 'CONFIG_LSM="selinux"' in config
-          assert any('rootfstype=f2fs' in line for line in config if line.startswith('CONFIG_CMDLINE='))
+          # 引导参数不再编进内核：它由 config/release.json 进 UKI 的 .cmdline。
+          release = json.loads(Path('config/release.json').read_text())['kernel']['command_line']
+          assert 'rootfstype=f2fs' in release.split(), release
+          assert 'rdinit=/pianoinit' in release.split(), release
           print('Fedora F2FS/SELinux configuration verified before the long build')
           PY
 
@@ -167,7 +170,7 @@ jobs:
               '--worktree', record['worktree'],
               '--commit', record['actual_commit'],
               '--root', 'LABEL=PIANOROOT',
-              '--root-fstype', 'f2fs', '--fedora-policy',
+              '--fedora-policy',
               '--rebuild',
               '--build-dir', 'build/kernels/release',
               '--artifacts', 'artifacts/kernels/release',
@@ -181,6 +184,16 @@ jobs:
           test -d artifacts/kernels/release
           ls -lh artifacts/kernels/release
           cat artifacts/kernels/release/manifest.json 2>/dev/null || true
+          # 交给 UKI 的 cmdline 必须带 F2FS 根；内核自身不再内嵌引导参数。
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('artifacts/kernels/release/manifest.json').read_text())
+          tokens = manifest['command_line'].split()
+          assert 'rootfstype=f2fs' in tokens, tokens
+          assert 'rdinit=/pianoinit' in tokens, tokens
+          print('UKI command line carries the F2FS root:', manifest['command_line'])
+          PY
 
       - name: Export the matching module build inputs
         working-directory: sunuefi

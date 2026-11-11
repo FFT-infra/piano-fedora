@@ -1,6 +1,6 @@
 # 与上游的功能差距
 
-这份清单来自 2026-11-11 的一次只读核对：对照 `build/test-sources/sunuefi`（pin `c720568`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。每项写明证据与核对命令，下次接手不用重新猜。电源策略、中文环境、相机高像素与静态拍摄、指纹桌面接入、构建断言、文档口径已在本分支完成，其余见各行状态。
+这份清单来自 2026-11-12 的一次只读核对：对照 `build/test-sources/sunuefi`（pin `3a7e5c1b`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。每项写明证据与核对命令，下次接手不用重新猜。电源策略、中文环境、相机高像素与静态拍摄、指纹桌面接入、构建断言、文档口径已在本分支完成，其余见各行状态。
 
 | 项 | 我们的现状 | 上游 | 要做的 | 优先级 |
 | --- | --- | --- | --- | --- |
@@ -9,6 +9,8 @@
 | 相机 JPEG 直出 | 完成：`piano-camera-ctl capture --output FILE` 直出 JPEG | `photo/jpeg.c` | — | 完成 |
 | 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成，实机出帧 | `quad/` 与 v4l2loopback 生产者协商 | — | 完成 |
 | 电源策略 | 完成：`tuned-ppd` 三档 profile 桥到 uperf-linux 的模式 | 上游 profile 直接写 cpufreq/devfreq | — | 完成 |
+| 充电、温控与 FFC | 补丁已收：上游 `0093`、`0094`、`0096`–`0104` 共 11 条进封存序列 | 关机充电、皮肤温控、带认证 FFC 与停充失败退出 | 真机验充电状态、关机再插电、温控与功率；45 W 不作声称 | P1 |
+| 内核手指解码 | 保持用户态 THP 读取加 `nvt_finger_filter.cpp` 的 5 级滤波 | `0095` 把逐帧矩阵解码搬进内核，无时域滤波 | 本轮不收；要换先做同帧对比 | P3 |
 | 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 写 `zh_CN.UTF-8`，输入源默认带 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | — | 完成 |
 | mutter 触摸崩溃 | 库存 `mutter-51.1-1.fc45` | 补丁在 51.1 源码上干净套用 | 崩溃未复现，这版不重编 mutter | P2 |
 | KDE 桌面默认值 | 完成：`kwinoutputconfig.json`、`kcminputrc`、`kscreenlockerrc` 落进 `~/.config`，`/etc/environment.d` 设 `KWIN_DRM_FORCE_SCALING_MODE=FULL` | 同名文件写 scale 2、`InTabletMode`、自然滚动，另设 `QT_SCALE_FACTOR=2` | `QT_SCALE_FACTOR` 没有跟：与输出 scale 叠加会放大两次 | 完成 |

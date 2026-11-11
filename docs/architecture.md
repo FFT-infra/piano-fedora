@@ -58,25 +58,17 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 
 产物清单与 deploy-bundle 结构见 [部署产物](artifacts.md)。
 
-## 为什么不用 UKI
+## 启动链
 
-[sheng-fedora-packages](https://github.com/GhfunNiHe/sheng-fedora-packages) 与 [nabu_fedora](https://github.com/jhuang6451/nabu_fedora) 用 UKI（`systemd-stub` + `.efi` 内核镜像）把内核、initramfs 与 cmdline 打成一个 EFI 可执行文件。固件直接启动这个文件。这条路在本设备上不通，卡点是固件，不在 Fedora 一侧。
+固件从 ESP 的 `\EFI\Linux\sunuefi.efi` 加载 Linux。这个文件是 UKI，`systemd-ukify` 把内核、initramfs、DTB、cmdline、os-release 与 uname 写进同一个 PE 文件，节区是 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname`。ESP 上没有 systemd-boot、BLS 条目或 Android boot 容器。
 
-`PianoEspBootSource.c` 只读 `\EFI\Piano\stable\boot.img`。文件必须是 Android boot v2 格式：pagesize 4096，`Second` / `RecoveryDtbo` / `Signature` / `Trailing` 全零，内核段 56 字节处是 `ARM\x64`。UKI 是 PE/COFF，塞不进这个解析器。
+启动时 DT 由固件改写。`PianoDeviceTreeFixup.c` 实现 `EFI_DT_FIXUP_PROTOCOL`，依次处理内存、面板、蓝牙地址、RTC 偏移与 Gunyah 资源管理器。`systemd-stub` 以 `APPLY_FIXUPS|RESERVE_MEMORY` 调它，载荷 DTB 的 `/memory` 被换成设备本次的布局，并按 `DramBytes` 与固定保留区校验。raw Linux 交接走同一个协议。
 
-固件里另有一条 `Image.efi` 路径：`PianoProductOsController.c` 定义了 `\EFI\Piano\stable\Image.efi` + `piano.dtb` + `initramfs.cpio` 的加载，形式上接近 UKI。这条路径没有接上，受三处编译期约束：
+切系统仍靠请求页。`PianoBootPolicy.c` 的 `REQUEST_BOOT_STABLE` 与返回 Android 的 token 没有变，和内核载荷格式无关。
 
-- 模块没有绑定到产品调用链。上游文档写明 "not yet bound to the product Core/Policy callsite"，`git grep` 也找不到 INF/DSC 引用。
-- 模块对三份载荷做 `PinValid()` 编译期固定哈希与长度校验。换内核必须重编固件。
-- `PianoProductCore.c` 只调 `PianoRawLinuxLoadStable`，没有分支走 `PianoProductOsController`。
+内核升级由 `kernel-piano` 的 `%posttrans` 维护。事务收尾时它在设备上重建 initramfs，用 `systemd-ukify`、ESP 上现有的 `.dtb` 和新内核重新组装 `/EFI/Linux/sunuefi.efi`，原子替换旧文件并留一份 `.bak`。细节见 [COPR 软件源](copr-repository.md)。
 
-还有一处 live-memory 补丁与 UKI 不兼容。本项目给 UEFI 打的 `patches/uefi-live-memory` 在 ExitBootServices 之前把运行中内核的内存映射交给 `EFI_DT_FIXUP_PROTOCOL` 处理。`systemd-stub` 自己接管 LoadImage/StartImage 与内存描述符，两套机制叠在一起时的执行顺序没有验证过。
-
-代价对比也偏向现有路径。合体 BOOT 路径的 `AcceptedSha` 来自 ESP 上文件自身的 sha256，换内核不需要重编固件。走 UKI 至少要改 `PinValid()` 的编译期 pin。切系统（Android ↔ Fedora）不受影响。`PianoRawLinuxLoadStable` 的槽位与返回 Android 的路径都由 `piano-next-boot-helper` 写请求页，与内核容器格式无关。
-
-内核升级因此走另一条路。`kernel-piano` 的 `%posttrans` 在设备上重建 initramfs，把新内核重新打成 Android boot v2 容器，再原子替换 ESP 的 `boot.img`。细节见 [COPR 软件源](copr-repository.md)。
-
-如果上游以后把 `PianoProductOsController` 接进产品调用链、并把 pin 改成运行时校验，UKI 才值得重新评估。
+`c720568` 及更早的固件读 `\EFI\Piano\stable\boot.img`，要求 Android boot v2 容器。HEAD 删掉了这条路径，ESP 上只留 `/EFI/Linux/sunuefi.efi` 这一份 Linux 载荷。
 
 ## 从 nabu_fedora 取什么
 

@@ -35,7 +35,6 @@ MIN_ROOT_MIB = 64
 # 装进 Android 的当前槽（首装是 A），请求配置因此必须指向 boot<当前槽>。
 BUNDLE_ASSETS = {
     "sunuefi_esp.img": "sunuefi_esp.img",
-    "boot_sunuefi.img": "boot_sunuefi.img",
     "PianoUEFI-product.img": "PianoUEFI-product.img",
 }
 
@@ -262,13 +261,11 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
         require(rows and all("formattable" in line.split()[-1].split(",") for line in rows),
                 "Android userdata auto-format contract is unverified; do not repartition")
     require(device.text("getprop sys.boot_completed") == "1", "normal Android boot must be complete")
-    # payload DTB 的地图是构建时冻结的；带 uefi-live-memory 的 UEFI 会在交接前用
-    # 这次启动的继承 FDT 替换 /memory，此时 payload 地图只是兜底。没有这个补丁的
-    # 交付件仍然要求 payload 地图逐段落在原厂地图内。
+    # payload DTB 的地图是构建时冻结的；固件在交接前用这次启动的映射替换
+    # /memory，并按同一份布局核对容量、区间与保留区。这里记录设备自己的地图。
     from compose_piano_dtb import read_fdt
     memory = piano_memory.memory_contract(
-        piano_memory.boot_dtb(bundle), device.shell("cat /sys/firmware/fdt"), read_fdt,
-        piano_memory.live_memory_attestation(uefi))
+        device.shell("cat /sys/firmware/fdt"), read_fdt)
     return {"schema_version": 1, "status": "EXISTING_PARTITIONS_READ_ONLY_PLAN" if existing else "FIRST_INSTALL_READ_ONLY_PLAN", "device": snapshot["identity"],
             "android_slot": slot, "android_build": device.text("getprop ro.build.version.incremental"),
             "gpt_baseline": snapshot["gpt"].baseline(), "partition_plan": layout,

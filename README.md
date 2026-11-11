@@ -65,7 +65,7 @@
    ```
 
    其他档位是各自的归档，不必下载。解压后的目录就是暂存目录，一键脚本、`root-install/` 与组件 manifest 都在里面。也可以执行 `bash scripts/unpack-release.sh --tag <tag> --desktop <档位>` 让脚本代做这三步。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle-<档位>`，以及这次 run 派生的 `prepare-install` 的 `root-install-<档位>`。不要混用来自不同 run 的资产。
-4. 在暂存目录执行 `./make-device-boot.sh`，生成 `device-boot/boot_linux.img`。`boot_linux.img` 由这台平板自己的原厂 BOOT 重打包而成，封存镜像里的 `boot_sunuefi.img` 不能顶替。
+4. 在暂存目录执行 `./make-device-boot.sh`，生成 `device-boot/boot_linux.img`。`boot_linux.img` 由这台平板自己的原厂 BOOT 重打包而成，归档里的 ESP 镜像不能顶替。
 5. 关机后长按 `电源键 + 音量减键` 进入 Fastboot，确认 `fastboot getvar current-slot` 返回 `a`。然后按[手动刷写](docs/installation.md#五-手动刷写-linux)逐条执行：校验两份 `SHA256SUMS`，确认设备身份，依次写入 `boot_a`、`sunuefi_esp`、`sunuefi_root`，最后执行 `fastboot reboot`。
 
    要一次完成刷写，在暂存目录执行 `./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub`（Linux / macOS），或双击 `flash-linux.bat`（Windows，不自动注入公钥）。一键脚本执行与手动路径相同的写入，并在写入前额外核对几项。
