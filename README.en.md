@@ -44,7 +44,7 @@ Images are built per profile from the same release chain. They differ only in th
 | `niri` | niri | greetd + tuigreet | None, manual `transform` | Desktop reached |
 | `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None, manual rotate | Desktop reached |
 
-Each profile ships as one archive. Download only the profile you install. Login, power behavior, rotation and known gaps per profile are in [Desktops](docs/desktops.md).
+Each profile ships as one archive. Download only the profile you install. Login, power behavior, rotation and known gaps per profile are in [Desktops](docs/desktops.md). Default images use stock Fedora desktop components. If you need automatic brightness, keyboard backlight hotplug or KDE HDR backlight restore, enable the optional, default-disabled extras repository; see [COPR repository](docs/copr-repository.md#可选的-extras-软件源).
 
 ## Install
 

@@ -382,7 +382,7 @@ loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255）�
 
 侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。内核侧已经通：`uio_piano_fingerprint` 与 `qcomtee` 已加载，`dmesg` 打出 `QTEE version 5.2.0`，`/dev/uio0`、`/dev/tee0` 与 `/proc/device-tree/soc/xiaomi_fingerprint` 都在，DT overlay 也一直在发。
 
-不能用的原因是用户态没接。上游把 Goodix 客户端做成静态库，链进打过补丁的 libfprint，再经 fprintd 暴露成标准接口。本仓库还没有这一步，所以现在刷指纹没有服务认领它。
+用户态已经接上：`piano-fingerprint` 提供原生客户端，`piano-libfprint` 把 Goodix 静态库链进打过补丁的 libfprint，fprintd 能认到 `Goodix fingerprint sensor`。现在缺的是一次完整录入与认证的真机记录，`fprintd-enroll` 还没跑过。不读取 Android 侧已有的指纹模板。
 
 ### 红外
 
@@ -394,7 +394,11 @@ loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255）�
 
 面板支持 HDR10。DSI-1 连接器的属性里有 `HDR_OUTPUT_METADATA`、`Colorspace`、`max bpc`，CRTC 上有 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM`，比早先记录的"msm 没挂属性"要多一些。
 
-整条输出链路没有验证：没在 KDE 里开过 HDR，也没量过色深与色调映射。这一节只记录到属性存在。
+整条输出链路没有验证：没在 KDE 里开过 HDR，也没量过色深与色调映射。这一节只记录到属性存在。extras 的 KWin 带退出 HDR 恢复背光的补丁，内核封存序列里也有上游的 HDR identity gamma 补丁；两者组合还没在真机上开关过。默认配置把 HDR 与广色域保持关闭，验证失败也不影响普通桌面。
+
+### 键盘背光
+
+键盘盖的背光设备随磁吸键盘插拔出现和消失。extras 的 `gnome-settings-daemon-piano` 带上游 50.1 的热插拔刷新补丁，让 GNOME 在接上键盘后重新发现背光设备。默认镜像不装这个包，键盘背光不会被 GNOME 接管。真机还没验收接上/取下与睡眠唤醒后的恢复。
 
 ## 内核在线升级
 
@@ -501,9 +505,13 @@ cherry-pick）。有六处没有照抄上游：
 
 上游 `piano-persistent.config` 里有一批本机没开的选项，属于真实缺口但都不影响
 当前可用性：`CONFIG_PSI`（systemd-oomd 依赖）、`FW_LOADER_COMPRESS_{XZ,ZSTD}`、
-`USB_UAS`、`EXFAT_FS`、`WIREGUARD`、`SECURITY_YAMA`、`BPF_LSM`。我们的配置来自
+`USB_UAS`、`WIREGUARD`、`SECURITY_YAMA`、`BPF_LSM`。我们的配置来自
 `piano_defconfig` + `linux/configs/*.config`，没有消费上游的片段，所以这些要单独
 决定加不加。
+
+`EXFAT_FS` 与 `NTFS3_FS` 不在这批缺口里：`patches/kernel-f2fs` 已把它们编成
+`y`，`NLS_UTF8` 与 `NTFS3_LZX_XPRESS` 也一起开。真机挂载还没做过，格式化成
+exFAT 与 NTFS 的 U 盘读写属于待验收项。
 
 搬进来的驱动改动里有两条在本机是**未生效路径**，不能算成修复：
 

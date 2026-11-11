@@ -77,6 +77,44 @@ sudo dnf upgrade --refresh
 
 内核升级会重写 ESP 的 `boot.img`。升级前先确认电量充足，不要在升级事务中间断电。
 
+## 可选的 extras 软件源
+
+默认镜像与上面的默认仓库都不带补丁版桌面组件。需要 GNOME 自动亮度、键盘背光热插拔或 KDE HDR 退出后背光恢复时，再单独启用 `xinyang26/piano-fedora-extras`。这个项目默认关闭，不装它时四档桌面仍用 Fedora 原版 GSD、KWin 与 GTK3。
+
+| 包 | 内容 |
+| --- | --- |
+| `gnome-settings-daemon-piano` | 官方 GSD 改名重建，带自动亮度设备 profile 与键盘背光热插拔两个补丁 |
+| `kwin` | 同名重建，`Release` 带 `.piano1`，带 HDR 背光恢复补丁 |
+| `gtk3` | 同名重建，`Release` 带 `.piano1`，带 XI2 工具原子补丁 |
+| `piano-gnome-extras` | noarch meta，拉入 GSD 与 GTK3，并写入 `20-piano-ambient` dconf drop-in |
+| `piano-kde-extras` | noarch meta，拉入 KWin 与 GTK3 |
+
+启用并安装：
+
+```bash
+sudo dnf copr enable -y xinyang26/piano-fedora-extras
+sudo dnf config-manager setopt \
+  'copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras'.priority=1
+sudo dnf install --allowerasing piano-gnome-extras   # 或 piano-kde-extras
+sudo dconf update
+```
+
+`priority=1` 让 extras 的数字小于 Fedora 仓库，DNF5 因此优先用 `.piano1` 的 KWin/GTK3，哪怕 Fedora 后来发了更高版本。代价是 Fedora 对这几个包的更新会被遮住，直到 extras 按新 SRPM 重编。手动 `dnf copr enable` 不会自动写这个优先级，要自己补上。
+
+卸载回退：
+
+```bash
+sudo dnf remove piano-gnome-extras piano-kde-extras
+sudo dnf config-manager setopt \
+  'copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras'.enabled=0
+sudo dconf update
+sudo dnf distro-sync --repo fedora
+```
+
+`distro-sync` 把同名的 KWin/GTK3 换回 Fedora 版本。GSD 用 `sudo dnf swap gnome-settings-daemon-piano gnome-settings-daemon --repo fedora`。先加 `--assumeno` 看清楚要动的包。
+
+这套包还没有跑过本轮的真机验收。自动亮度、键盘背光与 KDE HDR 的验收命令见 [桌面档](desktops.md#extras-可选组件)。
+
 ## 核对与回滚
 
 ```bash
@@ -139,3 +177,5 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 ## 设备侧验证
 
 `verify-copr-device.py` 在平板上跑。只读模式核对：仓库里的 10 个矩阵包和 Mesa/FFmpeg 齐全、图形栈是改名后的 `mesa-piano-*` 与 `ffmpeg-piano` 且仓库里没有同名的 Fedora 包（避免升级时被官方包覆盖）、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。
+
+`--extras` 换到 extras 仓库：核对 GSD/KWin/GTK3 与两个 meta 包齐全、三个桌面包的 `Release` 含 `.piano1`、两个 meta 是 noarch、仓库里没有官方的 `gnome-settings-daemon`，报告写到 `copr-extras-device-check.json`。

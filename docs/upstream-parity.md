@@ -1,6 +1,6 @@
 # 与上游的功能差距
 
-这份清单来自 2026-11-10 的一次只读核对：对照 `build/test-sources/sunuefi`（pin `4ef8740`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。每项写明证据与核对命令，下次接手不用重新猜。电源策略、中文环境、相机高像素与静态拍摄、指纹桌面接入、构建断言、文档口径已在本分支完成，其余见各行状态。
+这份清单来自 2026-11-11 的一次只读核对：对照 `build/test-sources/sunuefi`（pin `c720568`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。每项写明证据与核对命令，下次接手不用重新猜。电源策略、中文环境、相机高像素与静态拍摄、指纹桌面接入、构建断言、文档口径已在本分支完成，其余见各行状态。
 
 | 项 | 我们的现状 | 上游 | 要做的 | 优先级 |
 | --- | --- | --- | --- | --- |
@@ -15,6 +15,17 @@
 | 罗盘 | 可用：`/net/hadess/SensorProxy/Compass` 上 `HasCompass=true` | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 之前查的是父对象，接口在子对象上 | 完成 |
 | 构建断言 | 完成：`build-kernel.yml` 断言 20 项，`check_kernel_config_assertions.py` 锁住 | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | — | 完成 |
 | 文档口径 | 完成：README 与 `known-issues.md` 的红外/HDR/指纹三节按实机状态重写 | — | — | 完成 |
+| 自动亮度 | extras 的 `gnome-settings-daemon-piano` 带设备 profile，默认 `ambient-enabled=false` | GSD 按原厂 lux 曲线调背光 | 装 `piano-gnome-extras` 后遮住/移开传感器验收 | P2 |
+| 键盘背光热插拔 | extras 的 GSD 带 50.1 补丁，背光设备随键盘盖插拔更新 | 背光走 UPower/GNOME | 同上，接上/取下键盘盖，看 `/sys/class/leds` 与 UPower | P2 |
+| KDE HDR/广色域 | extras 的 KWin 带退出 HDR 恢复背光补丁，配置默认关闭 | KWin 可切换，退出 HDR 恢复背光 | 真机开关 HDR，看背光是否回到开启前的值 | P2 |
+| 指纹录入 | 用户态已接，`piano-fingerprint-ctl` 与 fprintd 都可用；录入没测 | libfprint/fprintd 完整录入与认证 | `fprintd-enroll` 走完一次，再 `fprintd-verify` | P2 |
+| 相机隐私灯 | overlay 在，视频流是否触发还没验 | 随前后摄视频流启停 | 开前摄/后摄流，看绿灯 | P2 |
+| 相机录像 | `piano-camera-ctl` 只有静态拍摄，loopback 连录没验 | 预览、录像、AE/AF/AWB | 用 `ffmpeg -f v4l2` 或相机应用录一段 | P2 |
+| 手写笔进阶 | 只验了位置、压感、倾斜、proximity | 捏握、震动、磁吸识别、笔电量、充满停电、跨系统重配 | 用 `libinput debug-events` 或 `evtest` 记录实际事件，缺的再开范围 | P3 |
+| exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编成 y，挂载没测 | 读写 | 真机挂载两种 U 盘并读写 | P3 |
+| 10-bit 与 144 Hz | 面板与驱动支持，没量过色深与刷新率 | 面板 10bpc，144 Hz 可选 | 只验，不改默认（KDE 120，GNOME 可到 144） | P3 |
+
+真正缺代码的只有自动亮度与键盘背光，已经放进 extras；HDR 的 KWin 补丁也已存在。指纹录入、隐私灯、录像、手写笔进阶与存储挂载是验收项，不是新的适配项。测出真实缺口再单独开范围，不在这轮顺手改。
 
 ## 指纹
 

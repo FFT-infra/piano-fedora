@@ -118,6 +118,19 @@ scale 与 `QT_SCALE_FACTOR` 会叠加，界面会放大两次。
 
 桌面旋转之外，`iio-sensor-proxy` 仍提供光感与接近传感器，四档都装了。
 
+## extras 可选组件
+
+四档默认镜像都用 Fedora 原版 GSD、KWin 与 GTK3，extras 的包不进镜像，也不进默认 COPR。需要使用补丁版桌面组件时，按[COPR 软件源](copr-repository.md#可选的-extras-软件源)启用默认关闭的 `xinyang26/piano-fedora-extras`。
+
+| 桌面 | meta 包 | 带进来的组件 | 用途 |
+| --- | --- | --- | --- |
+| GNOME | `piano-gnome-extras` | `gnome-settings-daemon-piano`、`gtk3` | 自动亮度设备 profile、键盘背光热插拔、GTK3 XI2 工具原子 |
+| KDE | `piano-kde-extras` | `kwin`、`gtk3` | KDE HDR/广色域关闭后背光恢复、GTK3 XI2 工具原子 |
+
+GNOME meta 写入 `20-piano-ambient`，只把 `org.gnome.settings-daemon.plugins.power` 的 `ambient-enabled` 改成 `true`。默认的 `00-power` 仍是 `false`，卸载 extras 后按文件名顺序回到默认值。不启用 extras 的 GNOME 不读自动亮度，KDE 的 HDR 与广色域保持默认关闭。
+
+这几个包还没有跑过真机验收。自动亮度看 `net.hadess.SensorProxy` 的 `LightLevel` 与 `/sys/class/backlight/ktz8866-backlight/brightness` 是否跟随；键盘背光在接上/取下键盘盖时看 `/sys/class/leds` 与 UPower 设备；KDE HDR 用 `kscreen-doctor -o` 看 DSI-1 的 HDR 开关与背光是否恢复。
+
 ## 第三方软件源
 
 只有 Hyprland 档位启用第三方仓库 `copr-hyprland`

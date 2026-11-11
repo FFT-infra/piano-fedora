@@ -46,7 +46,9 @@
 | `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无，手动 rotate | 已登录桌面 |
 
 每档一个归档，装哪一档就下哪一档。每档的登录、电源行为、旋转能力与已知
-缺口见[桌面档](docs/desktops.md)。
+缺口见[桌面档](docs/desktops.md)。默认镜像用 Fedora 原版桌面组件；需要自动亮度、
+键盘背光或 KDE HDR 背光恢复时，可选用默认关闭的 extras 源，见
+[COPR 软件源](docs/copr-repository.md#可选的-extras-软件源)。
 
 ## 安装
 
