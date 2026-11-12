@@ -3,14 +3,14 @@
   "target": "sunuefi",
   "note": "systemd-stub 258 起，在没有 shim 时直接跳进 UKI 内嵌的内核，不再把内核算成子镜像。跳转前它临时改写 UKI 自己的 EFI_LOADED_IMAGE_PROTOCOL：ImageBase/ImageSize 换成内核的地址和大小，FilePath 换成内存设备路径，LoadOptions 换成 cmdline，返回后恢复。ExitBootServices 发生在这次跳转里面，SunUEFI 的 ValidateInstalledEfiImage 在 EBS 前比对 StartImage 时记录的 BaseIdentity/SizeIdentity，看到被改写的字段后返回 uki-identity / EFI_ACCESS_DENIED。内核 EFI stub 把这个状态映射成 EFI_LOAD_ERROR，菜单因此显示「Linux 启动镜像格式不受支持，请更新镜像」。\n\n为什么上游没有：上游发版 rootfs 是 Debian trixie，systemd 257.13；v257 及以前的 linux_exec() 无条件 BS->LoadImage() 内核为子镜像，父镜像字段不动，那个比对恒等。v256、v257.1 的源码里都没有这段 direct-entry 代码，v258 起才有。上游把 rootfs 换成 systemd 258 以上也会坏，不是我们独有的问题。\n\n放行范围：仅当 EBS 调用者就是 mLinuxApplication.Image（UKI 句柄）时跳过 ImageBase/ImageSize 的相等比较。v257 路径里 EBS 调用者是内核子句柄，仍走严格比较。handle、ParentHandle、DeviceHandle、Started/StartReturned/EbsObserved/Retained 以及父链检查全部保留；这里防的是「别的镜像冒充 UKI 调用 EBS」，不是这两个描述字段。\n\n实机证据（2026-11-12）：日志只有一次 Loading driver，入口偏移 0xDAD0 等于 UKI 的 AddressOfEntryPoint，说明内核没有走 LoadImage；随后 PIANO_EBS_CALL 的 image 是 UKI 句柄，PIANO_EBS_REFUSE stage=before-exit status=Access Denied，PIANO_UKI_RETURN status=Load Error。DT 与内存校验排在身份检查之后，失败的一轮没有执行到。\n\n升级上游时必须重放并复核：targets 是 PianoProductCore.c 原文摘要，不匹配就报错。上游修好这个假设后删掉整个 series，并同步删除 patches/README.md 的对应小节和 docs/known-issues.md 的条目；上游改了文件但没修时，rebase 补丁并重算 targets。本组参与 uefi_patch_identities 的哈希，改动会改变 project_source_sha256，已构建的 deploy-bundle 必须重建才能通过 verify_uefi_source。",
   "base": {
-    "sunuefi_commit": "3a7e5c1b799f305a8cf5972d733332a6c55174a1"
+    "sunuefi_commit": "4f6635638d7fb92cfefae6d26923b0008db23ed2"
   },
   "patches": [
     {
       "file": "0001-accept-direct-uki-entry.patch",
       "summary": "允许 systemd-stub 直入内核时 UKI 自身的 LoadedImage 身份字段被改写",
       "targets": {
-        "uefi/core/PianoProductCore.c": "67e4feab16ba60b4114aef069459f3c6be6714755c713e5c796f6ef3cf8e25ab"
+        "uefi/core/PianoProductCore.c": "1fbea36f62155bd8be1d3667af79b57b78760f08f1920bc5afce5451cd7e67b6"
       },
       "creates": []
     }

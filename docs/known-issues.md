@@ -256,9 +256,9 @@ handle、父链、设备句柄与镜像状态检查都保留。固件重编刷�
 
 ## 交接系统时 USB 停止超时
 
-菜单选 Linux 后停在「未能启动系统 / 系统交接失败」，状态
+菜单选 Linux 后曾停在「未能启动系统 / 系统交接失败」，状态
 `0x8000000000000012`，即 `EFI_TIMEOUT`。日志里 `PIANO_EBS_CALL` 之后 NV 保存与
-文件系统关闭都成功，紧接着：
+文件系统关闭都成功，失败落在 USB 服务停止：
 
 ```
 SUNUEFI_USB_SERVICE_CLEANUP stage=begin start_status=Success allocated=9 programmed=1 dctl=80F00000 dsts=0000C858
@@ -266,27 +266,20 @@ SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=...
 PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out
 ```
 
-`PianoDwc3Device.c` 的 `Halt()` 直接清 `DCTL` 的 RunStop 位，再在 `DSTS` 上等
-`DevCtrlHlt` 100 ms。失败时 `DSTS` 已经是 Address 链路状态，说明主机在 UKI
-加载与内核启动之间重新枚举了设备。
+停 USB 在 `ExitBootServices` 的固件钩子里执行，主机这时已经在重新枚举设备，
+链路停在 Address。清 RunStop 后 `DevCtrlHlt` 与 `CoreIdle` 都不置位。本仓库的
+四版补丁分别试过结束挂起传输、确认 event ring、END_TRANSFER 带 CMDIOC、等
+Rx FIFO 空，都没有让 core 停下来。
 
-`patches/uefi-dwc3-halt/` 的第一版按 databook 4.1.8 先结束挂起传输、临时清
-`GUSB2PHYCFG` 的 SUSPHY/ENBLSLPM，并把等待放宽到 2 s。2026-11-12 刷机复测
-仍然超时。第二版在轮询期间确认 event ring，并在 EP0 不在 setup 阶段时重新
-`ArmSetup()`；复测日志显示 `armed=1`、`gevnt=0`、`acked=0`、`loops=2000`，
-event ring 全程为空，`DevCtrlHlt` 仍未置位，说明卡点既不是挂起传输也不是未确认
-事件。第三版把 END 命令改成带 CMDIOC 并等它结束，清 RunStop 后读回确认并重试；
-仍不 halt 时按 `dwc3_core_soft_reset()` 做 core soft reset，日志里以 `reset=1` 标出。
+上游 `a139e996` 与 `3ab0085a` 修好了同一处，跟进 `4f663563` 时四版退役。
+`patches/uefi-dwc3-halt/` 只剩一条兜底：上游等待超时或 END_TRANSFER 失败时，
+唤醒两路 PHY 后做 core soft reset，以复位后的 `DevCtrlHlt` 为成功判据。
 
-第三版没有刷机就判死了：它等 `DSTS.DCNRD` 置位当成功判据，但 Linux 把这个位当
-「控制器未就绪」，等它清零，固件自己的 `ServiceReset()` 也只等 `CSftRst` 清零，
-复位成功时 DCNRD 是 0。同一次复核还发现 EP0 的 SETUP 尚未 DMA 出去时 core 不处理
-End Transfer，而停传输的代码已经把 TRB 与缓冲还掉了。
-
-第四版因此先保持 RunStop 与 EP0 的 setup TRB、等 `DSTS.RXFIFOEMPTY` 最多 100 ms，
-再结束能结束的传输，最后才清 RunStop；仍不 halt 时唤醒两路 PHY 后做 soft reset，
-成功判据改成复位后的 `DevCtrlHlt`。第四版只通过了离线补丁检查，等真机验证。旧的
-raw/boot.img 链在 `StartImage` 前完成交接，碰不到这个时机。
+2026-11-12 实机（旧 pin 上的第四版）：等待结束时 `hlt=0 idle=0`、`link=4`、
+`rxf=0`，soft reset 后转为 `hlt=1 idle=1 rxf=1`，接着
+`stage=halt status=Success`、`allocated=9 freed=9 retained=0`，没有
+`PIANO_START_FAILED`，随后进入 Plasma。新 pin 的固件与这条兜底还没上设备；
+届时上游修复与兜底会在同一次启动里一起生效，日志分不出各自的作用。
 
 ## Android 侧
 
@@ -459,7 +452,7 @@ extras 的 KWin 带退出 HDR 恢复背光的补丁，内核封存序列里也�
 
 ## 内核在线升级
 
-`dnf upgrade` 现在会带上 `kernel-piano`。事务收尾时，`%posttrans` 重建 initramfs，再用 `systemd-ukify` 重打 ESP 上的 `/EFI/Linux/sunuefi.efi`。旧的 `boot.img` 链在平板上跑过一次真实升级（`7.2.9-1` → `7.2.9-3`）：`%posttrans` 重建了 initramfs，ESP 上的 `Image`、`initramfs` 与 `boot.img` 都换了，`.bak` 三份都在，重启后 `uname -r` 是新的内核，`graphical.target` 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载。UKI 链的替换还没有真机记录。
+`dnf upgrade` 现在会带上 `kernel-piano`。事务收尾时，`%posttrans` 重建 initramfs，再用 `systemd-ukify` 重打 ESP 上的 `/EFI/Linux/sunuefi.efi`。旧的 `boot.img` 链在平板上跑过一次真实升级（`7.2.9-1` → `7.2.9-3`）：`%posttrans` 重建了 initramfs，ESP 上的 `Image`、`initramfs` 与 `boot.img` 都换了，`.bak` 三份都在，重启后 `uname -r` 是新的内核，`graphical.target` 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载。UKI 链只做过手工替换：2026-11-12 把重打的 `/EFI/Linux/sunuefi.efi` 写回 ESP，重启后进入 Plasma。`%posttrans` 这条自动路径还没有在设备上跑过。
 
 写盘失败时，旧 UKI 保持不动，设备继续用旧内核启动。装好但起不来的内核没有自动回滚，回滚方式见 `docs/copr-repository.md`。
 

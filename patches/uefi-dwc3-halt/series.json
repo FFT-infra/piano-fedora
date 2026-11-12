@@ -1,40 +1,16 @@
 {
   "schema_version": 1,
   "target": "sunuefi",
-  "note": "UKI 链上资源交接（owners retire）里的 USB 停止会在主机重新枚举设备时超时，整条启动以 EFI_TIMEOUT 结束。屏幕表现是「未能启动系统 / 系统交接失败」，状态 0x8000000000000012。\n\n失败点是 PianoProductOwnersRetire → PianoUsbControllerServiceStop → PianoDwc3ServiceStop → Halt()：它直接清 DCTL 的 RunStop 位，然后只在 DSTS 上等 DevCtrlHlt 100 ms（10000 次 × 10 µs）。主机若正好在枚举，EP0 上还挂着传输，core 不会进入 halted，于是返回 EFI_TIMEOUT 并 Retain，交接就失败了。同一屏的「系统交接失败」而不是「设置未能保存」「仍有文件或驱动没有关闭」「存储驱动未能安全退出」或「USB 设备仍在使用」，把失败范围限定在 NV、文件系统、UFS 与 host 停止之后的 retire 步骤；逐条核对 retire 内所有 Retain 调用后，能返回 EFI_TIMEOUT 的只有 USB 服务停止这一处（Pogo、Touch 的 Stop 只返回 OK / DEVICE_ERROR / NOT_READY）。\n\n实机证据（2026-11-12，ramoops 取回）：\n  SUNUEFI_USB_SERVICE_CLEANUP stage=begin start_status=Success allocated=9 programmed=1 dctl=80F00000 dsts=0000C858\n  SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=…4BC\n  PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out\nbegin 时链路是未连接（USBLNKST=0），halt 时已经是 Address 状态，说明主机的重新枚举就发生在这一小段时间里；同一台设备更早一次启动还留下 SUNUEFI_USB_EPCMD_TIMEOUT ep=0 cmd=6（SET_ADDRESS 卡住）。\n\n为什么上游没有：上游发版走 boot.img/raw 链，retire 在 StartImage 之前由固件自己完成，那时 USB 链路刚被菜单释放，没有主机在枚举；HEAD 改成 UKI 后，retire 被推到内核调用 ExitBootServices 的时刻，中间隔着 UKI 加载与内核启动，主机有足够时间重连并重新枚举。两版 PianoProductOwners.c、PianoUsbController.c 逐字节相同，差异只在触发时机。\n\n补丁做的事：按 DWC3 databook 4.1.8（设备主动断开前要先给活动传输发 DEPENDXFER）与 Linux dwc3_gadget_soft_disconnect/dwc3_gadget_run_stop 的顺序，先用现有的 StopTransfer() 结束挂起的传输，HS/FS 时临时清 GUSB2PHYCFG 的 SUSPHY/ENBLSLPM 并在停止后恢复，等 DevCtrlHlt 的预算从 100 ms 放宽到 2 s。只改 uefi/core/PianoDwc3Device.c 的 Halt()，不动停止顺序、清理证明与其它 owner。\n\n升级上游时必须重放并复核：targets 是 PianoDwc3Device.c 原文摘要，不匹配就报错。上游自己把 Halt 改成先 end transfer、更长等待或换掉这条链后删掉整个 series，并同步删 patches/README.md 的对应小节与 docs/known-issues.md 的条目；上游改了文件但没修时 rebase 补丁并重算 targets。本组参与 uefi_patch_identities 的哈希，改动会改变 project_source_sha256，已构建的 deploy-bundle 必须重建才能通过 verify_uefi_source。\n\n2026-11-12 真机复测：只套 0001 时仍然失败，日志是 stage=begin dsts=0000CF70、stage=halt status=Time out dsts=0011808B。0x0011808B 里 DevCtrlHlt 与 CoreIdle 都是 0、USBLNKST=4（Address），begin 到 halt 之间没有任何 SUNUEFI_USB_EPCMD，说明没有挂起传输可结束，卡的是 event ring 未确认的事件（Linux 的 dwc3_gadget_soft_disconnect 注释写明要靠中断处理程序边轮询边确认，而我们没有任何东西在 EBS 里泵 service loop）和没回到 setup 阶段的 EP0（Linux 用 dwc3_ep0_reset_state 处理）。0002 在轮询期间就地确认事件、必要时重新 ArmSetup，并打出 SUNUEFI_USB_HALT_ENTRY/RESULT 供下一次失败定位。\n\n2026-11-12 第二次真机复测（只含 0001+0002）：HALT_ENTRY armed=1 phase=0 gevnt=0，HALT_RESULT halted=0 acked=0 loops=2000 gevnt=0 dsts=0011707C。整个 2 秒轮询里 event ring 一直是空的，上一版假设作废；那两条 DMA 完成记录是 StopTransfer 自己回收缓冲区，不是 core 完成命令。0003 把 END 改成带 CMDIOC 并等它真正结束（Command 轮询 CMDACT），清 RunStop 后读回确认并重试，仍不 halt 时按 dwc3_core_soft_reset 做 core soft reset（DCLT CSftRst + 等 DSTS DCNRD）作为已停止证明，日志里以 reset=1 区分。同时把状态行复制两遍，因为 RAM log ring 会丢位。\n\n2026-11-12 离线复核（未刷机）：0003 的兜底判据写反了。Linux 的 dwc3_gadget_set_link_state 把 DSTS.DCNRD 当「控制器未就绪」，等它清零；固件自己的 ServiceReset 也只等 CSftRst 清零。0003 等 DCNRD 置位，复位成功时该位为 0，于是 Halt 仍返回 EFI_TIMEOUT，这一版不需要刷机就能判死。第二条同样离线可证：EP0 有一条 SETUP 尚未 DMA 出去时 core 不处理任何 endpoint 的 End Transfer，而 StopTransfer 已经发 END 并把 TRB 与缓冲还掉，core 从此没有可写的目标。0004 改成保持 RunStop 与 EP0 的 setup TRB，先等 DSTS.RXFIFOEMPTY 最多 100 ms；再结束能结束的传输；仍不 halt 时按 ServiceReset 的顺序唤醒两路 PHY 后做 soft reset，证明改成复位后的 DevCtrlHlt。",
+  "note": "UKI 链上资源交接（owners retire）里的 USB 停止会在主机重新枚举设备时超时，整条启动以 EFI_TIMEOUT 结束。屏幕表现是「未能启动系统 / 系统交接失败」，状态 0x8000000000000012。失败点是 PianoProductOwnersRetire → PianoUsbControllerServiceStop → PianoDwc3ServiceStop → Halt()。\n\n上游已经在 `a139e996` 与 `3ab0085a` 里修了同一处：清 RunStop 前给挂起端点发 END_TRANSFER 并保持 DMA 缓冲映射、等待期间确认事件环、HS/FS 保持接口唤醒；总线复位时保留已挂起的 SETUP 接收，不再结束并重新提交它。这两条覆盖了本仓库 0001-0004 四版补丁的全部机制，四版已在跟进 `4f663563` 时删除。\n\n本组只剩一条兜底。实机日志（2026-11-12）里，2 秒等待结束时 DevCtrlHlt 与 CoreIdle 都是 0、链路停在 Address、Rx FIFO 已空；只有 core soft reset 之后 DevCtrlHlt 才置位，ServiceStop 随之返回 Success（allocated=9 freed=9 retained=0），Linux 才起得来。上游的 Halt() 在等待超时或 END_TRANSFER 命令失败时直接返回 EFI_TIMEOUT，没有复位兜底，所以补丁在上游序列的错误分支上补一段：先按 ServiceReset() 与 Linux dwc3_core_soft_reset() 的顺序唤醒两路 PHY，再做 core soft reset，以复位后的 DevCtrlHlt 作为已停止的证明。不把 DSTS.DCNRD 当成功判据，它表示「控制器未就绪」，Linux 等的是它清零。\n\n升级上游时必须重放并复核：targets 是 PianoDwc3Device.c 原文摘要，不匹配就报错。上游自己补上复位兜底后删掉整个 series，并同步删 patches/README.md 的对应小节与 docs/known-issues.md 的条目；上游改了文件但没修时 rebase 补丁并重算 targets。本组参与 uefi_patch_identities 的哈希，改动会改变 project_source_sha256，已构建的 deploy-bundle 必须重建才能通过 verify_uefi_source。",
   "base": {
-    "sunuefi_commit": "3a7e5c1b799f305a8cf5972d733332a6c55174a1"
+    "sunuefi_commit": "4f6635638d7fb92cfefae6d26923b0008db23ed2"
   },
   "patches": [
     {
-      "file": "0001-end-transfers-before-halt.patch",
-      "summary": "设备主动断开前先结束活动传输，并按 dwc3_gadget_run_stop 唤醒 HS/FS 接口",
+      "file": "0001-halt-soft-reset-fallback.patch",
+      "summary": "上游的等待超时或 END_TRANSFER 失败时，唤醒两路 PHY 后做 core soft reset，以复位后的 DevCtrlHlt 证明控制器已停止",
       "targets": {
-        "uefi/core/PianoDwc3Device.c": "647f0a7f5bc6774869335b4a43f870475a74de2be46fc555b64fcede082cb32b"
-      },
-      "creates": []
-    },
-    {
-      "file": "0002-drain-events-before-halt.patch",
-      "summary": "停止前确认 event ring、把 EP0 拉回 setup 阶段，并记录 halt 的最终状态",
-      "targets": {
-        "uefi/core/PianoDwc3Device.c": "f8f3c8b77c94327bb14e534385d84a5e8e6aa0e84f8f3ac29d3255668ba43603"
-      },
-      "creates": []
-    },
-    {
-      "file": "0003-confirm-end-transfer.patch",
-      "summary": "END 用 CMDIOC 并核对 RunStop 读回，仍不 halt 时退回 core soft reset 证明已停止",
-      "targets": {
-        "uefi/core/PianoDwc3Device.c": "53c3c73437b7e907106e2d58fc22861754d0cc2a2ab8342cfcf1b9cadfec2c2e"
-      },
-      "creates": []
-    },
-    {
-      "file": "0004-prove-halt-after-reset.patch",
-      "summary": "先排空 Rx FIFO 再停 RunStop，soft reset 的证明改成复位后的 DevCtrlHlt",
-      "targets": {
-        "uefi/core/PianoDwc3Device.c": "acbc26e45cf69fa9d566fd80f242c64d9108bdb2d52e1aba645f139afb4faebe"
+        "uefi/core/PianoDwc3Device.c": "82c61d541fbe752ebd4a5981c44bca28b594495ae5dd384cfc8251d2beddaac4"
       },
       "creates": []
     }

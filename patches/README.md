@@ -149,60 +149,35 @@ SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=...
 PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out
 ```
 
-`PianoDwc3Device.c` 的 `Halt()` 直接清 `DCTL` 的 RunStop 位，然后只在 `DSTS`
-上等 `DevCtrlHlt` 100 ms。上游碰不到，是因为它走 raw/boot.img 链，retire 在
-`StartImage` 之前完成，那时链路刚被菜单释放、没有主机在枚举。两版
-`PianoProductOwners.c` 与 `PianoUsbController.c` 逐字节相同，差别只在 retire
-的时机。
+停 USB 在 `ExitBootServices` 的固件钩子里执行，主机这时已经在重新枚举设备，
+链路停在 Address（`USBLNKST=4`）。清 RunStop 之后 `DevCtrlHlt` 与 `CoreIdle`
+都不置位，2 秒等待走完仍然如此。本仓库先后改过四版：结束挂起传输、轮询时确认
+event ring、END_TRANSFER 带 CMDIOC、先等 Rx FIFO 空再清 RunStop，都没有让
+core 停下来。
 
-2026-11-12 真机复测只套第一版补丁时仍然失败，日志换成：
+### 上游已修
 
-```
-SUNUEFI_USB_SERVICE_CLEANUP stage=begin start_status=Success allocated=9 programmed=1 dctl=80F00000 dsts=0000CF70
-SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=0011808B
-```
-
-`0x0011808B` 里 `DevCtrlHlt` 与 `CoreIdle` 都是 0，`USBLNKST=4`（Address）。
-`begin` 时链路还没连上，`begin` 到 `halt` 之间一条 `SUNUEFI_USB_EPCMD` 都没有，
-说明当时没有挂起传输，DEPENDXFER 无从发起。真正卡住 core 的是 event ring 里
-未确认的事件：Linux 的 `dwc3_gadget_soft_disconnect()` 注释写明控制器要等事件
-被确认才会 halt，靠中断处理程序在轮询期间完成；固件在 EBS 里空转 `gBS->Stall`，
-service pump 不跑，没人确认。EP0 停在 setup 阶段之外也有同样效果，Linux 用
-`dwc3_ep0_reset_state()` 把它拉回去再停。
+`a139e996` 与 `3ab0085a` 修的是同一处。清 RunStop 前给每个挂起端点发
+END_TRANSFER，DMA 缓冲保持映射，直到 `DevCtrlHlt` 确认为止；等待期间确认事件
+环；HS/FS 下临时清 `GUSB2PHYCFG` 的 SUSPHY/ENBLSLPM。总线复位时，EP0 停在
+SETUP 阶段的接收不再结束重提，按 `dwc3_ep0_reset_state()` 保持挂起，其他控制
+阶段停传后回到 SETUP。跟进 `4f663563` 时四版补丁整组删除。
 
 ### 补丁改动
 
-`0001` 改 `Halt()`：先用现有的 `StopTransfer()` 结束每个挂起传输；HS/FS 时临时清
-`GUSB2PHYCFG` 的 SUSPHY/ENBLSLPM 并在停止后恢复，与 `dwc3_gadget_run_stop()`
-一致；等待预算从 100 ms 放宽到 2 s。
-
-`0002` 补两步：轮询期间就地确认 event ring；EP0 不在 setup 阶段时重新 `ArmSetup()`。
-
-第二次真机复测（`0001`+`0002`）仍超时，日志是 `armed=1`、`gevnt=0`、`acked=0`、
-`loops=2000`、`dsts=0011707C`：event ring 全程为空，`0002` 的假设不成立；中间那两条
-DMA 完成记录是 `StopTransfer()` 回收自己的缓冲区，不是 core 完成命令。
-
-`0003` 因此改三处：END 命令带 CMDIOC 并等它真正结束（`Command()` 轮询 CMDACT）；
-清 RunStop 后读回确认，没清掉就重试；仍不 halt 时按 `dwc3_core_soft_reset()` 做
-core soft reset，日志里以 `reset=1` 与正常的 `halted=1` 区分。状态行同时复制两遍，
-因为 RAM log ring 会丢位。
-
-`0003` 的兜底判据写反了，这一版不用刷机就能判死。它等 `DSTS.DCNRD` 置位，
-而 Linux 的 `dwc3_gadget_set_link_state()` 与固件自己的 `ServiceReset()` 都把这个位
-当「控制器未就绪」，等它清零；复位成功时它是 0，`Halt()` 于是仍返回 `EFI_TIMEOUT`。
-同一次复核还发现，EP0 有一条 SETUP 尚未 DMA 出去时 core 不处理任何 endpoint 的
-End Transfer，而 `StopTransfer()` 已经把 TRB 与缓冲还掉，core 没有可写的目标。
-
-`0004` 重排停止顺序：保持 RunStop 与 EP0 的 setup TRB，先等 `DSTS.RXFIFOEMPTY`
-最多 100 ms，让交接期间到达的 SETUP 离开 FIFO；之后才结束能结束的传输（EP0 只在
-非 setup 阶段发 END）；仍不 halt 时按 `ServiceReset()` 的顺序唤醒两路 PHY 再做
-soft reset，成功判据改成复位后的 `DevCtrlHlt`。状态行补 `hlt/idle/rxf/link/spd`
-解码与 EP0 的 TRB。
+`0001-halt-soft-reset-fallback.patch` 只补上游 `Halt()` 的错误分支。上游在等待
+超时或 END_TRANSFER 命令失败时直接返回 `EFI_TIMEOUT`，没有复位兜底。补丁先按
+`ServiceReset()` 与 Linux `dwc3_core_soft_reset()` 的顺序唤醒两路 PHY，再做
+core soft reset，以复位后的 `DevCtrlHlt` 作为已停止的证明。成功判据不看
+`DSTS.DCNRD`，它表示「控制器未就绪」，Linux 等的是它清零。
 
 ### 验证与退役
 
-离线检查只证明补丁能套。刷机后要看 `stage=halt` 是否变成 `status=Success`、
-能否进入 Linux；如果还失败，看 `SUNUEFI_USB_HALT_STATE` 的 `tag=drained` 那行的
-`rxf` 是否到 1、`dsts` 与 `link`，以及 `SUNUEFI_USB_HALT_RESULT` 的
-`halted`/`reset`/`drained`/`attempts` 和 `SUNUEFI_USB_HALT_EP0` 的 TRB 状态。
-上游自己修正 halt 顺序后整组删掉，并同步删掉 `docs/known-issues.md` 里对应条目。
+2026-11-12 的实机日志（旧 pin 上的第四版）显示，2 秒等待结束时 `hlt=0 idle=0`、
+`link=4`、`rxf=0`，soft reset 之后变成 `hlt=1 idle=1 rxf=1`，随后
+`stage=halt status=Success`、`allocated=9 freed=9 retained=0`，Linux 起进 Plasma。
+新 pin 上的这条兜底只过了离线检查，没有真机验证。上游的两条修复与兜底会在同一
+次启动里一起生效，日志分不出各自的作用。
+
+上游自己补上复位兜底后删掉整个 series，并同步删掉 `docs/known-issues.md` 里
+对应条目。

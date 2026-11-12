@@ -49,6 +49,14 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 3. 改 pin 之前核对所有消费路径、构建容器和依赖。重新生成受影响的内核、运行时、root 文件系统、initramfs、ESP 和 BOOT。清单同步更新。
 4. 下载并核对实际产物，更新部署入口。构建、文件验证和实机行为分别记账。不能继承上游另一台设备的结果。
 
+### 2026-11-12（续）
+
+`sunuefi` `3a7e5c1b` → `4f663563`，`crosvm` `1eb6337c` → `75f930e9`，`piano-integration` 不动。SunUEFI 的 10 个提交里，`a139e996` 与 `3ab0085a` 修 DWC3 停止，其余是构建、GDM 等待 KMS 显示接口、Wayland 开发包与 CI 缓存权限。内核封存序列、`config/release.json`、`tools/package_release.py`、`tools/build_piano_full_kernel.py` 在这批提交里没有变化。crosvm 只有一条 dev-container 依赖滚动。
+
+`patches/uefi-dwc3-halt/` 的四版补丁删除，只剩 `0001-halt-soft-reset-fallback.patch`：上游 `Halt()` 在等待超时或 END_TRANSFER 失败时直接返回 `EFI_TIMEOUT`，补丁在这条错误分支上补 core soft reset，以复位后的 `DevCtrlHlt` 作成功判据。`patches/uefi-ebs-identity/` 的目标摘要随 `PianoProductCore.c` 的上游改动重算。
+
+已核：`scripts/apply-patches.py --check` 在新 pin 上给出 `CHECKED`。未核：新固件的编译、刷机与实机启动，这条兜底只过了离线检查。
+
 ### 2026-11-12
 
 三个 pin 推进：`sunuefi` `c720568` → `3a7e5c1b`，`crosvm` → `1eb6337c`，`piano-integration` → `d9178221`。后两个只动 recipe、tools、打包与文档，`device/`、`kernel/`、`initramfs/` 没有变化，按纯 pin 前进处理。
