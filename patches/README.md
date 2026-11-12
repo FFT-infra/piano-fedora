@@ -176,14 +176,21 @@ service pump 不跑，没人确认。EP0 停在 setup 阶段之外也有同样�
 `GUSB2PHYCFG` 的 SUSPHY/ENBLSLPM 并在停止后恢复，与 `dwc3_gadget_run_stop()`
 一致；等待预算从 100 ms 放宽到 2 s。
 
-`0002` 补上真机缺的两步：轮询期间就地确认 event ring；EP0 不在 setup 阶段时
-重新 `ArmSetup()`。同时打印 `SUNUEFI_USB_HALT_ENTRY` 与 `SUNUEFI_USB_HALT_RESULT`
-（挂起端点、已确认事件数、循环次数、最终 `DSTS`），下一次失败可以直接从设备
-日志读出卡在哪一步。停止顺序、清理证明与其它 owner 都没动。
+`0002` 补两步：轮询期间就地确认 event ring；EP0 不在 setup 阶段时重新 `ArmSetup()`。
+
+第二次真机复测（`0001`+`0002`）仍超时，日志是 `armed=1`、`gevnt=0`、`acked=0`、
+`loops=2000`、`dsts=0011707C`：event ring 全程为空，`0002` 的假设不成立；中间那两条
+DMA 完成记录是 `StopTransfer()` 回收自己的缓冲区，不是 core 完成命令。
+
+`0003` 因此改三处：END 命令带 CMDIOC 并等它真正结束（`Command()` 轮询 CMDACT）；
+清 RunStop 后读回确认，没清掉就重试；仍不 halt 时按 `dwc3_core_soft_reset()` 做
+core soft reset（DCTL CSftRst + 等 DSTS DCNRD），作为「core 已不再取 DMA」的证明，
+日志里以 `reset=1` 与正常的 `halted=1` 区分。状态行同时复制两遍，因为 RAM log ring
+会丢位。
 
 ### 验证与退役
 
 离线检查只证明补丁能套。刷机后要看 `stage=halt` 是否变成 `status=Success`、
-能否进入 Linux；如果还失败，看 `SUNUEFI_USB_HALT_ENTRY/RESULT` 的 `armed`、
-`acked` 与 `dsts`。上游自己修正 halt 顺序后整组删掉，并同步删掉
-`docs/known-issues.md` 里对应条目。
+能否进入 Linux；如果还失败，看 `SUNUEFI_USB_HALT_STATE` 的 `dctl`/`dsts`/`gctl` 与
+`SUNUEFI_USB_HALT_RESULT` 的 `halted`/`reset`/`attempts`。上游自己修正 halt 顺序后
+整组删掉，并同步删掉 `docs/known-issues.md` 里对应条目。
