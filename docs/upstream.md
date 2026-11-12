@@ -49,6 +49,12 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 3. 改 pin 之前核对所有消费路径、构建容器和依赖。重新生成受影响的内核、运行时、root 文件系统、initramfs、ESP 和 BOOT。清单同步更新。
 4. 下载并核对实际产物，更新部署入口。构建、文件验证和实机行为分别记账。不能继承上游另一台设备的结果。
 
+### 2026-11-13
+
+`vendor-kernel` 的上游删掉了 `seventeen` 分支，默认分支改为 `6.6`。pin 从 `ed494167` 移到 `6.6` 的 `0d7cc8a`，比原来多 6 个提交：Focus Pen 的 HID 上报、nt36532 笔设备去掉 `ABS_BRAKE`、`qcom_reboot_reason` 的越界修复、cnss2 加载 piano 板级文件，以及一次 android15-6.6 合并。这些提交没有改 `arch/arm64/boot/dts/`，重跑的 `compare-vendor-dt.py` 结果不变：23 个 overlay、75 个目标，`missing_in_vendor_unexplained` 为 0。`vendor-blobs` 分支未变，仍在 `seventeen` 的 `c1e5a318`。
+
+同时核对了其余 15 个锁定源，pin 都是远端当前 HEAD。
+
 ### 2026-11-12（续）
 
 `sunuefi` `3a7e5c1b` → `4f663563`，`crosvm` `1eb6337c` → `75f930e9`，`piano-integration` 不动。SunUEFI 的 10 个提交里，`a139e996` 与 `3ab0085a` 修 DWC3 停止，其余是构建、GDM 等待 KMS 显示接口、Wayland 开发包与 CI 缓存权限。内核封存序列、`config/release.json`、`tools/package_release.py`、`tools/build_piano_full_kernel.py` 在这批提交里没有变化。crosvm 只有一条 dev-container 依赖滚动。

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-11-12",
+  "checked_date": "2026-11-13",
   "note": "只列构建链实际读取的上游；研究与后端参考单独记录在 docs/upstreams.json。vendor-kernel 与 vendor-blobs 只被对照任务读取，不进任何出货产物。",
   "sources": {
     "dtc": {
@@ -24,8 +24,8 @@
     },
     "vendor-kernel": {
       "url": "https://github.com/xiaomi-pad-8-pro-development/android_kernel_xiaomi_piano.git",
-      "ref": "seventeen",
-      "commit": "ed494167a93f36b98a7a8db7e4106cd9f8d2bb12",
+      "ref": "6.6",
+      "commit": "0d7cc8a05dbadf647c69ec8e4fe80c85c03fc259",
       "role": "厂商 Android 下游内核的 DTS 源码，作为 overlay 的审阅基准。不进任何出货产物，只被 scripts/compare-vendor-dt.py 读取"
     },
     "vendor-blobs": {

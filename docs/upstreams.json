@@ -168,14 +168,14 @@
     },
     {
       "repo": "xiaomi-pad-8-pro-development/android_kernel_xiaomi_piano",
-      "ref": "seventeen",
+      "ref": "6.6",
       "category": "内核",
       "role": "厂商 Android 下游内核的 DTS 源码（808 个 .dts/.dtsi）",
       "decision": "consume",
       "lock_key": "vendor-kernel",
       "reason": "只作 overlay 与 DT 谱系的审阅基准：scripts/compare-vendor-dt.py 编译 sun.dts 与 piano-sm8750-overlay.dts，逐条核对 SunUEFI overlay 的目标节点。不进任何出货产物，任何出货路径引用它都视为违规",
-      "reference_commit": "ed494167a93f36b98a7a8db7e4106cd9f8d2bb12",
-      "reference_date": "2026-11-08"
+      "reference_commit": "0d7cc8a05dbadf647c69ec8e4fe80c85c03fc259",
+      "reference_date": "2026-11-13"
     },
     {
       "repo": "xiaomi-pad-8-pro-development/android_vendor_xiaomi_piano",
