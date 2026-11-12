@@ -276,10 +276,17 @@ PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out
 `ArmSetup()`；复测日志显示 `armed=1`、`gevnt=0`、`acked=0`、`loops=2000`，
 event ring 全程为空，`DevCtrlHlt` 仍未置位，说明卡点既不是挂起传输也不是未确认
 事件。第三版把 END 命令改成带 CMDIOC 并等它结束，清 RunStop 后读回确认并重试；
-仍不 halt 时按 `dwc3_core_soft_reset()` 做 core soft reset（DCTL CSftRst + 等
-`DSTS.DCNRD`），作为已停止的证明，日志里以 `reset=1` 标出。第三版同样只通过了
-离线补丁检查，等真机验证。旧的 raw/boot.img 链在 `StartImage` 前完成交接，碰不到
-这个时机。
+仍不 halt 时按 `dwc3_core_soft_reset()` 做 core soft reset，日志里以 `reset=1` 标出。
+
+第三版没有刷机就判死了：它等 `DSTS.DCNRD` 置位当成功判据，但 Linux 把这个位当
+「控制器未就绪」，等它清零，固件自己的 `ServiceReset()` 也只等 `CSftRst` 清零，
+复位成功时 DCNRD 是 0。同一次复核还发现 EP0 的 SETUP 尚未 DMA 出去时 core 不处理
+End Transfer，而停传输的代码已经把 TRB 与缓冲还掉了。
+
+第四版因此先保持 RunStop 与 EP0 的 setup TRB、等 `DSTS.RXFIFOEMPTY` 最多 100 ms，
+再结束能结束的传输，最后才清 RunStop；仍不 halt 时唤醒两路 PHY 后做 soft reset，
+成功判据改成复位后的 `DevCtrlHlt`。第四版只通过了离线补丁检查，等真机验证。旧的
+raw/boot.img 链在 `StartImage` 前完成交接，碰不到这个时机。
 
 ## Android 侧
 

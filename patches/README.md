@@ -184,13 +184,25 @@ DMA 完成记录是 `StopTransfer()` 回收自己的缓冲区，不是 core 完�
 
 `0003` 因此改三处：END 命令带 CMDIOC 并等它真正结束（`Command()` 轮询 CMDACT）；
 清 RunStop 后读回确认，没清掉就重试；仍不 halt 时按 `dwc3_core_soft_reset()` 做
-core soft reset（DCTL CSftRst + 等 DSTS DCNRD），作为「core 已不再取 DMA」的证明，
-日志里以 `reset=1` 与正常的 `halted=1` 区分。状态行同时复制两遍，因为 RAM log ring
-会丢位。
+core soft reset，日志里以 `reset=1` 与正常的 `halted=1` 区分。状态行同时复制两遍，
+因为 RAM log ring 会丢位。
+
+`0003` 的兜底判据写反了，这一版不用刷机就能判死。它等 `DSTS.DCNRD` 置位，
+而 Linux 的 `dwc3_gadget_set_link_state()` 与固件自己的 `ServiceReset()` 都把这个位
+当「控制器未就绪」，等它清零；复位成功时它是 0，`Halt()` 于是仍返回 `EFI_TIMEOUT`。
+同一次复核还发现，EP0 有一条 SETUP 尚未 DMA 出去时 core 不处理任何 endpoint 的
+End Transfer，而 `StopTransfer()` 已经把 TRB 与缓冲还掉，core 没有可写的目标。
+
+`0004` 重排停止顺序：保持 RunStop 与 EP0 的 setup TRB，先等 `DSTS.RXFIFOEMPTY`
+最多 100 ms，让交接期间到达的 SETUP 离开 FIFO；之后才结束能结束的传输（EP0 只在
+非 setup 阶段发 END）；仍不 halt 时按 `ServiceReset()` 的顺序唤醒两路 PHY 再做
+soft reset，成功判据改成复位后的 `DevCtrlHlt`。状态行补 `hlt/idle/rxf/link/spd`
+解码与 EP0 的 TRB。
 
 ### 验证与退役
 
 离线检查只证明补丁能套。刷机后要看 `stage=halt` 是否变成 `status=Success`、
-能否进入 Linux；如果还失败，看 `SUNUEFI_USB_HALT_STATE` 的 `dctl`/`dsts`/`gctl` 与
-`SUNUEFI_USB_HALT_RESULT` 的 `halted`/`reset`/`attempts`。上游自己修正 halt 顺序后
-整组删掉，并同步删掉 `docs/known-issues.md` 里对应条目。
+能否进入 Linux；如果还失败，看 `SUNUEFI_USB_HALT_STATE` 的 `tag=drained` 那行的
+`rxf` 是否到 1、`dsts` 与 `link`，以及 `SUNUEFI_USB_HALT_RESULT` 的
+`halted`/`reset`/`drained`/`attempts` 和 `SUNUEFI_USB_HALT_EP0` 的 TRB 状态。
+上游自己修正 halt 顺序后整组删掉，并同步删掉 `docs/known-issues.md` 里对应条目。
