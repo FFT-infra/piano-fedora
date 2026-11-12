@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""首次安装 Fedora/F2FS：默认只读计划，显式执行才允许清空 userdata。"""
+"""首次安装 Fedora/F2FS：默认只读计划；默认路径清空 userdata，无损路径保留。"""
 
 import argparse
 import base64
@@ -73,24 +73,26 @@ def load_planner():
     return module
 
 
-def partition_plan(gpt, android_data_mib=None, esp_mib=None):
+def partition_plan(gpt, android_data_mib=None, esp_mib=None, f2fs_section_bytes=None):
     disk = {"sectors": gpt.disk_bytes // BLOCK, "logical_sector": BLOCK, "physical_sector": BLOCK,
             "entry_count": gpt.geometry["count"], "first_usable": gpt.geometry["first"],
             "last_usable": gpt.geometry["last"], "guid": gpt.geometry["disk_guid"]}
     rows = [{"number": row["index"] + 1, "first": row["first"], "last": row["last"],
              "name": row["name"], "code": row["type"], "size_text": str(row["bytes"])} for row in gpt.partitions]
     return load_planner().build_plan(disk, rows, DEFAULT_ESP_MIB if esp_mib is None else esp_mib,
-                                     userdata_mib=android_data_mib)
+                                     userdata_mib=android_data_mib,
+                                     f2fs_section_bytes=f2fs_section_bytes)
 
 
-def new_gpt(upstream, complete, plan, mbr, android_data_mib=None, esp_mib=None):
+def new_gpt(upstream, complete, plan, mbr, android_data_mib=None, esp_mib=None,
+            f2fs_section_bytes=None):
     """按计划生成新表，并给出四段可直接 dd 的字节。
 
     头部落 LBA 0，尾部从备份分区表开始，覆盖到磁盘最后一个扇区。返回的
     第 1、2 段是新表，第 3、4 段是分区前从设备读到的原表；写入失败时按
     相反顺序写回的就是后两段。
     """
-    require(partition_plan(complete, android_data_mib, esp_mib) == plan,
+    require(partition_plan(complete, android_data_mib, esp_mib, f2fs_section_bytes) == plan,
             "partition plan differs from the actual complete GPT")
     require(len(mbr) == BLOCK and mbr[510:512] == b"\x55\xaa", "protective MBR missing")
     head, tail, original_head, original_tail = gpt_entry.rewrite(complete, plan, mbr)
@@ -157,8 +159,28 @@ def root_transport(bundle, root_install, generic, root, image):
     return transport, {**bundled, **decoded}
 
 
+def read_f2fs_section(device):
+    """读出已挂载 userdata 的明文 F2FS section 字节数。
+
+    宿主机读不到加密 /data 的超级块：`/dev/block/by-name/userdata` 是密文。
+    只有 Android 上 vold 建立的解密映射能读到 F2FS 超级块，所以这一步必须
+    经设备执行。上游 `piano-resize-f2fs status` 输出的 `section_bytes` 就是
+    这里要的值，它同时核对了映射是整段、零偏移、只有 userdata 一个后端。
+    """
+    raw = device.shell("piano-resize-f2fs status 2>/dev/null || "
+                       "/data/adb/modules/piano_sunuefi/bin/piano-resize-f2fs status 2>/dev/null")
+    text = raw.decode(errors="replace")
+    match = re.search(r'"section_bytes":\s*(\d+)', text)
+    require(match is not None,
+            "cannot read the plaintext F2FS section size on the device; "
+            "install the matching SunUEFI Android module first")
+    section = int(match.group(1))
+    require(section > 0 and section % BLOCK == 0, "device reported an unusable F2FS section size")
+    return section
+
+
 def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, existing=False,
-                      android_data_mib=None, esp_mib=None):
+                      android_data_mib=None, esp_mib=None, lossless=False):
     # 没有预扩产物时把 bundle 自己当作 root 来源：它自带与封存镜像相同的 sparse。
     root_install = root_install or bundle
     require(not any((p / ".incomplete").exists() for p in (bundle, root_install, boot)), "incomplete input package")
@@ -168,10 +190,12 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     if existing:
         require(android_data_mib is None, "--android-data-mib only applies to a first install")
         require(esp_mib is None, "--esp-mib only applies to a first install")
+        require(not lossless, "--lossless only applies to a first install")
         layout = upstream.plan_gpt(snapshot["gpt"])
         require(layout["mode"] == "update", "existing root and ESP partitions are required")
     else:
-        layout = partition_plan(snapshot["gpt"], android_data_mib, esp_mib)
+        section = read_f2fs_section(device) if lossless else None
+        layout = partition_plan(snapshot["gpt"], android_data_mib, esp_mib, section)
     slot = device.text("getprop ro.boot.slot_suffix")
     require_install_slot(slot, existing)
     prepared_manifest = root_install / "root-install-manifest.json"
@@ -255,7 +279,8 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
     require(stock_boot.is_file() and not stock_boot.is_symlink() and stock_boot.stat().st_size == 96 * 1024**2
             and sha256(stock_boot) == current_boot, "current original BOOT recovery file is missing or differs")
     # 擦除后 Android 必须能通过自己的 fs_mgr 重建加密 userdata；不在宿主格式化密文分区。
-    if not existing:
+    # 无损路径不擦除，走的是相反方向：文件系统先缩，分区后缩，Android 正常挂载。
+    if not existing and not lossless:
         fstab = device.text("cat /vendor/etc/fstab.*")
         rows = [line for line in fstab.splitlines() if re.search(r"\s/data\s", line) and not line.lstrip().startswith("#")]
         require(rows and all("formattable" in line.split()[-1].split(",") for line in rows),
@@ -273,7 +298,7 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
             "inputs": {"bundle_manifest_sha256": sha256(bundle / "bundle-manifest.json"),
                        "root_manifest_sha256": sha256(prepared_manifest) if prepared_manifest.is_file() else None,
                        "boot_manifest_sha256": sha256(boot / "device-boot-manifest.json")},
-            "android_data_preserved": existing, "root_capacity": capacity,
+            "android_data_preserved": existing or lossless, "lossless": lossless, "root_capacity": capacity,
             "memory_contract": memory,
             "boot_request": {"device": "/dev/disk/by-partlabel/boot" + slot,
                              "source": "read-only Qualcomm GPT A/B attributes"},
@@ -425,15 +450,36 @@ def factory(device, identity, slot):
         require(device.fastboot_var(serial, key) == expected, "factory bootloader identity differs: " + key)
 
 
+def shrink_userdata(device, plan):
+    """在设备上把已挂载的 F2FS 缩到新分区容量，返回工具的 JSON 输出。
+
+    这一步必须在 GPT 写入之前完成，而且要和写表在同一次开机里。缩容后分区
+    比文件系统大，是安全状态；反过来会读出越界。工具的 `--target-bytes` 收的
+    是新的 userdata 分区容量，它自己再减一个 section 下发内核。
+    """
+    shrink = plan["partition_plan"].get("f2fs_shrink")
+    require(shrink is not None, "this plan has no F2FS shrink target")
+    tool = ("piano-resize-f2fs" if device.text("command -v piano-resize-f2fs") else
+            "/data/adb/modules/piano_sunuefi/bin/piano-resize-f2fs")
+    require(device.text("test -x " + shlex.quote(tool) + " && echo yes") == "yes",
+            "the device has no piano-resize-f2fs; install the matching SunUEFI Android module")
+    output = device.shell(f"{tool} shrink --target-bytes {shrink['userdata_bytes']} --execute").decode(errors="replace")
+    require('"ioctl_success":true' in output, "F2FS shrink did not report success: " + output[-800:])
+    return {"tool": tool, "output": output.strip(), "target_bytes": shrink["userdata_bytes"]}
+
+
 def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, session, ssh_key=None,
-            android_data_mib=None, esp_mib=None):
+            android_data_mib=None, esp_mib=None, lossless=False):
     root_install = root_install or bundle
     require(plan.get("android_data_mib") == android_data_mib,
             "apply repeats the plan's Android userdata size (or both are the equal split)")
     require(plan.get("esp_mib") == esp_mib,
             "apply repeats the plan's ESP size (or both use the built-in default)")
+    require(plan.get("lossless") is lossless,
+            "--lossless must match the reviewed plan")
     fresh, snapshot = installation_plan(upstream, device, bundle, root_install, boot, stock_boot,
-                                        android_data_mib=android_data_mib, esp_mib=esp_mib)
+                                        android_data_mib=android_data_mib, esp_mib=esp_mib,
+                                        lossless=lossless)
     require(fresh == plan, "device, GPT, slot or input package changed since the reviewed plan")
     # A bad key or a missing mcopy must fail before the GPT write and the
     # userdata erase, not halfway through the transfer.
@@ -444,8 +490,10 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
     session.mkdir(mode=0o700, parents=True)
     identity, slot = plan["device"], plan["android_slot"]
     original_mbr = device.read(identity["disk"], 0, 1)
+    section = plan["partition_plan"]["f2fs_shrink"]["section_bytes"] if lossless else None
     expected_gpt, new_head, new_tail, old_head, old_tail = new_gpt(
-        upstream, snapshot["gpt"], plan["partition_plan"], original_mbr, android_data_mib, esp_mib)
+        upstream, snapshot["gpt"], plan["partition_plan"], original_mbr, android_data_mib, esp_mib,
+        section)
     for name, data in (("original-gpt-head.bin", old_head), ("original-gpt-tail.bin", old_tail),
                        ("gpt-head.bin", new_head), ("gpt-tail.bin", new_tail)):
         (session / name).write_bytes(data)
@@ -455,7 +503,8 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
     sync_dir(session)
     save(session / "plan.json", plan)
     journal = {"status": "PREPARED_NOT_WRITTEN", "completed": [], "device_writes": False,
-               "original_boot_sha256": plan["source_boot_sha256"], "android_data_preserved": False,
+               "original_boot_sha256": plan["source_boot_sha256"],
+               "android_data_preserved": False, "lossless": lossless,
                "ssh_key_injected": False}
 
     def stage(name):
@@ -473,8 +522,17 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
         require(latest["identity"] == identity and latest["gpt"].baseline() == plan["gpt_baseline"], "GPT changed immediately before writing")
         require(device.text("sha256sum /dev/block/by-name/boot" + slot).split()[0] == plan["source_boot_sha256"],
                 "original BOOT changed immediately before partitioning")
+        # 无损路径与擦除路径的顺序相反：先把文件系统缩到新容量，再写表。
+        # 中间失败时分区仍比文件系统大，Android 照常挂载，只是暂时少了空间。
+        if lossless:
+            journal["status"] = "USERDATA_SHRINK_STARTED"
+            save(session / "result.json", journal)
+            journal["f2fs_shrink"] = shrink_userdata(device, plan)
+            journal["android_data_preserved"] = True
+            stage("f2fs_shrunk_before_gpt_write")
         # GPT 缩短 userdata 后，现有加密 /data 不再可信。必须在同一会话里
         # 显式擦除 userdata，让 Android 首次启动走 factory-reset 初始化。
+        # 无损路径已在上一步把文件系统缩到新容量，这里不擦除。
         journal["device_writes"] = True
         journal["status"] = "GPT_WRITE_STARTED"
         save(session / "result.json", journal)
@@ -499,9 +557,15 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
             if row["name"] in ("userdata", "sunuefi_root", "sunuefi_esp"):
                 require(int(device.fastboot_var(identity["factory_serial"], "partition-size:" + row["name"]), 16) == row["bytes"],
                         "bootloader did not load the new partition capacity")
-        device.call(["fastboot", "-s", identity["factory_serial"], "erase", "userdata"], timeout=1800)
-        journal.update(userdata_erased=True, status="USERDATA_ERASED_IMAGES_PENDING")
-        stage("factory_fastboot_erased_userdata")
+        if lossless:
+            # 无损路径不擦除。文件系统已经缩到新分区容量，Android 首次开机
+            # 走原厂文件系统检查后正常挂载，用户数据保留。
+            journal.update(userdata_erased=False, status="IMAGES_PENDING_DATA_PRESERVED")
+            stage("factory_fastboot_kept_userdata")
+        else:
+            device.call(["fastboot", "-s", identity["factory_serial"], "erase", "userdata"], timeout=1800)
+            journal.update(userdata_erased=True, status="USERDATA_ERASED_IMAGES_PENDING")
+            stage("factory_fastboot_erased_userdata")
         generic = json.loads((bundle / "bundle-manifest.json").read_text())
         image = json.loads((bundle / "root-image-manifest.json").read_text())
         root = json.loads((root_install / "root-install-manifest.json").read_text()) \
@@ -536,9 +600,12 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
         journal.update(status="IMAGES_TRANSFERRED_FIRST_BOOT_PENDING",
                        android_userdata_initialized=False, linux_boot_verified=False,
                        android_boot_verified=False, device_readback_verified=False,
-                       remaining=["first Android boot to initialize erased userdata",
-                                  "first Linux boot and filesystem readback",
-                                  "both-way switching"])
+                       remaining=(["first Android boot on the shrunk partition with data intact",
+                                   "first Linux boot and filesystem readback",
+                                   "both-way switching"] if lossless else
+                                  ["first Android boot to initialize erased userdata",
+                                   "first Linux boot and filesystem readback",
+                                   "both-way switching"]))
         save(session / "result.json", journal)
         return journal
     except BaseException as error:
@@ -546,7 +613,11 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
                        recovery_gpt_head=str(session / "original-gpt-head.bin"),
                        recovery_gpt_tail=str(session / "original-gpt-tail.bin"),
                        recovery_boot=str(session / "original-boot.img"),
-                       recovery_note="GPT restore cannot recover erased Android data; inspect completed stages before recovery or reboot")
+                       recovery_note=("A shrunk F2FS with the old, larger partition is safe to boot; "
+                                      "restore the GPT only after checking the shrink result. Never retry "
+                                      "the shrink or the GPT write automatically"
+                                      if lossless else
+                                      "GPT restore cannot recover erased Android data; inspect completed stages before recovery or reboot"))
         save(session / "result.json", journal)
         raise
 
@@ -571,8 +642,14 @@ def main():
                          "injected into the ESP after every manifest check passes")
     ap.add_argument("--session", type=Path)
     ap.add_argument("--execute", action="store_true")
-    ap.add_argument("--accept-data-loss", action="store_true")
+    ap.add_argument("--accept-data-loss", action="store_true",
+                    help="首次分区会清空 Android userdata；与 --lossless 二选一")
+    ap.add_argument("--lossless", action="store_true",
+                    help="首次分区保留 Android userdata：先在设备上在线缩容 F2FS，再写分区表。"
+                         "需要设备已装匹配的 SunUEFI Android 模块")
     args = ap.parse_args()
+    require(not (args.accept_data_loss and args.lossless),
+            "--accept-data-loss and --lossless are mutually exclusive")
     # Validate the key before any device access, so a bad file never reaches
     # the destructive apply path.
     if args.ssh_key is not None:
@@ -582,15 +659,17 @@ def main():
     if args.operation == "plan":
         result, _ = installation_plan(upstream, device, args.bundle, args.root_install or args.bundle,
                                       args.device_boot, args.stock_boot,
-                                      android_data_mib=args.android_data_mib, esp_mib=args.esp_mib)
+                                      android_data_mib=args.android_data_mib, esp_mib=args.esp_mib,
+                                      lossless=args.lossless)
         require(not args.plan.exists(), "plan output already exists")
         save(args.plan, result)
     else:
-        require(args.execute and args.accept_data_loss and args.session,
-                "apply requires --execute --accept-data-loss and a new --session directory")
+        require(args.execute and (args.accept_data_loss or args.lossless) and args.session,
+                "apply requires --execute, a new --session directory and either "
+                "--accept-data-loss or --lossless")
         result = execute(upstream, device, json.loads(args.plan.read_text()), args.bundle,
                          args.root_install, args.device_boot, args.stock_boot, args.session, args.ssh_key,
-                         args.android_data_mib, args.esp_mib)
+                         args.android_data_mib, args.esp_mib, args.lossless)
     print(json.dumps(result, indent=2))
 
 

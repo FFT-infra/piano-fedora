@@ -336,6 +336,16 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 `Xiaomi Focus Pen Pro Mouse/Keyboard`。蓝牙键盘/鼠标节点上的按键、捏握、
 防误触、绘图应用效果、充电与重连仍需分别验证。
 
+## 无损首装
+
+`install-f2fs.py` 加了 `--lossless`：先在 Android 上把解密后的 F2FS 缩到新容量，再写分区表，不擦 `userdata`。顺序不能反过来——文件系统比分区小是安全的，反过来会读出越界。
+
+工具链是上游现成的两步：`piano-resize-f2fs shrink --target-bytes N --execute` 走 `F2FS_IOC_RESIZE_FS`，`piano-storage apply` 写 GPT 并留备份。宿主机只负责计划、推送和核对，因为加密 `/data` 的明文超级块只有在设备上经 vold 解密映射才读得到，section 大小也从那里取。
+
+未验证：截至 2026-11-13 没有在保留数据的设备上跑完一次。已核的是离线部分——计划器的 section 对齐、安装器先缩后写的顺序、缩容失败时不写 GPT，都由 `make test` 覆盖。真机要验的是四件事：缩容后 Android 首次开机数据可读、Linux 正常启动、往返切换正常、失败时能回到原分区表。
+
+设备侧的前置条件是已装与当前 BOOT 匹配的「SunUEFI 引导助手」模块，`piano-resize-f2fs` 由它提供。缺这个模块时 `plan --lossless` 直接报错，不会退化成清空路径。
+
 ## 触屏、网络、音频与相机
 
 内核手指矩阵解码（上游 `0095`）这一轮没有收。触控仍走用户态 THP 读取加 `nvt_finger_filter.cpp` 的 5 级滤波，`/proc/nvt_thp_status` 保持 `kernel_input: disabled`，不会出现第二个输入设备。

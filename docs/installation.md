@@ -240,6 +240,25 @@ sha256sum -c SHA256SUMS
 
 `install-f2fs.py apply` 会清空 `userdata`，不能用它做更新。
 
+### 0. 保留 Android 数据的首装（`--lossless`）
+
+默认路径清空 `userdata`。需要保留 Android 数据时加 `--lossless`：先在 Android 上把解密后的 F2FS 缩到新容量，再写分区表，全程不擦除。前提是设备已 root、已装与当前 BOOT 匹配的「SunUEFI 引导助手」模块（`piano-resize-f2fs` 随模块提供），并且 `userdata` 的空闲块够用。
+
+`plan` 与 `apply` 都要带 `--lossless`，且都不能带 `--accept-data-loss`。计划里会多出 `f2fs_shrink.userdata_bytes`，那是设备侧缩容的目标容量；新 `userdata` 长度按 F2FS section 对齐，section 大小由设备上的解密映射读出，宿主机读不到。
+
+```sh
+python3 boot-tools/installer/scripts/install-f2fs.py plan \
+  --sunuefi boot-tools/installer/sunuefi --serial <序列号> \
+  --bundle . --root-install root-install --device-boot device-boot \
+  --stock-boot stock-recovery/boot.img --plan lossless-plan.json --lossless
+```
+
+执行顺序与默认路径相反：先 `piano-resize-f2fs shrink`，再写 GPT，然后直接刷镜像，没有 `fastboot erase userdata`。缩容成功而写表失败时，文件系统比分区小，是安全状态，Android 照常启动，只是少了空间。反过来永远不会发生。
+
+失败时执行器不自动重试、不擦除、不重新分区，`result.json` 里记着原 GPT 的两段备份和恢复说明。先看 `f2fs_shrink` 字段有没有写进去，再决定是恢复 GPT 还是继续。
+
+这条路径的真机验收见[已知问题](known-issues.md#无损首装)。在那之前它按显式启用处理，默认仍是清空路径。
+
 ### 1. 自动分区
 
 在已 root 的 Android 上生成只读计划：

@@ -142,6 +142,80 @@ def check_restore_gpt_blobs_is_defined(installer):
     assert "seek=0 " in dd_lines[1], "the primary copy must land at LBA 0: " + dd_lines[1]
 
 
+class ShrinkDevice:
+    """Only answers the two device commands the lossless path issues."""
+
+    serial = "SN-TEST-1"
+
+    def __init__(self, status, shrink='{"ioctl_success":true,"ioctl_performed":true}'):
+        self.status = status
+        self.shrink = shrink
+        self.shells = []
+
+    def shell(self, command):
+        self.shells.append(command)
+        if command.startswith("command -v "):
+            return b""
+        if command.startswith("piano-resize-f2fs status") or "bin/piano-resize-f2fs status" in command:
+            return self.status.encode()
+        if " shrink --target-bytes " in command:
+            return self.shrink.encode()
+        if command.startswith("test -x "):
+            return b"yes\n"
+        raise AssertionError("unexpected device command: " + command)
+
+    def text(self, command):
+        return self.shell(command).decode().strip()
+
+
+def check_lossless_shrink(installer):
+    """无损路径必须先在设备上缩 F2FS，并且把 section 从设备读回来。
+
+    宿主机读不到加密 /data 的超级块，section 大小只能来自设备。缩容工具失败
+    时不能在 GPT 上继续，否则分区比文件系统小，Android 会读越界。
+    """
+    good = json.dumps({"operation": "f2fs-status", "section_bytes": 2097152,
+                       "userdata_bytes": 989430022144})
+    device = ShrinkDevice(good)
+    assert installer.read_f2fs_section(device) == 2097152, "the section size must come from the device"
+
+    for status, why in (("no such file", "a device without the tool"),
+                        (json.dumps({"operation": "f2fs-status"}), "output without a section size"),
+                        (json.dumps({"section_bytes": 4097}), "a section size that is not block aligned")):
+        try:
+            installer.read_f2fs_section(ShrinkDevice(status))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("read_f2fs_section accepted " + why)
+
+    plan = {"partition_plan": {"f2fs_shrink": {"section_bytes": 2097152,
+                                              "userdata_bytes": 989430022144}}}
+    device = ShrinkDevice(good)
+    result = installer.shrink_userdata(device, plan)
+    issued = [line for line in device.shells if " shrink --target-bytes " in line]
+    assert len(issued) == 1, issued
+    assert "--target-bytes 989430022144 --execute" in issued[0], issued[0]
+    assert result["target_bytes"] == 989430022144
+
+    # 工具报失败时抛错，调用方因此不会继续写 GPT。
+    broken = ShrinkDevice(good, shrink='{"ioctl_success":false}')
+    try:
+        installer.shrink_userdata(broken, plan)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a failed F2FS shrink was accepted")
+
+    # 计划里没有缩容目标时不能默默下发一个。
+    try:
+        installer.shrink_userdata(ShrinkDevice(good), {"partition_plan": {}})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("shrink_userdata ran without a planned target")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--sunuefi", type=Path)
@@ -352,9 +426,10 @@ def main():
     check_dd_probe(installer)
     check_wait_factory_survives_a_missing_serial(installer)
     check_restore_gpt_blobs_is_defined(installer)
+    check_lossless_shrink(installer)
     print("OK: first GPT byte preservation, CRC, half capacity, Slot A contract, deterministic new entries, "
           "explicit Android capacity, explicit ESP capacity, stale-plan rejection, dd probe, "
-          "bootloader wait and GPT restore" +
+          "bootloader wait, GPT restore and the lossless F2FS shrink step" +
           ("; actual pinned parser exercised" if args.sunuefi else "; byte oracle exercised"))
 
 

@@ -140,6 +140,37 @@ def main():
         large = run("--dump", str(dump), "--root-mib", "480000")
         check(large.returncode == 0, "explicit root above 256 GiB must be accepted if it fits")
 
+        # 无损缩容：给出 F2FS section 时新 userdata 长度必须是 section 的整数倍，
+        # 且计划里要带出设备侧缩容目标。没有 section 时行为与破坏性路径一致。
+        destructive = run("--dump", str(dump), "--esp-mib", "512", "--root-mib", "16384")
+        lossless = run("--dump", str(dump), "--esp-mib", "512", "--root-mib", "16384",
+                       "--f2fs-section-bytes", str(2 * 1024**2))
+        check(lossless.returncode == 0, f"lossless plan should succeed: {lossless.stderr}")
+        if destructive.returncode == 0 and lossless.returncode == 0:
+            base, data = json.loads(destructive.stdout), json.loads(lossless.stdout)
+            check(base["lossless"] is False and base["f2fs_shrink"] is None,
+                  "a plan without a section size must stay on the destructive path")
+            check(data["lossless"] is True and data["android_data_preserved"] is True,
+                  "a plan with a section size must declare the data preserved")
+            userdata_first = next(p for p in data["original_partitions"] if p["name"] == "userdata")["first"]
+            changed = next(c for c in data["changes"] if c["name"] == "userdata")
+            blocks = changed["new_last"] - userdata_first + 1
+            check(blocks % 512 == 0, f"new userdata must align to F2FS sections, got {blocks} blocks")
+            shrink = data["f2fs_shrink"]
+            check(shrink["section_bytes"] == 2 * 1024**2, "the plan must carry the section size it aligned to")
+            check(shrink["userdata_bytes"] == blocks * BLOCK, "shrink target must equal the new partition capacity")
+            root = next(c for c in data["changes"] if c["name"] == "sunuefi_root")
+            check(root["first"] % 512 == userdata_first % 512,
+                  "root must start on the same section grid as userdata")
+            check(any("先在线缩容" in w for w in data["warnings"]),
+                  "the plan must warn that the shrink has to happen before the GPT write")
+
+        for section, message in (("4097", "a section size that is not a 4 KiB multiple"),
+                                 ("0", "a zero section size")):
+            check(run("--dump", str(dump), "--root-mib", "16384",
+                      "--f2fs-section-bytes", section).returncode == 2,
+                  message + " must be rejected")
+
         # 以 Android 容量为准：300 GiB userdata，Linux root 取剩余空间。
         result = run("--dump", str(dump), "--esp-mib", "512", "--userdata-mib", "307200")
         check(result.returncode == 0, f"explicit Android size should succeed: {result.stderr}")

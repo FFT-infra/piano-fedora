@@ -96,7 +96,7 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 
 1. 存储扩容过的机器，分区边界与校准数据可能被第三方改过。分区一律按自己设备的实时 GPT 计算，不套用固定数值。
 2. 全盘没有空闲空间。`userdata` 占满盘尾，新分区只能从 `userdata` 尾部让出。
-3. `/data` 是加密 dm 映射。上游的无损缩容前提不成立，首次分区必须清空 `userdata`。
+3. `/data` 是加密 dm 映射。F2FS 的在线 resize 能缩不能扩，所以无损缩容必须经 vold 建立的解密映射在线完成，扩容才需要卸载后跑 `resize.f2fs`。宿主机读不到明文超级块，section 大小只能在设备上取。默认首装路径仍然清空 `userdata`；`--lossless` 走设备侧在线缩容，见[安装指南](installation.md#0-保留-android-数据的首装--lossless)。
 4. 无 `/dev/kvm`。内核参数是 `kvm-arm.mode=protected`。虚拟化只能走 AVF/crosvm + Gunyah。
 
 ## 许可
