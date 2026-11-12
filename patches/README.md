@@ -134,3 +134,41 @@ EBS 调用者不是 UKI 句柄的情况。直入内核时调用者就是 UKI 句
 固件重编刷机后看 `uki-identity` 是否消失、DT 与内存校验走到哪一步。真机验证
 前不把这一节当成已修复。上游修好这个假设后整组删掉，并同步删掉
 `docs/known-issues.md` 里对应条目。
+
+## uefi-dwc3-halt
+
+### 现象与根因
+
+菜单选 Linux 后停在「未能启动系统 / 系统交接失败」，状态 `0x8000000000000012`
+（`EFI_TIMEOUT`）。`uki-identity` 那一关已经过了，失败发生在资源交接
+（`PianoProductOwnersRetire`）里 USB 服务停止这一步，日志是：
+
+```
+SUNUEFI_USB_SERVICE_CLEANUP stage=begin start_status=Success allocated=9 programmed=1 dctl=80F00000 dsts=0000C858
+SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=...
+PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out
+```
+
+`PianoDwc3Device.c` 的 `Halt()` 直接清 `DCTL` 的 RunStop 位，然后只在 `DSTS`
+上等 `DevCtrlHlt` 100 ms。DWC3 databook 4.1.8 要求设备主动断开前先给活动
+传输发 DEPENDXFER，否则 core 可能停在传输状态、永远不报 halted；Linux 的
+`dwc3_gadget_soft_disconnect()` 也就是这么做的。这次失败时 `DSTS` 已经是
+Address 链路状态，说明主机在 UKI 加载与内核启动之间重新枚举了设备，EP0 上
+仍挂着传输；同一台设备更早一次启动还留下过 `SUNUEFI_USB_EPCMD_TIMEOUT
+ep=0 cmd=6`（SET_ADDRESS 卡住）。
+
+上游碰不到，是因为它走 raw/boot.img 链，retire 在 `StartImage` 之前完成，
+那时链路刚被菜单释放、没有主机在枚举。两版 `PianoProductOwners.c` 与
+`PianoUsbController.c` 逐字节相同，差别只在 retire 的时机。
+
+### 补丁改动
+
+只改 `Halt()`：先用现有的 `StopTransfer()` 结束每个挂起传输；HS/FS 时临时清
+`GUSB2PHYCFG` 的 SUSPHY/ENBLSLPM 并在停止后恢复，与 `dwc3_gadget_run_stop()`
+一致；等待预算从 100 ms 放宽到 2 s。停止顺序、清理证明与其它 owner 都没动。
+
+### 验证与退役
+
+离线检查只证明补丁能套。刷机后要看 `stage=halt` 是否变成 `status=Success`、
+能否进入 Linux。上游自己修正 halt 顺序后整组删掉，并同步删掉
+`docs/known-issues.md` 里对应条目。

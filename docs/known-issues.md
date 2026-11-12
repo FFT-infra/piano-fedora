@@ -254,6 +254,29 @@ systemd-stub 258 起，没有 shim 时直接跳进 UKI 内嵌的内核，跳转�
 handle、父链、设备句柄与镜像状态检查都保留。固件重编刷机后看 `uki-identity`
 是否消失、DT 与内存校验走到哪一步；写这一节时还没有真机验证。
 
+## 交接系统时 USB 停止超时
+
+菜单选 Linux 后停在「未能启动系统 / 系统交接失败」，状态
+`0x8000000000000012`，即 `EFI_TIMEOUT`。日志里 `PIANO_EBS_CALL` 之后 NV 保存与
+文件系统关闭都成功，紧接着：
+
+```
+SUNUEFI_USB_SERVICE_CLEANUP stage=begin start_status=Success allocated=9 programmed=1 dctl=80F00000 dsts=0000C858
+SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=...
+PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out
+```
+
+`PianoDwc3Device.c` 的 `Halt()` 直接清 `DCTL` 的 RunStop 位，再在 `DSTS` 上等
+`DevCtrlHlt` 100 ms。失败时 `DSTS` 已经是 Address 链路状态，说明主机在 UKI
+加载与内核启动之间重新枚举了设备，EP0 上仍挂着传输；按 DWC3 databook 4.1.8，
+清 RunStop 之前要先给活动传输发 DEPENDXFER，否则 core 不进 halted。同一台设备
+更早一次启动还留下过 `SUNUEFI_USB_EPCMD_TIMEOUT ep=0 cmd=6`（SET_ADDRESS 卡住）。
+
+`patches/uefi-dwc3-halt/` 用现有的 `StopTransfer()` 先结束挂起传输，HS/FS 时
+临时清 `GUSB2PHYCFG` 的 SUSPHY/ENBLSLPM，并把等待放宽到 2 s。写这一节时补丁
+只通过了离线补丁检查，还没有刷机验证。旧的 raw/boot.img 链在 `StartImage` 前
+完成交接，碰不到这个时机。
+
 ## Android 侧
 
 已装回与当前 BOOT generation 匹配的「SunUEFI 引导助手」模块

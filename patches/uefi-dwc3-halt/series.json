@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "target": "sunuefi",
+  "note": "UKI 链上资源交接（owners retire）里的 USB 停止会在主机重新枚举设备时超时，整条启动以 EFI_TIMEOUT 结束。屏幕表现是「未能启动系统 / 系统交接失败」，状态 0x8000000000000012。\n\n失败点是 PianoProductOwnersRetire → PianoUsbControllerServiceStop → PianoDwc3ServiceStop → Halt()：它直接清 DCTL 的 RunStop 位，然后只在 DSTS 上等 DevCtrlHlt 100 ms（10000 次 × 10 µs）。主机若正好在枚举，EP0 上还挂着传输，core 不会进入 halted，于是返回 EFI_TIMEOUT 并 Retain，交接就失败了。同一屏的「系统交接失败」而不是「设置未能保存」「仍有文件或驱动没有关闭」「存储驱动未能安全退出」或「USB 设备仍在使用」，把失败范围限定在 NV、文件系统、UFS 与 host 停止之后的 retire 步骤；逐条核对 retire 内所有 Retain 调用后，能返回 EFI_TIMEOUT 的只有 USB 服务停止这一处（Pogo、Touch 的 Stop 只返回 OK / DEVICE_ERROR / NOT_READY）。\n\n实机证据（2026-11-12，ramoops 取回）：\n  SUNUEFI_USB_SERVICE_CLEANUP stage=begin start_status=Success allocated=9 programmed=1 dctl=80F00000 dsts=0000C858\n  SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=…4BC\n  PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out\nbegin 时链路是未连接（USBLNKST=0），halt 时已经是 Address 状态，说明主机的重新枚举就发生在这一小段时间里；同一台设备更早一次启动还留下 SUNUEFI_USB_EPCMD_TIMEOUT ep=0 cmd=6（SET_ADDRESS 卡住）。\n\n为什么上游没有：上游发版走 boot.img/raw 链，retire 在 StartImage 之前由固件自己完成，那时 USB 链路刚被菜单释放，没有主机在枚举；HEAD 改成 UKI 后，retire 被推到内核调用 ExitBootServices 的时刻，中间隔着 UKI 加载与内核启动，主机有足够时间重连并重新枚举。两版 PianoProductOwners.c、PianoUsbController.c 逐字节相同，差异只在触发时机。\n\n补丁做的事：按 DWC3 databook 4.1.8（设备主动断开前要先给活动传输发 DEPENDXFER）与 Linux dwc3_gadget_soft_disconnect/dwc3_gadget_run_stop 的顺序，先用现有的 StopTransfer() 结束挂起的传输，HS/FS 时临时清 GUSB2PHYCFG 的 SUSPHY/ENBLSLPM 并在停止后恢复，等 DevCtrlHlt 的预算从 100 ms 放宽到 2 s。只改 uefi/core/PianoDwc3Device.c 的 Halt()，不动停止顺序、清理证明与其它 owner。\n\n升级上游时必须重放并复核：targets 是 PianoDwc3Device.c 原文摘要，不匹配就报错。上游自己把 Halt 改成先 end transfer、更长等待或换掉这条链后删掉整个 series，并同步删 patches/README.md 的对应小节与 docs/known-issues.md 的条目；上游改了文件但没修时 rebase 补丁并重算 targets。本组参与 uefi_patch_identities 的哈希，改动会改变 project_source_sha256，已构建的 deploy-bundle 必须重建才能通过 verify_uefi_source。",
+  "base": {
+    "sunuefi_commit": "3a7e5c1b799f305a8cf5972d733332a6c55174a1"
+  },
+  "patches": [
+    {
+      "file": "0001-end-transfers-before-halt.patch",
+      "summary": "结束挂起传输并在 HS/FS 下保持 PHY 醒着，再等 DevCtrlHlt，避免交接时 USB 停止超时",
+      "targets": {
+        "uefi/core/PianoDwc3Device.c": "647f0a7f5bc6774869335b4a43f870475a74de2be46fc555b64fcede082cb32b"
+      },
+      "creates": []
+    }
+  ]
+}
