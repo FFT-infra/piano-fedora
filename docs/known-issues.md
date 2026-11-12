@@ -268,14 +268,17 @@ PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out
 
 `PianoDwc3Device.c` 的 `Halt()` 直接清 `DCTL` 的 RunStop 位，再在 `DSTS` 上等
 `DevCtrlHlt` 100 ms。失败时 `DSTS` 已经是 Address 链路状态，说明主机在 UKI
-加载与内核启动之间重新枚举了设备，EP0 上仍挂着传输；按 DWC3 databook 4.1.8，
-清 RunStop 之前要先给活动传输发 DEPENDXFER，否则 core 不进 halted。同一台设备
-更早一次启动还留下过 `SUNUEFI_USB_EPCMD_TIMEOUT ep=0 cmd=6`（SET_ADDRESS 卡住）。
+加载与内核启动之间重新枚举了设备。
 
-`patches/uefi-dwc3-halt/` 用现有的 `StopTransfer()` 先结束挂起传输，HS/FS 时
-临时清 `GUSB2PHYCFG` 的 SUSPHY/ENBLSLPM，并把等待放宽到 2 s。写这一节时补丁
-只通过了离线补丁检查，还没有刷机验证。旧的 raw/boot.img 链在 `StartImage` 前
-完成交接，碰不到这个时机。
+`patches/uefi-dwc3-halt/` 的第一版按 databook 4.1.8 先结束挂起传输、临时清
+`GUSB2PHYCFG` 的 SUSPHY/ENBLSLPM，并把等待放宽到 2 s。2026-11-12 刷机复测
+仍然超时，日志变成 `stage=begin dsts=0000CF70`、`stage=halt dsts=0011808B`
+（`DevCtrlHlt` 与 `CoreIdle` 都是 0），而且 `begin` 到 `halt` 之间没有任何
+`SUNUEFI_USB_EPCMD`，说明没有挂起传输可结束。第二版改为在轮询期间确认
+event ring，并在 EP0 不在 setup 阶段时重新 `ArmSetup()`，与 Linux 的
+`dwc3_gadget_soft_disconnect()`、`dwc3_ep0_reset_state()` 一致。第二版同样只
+通过了离线补丁检查，等真机验证。旧的 raw/boot.img 链在 `StartImage` 前完成
+交接，碰不到这个时机。
 
 ## Android 侧
 

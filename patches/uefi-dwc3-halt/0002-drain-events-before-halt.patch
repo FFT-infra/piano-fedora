@@ -1,0 +1,71 @@
+From: piano-fedora <dev@piano.invalid>
+Date: Thu, 12 Nov 2026 18:00:00 +0800
+Subject: [PATCH] usb: drain the event ring while waiting for DevCtrlHlt
+
+Halt() clears DCTL RunStop and polls DSTS DevCtrlHlt. On a real device the
+poll now runs its full two seconds and still times out while the host is
+enumerating: the leave-behind log shows no posted transfer of ours, no
+DEPENDXFER worth sending, a link that moved from not-attached to Address
+during the poll, and a core that never reports idle:
+
+  SUNUEFI_USB_SERVICE_CLEANUP stage=begin ... dsts=0000CF70
+  SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=0011808B
+
+DSTS 0x0011808B: DEVCTRLHLT clear, COREIDLE clear, USBLNKST 4 (Address).
+
+The controller cannot halt while the event ring holds unread events.
+dwc3_gadget_soft_disconnect says so outright and relies on the interrupt
+handler to acknowledge them during the same poll. Nothing pumps the service
+loop inside ExitBootServices, so the ring keeps its count and the core keeps
+waiting. A control transfer left half-finished has the same effect: Linux
+parks EP0 back in the setup phase (dwc3_ep0_reset_state) before stopping.
+
+Acknowledge the ring in place while polling, re-arm the setup TRB when EP0 is
+not in the setup phase, and report the armed endpoints, acknowledged events
+and final DSTS so the next failure is readable from the device log alone.
+---
+diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
+index 98421ac..52beb7e 100644
+--- a/uefi/core/PianoDwc3Device.c
++++ b/uefi/core/PianoDwc3Device.c
+@@ -250,19 +250,38 @@ STATIC EFI_STATUS Command(UINT8 Ep,UINT32 Cmd,UINT32 P0,UINT32 P1,UINT32 P2) {
+   return EFI_TIMEOUT;
+ }
+ STATIC EFI_STATUS StopTransfer(UINT8 Ep);
++STATIC EFI_STATUS ArmSetup(VOID);
++// The controller does not reach DevCtrlHlt while the event ring still reports
++// unread events, and dwc3_gadget_soft_disconnect leans on its interrupt handler
++// to acknowledge them during the same poll. Nothing pumps the service loop at
++// this point, so acknowledge them in place.
++STATIC UINT32 AcknowledgeEvents(VOID) {
++  UINT32 Count=Dr(0xC40C)&0xFFFF;
++  if(!Count || Count>4096 || (Count&3))return 0;
++  Dw(0xC40C,Count);
++  return Count>>2;
++}
+ STATIC EFI_STATUS Halt(VOID) {
++  UINT32 Armed=0;for(UINTN Ep=0;Ep<ARRAY_SIZE(mPending);++Ep)if(mPending[Ep])Armed|=1U<<Ep;
++  DEBUG((DEBUG_WARN,"SUNUEFI_USB_HALT_ENTRY armed=%x phase=%u status_waiting=%u gevnt=%u dctl=%08x dsts=%08x phy=%08x\n",
++    Armed,(UINT32)mPhase,mStatusWaiting?1U:0U,Dr(0xC40C)&0xFFFF,Dr(0xC704),Dr(0xC70C),Dr(0xC200)));
+   // Databook 4.1.8: a device-initiated disconnect must end every active
+   // transfer before RunStop is cleared, or the core can stay in a transfer
+   // state and never report DevCtrlHlt. A host that re-enumerates while the
+   // loader reads its image leaves EP0 armed, which is where this timed out.
+   for(UINTN Ep=0;Ep<ARRAY_SIZE(mPending);++Ep)if(mPending[Ep])(VOID)StopTransfer((UINT8)Ep);
++  // dwc3_ep0_reset_state parks a half-finished control transfer back in the
++  // setup phase; otherwise the core keeps waiting for the host to finish it.
++  if(mPhase!=0 || mStatusWaiting)(VOID)ArmSetup();
+   // dwc3_gadget_run_stop keeps the HS/FS interface awake across the stop.
+   UINT32 Phy=Dr(0xC200),Saved=mControl.SuperSpeed?0:Phy&(BIT6|BIT8);
+   if(Saved)Dw(0xC200,Phy&~Saved);
+   Dw(0xC704,Dr(0xC704)&~BIT31);
+-  BOOLEAN Halted=FALSE;
+-  for(UINTN I=0;I<2000;++I){if(Dr(0xC70C)&BIT22){Halted=TRUE;break;}gBS->Stall(1000);}
++  BOOLEAN Halted=FALSE;UINT32 Acked=0,Loops=0;
++  for(;Loops<2000;++Loops){if(Dr(0xC70C)&BIT22){Halted=TRUE;break;}Acked+=AcknowledgeEvents();gBS->Stall(1000);}
+   if(Saved)Dw(0xC200,Phy);
++  DEBUG((DEBUG_WARN,"SUNUEFI_USB_HALT_RESULT halted=%u armed=%x acked=%u loops=%u gevnt=%u dctl=%08x dsts=%08x\n",
++    Halted?1U:0U,Armed,Acked,Loops,Dr(0xC40C)&0xFFFF,Dr(0xC704),Dr(0xC70C)));
+   return Halted?EFI_SUCCESS:EFI_TIMEOUT;
+ }
+ STATIC EFI_STATUS CompleteEventDma(PIANO_DMA_BUFFER *Buffer) {

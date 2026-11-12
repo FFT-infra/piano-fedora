@@ -150,25 +150,40 @@ PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out
 ```
 
 `PianoDwc3Device.c` 的 `Halt()` 直接清 `DCTL` 的 RunStop 位，然后只在 `DSTS`
-上等 `DevCtrlHlt` 100 ms。DWC3 databook 4.1.8 要求设备主动断开前先给活动
-传输发 DEPENDXFER，否则 core 可能停在传输状态、永远不报 halted；Linux 的
-`dwc3_gadget_soft_disconnect()` 也就是这么做的。这次失败时 `DSTS` 已经是
-Address 链路状态，说明主机在 UKI 加载与内核启动之间重新枚举了设备，EP0 上
-仍挂着传输；同一台设备更早一次启动还留下过 `SUNUEFI_USB_EPCMD_TIMEOUT
-ep=0 cmd=6`（SET_ADDRESS 卡住）。
+上等 `DevCtrlHlt` 100 ms。上游碰不到，是因为它走 raw/boot.img 链，retire 在
+`StartImage` 之前完成，那时链路刚被菜单释放、没有主机在枚举。两版
+`PianoProductOwners.c` 与 `PianoUsbController.c` 逐字节相同，差别只在 retire
+的时机。
 
-上游碰不到，是因为它走 raw/boot.img 链，retire 在 `StartImage` 之前完成，
-那时链路刚被菜单释放、没有主机在枚举。两版 `PianoProductOwners.c` 与
-`PianoUsbController.c` 逐字节相同，差别只在 retire 的时机。
+2026-11-12 真机复测只套第一版补丁时仍然失败，日志换成：
+
+```
+SUNUEFI_USB_SERVICE_CLEANUP stage=begin start_status=Success allocated=9 programmed=1 dctl=80F00000 dsts=0000CF70
+SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=0011808B
+```
+
+`0x0011808B` 里 `DevCtrlHlt` 与 `CoreIdle` 都是 0，`USBLNKST=4`（Address）。
+`begin` 时链路还没连上，`begin` 到 `halt` 之间一条 `SUNUEFI_USB_EPCMD` 都没有，
+说明当时没有挂起传输，DEPENDXFER 无从发起。真正卡住 core 的是 event ring 里
+未确认的事件：Linux 的 `dwc3_gadget_soft_disconnect()` 注释写明控制器要等事件
+被确认才会 halt，靠中断处理程序在轮询期间完成；固件在 EBS 里空转 `gBS->Stall`，
+service pump 不跑，没人确认。EP0 停在 setup 阶段之外也有同样效果，Linux 用
+`dwc3_ep0_reset_state()` 把它拉回去再停。
 
 ### 补丁改动
 
-只改 `Halt()`：先用现有的 `StopTransfer()` 结束每个挂起传输；HS/FS 时临时清
+`0001` 改 `Halt()`：先用现有的 `StopTransfer()` 结束每个挂起传输；HS/FS 时临时清
 `GUSB2PHYCFG` 的 SUSPHY/ENBLSLPM 并在停止后恢复，与 `dwc3_gadget_run_stop()`
-一致；等待预算从 100 ms 放宽到 2 s。停止顺序、清理证明与其它 owner 都没动。
+一致；等待预算从 100 ms 放宽到 2 s。
+
+`0002` 补上真机缺的两步：轮询期间就地确认 event ring；EP0 不在 setup 阶段时
+重新 `ArmSetup()`。同时打印 `SUNUEFI_USB_HALT_ENTRY` 与 `SUNUEFI_USB_HALT_RESULT`
+（挂起端点、已确认事件数、循环次数、最终 `DSTS`），下一次失败可以直接从设备
+日志读出卡在哪一步。停止顺序、清理证明与其它 owner 都没动。
 
 ### 验证与退役
 
 离线检查只证明补丁能套。刷机后要看 `stage=halt` 是否变成 `status=Success`、
-能否进入 Linux。上游自己修正 halt 顺序后整组删掉，并同步删掉
+能否进入 Linux；如果还失败，看 `SUNUEFI_USB_HALT_ENTRY/RESULT` 的 `armed`、
+`acked` 与 `dsts`。上游自己修正 halt 顺序后整组删掉，并同步删掉
 `docs/known-issues.md` 里对应条目。
