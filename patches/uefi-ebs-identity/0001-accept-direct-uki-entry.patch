@@ -1,0 +1,48 @@
+From: piano-fedora <dev@piano.invalid>
+Date: Thu, 12 Nov 2026 12:00:00 +0800
+Subject: [PATCH] image: accept direct kernel entry into the launched UKI
+
+systemd-stub 258 and newer, when Secure Boot is off or no shim is loaded,
+enters the embedded kernel through the UKI's own entry point instead of
+LoadImage()ing it as a child image. Before the jump it temporarily
+rewrites the UKI's LoadedImage: ImageBase and ImageSize describe the
+kernel, FilePath becomes a memory-mapped device path, and LoadOptions
+carries the kernel cmdline. The fields are restored once the entry point
+returns.
+
+ExitBootServices is called from inside that entry point, so
+ValidateInstalledEfiImage() observes the rewritten ImageBase/ImageSize
+and rejects the UKI with EFI_ACCESS_DENIED. The kernel EFI stub turns
+that into EFI_LOAD_ERROR, and the boot menu reports that the Linux image
+format is unsupported.
+
+Upstream does not see this: its rootfs is Debian trixie, whose systemd
+257.13 always LoadImage()s the kernel in linux_exec(), so the parent
+LoadedImage never changes and the comparison passes. A stub version of
+258 or newer breaks it.
+
+Gate the Base/Size comparison on the caller not being the UKI handle.
+A directly entered kernel calls ExitBootServices with the UKI handle; a
+LoadImage()ed kernel passes its own child handle. The UKI handle,
+ParentHandle, DeviceHandle, image state and the parent-chain walk are
+still checked, so only the two fields the stub documents as rewritten
+are relaxed.
+---
+diff --git a/uefi/core/PianoProductCore.c b/uefi/core/PianoProductCore.c
+index 569b32f..e142ff9 100644
+--- a/uefi/core/PianoProductCore.c
++++ b/uefi/core/PianoProductCore.c
+@@ -410,8 +410,12 @@ STATIC EFI_STATUS ValidateInstalledEfiImage(VOID *Context,EFI_HANDLE Image,CONST
+   EFI_LOADED_IMAGE_PROTOCOL *Uki=NULL,*Current=NULL;
+   EFI_STATUS Status=gBS->HandleProtocol(mLinuxApplication.Image,&gEfiLoadedImageProtocolGuid,(VOID **)&Uki);
+   if(!BootLogAlive())return EFI_ABORTED;if(Status!=EFI_SUCCESS)return EfiImageResult("uki-protocol",Status);
++  // systemd-stub >= 258 without a shim enters the embedded kernel directly and
++  // temporarily rewrites this UKI's own LoadedImage to describe the kernel.
++  // The handle and its parents stay ours; only Base/Size move, so accept that
++  // for the image we started. Every other identity check stays strict.
+   if(!EfiLoadedValid(Uki) || Uki!=mLinuxApplication.LoadedIdentity ||
+-     Uki->ImageBase!=mLinuxApplication.BaseIdentity || Uki->ImageSize!=mLinuxApplication.SizeIdentity ||
++     (Image!=mLinuxApplication.Image && (Uki->ImageBase!=mLinuxApplication.BaseIdentity || Uki->ImageSize!=mLinuxApplication.SizeIdentity)) ||
+      Uki->ParentHandle!=(EFI_HANDLE)Context || Uki->DeviceHandle!=mLinuxEsp)return EfiImageResult("uki-identity",EFI_ACCESS_DENIED);
+   EFI_HANDLE Seen[4];EFI_HANDLE CurrentImage=Image;
+   // The UKI loads its embedded kernel from memory. Only inner frames may lack

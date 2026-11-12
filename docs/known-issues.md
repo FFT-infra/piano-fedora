@@ -232,6 +232,28 @@ unbootable55）定位活动槽，再读那份 BOOT 的实际 generation。本机
 `boot_a`，再用 `fastboot set_active a` 切回 A（B→A 方向 qbootctl 也安全）。
 旧安装上的 `/etc/piano/boot-request.json` 可以直接删掉，新 helper 不读它。
 
+## 固件拒绝 UKI（uki-identity）
+
+菜单选 Linux 后立刻回到菜单，提示「Linux 启动镜像格式不受支持，请更新镜像」。
+日志里是这一组：
+
+```
+PIANO_EBS_CALL image=... tpl=4 ... before=0
+PIANO_EBS_REFUSE stage=before-exit status=Access Denied
+PIANO_UKI_RETURN status=Load Error
+```
+
+systemd-stub 258 起，没有 shim 时直接跳进 UKI 内嵌的内核，跳转前临时把 UKI
+自己的 `LoadedImage.ImageBase`/`ImageSize` 改成内核的地址和大小，返回后恢复。
+`ExitBootServices` 发生在跳转内部，SunUEFI 的 `ValidateInstalledEfiImage()`
+拿 `StartImage` 前记下的值去比，看到被改写的字段就返回 `EFI_ACCESS_DENIED`，
+内核 stub 再把它变成 `EFI_LOAD_ERROR`。Debian trixie 的 systemd 257 仍然把
+内核算成子镜像，所以上游自测碰不到，stub 到 258 以上才会触发。
+
+`patches/uefi-ebs-identity/` 把这处比较限定在 EBS 调用者不是 UKI 句柄的情况，
+handle、父链、设备句柄与镜像状态检查都保留。固件重编刷机后看 `uki-identity`
+是否消失、DT 与内存校验走到哪一步；写这一节时还没有真机验证。
+
 ## Android 侧
 
 已装回与当前 BOOT generation 匹配的「SunUEFI 引导助手」模块

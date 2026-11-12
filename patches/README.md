@@ -100,3 +100,37 @@ XATTR / POSIX_ACL / SECURITY 三项对应镜像制作时用 `tar --xattrs --acls
 2. 为 `REPORT_LUNS` 增加 5 次有界重试，单次延时 50ms 并重试唤醒。
 3. 为 `READ_CAPACITY_16` 增加 5 次有界重试，单次延时 20ms。
 
+
+## uefi-ebs-identity
+
+修复 systemd-stub 258 以上直入内核时，SunUEFI 拒绝 UKI 启动的问题。
+
+### 现象与根因
+
+菜单选 Linux 后立即回到菜单，提示「Linux 启动镜像格式不受支持，请更新镜像」。
+日志里是 `PIANO_EBS_CALL` 之后紧跟 `PIANO_EBS_REFUSE stage=before-exit
+status=Access Denied`，菜单再把 `EFI_LOAD_ERROR` 显示成这句话。
+
+systemd-stub 258 起，没有 shim 时不再把 UKI 内嵌的内核 `LoadImage()` 成子镜像，
+而是直接跳内核入口。跳转前它临时把 UKI 自己的 `EFI_LOADED_IMAGE_PROTOCOL`
+的 `ImageBase`/`ImageSize` 改成内核的地址和大小，返回后恢复。`ExitBootServices`
+发生在跳转内部，SunUEFI 的 `ValidateInstalledEfiImage()` 拿 `StartImage` 前记下的
+`BaseIdentity`/`SizeIdentity` 去比，看到被改写的值就返回 `uki-identity` 与
+`EFI_ACCESS_DENIED`，EBS 因此被拒绝。
+
+上游碰不到：它的 rootfs 是 Debian trixie，systemd 257.13，`linux_exec()`
+无条件 `LoadImage()` 内核，父镜像字段始终不动。stub 到 258 以上才会触发，
+上游换 rootfs 后同样会坏。
+
+### 补丁改动
+
+`ValidateInstalledEfiImage()` 里把 `ImageBase`/`ImageSize` 的相等比较限定在
+EBS 调用者不是 UKI 句柄的情况。直入内核时调用者就是 UKI 句柄；老的
+`LoadImage()` 路径里调用者是内核子句柄，仍走严格比较。handle、`ParentHandle`、
+`DeviceHandle`、镜像状态与父链检查一条没动。
+
+### 验证与退役
+
+固件重编刷机后看 `uki-identity` 是否消失、DT 与内存校验走到哪一步。真机验证
+前不把这一节当成已修复。上游修好这个假设后整组删掉，并同步删掉
+`docs/known-issues.md` 里对应条目。
