@@ -588,6 +588,23 @@ exFAT 与 NTFS 的 U 盘读写属于待验收项。
   已移到不入库的本地笔记，这条引用是历史记录。改 `series.json` 会改变
   `project_source_sha256`，现有 bundle 的 UEFI 来源校验会失效，因此本轮不改它。
 
+## 启动时的间歇 Oops
+
+2026-11-13 有一次启动停在内核 Oops 的 trace 上，看起来像卡死。内核命令行
+带 `panic=0`，Oops 之后不会自动重启，屏幕就留在那里。
+
+trace 里是 `Internal error: Oops - Undefined instruction: 0000000020000000`，
+两次都在启动约 9.4 s 的 `udevd-worker`（PID 532）里，走
+`handle_mm_fault` → `do_page_fault` → `do_mem_abort` 的页错误路径；前一次在
+`folio_add_file_rmap_ptes`，后一次在 `folio_move_anon_rmap`。崩溃时
+NetworkManager-wait-online 已经在跑，说明内核已完成启动交接、systemd 起来了，
+不是固件或 UKI 的问题。
+
+同一个 UKI、同一个内核 `7.3.3-piano-sunuefi-cachy-optimize` 在这次之前和之后
+都能正常进桌面，从原厂 fastboot `continue` 之后的那次启动 `dmesg` 里也没有
+Oops 或 panic。没有稳定复现，没有抓到完整串口日志，也没有定位到具体触发的
+模块。遇到时先正常重启一次；不要据此改启动链。
+
 ## 开机日志里的红色报错
 
 一次冷启动后 `journalctl -b -p err` 是 97 行，分六类。装入 `piano-cma`、
