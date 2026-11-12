@@ -176,8 +176,13 @@ core soft reset，以复位后的 `DevCtrlHlt` 作为已停止的证明。成功
 2026-11-12 的实机日志（旧 pin 上的第四版）显示，2 秒等待结束时 `hlt=0 idle=0`、
 `link=4`、`rxf=0`，soft reset 之后变成 `hlt=1 idle=1 rxf=1`，随后
 `stage=halt status=Success`、`allocated=9 freed=9 retained=0`，Linux 起进 Plasma。
-新 pin 上的这条兜底只过了离线检查，没有真机验证。上游的两条修复与兜底会在同一
-次启动里一起生效，日志分不出各自的作用。
+
+2026-11-13 刷上新 pin 的固件后，同样的交接一次通过：`stage=halt status=Success`，
+`dctl` 从 `80F00000` 变成 `00F00000`，`stage=done` 是 `allocated=9 freed=9
+retained=0`，没有 `PIANO_START_FAILED`，也没有 `SUNUEFI_USB_HALT_RESULT`，说明
+上游的序列自己停住了 core，兜底没有触发。新固件用现有的 wrapped BOOT 跑
+`piano-boot-repack upgrade` 换核后写回 `boot_b`，app generation 从 `43bedc58`
+变成 `c0768ed7`，启动后进入 Plasma。兜底仍然只过了离线检查，设备上没有被触发过。
 
 上游自己补上复位兜底后删掉整个 series，并同步删掉 `docs/known-issues.md` 里
 对应条目。

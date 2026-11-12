@@ -278,8 +278,14 @@ Rx FIFO 空，都没有让 core 停下来。
 2026-11-12 实机（旧 pin 上的第四版）：等待结束时 `hlt=0 idle=0`、`link=4`、
 `rxf=0`，soft reset 后转为 `hlt=1 idle=1 rxf=1`，接着
 `stage=halt status=Success`、`allocated=9 freed=9 retained=0`，没有
-`PIANO_START_FAILED`，随后进入 Plasma。新 pin 的固件与这条兜底还没上设备；
-届时上游修复与兜底会在同一次启动里一起生效，日志分不出各自的作用。
+`PIANO_START_FAILED`，随后进入 Plasma。
+
+2026-11-13 刷上新 pin 的固件后一次通过：`stage=halt status=Success`，`dctl` 从
+`80F00000` 变成 `00F00000`，`stage=done` 是 `allocated=9 freed=9 retained=0`，
+没有 `PIANO_START_FAILED`，也没有 `SUNUEFI_USB_HALT_RESULT`，上游的序列自己
+停住了 core。固件用 wrapped BOOT 换核的方式写回 `boot_b`（app generation
+`43bedc58` → `c0768ed7`），启动后进入 Plasma。这次启动的 UEFI 日志被
+`systemd-pstore` 归档在 `/var/lib/systemd/pstore/console-ramoops-0`。
 
 ## Android 侧
 

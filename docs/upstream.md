@@ -55,7 +55,7 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 `patches/uefi-dwc3-halt/` 的四版补丁删除，只剩 `0001-halt-soft-reset-fallback.patch`：上游 `Halt()` 在等待超时或 END_TRANSFER 失败时直接返回 `EFI_TIMEOUT`，补丁在这条错误分支上补 core soft reset，以复位后的 `DevCtrlHlt` 作成功判据。`patches/uefi-ebs-identity/` 的目标摘要随 `PianoProductCore.c` 的上游改动重算。
 
-已核：`scripts/apply-patches.py --check` 在新 pin 上给出 `CHECKED`。未核：新固件的编译、刷机与实机启动，这条兜底只过了离线检查。
+已核：`scripts/apply-patches.py --check` 在新 pin 上给出 `CHECKED`；新固件用 wrapped BOOT 换核写回 `boot_b` 后启动到 Plasma，`stage=halt status=Success` 一次通过，兜底没有触发。未核：整条发布链、新固件配合新内核的冷装。
 
 ### 2026-11-12
 
