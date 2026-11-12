@@ -41,7 +41,12 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq zstd dosfstools mtools device-tree-compiler python3 git gcc make flex bison
+          sudo apt-get install -y -qq zstd dosfstools mtools device-tree-compiler python3 git gcc make flex bison \
+            systemd-ukify python3-pefile
+          # 上游 package_release.py 直接调 /usr/lib/systemd/ukify 组 UKI，
+          # aa64 stub 由 Fedora rootfs 提供。缺任一项就在这里停，别等打包到一半。
+          test -f /usr/lib/systemd/ukify
+          python3 -c 'import pefile'
 
       - name: Resolve complete image and UEFI inputs
         id: src
