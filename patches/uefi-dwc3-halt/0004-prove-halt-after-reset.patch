@@ -27,7 +27,7 @@ DevCtrlHlt as the proof. Log the decoded DSTS fields and EP0's TRB so the
 next failure does not need another guess.
 ---
 diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
-index 76ec123..bfbbd0a 100644
+index 76ec123..5f364c4 100644
 --- a/uefi/core/PianoDwc3Device.c
 +++ b/uefi/core/PianoDwc3Device.c
 @@ -255,10 +255,13 @@ STATIC UINT32 AcknowledgeEvents(VOID);
@@ -86,7 +86,7 @@ index 76ec123..bfbbd0a 100644
    if(Saved)Dw(0xC200,Phy&~Saved);
    // The core ignores DCTL writes while a DEPCMD is still running, so confirm
    // RunStop reads back as cleared instead of trusting the write.
-@@ -287,19 +305,26 @@ STATIC EFI_STATUS Halt(VOID) {
+@@ -287,19 +305,27 @@ STATIC EFI_STATUS Halt(VOID) {
    HaltState("stop",Armed,FALSE);
    BOOLEAN Halted=FALSE;UINT32 Acked=0,Loops=0;
    for(;Loops<2000;++Loops){if(Dr(0xC70C)&BIT22){Halted=TRUE;break;}Acked+=AcknowledgeEvents();gBS->Stall(1000);}
@@ -109,8 +109,9 @@ index 76ec123..bfbbd0a 100644
 +    Dw(0xC704,(Dr(0xC704)&~(BIT31|(0xfU<<5)))|BIT30);
 +    BOOLEAN Cleared=FALSE;
 +    for(UINTN I=0;I<200;++I)if(!(Dr(0xC704)&BIT30)){Cleared=TRUE;break;}else gBS->Stall(1000);
-+    if(Cleared)
-+      for(UINTN I=0;I<200;++I)if(Dr(0xC70C)&BIT22){Reset=TRUE;break;}else gBS->Stall(1000);
++    if(Cleared) {
++      for(UINTN I=0;I<200;++I){if(Dr(0xC70C)&BIT22){Reset=TRUE;break;}gBS->Stall(1000);}
++    }
    }
 -  if(Saved)Dw(0xC200,Phy);
 +  Dw(0xC200,Phy);Dw(0xC2C0,Pipe);
