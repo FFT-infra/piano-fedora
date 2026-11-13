@@ -802,6 +802,11 @@ def main():
         raise ValueError("default piano login password was not applied")
     if not password_locked(shadow_password(root, "root")):
         raise ValueError("root account must stay locked")
+    # 指纹的 PAM 接入。fprintd-pam 只提供模块，Fedora 上要 authselect 选上
+    # with-fingerprint 才会写进 system-auth；不选时锁屏、登录与 sudo 都只认
+    # 口令，`fprintd-verify` 单独能跑也没用。local 档支持这个 feature。
+    if (root / "usr/bin/authselect").is_file():
+        chroot(root, "authselect", "select", "local", "with-fingerprint", "--force")
     # 自动登录的落盘文件由桌面档决定（GDM custom.conf / SDDM autologin /
     # greetd config.toml），这里不再写死 GDM 那一种。
     login_files = piano_desktop.stage_login(root, context, DEFAULT_PIANO_LOGIN, sudo_aware=False)

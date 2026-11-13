@@ -101,8 +101,9 @@ build-rpms:
 # 必须重跑这一步，否则镜像里装的是旧策略，而源码看起来已经改过。
 # 需要 checkpolicy 与 policycoreutils（Fedora: dnf install checkpolicy）。
 SELINUX_TE ?= rootfs/selinux/piano_hardware.te
+SELINUX_FC ?= rootfs/selinux/piano_hardware.fc
 SELINUX_PP ?= rootfs/selinux/piano_hardware.pp
 selinux:
 	mkdir -p build
 	checkmodule -M -m -o build/piano_hardware.mod $(SELINUX_TE)
-	semodule_package -o $(SELINUX_PP) -m build/piano_hardware.mod
+	semodule_package -o $(SELINUX_PP) -m build/piano_hardware.mod -f $(SELINUX_FC)
