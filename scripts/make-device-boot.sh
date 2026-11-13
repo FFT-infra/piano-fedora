@@ -7,6 +7,10 @@
 #
 #   ./make-device-boot.sh [--serial <serial>] [--slot a|b]
 #
+# The slot defaults to the one Android currently boots from. Reading the other
+# slot's stock BOOT would package a kernel that belongs to a system the tablet
+# is not running.
+#
 # Requirements: adb with root on the tablet, python3, and the files this script
 # ships next to (boot-tools/, host-boot-tool/, scripts/). It writes
 # device-boot/ and refuses to overwrite an existing one.
@@ -20,7 +24,7 @@ say() { printf '%s\n' "$*"; }
 
 BOOT_PARTITION_BYTES=$((96 * 1024 * 1024))
 SERIAL=""
-SLOT="a"
+SLOT=""
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -28,12 +32,13 @@ while [ "$#" -gt 0 ]; do
         --serial=*) SERIAL=${1#--serial=}; shift ;;
         --slot) [ "$#" -ge 2 ] || die "--slot needs a value"; SLOT=$2; shift 2 ;;
         --slot=*) SLOT=${1#--slot=}; shift ;;
-        -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
 done
 case "$SLOT" in
     a|b) ;;
+    "") ;;
     *) die "--slot takes a or b, not ${SLOT}" ;;
 esac
 
@@ -56,6 +61,17 @@ adb_args=()
     [ "$count" -eq 1 ] || die "found ${count} adb devices; pass --serial <serial>"
 }
 [ -z "$SERIAL" ] || adb_args=(-s "$SERIAL")
+
+if [ -z "$SLOT" ]; then
+    suffix=$(adb "${adb_args[@]}" shell getprop ro.boot.slot_suffix 2>/dev/null | tr -d '\r\n')
+    case "$suffix" in
+        _a) SLOT=a ;;
+        _b) SLOT=b ;;
+        *) die "could not read the active slot from the tablet; pass --slot a|b" ;;
+    esac
+    say "Active Android slot: ${suffix}"
+fi
+
 partition="/dev/block/by-name/boot_${SLOT}"
 
 say "Reading ${partition} through adb..."
