@@ -22,10 +22,10 @@ DSTS.DCNRD as success: it means "device controller not ready", and Linux
 waits for it to clear.
 
 The fallback only runs on the error path of upstream's own sequence.
-diff --git a/uefi/core/PianoDwc3Device.c b/uefi/core/PianoDwc3Device.c
+diff --git a/uefi/core/usb/PianoDwc3Device.c b/uefi/core/usb/PianoDwc3Device.c
 index b6e4527..aa19300 100644
---- a/uefi/core/PianoDwc3Device.c
-+++ b/uefi/core/PianoDwc3Device.c
+--- a/uefi/core/usb/PianoDwc3Device.c
++++ b/uefi/core/usb/PianoDwc3Device.c
 @@ -251,7 +251,7 @@ STATIC EFI_STATUS Command(UINT8 Ep,UINT32 Cmd,UINT32 P0,UINT32 P1,UINT32 P2) {
  }
  STATIC EFI_STATUS Halt(VOID) {

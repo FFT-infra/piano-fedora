@@ -1,18 +1,18 @@
 diff --git a/config/release.json b/config/release.json
-index fdbb9c4..4f3e861 100644
+index bf8cfd4..a0c3f29 100644
 --- a/config/release.json
 +++ b/config/release.json
 @@ -8,7 +8,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "60db958881b33bf2e107e37993059d5c0a0d76d9",
-+    "target_tree": "a965f82999283c79580327806cf01b1be60cdb7d",
+-    "target_tree": "ffc0bf5589c227d3280605c9ee8fbbd1bdabafe0",
++    "target_tree": "4cfa4806fa52b39f0aa06e2534a3db21d22f3e31",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-@@ -35,7 +35,7 @@
-       "linux/dts/piano-display-interconnects.dtso"
+@@ -36,7 +36,7 @@
+       "linux/dts/piano-tsens.dtso"
      ],
      "root_policy": "LABEL=PIANOROOT",
 -    "command_line": "console=tty0 loglevel=4 consoleblank=0 fbcon=font:TER16x32 rdinit=/pianoinit piano.root=LABEL=PIANOROOT rootfstype=ext4 rootwait ro pd_ignore_unused clk_ignore_unused panic=0 iommu.passthrough=1",
@@ -20,7 +20,7 @@ index fdbb9c4..4f3e861 100644
      "preferred_display_mode": {
        "board_compatible": "xiaomi,piano",
        "refresh_hz": 120,
-diff --git a/patches/linux/7.3/0105-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0105-dpu-defer-slave-cleanup.patch
+diff --git a/patches/linux/7.3/0106-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0106-dpu-defer-slave-cleanup.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..3ced082b1f0c352588cfd77ebb7a8ea87c56c1a8
 GIT binary patch
@@ -74,7 +74,7 @@ ONK^nzflLH7*SG-M^>wrW
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0106-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0106-media-iris-decode-order-and-deblocking.patch
+diff --git a/patches/linux/7.3/0107-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0107-media-iris-decode-order-and-deblocking.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..53cb09ca783d72eed5c4a1ddd432894189ed1d4c
 GIT binary patch
@@ -174,7 +174,7 @@ M@rCgqG0?Ou0CZ1{cmMzZ
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0107-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0107-asoc-piano-speaker-gain-limit.patch
+diff --git a/patches/linux/7.3/0108-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0108-asoc-piano-speaker-gain-limit.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..494a46d46902ebc2cec68f7df62d4f1ddc844331
 GIT binary patch
@@ -217,7 +217,7 @@ wiXlB{az-!M6>PERA+#ib&4}E@3I$tGGYsqyP@x2k4-7N&QsSXfI?y5?0DRWp`v3p{
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0108-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0108-input-nt36532e-panel-vendor-misc.patch
+diff --git a/patches/linux/7.3/0109-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0109-input-nt36532e-panel-vendor-misc.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..26ff15244da36746589b6bca3323bc50305cc83a
 GIT binary patch
@@ -279,16 +279,16 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index bbbe005..1c0a2e1 100644
+index 785b2e0..0daf4fc 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "60db958881b33bf2e107e37993059d5c0a0d76d9",
--  "original_target_commit": "611bb038b07681dae27d6852f4698e4873cbc980",
-+  "target_tree": "a965f82999283c79580327806cf01b1be60cdb7d",
+-  "target_tree": "ffc0bf5589c227d3280605c9ee8fbbd1bdabafe0",
+-  "original_target_commit": "80114e79d7a9f563f95064061be9cc6dbc4d1c1f",
++  "target_tree": "4cfa4806fa52b39f0aa06e2534a3db21d22f3e31",
 +  "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
@@ -380,44 +380,53 @@ index bbbe005..1c0a2e1 100644
      },
      {
        "file": "0104-power-mca-ffc-teardown-reference.patch",
-@@ -838,7 +830,39 @@
+@@ -838,7 +830,7 @@
        "original_commit": "611bb038b07681dae27d6852f4698e4873cbc980",
        "original_parent": "c0c3dcbe73b5dcc4e8baee487581fda4fda67d6d",
        "committer_date": "2026-11-12T00:22:59+08:00",
 -      "tree": "60db958881b33bf2e107e37993059d5c0a0d76d9"
 +      "tree": "2019083ecb5c48c98e452860bda6a0dca1acc939"
+     },
+     {
+       "file": "0105-dpu-piano-fractional-sampling.patch",
+@@ -846,7 +838,39 @@
+       "original_commit": "80114e79d7a9f563f95064061be9cc6dbc4d1c1f",
+       "original_parent": "611bb038b07681dae27d6852f4698e4873cbc980",
+       "committer_date": "2026-11-12T23:02:24+08:00",
+-      "tree": "ffc0bf5589c227d3280605c9ee8fbbd1bdabafe0"
++      "tree": "472d11a8e04a9e5cae0e249ce5ac5d4829bc9c12"
 +    },
 +    {
-+      "file": "0105-dpu-defer-slave-cleanup.patch",
++      "file": "0106-dpu-defer-slave-cleanup.patch",
 +      "sha256": "bc4ec8c9803116f39be6a06c6987c21b7f0ae633f413cdb24707b828e15c8fa5",
 +      "original_commit": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
-+      "original_parent": "611bb038b07681dae27d6852f4698e4873cbc980",
++      "original_parent": "80114e79d7a9f563f95064061be9cc6dbc4d1c1f",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "00ddf78f133639d635560b8ca870c1d801aa0612"
++      "tree": "575399e886aae049a54771787764420ad5147b0f"
 +    },
 +    {
-+      "file": "0106-media-iris-decode-order-and-deblocking.patch",
++      "file": "0107-media-iris-decode-order-and-deblocking.patch",
 +      "sha256": "a5b907999a2313f310a32ac78fc10c25cce57ecd08cc2b3bbdb1441479e97667",
 +      "original_commit": "596c454653862c3007cb16b40b496230b213f6fb",
 +      "original_parent": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "03e953937ddc185554de121b26748710c0b4280c"
++      "tree": "14ddde8266204c231e3f4a2db7204c55045deba0"
 +    },
 +    {
-+      "file": "0107-asoc-piano-speaker-gain-limit.patch",
++      "file": "0108-asoc-piano-speaker-gain-limit.patch",
 +      "sha256": "0f44f724d277efbb92caf40fdf1f2905cb5158997b44af3c98d113d001c3ac33",
 +      "original_commit": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "original_parent": "596c454653862c3007cb16b40b496230b213f6fb",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "a95e848066c6f6272526c4a5f371e6ebf9c6308f"
++      "tree": "98c1e67c031e43e4c6df7627abcaec1732cd2600"
 +    },
 +    {
-+      "file": "0108-input-nt36532e-panel-vendor-misc.patch",
++      "file": "0109-input-nt36532e-panel-vendor-misc.patch",
 +      "sha256": "a345e5f1227f3ef200d3a7c1d9f152d01bc8d50896ec1b2b5572e5024c8d0bdf",
 +      "original_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
 +      "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "committer_date": "2026-10-24T18:30:00+08:00",
-+      "tree": "a965f82999283c79580327806cf01b1be60cdb7d"
++      "tree": "4cfa4806fa52b39f0aa06e2534a3db21d22f3e31"
      }
    ],
    "provenance": {

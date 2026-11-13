@@ -119,6 +119,13 @@ def main():
         path = "upstream/" + name
         owner = sun if "/" not in name else sun / "upstream" / name.rsplit("/", 1)[0]
         link = path if owner == sun else name.rsplit("/", 1)[1]
+        if name not in upstream:
+            # 上游删掉了这个子模块：固件改成了仓库内的 vendor/firmware 组件，
+            # 内核改由 prepare_release_kernel 按 base_commit 取。这里按本仓库
+            # 的 pin 直接取源码，路径保持 downstream 一直在用的那个。
+            entry = lock[name.removesuffix("-current")]
+            checkout(entry["url"], entry["commit"], sun / path)
+            continue
         registered = git(owner, "ls-files", "--stage", "--", link).split()
         if len(registered) < 2 or registered[0] != "160000" or registered[1] != upstream[name]["commit"]:
             raise ValueError(f"submodule registration differs from the upstream lock: {name}")
@@ -168,7 +175,8 @@ def main():
             "/LICENSES/", "/LICENSE", "/NOTICE"))
     subprocess.run(["python3", str(ROOT / "scripts/apply-patches.py"), "--sunuefi", str(sun)], check=True)
     print(json.dumps({"sunuefi": str(sun), "dependencies": names, "pins": {
-        name: upstream[name]["commit"] for name in names}}, indent=2))
+        name: (upstream.get(name) or lock[name.removesuffix("-current")])["commit"]
+        for name in names}}, indent=2))
 
 
 if __name__ == "__main__":

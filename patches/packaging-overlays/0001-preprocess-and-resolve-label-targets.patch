@@ -1,8 +1,8 @@
 diff --git a/tools/package_release.py b/tools/package_release.py
-index c8926a9..f291136 100644
+index 3a4c5d6..44247da 100644
 --- a/tools/package_release.py
 +++ b/tools/package_release.py
-@@ -191,22 +191,40 @@ def sha(path):
+@@ -191,7 +191,10 @@ def sha(path):
  
  
  def run(argv, **kwargs):
@@ -13,22 +13,18 @@ index c8926a9..f291136 100644
 +        raise ValueError(f'Command failed: {error.cmd}\n{error.stderr}') from error
  
  
- def apply_cpu_model_overlay(board, overlay, work, cpu_only=True):
-     """Apply declared board properties to a copy of the captured input."""
-     parsed = read_fdt(board.read_bytes())
+ def extract_thermal_zones(source):
+@@ -240,6 +243,9 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True, include_dirs=()
      before = parsed['tree']
--    compiled, derived = work / 'cpu-model.dtbo', work / 'board-with-cpu-model.dtb'
--    run(['dtc', '-@', '-I', 'dts', '-O', 'dtb', '-o', compiled, overlay])
-+    compiled, derived = work / (overlay.stem + '.dtbo'), work / 'board-with-overlay.dtb'
-+    preprocessed = work / (overlay.stem + '.pp.dts')
-+    includes = ROOT / 'upstream/linux-piano/include'
-+    result = run(['cpp', '-nostdinc', '-undef', '-x', 'assembler-with-cpp',
-+                  '-I', includes, overlay])
-+    preprocessed.write_text(result.stdout)
-+    run(['dtc', '-@', '-I', 'dts', '-O', 'dtb', '-o', compiled, preprocessed])
-     overlay_fdt = read_fdt(compiled.read_bytes())
-     fragments = overlay_fdt['tree']
-     next_phandle = max(parsed['phandles'], default=0) + 1
+     compiled, derived = work / 'cpu-model.dtbo', work / 'board-with-cpu-model.dtb'
+     source = overlay
++    # 这个仓库的 bundle 不带内核源码树，include 目录取自锁定的内核 checkout。
++    if not include_dirs:
++        include_dirs = (ROOT / 'upstream/linux-piano/include',)
+     if include_dirs:
+         source = work / 'overlay.pp.dts'
+         command = ['cpp', '-nostdinc', '-undef', '-x', 'assembler-with-cpp']
+@@ -253,7 +259,17 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True, include_dirs=()
      expected = {}
      for path, properties in fragments.items():
          if path.count('/') == 1 and path.startswith('/fragment@'):
@@ -47,7 +43,7 @@ index c8926a9..f291136 100644
              payload = fragments[path + '/__overlay__']
              require(target in before, 'Board overlay must target an existing node')
              if cpu_only:
-@@ -224,8 +242,9 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True):
+@@ -271,8 +287,9 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True, include_dirs=()
                      handle = struct.pack('>I', next_phandle)
                      next_phandle += 1
                      before[target]['phandle'] = handle
@@ -59,7 +55,7 @@ index c8926a9..f291136 100644
              expected[target] = payload
      require(expected, 'Board overlay has no targets')
      overlay_input = board
-@@ -241,6 +260,9 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True):
+@@ -288,6 +305,9 @@ def apply_cpu_model_overlay(board, overlay, work, cpu_only=True, include_dirs=()
              output_fdt['boot_cpu'] == parsed['boot_cpu'],
              'Board overlay changed reserved memory or boot CPU')
      after = output_fdt['tree']
