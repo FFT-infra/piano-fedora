@@ -28,10 +28,10 @@ ParentHandle, DeviceHandle, image state and the parent-chain walk are
 still checked, so only the two fields the stub documents as rewritten
 are relaxed.
 ---
-diff --git a/uefi/core/PianoProductCore.c b/uefi/core/PianoProductCore.c
+diff --git a/uefi/core/product/PianoProductCore.c b/uefi/core/product/PianoProductCore.c
 index 569b32f..e142ff9 100644
---- a/uefi/core/PianoProductCore.c
-+++ b/uefi/core/PianoProductCore.c
+--- a/uefi/core/product/PianoProductCore.c
++++ b/uefi/core/product/PianoProductCore.c
 @@ -410,8 +410,12 @@ STATIC EFI_STATUS ValidateInstalledEfiImage(VOID *Context,EFI_HANDLE Image,CONST
    EFI_LOADED_IMAGE_PROTOCOL *Uki=NULL,*Current=NULL;
    EFI_STATUS Status=gBS->HandleProtocol(mLinuxApplication.Image,&gEfiLoadedImageProtocolGuid,(VOID **)&Uki);

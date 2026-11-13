@@ -25,10 +25,10 @@ REPORT_LUNS attempt fails, so keep it on the retry path.
 3. Keep the mStartupStage markers so a stuck stage shows in the log.
 
 ---
-diff --git a/uefi/core/PianoUfsReadOnlyDma.c b/uefi/core/PianoUfsReadOnlyDma.c
+diff --git a/uefi/core/storage/PianoUfsReadOnlyDma.c b/uefi/core/storage/PianoUfsReadOnlyDma.c
 index 7b293f5..52a4d39 100644
---- a/uefi/core/PianoUfsReadOnlyDma.c
-+++ b/uefi/core/PianoUfsReadOnlyDma.c
+--- a/uefi/core/storage/PianoUfsReadOnlyDma.c
++++ b/uefi/core/storage/PianoUfsReadOnlyDma.c
 @@ -505,17 +505,28 @@ STATIC EFI_STATUS ReadLunCapacity(VOID) {
      &mData);if(EFI_ERROR(Status))return Status;
    Status=PianoDmaMap(&mData);if(EFI_ERROR(Status))return Status;

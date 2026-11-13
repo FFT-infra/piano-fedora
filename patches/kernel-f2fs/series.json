@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "target": "sunuefi",
-  "note": "按顺序应用。每个补丁的 targets 是应用前该文件必须匹配的摘要；上游更新后不匹配会报错退出，不静默跳过。creates 必须与实际新建的文件完全一致。",
+  "note": "\u6309\u987a\u5e8f\u5e94\u7528\u3002\u6bcf\u4e2a\u8865\u4e01\u7684 targets \u662f\u5e94\u7528\u524d\u8be5\u6587\u4ef6\u5fc5\u987b\u5339\u914d\u7684\u6458\u8981\uff1b\u4e0a\u6e38\u66f4\u65b0\u540e\u4e0d\u5339\u914d\u4f1a\u62a5\u9519\u9000\u51fa\uff0c\u4e0d\u9759\u9ed8\u8df3\u8fc7\u3002creates \u5fc5\u987b\u4e0e\u5b9e\u9645\u65b0\u5efa\u7684\u6587\u4ef6\u5b8c\u5168\u4e00\u81f4\u3002",
   "base": {
-    "sunuefi_commit": "4f6635638d7fb92cfefae6d26923b0008db23ed2"
+    "sunuefi_commit": "018634f18c74704e6668ee5d816d038bc6591849"
   },
   "patches": [
     {
       "file": "0001-f2fs-root-fedora-selinux.patch",
-      "summary": "在上游 HEAD 上重放 F2FS 与 Fedora SELinux 覆盖，保留新版笔座、蓝牙、睡眠及 PM 诊断配置；根文件系统由 UKI cmdline 指定 F2FS",
+      "summary": "\u5728\u4e0a\u6e38 HEAD \u4e0a\u91cd\u653e F2FS \u4e0e Fedora SELinux \u8986\u76d6\uff0c\u4fdd\u7559\u65b0\u7248\u7b14\u5ea7\u3001\u84dd\u7259\u3001\u7761\u7720\u53ca PM \u8bca\u65ad\u914d\u7f6e\uff1b\u6839\u6587\u4ef6\u7cfb\u7edf\u7531 UKI cmdline \u6307\u5b9a F2FS",
       "targets": {
-        "tools/build_piano_full_kernel.py": "4806f8860afc472625a1eeecff9f1e1481163559ac30e9e6c3ecc2fc37bb9bda"
+        "tools/build_piano_full_kernel.py": "efc5027b5b9790955b8c4424aeb0ffa4042c8e7fdcc2304e4bc7c6f7353c018f"
       },
       "creates": [
         "linux/configs/piano-f2fs.config"
@@ -18,7 +18,7 @@
     },
     {
       "file": "0002-accept-f2fs-root.patch",
-      "summary": "硬件准备与调试引导接受 F2FS 根分区，不再只认 ext4",
+      "summary": "\u786c\u4ef6\u51c6\u5907\u4e0e\u8c03\u8bd5\u5f15\u5bfc\u63a5\u53d7 F2FS \u6839\u5206\u533a\uff0c\u4e0d\u518d\u53ea\u8ba4 ext4",
       "targets": {
         "linux/userspace/piano-debug-bootstrap": "e374307a81e4b4efc31c056cb47a129923cd55265a96214268a3ea14f6d75063",
         "linux/userspace/piano-ram-hardware-prepare": "d55afc216ce0996b0eaf2505d92334ebdceb0c021821c1bdad56643558011de5"
@@ -27,7 +27,7 @@
     },
     {
       "file": "0004-align-selector-rodata.patch",
-      "summary": "强制选择器链接脚本中 rodata 与 data 段在末尾以 4 字节对齐，避免 objcopy 输出未对齐二进制导致模块校验失败",
+      "summary": "\u5f3a\u5236\u9009\u62e9\u5668\u94fe\u63a5\u811a\u672c\u4e2d rodata \u4e0e data \u6bb5\u5728\u672b\u5c3e\u4ee5 4 \u5b57\u8282\u5bf9\u9f50\uff0c\u907f\u514d objcopy \u8f93\u51fa\u672a\u5bf9\u9f50\u4e8c\u8fdb\u5236\u5bfc\u81f4\u6a21\u5757\u6821\u9a8c\u5931\u8d25",
       "targets": {
         "uefi/handoff/bootselect/BootSelect.ld": "f6a783ef0e265f218cd367dea1bbf6b08bc3e31d0ceb2957df453263774e9a6e"
       },
@@ -35,9 +35,9 @@
     },
     {
       "file": "0005-fedora-nftables.patch",
-      "summary": "补齐 Fedora firewalld 与 libvirt 所需 nftables 内核接口，并以模块形式提供 firewalld 自带的全部 conntrack helper，配置后逐项验证",
+      "summary": "\u8865\u9f50 Fedora firewalld \u4e0e libvirt \u6240\u9700 nftables \u5185\u6838\u63a5\u53e3\uff0c\u5e76\u4ee5\u6a21\u5757\u5f62\u5f0f\u63d0\u4f9b firewalld \u81ea\u5e26\u7684\u5168\u90e8 conntrack helper\uff0c\u914d\u7f6e\u540e\u9010\u9879\u9a8c\u8bc1",
       "targets": {
-        "tools/build_piano_full_kernel.py": "8a45a23f685e3bf30fc7138131fda6671962b121715edad50e734de3c94a61b6"
+        "tools/build_piano_full_kernel.py": "c364d8610e8267a8b7cbf532e2a96d915c53a9b5a6824f968232c20d417439d1"
       },
       "creates": []
     }
