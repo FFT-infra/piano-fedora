@@ -108,7 +108,7 @@ sudo dnf distro-sync --repo fedora
 
 `distro-sync` 把同名的 KWin/GTK3 换回 Fedora 版本。GSD 用 `sudo dnf swap gnome-settings-daemon-piano gnome-settings-daemon --repo fedora`。先加 `--assumeno` 看清楚要动的包。
 
-增量安装与 KDE HDR 的补丁版 KWin 已在真机验过：2026-11-12 冷启动后两轮开关 HDR/WCG，背光 1024 → 2047 → 1024，关 HDR 后回到开启前的值。自动亮度与键盘背光这轮没验，手边没有悬浮键盘。验收命令见[桌面档](desktops.md#extras-可选组件)。
+增量安装与 KDE HDR 的补丁版 KWin 已在真机验过：2026-11-12 冷启动后两轮开关 HDR/WCG，背光 1024 → 2047 → 1024，关 HDR 后回到开启前的值。自动亮度已验证 profile 加载、目标亮度换算与背光落值，跟随曲线没测。键盘背光未验，手边没有悬浮键盘。验收命令见[桌面档](desktops.md#extras-可选组件)。
 
 ## 核对与回滚
 

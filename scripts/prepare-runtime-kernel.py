@@ -72,8 +72,9 @@ def main():
         raise ValueError("SDK configuration differs from the sealed kernel")
     sealed_config = (restored / ".config").read_text()
     # 编译外部模块使用 SunUEFI 固定下载的 LLVM 工具链（支持 -mtune=oryon-1），Fedora 只编用户态程序。
+    # SunUEFI 把 tools/host/ 改名成 tools/desktop/，模块本身没动。
     sys.path.insert(0, str(sun / "tools"))
-    from host import prepare_kernel_llvm
+    from desktop import prepare_kernel_llvm
     kernel_env = prepare_kernel_llvm.environment()
     build = sun / "build/kernels/fedora-runtime"
     build.mkdir(parents=True)

@@ -1,0 +1,32 @@
+Backport of pipewire master 97699d707df374773fe5d6e32ea7362ef8dcf51b
+("gstpipewiresrc: do not restart the stream when the running caps still fit")
+to the 1.6.11 release tree. The commit is not on the 1.6 branch yet, so it is
+hand-carried instead of taken with the rest of the series.
+
+gst_pipewire_src_negotiate() compares the fixed current caps against the first
+structure of the peer's caps, which can still hold ranges. Fixed caps never
+compare equal to a range, so the check never fires and every reconfigure event
+disconnects and reconnects the stream. Our caps carry the preferred value as a
+list in front of a range, so they were always unfixated here.
+
+The restart itself is the crash: it tears the buffer pool down while the gtk4
+sink still holds a queued buffer, and the sink's drain copy then reads a memory
+mapping that no longer exists. Measured on the tablet: the stream cycles
+unconnected/connecting/paused/streaming about fifteen times in the first
+seconds, then snapshot dies in gst_base_sink_drain.
+
+--- a/src/gst/gstpipewiresrc.c
++++ b/src/gst/gstpipewiresrc.c
+@@ -1144,7 +1144,11 @@
+     current_caps = gst_pad_get_current_caps (GST_BASE_SRC_PAD (pwsrc));
+     preferred_new_caps = gst_caps_copy_nth (possible_caps, 0);
+
+-    if (current_caps && gst_caps_is_equal (current_caps, preferred_new_caps)) {
++    /* The caps we are already running are still acceptable downstream: a reconfigure
++     * that does not actually ask for anything different should not cost a stream
++     * restart. Comparing against the peer's first structure alone is not enough,
++     * because it can still hold ranges and never compares equal to fixed caps. */
++    if (current_caps && gst_caps_is_subset (current_caps, possible_caps)) {
+       GST_DEBUG_OBJECT (pwsrc,
+                         "Stream running and new caps equal current ones. "
+                         "Skipping renegotiation.");

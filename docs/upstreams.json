@@ -174,7 +174,7 @@
       "decision": "consume",
       "lock_key": "vendor-kernel",
       "reason": "只作 overlay 与 DT 谱系的审阅基准：scripts/compare-vendor-dt.py 编译 sun.dts 与 piano-sm8750-overlay.dts，逐条核对 SunUEFI overlay 的目标节点。不进任何出货产物，任何出货路径引用它都视为违规",
-      "reference_commit": "0d7cc8a05dbadf647c69ec8e4fe80c85c03fc259",
+      "reference_commit": "737dabf0f6076ee5d80be6b7190f9ee314c6cad7",
       "reference_date": "2026-11-13"
     },
     {
@@ -702,8 +702,8 @@
       "decision": "consume",
       "reason": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd。上游默认分支是 development，v1.0.8 之后的两条 EBUSY 退出修复只在那里",
       "lock_key": "fastrpc",
-      "reference_commit": "a56e9d4de3614a8d8f4b0e15ff561350c4b686e3",
-      "reference_date": "2026-10-26"
+      "reference_commit": "89508eaeed55833bcb381fafa91e2224201f4ad7",
+      "reference_date": "2026-11-13"
     },
     {
       "repo": "ravindu644/Droidspaces-OSS",
@@ -971,13 +971,13 @@
     },
     {
       "repo": "xiaomi-pad-8-pro-development/android_device_xiaomi_piano-uefi",
-      "ref": "seventeen",
+      "ref": "main",
       "category": "reference",
       "role": "Mu-Silicium 路线的 piano UEFI 与 Visor 启动菜单，含 linux/build-linux-dtb.sh 等参考脚本",
       "decision": "reference",
       "reason": "Linux (Arch) from Visor 尚未实现，替代不了当前 SunUEFI 链；只作架构参考",
-      "reference_commit": null,
-      "reference_date": "2026-11-08"
+      "reference_commit": "5b0ddb72cd9eb4ba1f9f6955baf0f789746d5e7e",
+      "reference_date": "2026-11-14"
     },
     {
       "repo": "xiaomi-pad-8-pro-development/android_device_xiaomi_piano-patches",
@@ -1010,5 +1010,5 @@
       "reference_date": "2026-11-08"
     }
   ],
-  "checked_date": "2026-11-08"
+  "checked_date": "2026-11-14"
 }

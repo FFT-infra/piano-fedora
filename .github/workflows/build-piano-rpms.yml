@@ -132,6 +132,13 @@ jobs:
           sunuefi_commit=$(git -C build/sources/sunuefi rev-parse HEAD)
           echo "sunuefi_commit=$sunuefi_commit" >> "$GITHUB_OUTPUT"
 
+      - name: Seed the sealed kernel source from a reachable mirror
+        run: |
+          set -euo pipefail
+          # 上游工具只在对象缺失时才 fetch，而它固定的地址是 git.kernel.org；
+          # runner 连它经常超时，整条 RPM 矩阵停在准备内核源码这一步。
+          python3 scripts/seed-kernel-source.py --sunuefi build/sources/sunuefi
+
       - name: Compile the kernel-matched v4l2loopback
         run: |
           set -euo pipefail
@@ -168,7 +175,8 @@ jobs:
                 mesa-libEGL-devel mesa-libGLES-devel mesa-libgbm-devel \
                 dbus-devel polkit-devel json-c-devel gtk4-devel libadwaita-devel \
                 libgudev-devel libgusb-devel pixman-devel openssl-devel \
-                cargo rust libjpeg-turbo-devel libyuv-devel glibc-static
+                cargo rust libjpeg-turbo-devel libyuv-devel glibc-static \
+                gstreamer1-devel gstreamer1-plugins-base-devel
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory /workspace/build/sources/sunuefi
               export KERNEL_PAYLOAD=/workspace/build/kernel
@@ -190,6 +198,7 @@ jobs:
           required = {
               "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
               "piano-camera", "piano-fingerprint", "piano-libfprint",
+              "piano-pipewire-gstreamer",
               "xiaomi-piano-thp", "sm8750-video-accel",
               "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
           }

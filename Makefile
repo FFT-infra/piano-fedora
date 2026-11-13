@@ -41,6 +41,7 @@ test:
 	python3 tests/check_iris_source.py
 	python3 tests/check_production_kernel.py
 	python3 tests/check_kernel_ccache.py
+	python3 tests/check_kernel_source_seed.py
 	python3 tests/check_kernel_config_assertions.py
 	python3 tests/check_runtime_kernel_source.py
 	python3 tests/check_fastrpc_runtime.py
@@ -62,6 +63,7 @@ test:
 	python3 tests/check_finger_orientation.py
 	python3 tests/check_fingerprint_package.py
 	python3 tests/check_libfprint_package.py
+	python3 tests/check_pipewire_gstreamer_package.py
 	python3 tests/check_rootfs_finalize.py
 	python3 tests/check_default_password.py
 	python3 tests/check_clean_rootfs.py

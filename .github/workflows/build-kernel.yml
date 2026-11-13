@@ -98,6 +98,13 @@ jobs:
           # 上游一变就报错退出，不静默套用一个上下文已变的补丁。
           python3 scripts/apply-patches.py --sunuefi sunuefi
 
+      - name: Seed the sealed kernel source from a reachable mirror
+        run: |
+          set -euo pipefail
+          # 上游工具只在对象缺失时才 fetch，而它固定的地址是 git.kernel.org；
+          # runner 连它经常超时，整条构建停在准备内核源码这一步。
+          python3 scripts/seed-kernel-source.py --sunuefi sunuefi
+
       - name: Prepare the release kernel source
         run: python3 scripts/prepare-production-kernel.py --sunuefi sunuefi
 

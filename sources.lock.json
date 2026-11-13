@@ -25,7 +25,7 @@
     "vendor-kernel": {
       "url": "https://github.com/xiaomi-pad-8-pro-development/android_kernel_xiaomi_piano.git",
       "ref": "6.6",
-      "commit": "0d7cc8a05dbadf647c69ec8e4fe80c85c03fc259",
+      "commit": "737dabf0f6076ee5d80be6b7190f9ee314c6cad7",
       "role": "厂商 Android 下游内核的 DTS 源码，作为 overlay 的审阅基准。不进任何出货产物，只被 scripts/compare-vendor-dt.py 读取"
     },
     "vendor-blobs": {
@@ -67,7 +67,7 @@
     "fastrpc": {
       "url": "https://github.com/qualcomm/fastrpc.git",
       "ref": "development",
-      "commit": "8f5927397d1b7c87e6724cb1ddbde956a7f34cab",
+      "commit": "89508eaeed55833bcb381fafa91e2224201f4ad7",
       "role": "adsprpcd 守护进程源码；配合 Fedora 的 FastRPC 共享库服务 sensorspd"
     },
     "librevm": {

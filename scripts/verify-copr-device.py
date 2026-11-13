@@ -235,7 +235,7 @@ def main():
             expected = {
                 "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
                 "piano-camera", "piano-fingerprint", "piano-libfprint",
-                "xiaomi-piano-thp", "sm8750-video-accel",
+                "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
                 "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
                 # 图形栈：这两个是本地重建的包，靠改名后声明 Provides/Conflicts
                 # 压过官方版本。仓库里没有它们，设备 dnf upgrade 就会装回官方版。
