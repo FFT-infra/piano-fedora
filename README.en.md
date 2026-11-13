@@ -29,7 +29,7 @@ Fedora 45 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are not verified yet |
 | Dual boot | ✅ | The combined BOOT lives in the active slot's `boot` partition (`boot_a` or `boot_b`). Linux→Android uses `piano-next-boot android --reboot`. Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two round trips are verified on device, see [known issues](docs/known-issues.md#双系统切换) |
 | Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally. 1906 axis events, 22 proximity events and 18 tip events were captured, see [known issues](docs/known-issues.md#手写笔) |
-| Fingerprint | ❌ | Side-mounted capacitive, Goodix. Authentication runs in the TEE's `gfpia` TA. The kernel side is in place: `uio_piano_fingerprint`, `qcomtee` and `/dev/tee0` are all present, and so is the DT node. What is missing is the libfprint backend. Upstream has it, this repository has not wired it in yet. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| Fingerprint | ❌ | Side-mounted capacitive, Goodix. Authentication runs in the TEE's `gfpia` TA. The userland side is wired: `piano-fingerprint` provides the native client, `piano-libfprint` links the Goodix static library into a patched libfprint, both ship in the default image, and fprintd recognizes the sensor. What is missing is a device record of enrolment and unlock. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
 | IR | ✅ | The consumer IR blaster (QUPv3 SE15) is wired to the standard `ir-spi` driver and LIRC. `/dev/lirc0` and `/sys/class/rc/rc0` exist, and `ir-ctl` can send. Optical output is not measured. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
 | HDR | ❌ | The panel supports HDR10. DSI-1 attaches `HDR_OUTPUT_METADATA`, and the CRTC exposes `GAMMA_LUT`, `DEGAMMA_LUT` and `CTM`. The full HDR output path is not verified. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
 
@@ -40,7 +40,7 @@ Images are built per profile from the same release chain. They differ only in th
 | Profile | Session | Login | Auto-rotate | Acceptance |
 |---|---|---|---|---|
 | `gnome` | GNOME 51 (Workstation environment) | GDM autologin | Mutter | Desktop reached. Rotation verified on device |
-| `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Desktop reached. Rotation verified. One brief flicker per rotation, see [known issues](docs/known-issues.md) |
+| `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Desktop reached. Rotation verified |
 | `niri` | niri | greetd + tuigreet | None, manual `transform` | Desktop reached |
 | `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None, manual rotate | Desktop reached |
 
@@ -88,6 +88,7 @@ An archive holds the platform images, that profile's `root-install/`, the compon
 - [Desktops](docs/desktops.md): login, power, rotation, and acceptance for each profile
 - [Installation and partitioning](docs/installation.md): partition sizing, GPT checks, one-step and manual flashing, first login
 - [Artifacts and pipeline](docs/artifacts.md): how the kernel, RPMs, initramfs, and bundle are assembled
+- [Local build and verification](docs/build.md): tool list, source checkout, offline gates, build order, and the steps for a pin bump
 - [Maintenance and acceptance](docs/internals.md): pipeline entry points, artifact binding, run id plumbing, PR gate
 - [COPR repository](docs/copr-repository.md): online upgrades for all ten packages, kernel included, plus the rollback boundary and failure modes
 - [Upstream tracking](docs/upstream.md): current pin, drift dashboard, follow-up rules
