@@ -971,13 +971,13 @@
     },
     {
       "repo": "xiaomi-pad-8-pro-development/android_device_xiaomi_piano-uefi",
-      "ref": "seventeen",
+      "ref": "main",
       "category": "reference",
       "role": "Mu-Silicium 路线的 piano UEFI 与 Visor 启动菜单，含 linux/build-linux-dtb.sh 等参考脚本",
       "decision": "reference",
       "reason": "Linux (Arch) from Visor 尚未实现，替代不了当前 SunUEFI 链；只作架构参考",
-      "reference_commit": null,
-      "reference_date": "2026-11-08"
+      "reference_commit": "5b0ddb72cd9eb4ba1f9f6955baf0f789746d5e7e",
+      "reference_date": "2026-11-14"
     },
     {
       "repo": "xiaomi-pad-8-pro-development/android_device_xiaomi_piano-patches",
