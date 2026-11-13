@@ -348,7 +348,7 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 
 尺寸只在首装这一次定。`userdata` 起点不动、root 从它后面接，所以只能缩不能长，上限就是当前的盘尾。装完再改没有入口：`install-f2fs.py` 的 `--android-data-mib` 与 `--lossless` 在已有分区时直接拒绝，`update-f2fs.py` 只替换文件。要改就得先把 `sunuefi_root`、`sunuefi_esp` 从 GPT 删掉、把 `userdata` 拉回盘尾，再跑一遍，Linux 数据会丢，Android 保留；删分区这一步没有工具，目前是手工改表。
 
-发布资产里的 `flash-linux.sh` 与手动刷写章节仍只写 Slot A，Slot B 设备只能用 `install-f2fs.py`。
+发布归档里的 `root-install` 按 `_a` 构建，Slot B 设备要用同一次 bundle run 跑 `prepare-install.yml` 并传 `android_slot=_b`。一键脚本与手动章节已跟随活动槽，槽位与 root-install 不一致时在写入前退出。
 
 设备侧的前置条件是已装与当前 BOOT 匹配的「SunUEFI 引导助手」模块，`piano-resize-f2fs` 由它提供。缺这个模块时 `plan --lossless` 直接报错，不会退化成清空路径。
 
