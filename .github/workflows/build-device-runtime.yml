@@ -94,6 +94,12 @@ jobs:
           python3 scripts/checkout-sources.py --output build/sources --mode device --kernel
           tar -I zstd -xf build/in/kernel/kernel-release-7.3.0.tar.zst -C build/in/kernel
 
+      - name: Seed the sealed kernel source from a reachable mirror
+        run: |
+          set -euo pipefail
+          # 与 build-kernel 同一份源码、同一个上游工具，也停在同一处超时上。
+          python3 scripts/seed-kernel-source.py --sunuefi build/sources/sunuefi
+
       - name: Compile the matching external module
         run: |
           set -euo pipefail

@@ -135,28 +135,9 @@ jobs:
       - name: Seed the sealed kernel source from a reachable mirror
         run: |
           set -euo pipefail
-          # prepare_release_kernel.py 只在对象缺失时才 fetch，而它固定的地址是
-          # git.kernel.org；GitHub Actions 的出口连它经常 135 秒超时，整条 RPM
-          # 矩阵就停在准备内核源码这一步。先取 stable 维护者 GitHub 镜像的同一
-          # 个 tag 放进工具会用的 bare 仓库，再核对它指向封存序列的基线提交。
-          sun=build/sources/sunuefi
-          policy=$(python3 - "$sun" <<'PY'
-          import json, sys
-          from pathlib import Path
-          sun = Path(sys.argv[1])
-          series = json.loads((sun / "patches/linux/7.3/series.json").read_text())
-          release = json.loads((sun / "config/release.json").read_text())
-          print(series["base_commit"], release["kernel"]["stable_version"])
-          PY
-          )
-          set -- $policy
-          base=$1
-          tag=v$2
-          repo="$sun/build/kernel-sources/linux-piano.git"
-          git init -q --bare "$repo"
-          git -C "$repo" fetch --no-tags --depth=1 \
-            https://github.com/gregkh/linux.git "refs/tags/$tag:refs/tags/$tag"
-          test "$(git -C "$repo" rev-parse "$tag^{commit}")" = "$base"
+          # 上游工具只在对象缺失时才 fetch，而它固定的地址是 git.kernel.org；
+          # runner 连它经常超时，整条 RPM 矩阵停在准备内核源码这一步。
+          python3 scripts/seed-kernel-source.py --sunuefi build/sources/sunuefi
 
       - name: Compile the kernel-matched v4l2loopback
         run: |
