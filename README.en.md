@@ -88,6 +88,7 @@ An archive holds the platform images, that profile's `root-install/`, the compon
 - [Desktops](docs/desktops.md): login, power, rotation, and acceptance for each profile
 - [Installation and partitioning](docs/installation.md): partition sizing, GPT checks, one-step and manual flashing, first login
 - [Artifacts and pipeline](docs/artifacts.md): how the kernel, RPMs, initramfs, and bundle are assembled
+- [Local build and verification](docs/build.md): tool list, source checkout, offline gates, build order, and the steps for a pin bump
 - [Maintenance and acceptance](docs/internals.md): pipeline entry points, artifact binding, run id plumbing, PR gate
 - [COPR repository](docs/copr-repository.md): online upgrades for all ten packages, kernel included, plus the rollback boundary and failure modes
 - [Upstream tracking](docs/upstream.md): current pin, drift dashboard, follow-up rules
