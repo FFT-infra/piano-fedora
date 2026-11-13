@@ -17,7 +17,7 @@
 | 罗盘 | 可用：`/net/hadess/SensorProxy/Compass` 上 `HasCompass=true` | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 之前查的是父对象，接口在子对象上 | 完成 |
 | 构建断言 | 完成：`build-kernel.yml` 断言 20 项，`check_kernel_config_assertions.py` 锁住 | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | — | 完成 |
 | 文档口径 | 完成：README 与 `known-issues.md` 的红外/HDR/指纹三节按实机状态重写 | — | — | 完成 |
-| 自动亮度 | extras 的 `gnome-settings-daemon-piano` 带设备 profile，默认 `ambient-enabled=false` | GSD 按原厂 lux 曲线调背光 | 装 `piano-gnome-extras` 后遮住/移开传感器验收 | P2 |
+| 自动亮度 | 2026-11-14 装 `piano-gnome-extras` 后验过：profile 加载、目标亮度 66.7%、背光 1023 → 1360 | GSD 按原厂 lux 曲线调背光 | 遮住/移开传感器的跟随曲线仍待做 | P2 |
 | 键盘背光热插拔 | extras 的 GSD 带 50.1 补丁，背光设备随键盘盖插拔更新 | 背光走 UPower/GNOME | 同上，接上/取下键盘盖，看 `/sys/class/leds` 与 UPower | P2 |
 | KDE HDR/广色域 | 完成：extras 的 KWin 带退出 HDR 恢复背光补丁，2026-11-12 冷启动真机开关两轮，背光 1024 → 2047 → 1024 | KWin 可切换，退出 HDR 恢复背光 | 色深与色调映射没量，见[已知问题](known-issues.md#hdr) | 完成 |
 | 指纹录入 | 用户态已接，`piano-fingerprint-ctl` 与 fprintd 都可用；录入没测 | libfprint/fprintd 完整录入与认证 | `fprintd-enroll` 走完一次，再 `fprintd-verify` | P2 |
