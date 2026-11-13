@@ -257,8 +257,8 @@ def main():
         names.insert(0, release["kernel"]["cpu_model_overlay"])
     # 不发货的 overlay 不参与对照：它们的 include 由上游在 --kernel-source 下
     # 从内核源码生成，这里没有那棵源码树。
-    skipped = set(json.loads((ROOT / "product.json").read_text()).get("dtb_overlays_not_shipped", []))
-    names = [name for name in names if name not in skipped]
+    not_shipped = set(json.loads((ROOT / "product.json").read_text()).get("dtb_overlays_not_shipped", []))
+    names = [name for name in names if name not in not_shipped]
 
     overlays = []
     provided = {}
