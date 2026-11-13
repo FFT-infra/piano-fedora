@@ -82,6 +82,8 @@ Not Authorized: net.reactivated.fprint.device.verify
 
 设备证据来自同一份探针的前后对照。旧模块把消费端请求的 8160x6120 钳回 1920x1440，`SOURCE_CHANGE` 订阅返回 `EINVAL`；换模块后消费端读回 8160x6120，生产端收到事件重新协商，守护进程日志有 `output negotiated to 8160x6120 NV12`。抓到的帧是 74,908,800 字节，后摄曝光从 8 行加到 6412 行时同一场景平均亮度从 2.2 升到 255，说明帧内容是真实感光而不是黑帧。
 
+走 portal 与 pipewire 的客户端是另一条链，跟直连 `/dev/video40` 的表现不同。Fedora 45 的 `pipewire-1.6.11-1` 缺 1.6 分支之后收的三处 GStreamer 修复，GNOME Snapshot 先拿到 16x4 的预览，修好尺寸后又在 `gst_base_sink_drain` 里段错误。我们出 `piano-pipewire-gstreamer` 顶掉官方子包，带 1.6 分支 tip 在 `src/gst/` 下的全部提交和一条只进过 master 的 backport，`Provides`/`Obsoletes` 保证同一个插件只有一份包提供。尺寸的前后对照用 `GstDeviceMonitor` 读设备 caps：原包 raw 是 `width=[16,8160]`、fixate 到 16x4；换上之后是 `width={1920,[16,8160]}`、fixate 到 1920x1440，两个摄像头都是。崩溃与重连的验证在 [已知问题](known-issues.md)，删包条件见 #64。
+
 ## 电源策略
 
 原状是 `rpm -q tuned power-profiles-daemon` 两个都 not installed，`/usr/lib/systemd/system` 里也没有对应 unit，GNOME 设置里的性能模式面板是空的。Fedora 45 仓库有 `tuned 2.28.0` 与 `tuned-ppd 2.28.0`，Fedora 41 起后者的定位就是 PPD 的默认实现，所以走 `tuned-ppd` 而不是 `power-profiles-daemon`。

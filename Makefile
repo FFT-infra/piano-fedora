@@ -62,6 +62,7 @@ test:
 	python3 tests/check_finger_orientation.py
 	python3 tests/check_fingerprint_package.py
 	python3 tests/check_libfprint_package.py
+	python3 tests/check_pipewire_gstreamer_package.py
 	python3 tests/check_rootfs_finalize.py
 	python3 tests/check_default_password.py
 	python3 tests/check_clean_rootfs.py

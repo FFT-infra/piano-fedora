@@ -42,6 +42,7 @@ PIANO_PACKAGES = [
     "piano-camera",
     "piano-fingerprint",
     "piano-libfprint",
+    "piano-pipewire-gstreamer",
     "xiaomi-piano-thp",
     "sm8750-video-accel",
     "uperf-linux",
