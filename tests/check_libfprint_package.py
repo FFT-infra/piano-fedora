@@ -71,7 +71,25 @@ def main():
 
     profiles = (ROOT / "scripts" / "profiles" / "fedora-desktops.json").read_text()
     assert '"fprintd"' in profiles and '"fprintd-pam"' in profiles, "GNOME 档没有装 fprintd"
-    print("OK: libfprint 补丁、替换声明、fprintd drop-in 与镜像清单齐全")
+
+    # SELinux：drop-in 只放开 cgroup 的 DeviceAllow，enforcing 下还要策略放行
+    # UIO、TEE、bsg 与 sys_rawio，状态目录得标成 fprintd 自己的类型。
+    policy = (ROOT / "rootfs" / "selinux" / "piano_hardware.te").read_text()
+    for rule in ("allow fprintd_t device_t:chr_file",
+                 "allow fprintd_t userio_device_t:chr_file",
+                 "allow fprintd_t scsi_generic_device_t:chr_file",
+                 "allow fprintd_t self:capability sys_rawio"):
+        assert rule in policy, f"SELinux 策略缺少 {rule}"
+    contexts = (ROOT / "rootfs" / "selinux" / "piano_hardware.fc").read_text()
+    assert re.search(r"^/var/lib/piano-goodix\(/\.\*\)\?\s+system_u:object_r:fprintd_var_lib_t:s0$",
+                     contexts, re.M), "状态目录没有标成 fprintd_var_lib_t"
+    makefile = (ROOT / "Makefile").read_text()
+    assert "-f $(SELINUX_FC)" in makefile, "make selinux 没有把文件上下文打进模块"
+
+    # PAM：fprintd-pam 装了不等于接上，Fedora 需要 authselect 选 with-fingerprint。
+    assert '"authselect", "select", "local", "with-fingerprint"' in finalize, \
+        "finalize 没有启用 authselect 的 with-fingerprint"
+    print("OK: libfprint 补丁、替换声明、fprintd drop-in、SELinux 规则、PAM 接入与镜像清单齐全")
 
 
 if __name__ == "__main__":
