@@ -448,11 +448,11 @@ loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255）�
 
 GNOME Snapshot 这类走 portal 与 pipewire 的应用，拿到的是 16x4 而不是默认的 1920x1440，GTK4 的 Vulkan 渲染器给这个尺寸建 offscreen image 时段错误。直连 `/dev/video40` 的 `ffmpeg` 与 `gst-launch v4l2src` 不受影响，两种方式都正常拿到 1920x1440。
 
-尺寸修好之后还有第二层：Snapshot 仍会在 `queue0:src` 的 `gst_base_sink_drain` 深拷贝里段错误。`pipewiresrc` 判定「caps 没变就不重连」时拿固定 caps 跟带区间的 caps 比，永远不相等，每次 reconfigure 都断开重连；池子被拆掉时 sink 里排队的缓冲已经解映射。
+第二层在流的重连上：尺寸正确时 Snapshot 仍会在 `queue0:src` 的 `gst_base_sink_drain` 深拷贝里段错误。`pipewiresrc` 判定「caps 没变就不重连」时拿固定 caps 跟带区间的 caps 比，永远不相等，每次 reconfigure 都断开重连；池子被拆掉时 sink 里排队的缓冲已经解映射。
 
 三处都在 pipewire：`90ddb7e6` 保留 SPA choice 的首选值，`4d3a3fc8` 修 `buffer_recycle` 的加锁顺序，`97699d70` 让运行中的 caps 仍被下游接受时不重连。Fedora 45 的 `pipewire-1.6.11-1` 一条都没有，最后一条目前只在 master。临时用 `piano-pipewire-gstreamer` 替换 `pipewire-gstreamer` 子包，它带 1.6 分支 tip 在 `src/gst/` 下的全部提交加这一条 backport，细节与移除条件见 #64。
 
-设备实测：修前同一份 Snapshot 在数秒内断开重连十余次，约一秒后段错误；修后连续预览四分钟以上，期间一次重连，无新 core，预览正常出图。
+同一份 Snapshot 在修复前数秒内重连十余次、约一秒后段错误；修复后连续预览四分钟以上，一次重连，无新 core，预览正常出图。
 
 判定用 `GstDeviceMonitor` 取设备 caps，看 `fixate` 后的宽高，不要用 `gst-launch` 直连——它不查设备枚举，看不出差别。
 

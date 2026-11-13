@@ -131,7 +131,7 @@ GNOME meta 写入 `20-piano-ambient`，只把 `org.gnome.settings-daemon.plugins
 
 KDE HDR 的补丁版 KWin 已经在真机验过。2026-11-12 冷启动后跑了两轮 `hdr` 与 `wcg` 同批开关，背光 1024 → 2047 → 1024，关 HDR 后回到开启前的值。细节见[已知问题](known-issues.md#hdr)。
 
-自动亮度在 2026-11-14 验过：装上 `piano-gnome-extras` 与 `gnome-settings-daemon-piano` 后，`gsd-power` 日志出现 `Using ambient-light profile /usr/share/gnome-settings-daemon/ambient-profiles/piano.ini for xiaomi,piano` 与 `Calculated new target brightness from ambient: 66.7%`，`ktz8866-backlight` 从 1023 升到 1360（上限 2047），`SensorProxy` 同期报 13–17 lux。这次只验了一次事件的取值，没有制造大幅 lux 变化，遮住/移开传感器的跟随曲线仍待做。键盘背光还没验：手边没有悬浮键盘，热插拔与睡眠唤醒恢复拿不到真机结果。
+自动亮度已验：`gsd-power` 加载 `piano.ini` 的 ambient profile，13–17 lux 下算出 66.7% 的目标亮度，`ktz8866-backlight` 从 1023 调到 1360（上限 2047）。遮住/移开传感器看完整跟随曲线还没做。键盘背光未验：手边没有悬浮键盘，热插拔与睡眠唤醒恢复拿不到真机结果。
 
 2026-11-11 在默认 GNOME 档核对过原版组件：`gnome-settings-daemon-51.1-1.fc45`、`kwin-6.8.2-3.fc45`、`gtk3-3.24.52-6.fc45`，`gnome-settings-daemon-piano` 与两个 meta 包都没有安装，`ambient-enabled` 为 `false`。
 
