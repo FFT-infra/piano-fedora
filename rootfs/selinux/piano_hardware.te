@@ -1,4 +1,4 @@
-module piano_hardware 1.1;
+module piano_hardware 1.2;
 
 # Policy for the piano port's own services. They run in init_t (no dedicated
 # domain yet: the image has no selinux-policy-devel, so no domain macros).
@@ -13,10 +13,16 @@ require {
 	type iiosensorproxy_t;
 	type syslogd_t;
 	type ssh_home_t;
+	type fprintd_t;
+	type userio_device_t;
+	type scsi_generic_device_t;
+	type var_t;
+	type device_t;
 	class chr_file { open read write ioctl map };
 	class file { create write open getattr append read };
-	class dir { add_name write search getattr };
+	class dir { add_name write search getattr read };
 	class unix_dgram_socket { sendto };
+	class capability { sys_rawio };
 	class qipcrtr_socket { create bind read write getattr getopt setopt };
 }
 
@@ -47,3 +53,16 @@ allow iiosensorproxy_t syslogd_t:unix_dgram_socket { sendto };
 # The systemd address-family allowlist already includes AF_QIPCRTR; the Fedora
 # domain still needs its own socket permissions (device AVC: create denied).
 allow iiosensorproxy_t self:qipcrtr_socket { create bind read write getattr getopt setopt };
+
+# fprintd 的 Goodix 驱动通过命名 UIO 控制器与 TEE 会话读写模板，还要用 bsg
+# 发 RPMB 命令取密钥材料。上游的 20-piano.conf 只放开 cgroup 的 DeviceAllow，
+# SELinux 侧在镜像里没有对应规则，enforcing 下 enroll 直接 EACCES。
+# tee0 在内核里没有专用标签（默认 device_t）。20-piano.conf 的 DeviceAllow
+# 已经把 cgroup 侧收在 char-uio/char-tee/char-bsg 三种设备上，SELinux 这边
+# 对 device_t 的放行不会扩大到别的设备节点。
+allow fprintd_t device_t:chr_file { open read write ioctl };
+allow fprintd_t userio_device_t:chr_file { open read write ioctl map };
+allow fprintd_t scsi_generic_device_t:chr_file { open read write ioctl };
+allow fprintd_t self:capability sys_rawio;
+# 打开 /var/lib/piano-goodix 之前 libfprint 会 stat 一遍 /var。
+allow fprintd_t var_t:dir read;
