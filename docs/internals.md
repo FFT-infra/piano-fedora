@@ -90,7 +90,7 @@ slot 与相邻跳变分位数。速率按 SYN 报文统计，不按 ABS 事件�
 
 ## 本机 BOOT
 
-生成设备 BOOT 之前，先确认当前原 BOOT 的完整摘要、Slot A 槽位与系统版本。`prepare-device-boot.py` 用这些输入和同核心的 Actions 工具生成 `boot_android.img` 与 `boot_linux.img`，并在清单里记下 `active_slot` 与 `app_generation`。默认目标是普通 Android。
+生成设备 BOOT 之前，先确认当前原 BOOT 的完整摘要、活动槽（`_a` 或 `_b`）与系统版本。`prepare-device-boot.py` 用这些输入和同核心的 Actions 工具生成 `boot_android.img` 与 `boot_linux.img`，并在清单里记下 `active_slot` 与 `app_generation`。默认目标是普通 Android。
 
 包装后恢复必须得到完整原 BOOT 的同一 SHA256。Linux 持久请求、只读预览和改回 Android 后的再次完整恢复都要成功。文件检查替代不了真机旁路和 Recovery 验收。
 
@@ -174,7 +174,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
   --plan first-install-plan.json
 ```
 
-`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量。任何一项与现场不符就停下。同时确认设备当前 `current-slot` 是 `a`，`root-install-manifest.json` 顶层的 `android_slot` 是 `_a`。首装只能用 `_a`。合体 BOOT 写进 Android 的当前槽，`_b` 没有原厂 super 逻辑分区。
+`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量。任何一项与现场不符就停下。同时确认 `root-install-manifest.json` 顶层的 `android_slot` 与设备当前槽一致，并且 super 里有 `system<槽>`、`vendor<槽>`、`odm<槽>` 三个逻辑分区。首装目标就是原厂 Android 所在的槽：合体 BOOT 写进这个槽，ABL 只加载它。出厂设备是 `_a`，OTA 到 HyperOS 4 的设备是 `_b`，后者的 super 里没有 `_a` 那一套。
 
 计划本身是一份 JSON，`--plan` 指到哪里就写到哪里，通常是 `first-install-plan.json`。它记录磁盘几何、原分区表、每个分区的 `first`/`last` 变化与容量，`baseline_sha256` 绑定这份表的来源。`apply` 重算一遍，再逐字段比较。设备或输入包有任何变化都停。
 
@@ -190,7 +190,7 @@ ESP 默认 512 MiB。ESP 分区必须和 `sunuefi_esp.img` 等大：镜像按 `p
 
 `device-boot-manifest.json` 的 `active_slot` 必须等于 `--slot`，`app_generation` 必须与 `PianoUEFI-product.img` 的 APPv1 载荷一致。上游 7dbabdc 之后不再有 `boot-request.json`：Linux 侧的活动槽由只读主备 GPT 与高通 A/B 属性判定，`piano-next-boot-helper` 读那份 BOOT 的实际 generation 后写请求页。
 
-3 秒选择器读请求页的位置是“正在引导的那份镜像”末尾：ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装在 Slot A，Android 与 Linux 都从同一份 `boot_a` 启动，请求页因此指向 `boot_a`。系统不切槽，也不存在第二份需要同步的页。
+3 秒选择器读请求页的位置是“正在引导的那份镜像”末尾：ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装在活动槽，Android 与 Linux 都从同一份 `boot<槽>` 启动，请求页因此指向它。系统不切槽，也不存在第二份需要同步的页。
 
 合体 BOOT 方案不切槽，因此不触发 GPT 的槽位约束。槽位 type GUID 与 `qbootctl -s` 的坑见[已知问题](known-issues.md#双系统切换)。手工重建 GPT 时，主表和备份表要一起写。两份 CRC 都要重算。
 
@@ -251,9 +251,9 @@ chmod +x flash-linux.sh
 第 3 步已经用 `install-f2fs.py --ssh-key` 注入过时，这里不必再传。重复注入
 只会覆盖同一个 `/piano-ssh-key.pub`。两条路径都要求本机有 `mcopy`（mtools）。
 
-脚本校验归档与 `root-install` 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 能装进实时 `sunuefi_root`。脚本拒绝 fastbootd、错误产品、多台设备和不完整材料。脚本只写 `boot_a`、`sunuefi_esp`、`sunuefi_root`，不切活动槽。
+脚本校验归档与 `root-install` 各自的摘要、bundle/root provenance、槽位，以及 `expanded_bytes` 能装进实时 `sunuefi_root`。脚本拒绝 fastbootd、错误产品、多台设备和不完整材料。脚本只写活动槽的 boot 分区与 `sunuefi_esp`、`sunuefi_root`，不切活动槽。
 
-首次安装拒绝 `--skip-checksum`。两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备从 Slot A 重启，选择器按 `boot_linux.img` 里的请求页进入 Linux。
+首次安装拒绝 `--skip-checksum`。两份摘要、provenance、槽位与容量都必须在第一笔写入前通过。完成后设备从原活动槽重启，选择器按 `boot_linux.img` 里的请求页进入 Linux。
 
 Windows 一键脚本用系统自带的 Windows PowerShell 读 JSON 清单。槽位与容量核对走 `ConvertFrom-Json`，找不到 `powershell` 就直接停下。
 
@@ -277,7 +277,7 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
 
 1. 同一次新流水线产出的 `deploy-bundle-<desktop>` 和 `root-install-<desktop>` 已记录 run ID 与摘要。
 2. 从原始 GPT/UFS 开始完成首次分区、显式擦除 userdata、Android 首次开机。
-3. 从 Slot A 冷启动进入所选档位（`gnome`、`kde`、`niri` 或 `hyprland`），不是热修复或历史镜像启动。
+3. 从活动槽冷启动进入所选档位（`gnome`、`kde`、`niri` 或 `hyprland`），不是热修复或历史镜像启动。
 4. 完整重启一次后仍能进入同一档位，且 `systemctl --failed` 为空。
 5. Android→Linux、Linux→Android 和原厂 Recovery 都完成，保存屏幕、命令输出、
    `uname -r`、`/usr/lib/modules/`、F2FS 挂载与分区容量证据。

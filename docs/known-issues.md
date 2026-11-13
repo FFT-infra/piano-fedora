@@ -199,7 +199,7 @@ userdata。安装脚本目前只做擦除，操作者要在现场执行这一步
 
 ## 双系统切换
 
-双系统切换按上游 SunUEFI 的合体 BOOT 模型工作。`boot_a` 里是原厂 Android 内核、3 秒选择器与 UEFI 核心，请求页在 `boot_a` 镜像末尾。Android 与 Linux 都从 Slot A 启动，不切活动槽，也不改 GPT。
+双系统切换按上游 SunUEFI 的合体 BOOT 模型工作。活动槽的 BOOT 里是原厂 Android 内核、3 秒选择器与 UEFI 核心，请求页在这份镜像末尾。Android 与 Linux 都从同一个活动槽启动，不切活动槽，也不改 GPT。出厂设备的活动槽是 `_a`，OTA 到 HyperOS 4 的设备是 `_b`。
 
 - Linux → Android：`piano-next-boot android --reboot` 把持久请求写成 target=0，
   正常重启后选择器进入 Android。
@@ -231,6 +231,61 @@ unbootable55）定位活动槽，再读那份 BOOT 的实际 generation。本机
 仍停在旧 B 槽布局的设备按这条路径迁移：把 `device-boot/boot_android.img` 写进
 `boot_a`，再用 `fastboot set_active a` 切回 A（B→A 方向 qbootctl 也安全）。
 旧安装上的 `/etc/piano/boot-request.json` 可以直接删掉，新 helper 不读它。
+
+## 固件拒绝 UKI（uki-identity）
+
+菜单选 Linux 后立刻回到菜单，提示「Linux 启动镜像格式不受支持，请更新镜像」。
+日志里是这一组：
+
+```
+PIANO_EBS_CALL image=... tpl=4 ... before=0
+PIANO_EBS_REFUSE stage=before-exit status=Access Denied
+PIANO_UKI_RETURN status=Load Error
+```
+
+systemd-stub 258 起，没有 shim 时直接跳进 UKI 内嵌的内核，跳转前临时把 UKI
+自己的 `LoadedImage.ImageBase`/`ImageSize` 改成内核的地址和大小，返回后恢复。
+`ExitBootServices` 发生在跳转内部，SunUEFI 的 `ValidateInstalledEfiImage()`
+拿 `StartImage` 前记下的值去比，看到被改写的字段就返回 `EFI_ACCESS_DENIED`，
+内核 stub 再把它变成 `EFI_LOAD_ERROR`。Debian trixie 的 systemd 257 仍然把
+内核算成子镜像，所以上游自测碰不到，stub 到 258 以上才会触发。
+
+`patches/uefi-ebs-identity/` 把这处比较限定在 EBS 调用者不是 UKI 句柄的情况，
+handle、父链、设备句柄与镜像状态检查都保留。固件重编刷机后看 `uki-identity`
+是否消失、DT 与内存校验走到哪一步；写这一节时还没有真机验证。
+
+## 交接系统时 USB 停止超时
+
+菜单选 Linux 后曾停在「未能启动系统 / 系统交接失败」，状态
+`0x8000000000000012`，即 `EFI_TIMEOUT`。日志里 `PIANO_EBS_CALL` 之后 NV 保存与
+文件系统关闭都成功，失败落在 USB 服务停止：
+
+```
+SUNUEFI_USB_SERVICE_CLEANUP stage=begin start_status=Success allocated=9 programmed=1 dctl=80F00000 dsts=0000C858
+SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=...
+PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out
+```
+
+停 USB 在 `ExitBootServices` 的固件钩子里执行，主机这时已经在重新枚举设备，
+链路停在 Address。清 RunStop 后 `DevCtrlHlt` 与 `CoreIdle` 都不置位。本仓库的
+四版补丁分别试过结束挂起传输、确认 event ring、END_TRANSFER 带 CMDIOC、等
+Rx FIFO 空，都没有让 core 停下来。
+
+上游 `a139e996` 与 `3ab0085a` 修好了同一处，跟进 `4f663563` 时四版退役。
+`patches/uefi-dwc3-halt/` 只剩一条兜底：上游等待超时或 END_TRANSFER 失败时，
+唤醒两路 PHY 后做 core soft reset，以复位后的 `DevCtrlHlt` 为成功判据。
+
+2026-11-12 实机（旧 pin 上的第四版）：等待结束时 `hlt=0 idle=0`、`link=4`、
+`rxf=0`，soft reset 后转为 `hlt=1 idle=1 rxf=1`，接着
+`stage=halt status=Success`、`allocated=9 freed=9 retained=0`，没有
+`PIANO_START_FAILED`，随后进入 Plasma。
+
+2026-11-13 刷上新 pin 的固件后一次通过：`stage=halt status=Success`，`dctl` 从
+`80F00000` 变成 `00F00000`，`stage=done` 是 `allocated=9 freed=9 retained=0`，
+没有 `PIANO_START_FAILED`，也没有 `SUNUEFI_USB_HALT_RESULT`，上游的序列自己
+停住了 core。固件用 wrapped BOOT 换核的方式写回 `boot_b`（app generation
+`43bedc58` → `c0768ed7`），启动后进入 Plasma。这次启动的 UEFI 日志被
+`systemd-pstore` 归档在 `/var/lib/systemd/pstore/console-ramoops-0`。
 
 ## Android 侧
 
@@ -280,6 +335,22 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 `Piano Focus Pen Pro`（`virtual:0022:5081`）与蓝牙侧的
 `Xiaomi Focus Pen Pro Mouse/Keyboard`。蓝牙键盘/鼠标节点上的按键、捏握、
 防误触、绘图应用效果、充电与重连仍需分别验证。
+
+## 无损首装
+
+`install-f2fs.py` 加了 `--lossless`：先在 Android 上把解密后的 F2FS 缩到新容量，再写分区表，不擦 `userdata`。顺序不能反过来——文件系统比分区小是安全的，反过来会读出越界。
+
+工具链是上游现成的两步：`piano-resize-f2fs shrink --target-bytes N --execute` 走 `F2FS_IOC_RESIZE_FS`，`piano-storage apply` 写 GPT 并留备份。宿主机只负责计划、推送和核对，因为加密 `/data` 的明文超级块只有在设备上经 vold 解密映射才读得到，section 大小也从那里取。
+
+2026-11-13 在一台 OTA 到 HyperOS 4（活动槽 `_b`）的 1 TB 设备上跑完一次：`userdata` 从 938 GiB 缩到 200 GiB，`sunuefi_root` 737.5 GiB，`sunuefi_esp` 512 MiB。Android 里的测试文件 sha256 前后一致，Linux 首启自动登录，触控与笔正常，两系统往返各一次。
+
+还有三件事没验：重复安装、`--accept-data-loss` 路径、缩到余量很小的容量。
+
+尺寸只在首装这一次定。`userdata` 起点不动、root 从它后面接，所以只能缩不能长，上限就是当前的盘尾。装完再改没有入口：`install-f2fs.py` 的 `--android-data-mib` 与 `--lossless` 在已有分区时直接拒绝，`update-f2fs.py` 只替换文件。要改就得先把 `sunuefi_root`、`sunuefi_esp` 从 GPT 删掉、把 `userdata` 拉回盘尾，再跑一遍，Linux 数据会丢，Android 保留；删分区这一步没有工具，目前是手工改表。
+
+发布归档里的 `root-install` 按 `_a` 构建，Slot B 设备要用同一次 bundle run 跑 `prepare-install.yml` 并传 `android_slot=_b`。一键脚本与手动章节已跟随活动槽，槽位与 root-install 不一致时在写入前退出。
+
+设备侧的前置条件是已装与当前 BOOT 匹配的「SunUEFI 引导助手」模块，`piano-resize-f2fs` 由它提供。缺这个模块时 `plan --lossless` 直接报错，不会退化成清空路径。
 
 ## 触屏、网络、音频与相机
 
@@ -403,7 +474,7 @@ extras 的 KWin 带退出 HDR 恢复背光的补丁，内核封存序列里也�
 
 ## 内核在线升级
 
-`dnf upgrade` 现在会带上 `kernel-piano`。事务收尾时，`%posttrans` 重建 initramfs，再用 `systemd-ukify` 重打 ESP 上的 `/EFI/Linux/sunuefi.efi`。旧的 `boot.img` 链在平板上跑过一次真实升级（`7.2.9-1` → `7.2.9-3`）：`%posttrans` 重建了 initramfs，ESP 上的 `Image`、`initramfs` 与 `boot.img` 都换了，`.bak` 三份都在，重启后 `uname -r` 是新的内核，`graphical.target` 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载。UKI 链的替换还没有真机记录。
+`dnf upgrade` 现在会带上 `kernel-piano`。事务收尾时，`%posttrans` 重建 initramfs，再用 `systemd-ukify` 重打 ESP 上的 `/EFI/Linux/sunuefi.efi`。旧的 `boot.img` 链在平板上跑过一次真实升级（`7.2.9-1` → `7.2.9-3`）：`%posttrans` 重建了 initramfs，ESP 上的 `Image`、`initramfs` 与 `boot.img` 都换了，`.bak` 三份都在，重启后 `uname -r` 是新的内核，`graphical.target` 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载。UKI 链只做过手工替换：2026-11-12 把重打的 `/EFI/Linux/sunuefi.efi` 写回 ESP，重启后进入 Plasma。`%posttrans` 这条自动路径还没有在设备上跑过。
 
 写盘失败时，旧 UKI 保持不动，设备继续用旧内核启动。装好但起不来的内核没有自动回滚，回滚方式见 `docs/copr-repository.md`。
 
@@ -532,6 +603,23 @@ exFAT 与 NTFS 的 U 盘读写属于待验收项。
   在上游 SunUEFI 仓库，按 `sources.lock.json` 的 pin 取。还有一份设备验收记录
   已移到不入库的本地笔记，这条引用是历史记录。改 `series.json` 会改变
   `project_source_sha256`，现有 bundle 的 UEFI 来源校验会失效，因此本轮不改它。
+
+## 启动时的间歇 Oops
+
+2026-11-13 有一次启动停在内核 Oops 的 trace 上，看起来像卡死。内核命令行
+带 `panic=0`，Oops 之后不会自动重启，屏幕就留在那里。
+
+trace 里是 `Internal error: Oops - Undefined instruction: 0000000020000000`，
+两次都在启动约 9.4 s 的 `udevd-worker`（PID 532）里，走
+`handle_mm_fault` → `do_page_fault` → `do_mem_abort` 的页错误路径；前一次在
+`folio_add_file_rmap_ptes`，后一次在 `folio_move_anon_rmap`。崩溃时
+NetworkManager-wait-online 已经在跑，说明内核已完成启动交接、systemd 起来了，
+不是固件或 UKI 的问题。
+
+同一个 UKI、同一个内核 `7.3.3-piano-sunuefi-cachy-optimize` 在这次之前和之后
+都能正常进桌面，从原厂 fastboot `continue` 之后的那次启动 `dmesg` 里也没有
+Oops 或 panic。没有稳定复现，没有抓到完整串口日志，也没有定位到具体触发的
+模块。遇到时先正常重启一次；不要据此改启动链。
 
 ## 开机日志里的红色报错
 

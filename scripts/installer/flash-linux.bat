@@ -86,8 +86,30 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-REM 3c. Target partitions must exist before anything is written.
-for %%P in (boot_a sunuefi_esp sunuefi_root) do (
+REM 3c. ABL loads only the active slot, so the combined BOOT goes into boot_a
+REM or boot_b depending on where Android currently runs. Factory devices boot
+REM Slot A; one that OTA'd to HyperOS 4 boots Slot B and has only super_b
+REM logical partitions. Never switch slots here.
+set "CURRENT_SLOT="
+for /f "tokens=2 delims=:" %%v in ('%FASTBOOT% getvar current-slot 2^>^&1 ^| findstr /i "current-slot:"') do (
+    if not defined CURRENT_SLOT (
+        set "CURRENT_SLOT=%%v"
+        set "CURRENT_SLOT=!CURRENT_SLOT: =!"
+    )
+)
+if /i not "!CURRENT_SLOT!"=="a" if /i not "!CURRENT_SLOT!"=="b" (
+    echo [ERROR] Could not read a valid current-slot ('!CURRENT_SLOT!').
+    echo.
+    pause
+    exit /b 1
+)
+set "SLOT_SUFFIX=_!CURRENT_SLOT!"
+set "BOOT_PART=boot_!CURRENT_SLOT!"
+set "DTBO_PART=dtbo_!CURRENT_SLOT!"
+echo [INFO] Active Android slot: !SLOT_SUFFIX! (writing !BOOT_PART!)
+
+REM 3d. Target partitions must exist before anything is written.
+for %%P in (!BOOT_PART! sunuefi_esp sunuefi_root) do (
     %FASTBOOT% getvar partition-size:%%P 2>&1 | findstr /i "partition-size:%%P:" >nul
     if ERRORLEVEL 1 (
         echo [ERROR] Partition '%%P' was not found on the device.
@@ -97,24 +119,24 @@ for %%P in (boot_a sunuefi_esp sunuefi_root) do (
         exit /b 1
     )
 )
-echo [INFO] Target partitions boot_a, sunuefi_esp, sunuefi_root verified.
+echo [INFO] Target partitions !BOOT_PART!, sunuefi_esp, sunuefi_root verified.
 
 REM 4. Image file validation
-REM boot_a takes the device-specific boot_linux.img that prepare-device-boot.py
-REM repacks from this tablet's stock 96 MiB BOOT. The ESP payload
-REM (/EFI/Linux/sunuefi.efi inside sunuefi_esp.img) is a UKI: SunUEFI loads it
-REM from the ESP; the ABL does not, and rejects the whole chain when it is
-REM written to boot_a.
+REM The active slot's boot partition takes the device-specific boot_linux.img
+REM that prepare-device-boot.py repacks from this tablet's stock 96 MiB BOOT.
+REM The ESP payload (/EFI/Linux/sunuefi.efi inside sunuefi_esp.img) is a UKI:
+REM SunUEFI loads it from the ESP; the ABL does not, and rejects the whole chain
+REM when it is written to boot_a or boot_b.
 set "BOOT_IMG="
 if exist "boot_linux.img" set "BOOT_IMG=boot_linux.img"
 if not defined BOOT_IMG if exist "device-boot\boot_linux.img" set "BOOT_IMG=device-boot\boot_linux.img"
 if not defined BOOT_IMG (
-    echo [ERROR] Missing boot_a image: boot_linux.img
+    echo [ERROR] Missing device boot image: boot_linux.img
     echo Generate it once with scripts/prepare-device-boot.py from this tablet's
     echo stock BOOT, then keep boot_linux.img or device-boot\boot_linux.img
     echo next to this installer.
     echo.
-    echo The ESP payload is not a boot_a image. Flashing it leaves the tablet
+    echo The ESP payload is not a device boot image. Flashing it leaves the tablet
     echo in Fastboot with no bootable slot.
     pause
     exit /b 1
@@ -162,7 +184,7 @@ REM boot_linux.img is device-specific: prepare-device-boot.py produces it from
 REM this tablet's stock BOOT, so it is not in the deploy-bundle SHA256SUMS.
 REM It gets its own SHA256SUMS in device-boot\, and a missing one stops the
 REM installer:
-REM boot_a decides whether the tablet boots at all.
+REM The active slot's boot partition decides whether the tablet boots at all.
 for %%F in ("%BOOT_IMG%") do (
     set "BOOT_DIR=%%~dpF"
 )
@@ -240,7 +262,7 @@ REM 6. Safety confirmation
 echo ====================================================================
 echo                  ⚠️  CRITICAL SAFETY WARNING ⚠️
 echo ====================================================================
-echo 1. This will write the combined SunUEFI BOOT into the active slot (boot_a only).
+echo 1. This will write the combined SunUEFI BOOT into the active slot (!BOOT_PART! only).
 echo 2. This will overwrite 'sunuefi_esp' and 'sunuefi_root' partitions.
 echo 3. Android stays bootable from the same slot through the SunUEFI chooser.
 echo 4. Ensure Bootloader is UNLOCKED and battery is above 30%%.
@@ -257,14 +279,14 @@ echo ====================================================================
 echo                   Starting Flashing Sequence
 echo ====================================================================
 
-echo --^> Step 1/4: Keeping active Slot A; no slot switch...
+echo --^> Step 1/4: Keeping active slot !CURRENT_SLOT!; no slot switch...
 
-echo --^> Skipping dtbo_a: keeping the stock DTBO for the active slot.
+echo --^> Skipping !DTBO_PART!: keeping the stock DTBO for the active slot.
 echo     Qualcomm ABL rejects an empty DTBO with "Device Error"; SunUEFI reads
-echo     its board DTB from vendor_boot plus the stock dtbo_a overlay.
+echo     its board DTB from vendor_boot plus the stock dtbo overlay.
 
-echo --^> Step 2/4: Flashing the device boot image to boot_a...
-%FASTBOOT% -S 128M flash boot_a "%BOOT_IMG%"
+echo --^> Step 2/4: Flashing the device boot image to !BOOT_PART!...
+%FASTBOOT% -S 128M flash !BOOT_PART! "%BOOT_IMG%"
 if %ERRORLEVEL% neq 0 goto error
 
 echo --^> Step 3/4: Flashing SunUEFI ESP to sunuefi_esp...
@@ -398,27 +420,13 @@ if not defined ROOT_EXPANDED_BYTES (
     endlocal & exit /b 1
 )
 
-set "CURRENT_SLOT="
-for /f "tokens=2 delims=:" %%v in ('%FASTBOOT% getvar current-slot 2^>^&1 ^| findstr /i "current-slot:"') do (
-    if not defined CURRENT_SLOT (
-        set "CURRENT_SLOT=%%v"
-        set "CURRENT_SLOT=!CURRENT_SLOT: =!"
-    )
-)
-if not defined CURRENT_SLOT (
-    echo [ERROR] Could not read current-slot from the bootloader.
-    endlocal & exit /b 1
-)
-if /i not "!CURRENT_SLOT!"=="a" (
-    echo [ERROR] Android must be active on Slot A before running this installer.
-    echo This installer writes the combined BOOT to the active slot (boot_a);
-    echo Android Slot B has no stock super partitions and is not a first-install target.
-    endlocal & exit /b 1
-)
-if /i not "!ROOT_SLOT!"=="_a" (
-    echo [ERROR] root-install was prepared for Android slot '!ROOT_SLOT!', but this installer requires '_a'.
-    echo The first-install path writes the combined BOOT to the active Slot A.
-    echo Generate root-install with --android-slot _a before flashing.
+REM CURRENT_SLOT was read and validated in the main flow before the partition
+REM checks; the root image must target the same slot Android actually runs.
+if /i not "!ROOT_SLOT!"=="!SLOT_SUFFIX!" (
+    echo [ERROR] root-install was prepared for Android slot '!ROOT_SLOT!', but the device runs '!SLOT_SUFFIX!'.
+    echo The first-install path writes the combined BOOT to the active slot, and the
+    echo root image imports sensors from that slot's logical partitions.
+    echo Generate root-install with --android-slot !SLOT_SUFFIX! before flashing.
     endlocal & exit /b 1
 )
 
@@ -447,7 +455,7 @@ if /i "!ROOT_SPARSE_BYTES!"=="!ROOT_EXPANDED_BYTES!" (
     echo [ERROR] root-install is a raw image, not the sparse transport from prepare-install.
     endlocal & exit /b 1
 )
-echo   OK root-install targets Android slot _a and fits inside sunuefi_root.
+echo   OK root-install targets Android slot !ROOT_SLOT! and fits inside sunuefi_root.
 endlocal & exit /b 0
 
 :verify_transport_digest

@@ -1,6 +1,6 @@
 > **实验性项目。** 这个仓库面向驱动适配与硬件调试，不是可以日常使用的稳定版本。
 >
-> 刷写会解锁 Bootloader、改写 GPT、替换 `boot_a` 里的合体 BOOT，并重写 Linux 分区。操作不规范会让平板变砖或丢失全部数据。刷写之前，备份全部分区与个人数据。
+> 刷写会解锁 Bootloader、改写 GPT、替换活动槽 `boot` 分区里的合体 BOOT，并重写 Linux 分区。操作不规范会让平板变砖或丢失全部数据。刷写之前，备份全部分区与个人数据。
 >
 > 本项目按 [MIT 许可证](LICENSE) 原样提供，作者与贡献者不承担设备损坏、数据丢失或保修失效的责任。
 
@@ -27,7 +27,7 @@
 | 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
 | 传感器 | ✅ | 走 SSC 后端（`libssc` + `iio-sensor-proxy-ssc`，QRTR/MHI），加速度计、环境光、接近均有数据。自动旋转实测可用，转成 `left-up` 后屏幕跟着转 90° |
 | 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk 与 virtio-net、单 vCPU 客体启动。SMP、图形与 GUI 操作待验收 |
-| 双系统往返 | ✅ | 合体 BOOT 装在 `boot_a`。Linux→Android 用 `piano-next-boot android --reboot`，Android→Linux 用「SunUEFI 引导助手」模块或开机 3 秒选择器。两次往返实测，见[已知问题](docs/known-issues.md#双系统切换) |
+| 双系统往返 | ✅ | 合体 BOOT 装在活动槽的 `boot` 分区（`boot_a` 或 `boot_b`）。Linux→Android 用 `piano-next-boot android --reboot`，Android→Linux 用「SunUEFI 引导助手」模块或开机 3 秒选择器。两次往返实测，见[已知问题](docs/known-issues.md#双系统切换) |
 | 手写笔 | ✅ | Type 29 协议就绪，压感 0–1，位置与倾斜正常。实测捕获 1906 条轴事件、22 条 proximity、18 条 tip，见[已知问题](docs/known-issues.md#手写笔) |
 | 指纹 | ❌ | 侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。内核侧已就绪：`uio_piano_fingerprint`、`qcomtee` 与 `/dev/tee0` 都在，DT 节点也在。缺的是用户态 libfprint 后端，上游已实现，本仓库尚未接入，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 | 红外 | ✅ | 消费级红外发射器（QUPv3 SE15）已接到标准 `ir-spi` 与 LIRC，`/dev/lirc0`、`/sys/class/rc/rc0` 均存在，可用 `ir-ctl` 发码。光学输出未实测，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
@@ -66,7 +66,7 @@
 
    其他档位是各自的归档，不必下载。解压后的目录就是暂存目录，一键脚本、`root-install/` 与组件 manifest 都在里面。也可以执行 `bash scripts/unpack-release.sh --tag <tag> --desktop <档位>` 让脚本代做这三步。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle-<档位>`，以及这次 run 派生的 `prepare-install` 的 `root-install-<档位>`。不要混用来自不同 run 的资产。
 4. 在暂存目录执行 `./make-device-boot.sh`，生成 `device-boot/boot_linux.img`。`boot_linux.img` 由这台平板自己的原厂 BOOT 重打包而成，归档里的 ESP 镜像不能顶替。
-5. 关机后长按 `电源键 + 音量减键` 进入 Fastboot，确认 `fastboot getvar current-slot` 返回 `a`。然后按[手动刷写](docs/installation.md#五-手动刷写-linux)逐条执行：校验两份 `SHA256SUMS`，确认设备身份，依次写入 `boot_a`、`sunuefi_esp`、`sunuefi_root`，最后执行 `fastboot reboot`。
+5. 关机后长按 `电源键 + 音量减键` 进入 Fastboot，确认 `fastboot getvar current-slot` 返回 `a` 或 `b`。然后按[手动刷写](docs/installation.md#五-手动刷写-linux)逐条执行：校验两份 `SHA256SUMS`，确认设备身份，依次写入活动槽的 `boot` 分区（`boot_a` 或 `boot_b`）、`sunuefi_esp`、`sunuefi_root`，最后执行 `fastboot reboot`。
 
    要一次完成刷写，在暂存目录执行 `./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub`（Linux / macOS），或双击 `flash-linux.bat`（Windows，不自动注入公钥）。一键脚本执行与手动路径相同的写入，并在写入前额外核对几项。
 
@@ -78,7 +78,7 @@
 
 - Linux → Android：应用抽屉点「返回 Android」，或执行 `piano-next-boot android --reboot`。已真机验收。
 - Android → Linux：安装「SunUEFI 引导助手」模块，在模块页面选 Linux。没有引导助手时，开机 3 秒内按音量键在 3 秒选择器里选，选择会保存。
-- 两个方向都写同一份 `boot_a` 请求页，不切 Slot A，也不改 GPT。
+- 两个方向都写同一份请求页，它在那份活动槽 BOOT 里；不切槽，也不改 GPT。
 
 ## 发布产物
 

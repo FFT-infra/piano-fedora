@@ -24,7 +24,10 @@ def main():
     kernel = json.loads((SUN / 'config/release.json').read_text())['kernel']
     workflow = (ROOT / '.github/workflows/build-bundle.yml').read_text()
     passed = re.findall(r'--dtb-overlay\s+(\S+)', workflow)
-    expected = ['build/sources/sunuefi/' + name for name in kernel['additional_dtb_overlays']]
+    # 不发货的 overlay 记在 product.json，workflow 里不该出现。
+    skipped = set(json.loads((ROOT / 'product.json').read_text())['dtb_overlays_not_shipped'])
+    expected = ['build/sources/sunuefi/' + name for name in kernel['additional_dtb_overlays']
+                if name not in skipped]
     assert passed == expected, f'workflow overlays differ from release.json: {passed}'
     cpu = re.findall(r'--cpu-model-overlay\s+(\S+)', workflow)
     assert cpu == ['build/sources/sunuefi/' + kernel['cpu_model_overlay']], cpu
@@ -37,7 +40,8 @@ def main():
         shutil.copyfile(SUN / 'vendor/piano-linux/board.dtb', board)
         before = read_fdt(board.read_bytes())
         overlays = ['cpu-model'] + [Path(item).name[len('piano-'):-len('.dtso')]
-                                    for item in kernel['additional_dtb_overlays']]
+                                    for item in kernel['additional_dtb_overlays']
+                                    if item not in skipped]
         for name in overlays:
             print('APPLY:', name, flush=True)
             package.apply_cpu_model_overlay(board, SUN / f'linux/dts/piano-{name}.dtso',
@@ -87,7 +91,7 @@ def main():
         assert [handles[interconnects[index]] for index in (0, 3, 6, 9)] == [
             '/soc/interconnect@1780000', '/soc/interconnect@1',
             '/soc/interconnect@24100000', '/soc/interconnect@1600000']
-        print('OK: every overlay in release.json applies; CMA, PCIe IRQs and clocks, Type-C, '
+        print('OK: every shipped overlay in release.json applies; CMA, PCIe IRQs and clocks, Type-C, '
               'UFS MCQ, CDSP, fingerprint, touch link, pen GPIOs, battery, camera clock, '
               'display interconnects and inherited phandles all hold')
 

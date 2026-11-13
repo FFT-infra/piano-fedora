@@ -1,0 +1,63 @@
+From: piano-fedora <dev@piano.invalid>
+Date: Thu, 12 Nov 2026 23:55:00 +0800
+Subject: [PATCH] usb: prove the halt with a core soft reset when the core will not idle
+
+Upstream now ends pending transfers before clearing RUN_STOP, keeps their DMA
+buffers mapped, acknowledges ring events during the wait, and keeps the HS/FS
+interface awake (a139e996). It also leaves an outstanding SETUP receive armed
+across a bus reset instead of ending and restarting it (3ab0085a). Those are
+the two mechanisms this repository used to patch into Halt(), so patches
+0001-0004 of this series are retired.
+
+One case remains. A captured device run showed the 2 s wait ending with
+DevCtrlHlt and CoreIdle both clear while the host kept the link addressed and
+the Rx FIFO was empty; only a core soft reset produced DevCtrlHlt. Upstream's
+Halt() has no fallback: when the wait runs out it returns EFI_TIMEOUT and the
+handoff fails with the "system handoff failed" screen.
+
+So when the wait or an END_TRANSFER command fails, wake both PHY interfaces
+the way ServiceReset() and Linux dwc3_core_soft_reset() do, run the reset,
+and take DevCtrlHlt as the proof that the core stopped. Do not read
+DSTS.DCNRD as success: it means "device controller not ready", and Linux
+waits for it to clear.
+
+The fallback only runs on the error path of upstream's own sequence.
+diff --git a/uefi/core/usb/PianoDwc3Device.c b/uefi/core/usb/PianoDwc3Device.c
+index b6e4527..aa19300 100644
+--- a/uefi/core/usb/PianoDwc3Device.c
++++ b/uefi/core/usb/PianoDwc3Device.c
+@@ -251,7 +251,7 @@ STATIC EFI_STATUS Command(UINT8 Ep,UINT32 Cmd,UINT32 P0,UINT32 P1,UINT32 P2) {
+ }
+ STATIC EFI_STATUS Halt(VOID) {
+   if(!(Dr(0xC704)&BIT31) && (Dr(0xC70C)&BIT22))return EFI_SUCCESS;
+-  UINT32 Phy=Dr(0xC200),Saved=Phy&(BIT6|BIT8);
++  UINT32 Phy=Dr(0xC200),Pipe=Dr(0xC2C0),Saved=Phy&(BIT6|BIT8);
+   EFI_STATUS Status=EFI_TIMEOUT;
+   if(Saved)Dw(0xC200,Phy&~Saved);
+   // DWC3 requires END_TRANSFER before RUN_STOP is cleared. Keep every DMA
+@@ -279,7 +279,24 @@ STATIC EFI_STATUS Halt(VOID) {
+     if(Wait!=EFI_SUCCESS){Status=EFI_ERROR(Wait)?Wait:EFI_DEVICE_ERROR;break;}
+   }
+ Done:
+-  if(Saved)Dw(0xC200,Phy);
++  // A host that keeps the link addressed through the handoff can leave the core
++  // unable to idle, and the wait above then runs out. Fall back to a core soft
++  // reset, the sequence ServiceReset() and Linux dwc3_core_soft_reset() use,
++  // and prove the stop with DevCtrlHlt after it. Linux reads DSTS.DCNRD as
++  // "not ready" and waits for it to clear, so the reset is the evidence.
++  if(EFI_ERROR(Status)) {
++    Dw(0xC200,Dr(0xC200)&~(BIT6|BIT8));
++    Dw(0xC2C0,Pipe&~BIT17);
++    Dw(0xC704,(Dr(0xC704)&~(BIT31|(0xfU<<5)))|BIT30);
++    BOOLEAN Cleared=FALSE;
++    for(UINTN I=0;I<200;++I){if(!(Dr(0xC704)&BIT30)){Cleared=TRUE;break;}gBS->Stall(1000);}
++    if(Cleared) {
++      for(UINTN I=0;I<200;++I){if(Dr(0xC70C)&BIT22){Status=EFI_SUCCESS;break;}gBS->Stall(1000);}
++    }
++    DEBUG((DEBUG_WARN,"SUNUEFI_USB_HALT_RESULT halted=%u cleared=%u dctl=%08x dsts=%08x\n",
++      EFI_ERROR(Status)?0U:1U,Cleared?1U:0U,Dr(0xC704),Dr(0xC70C)));
++  }
++  Dw(0xC200,Phy);Dw(0xC2C0,Pipe);
+   return Status;
+ }
+ STATIC EFI_STATUS CompleteEventDma(PIANO_DMA_BUFFER *Buffer) {

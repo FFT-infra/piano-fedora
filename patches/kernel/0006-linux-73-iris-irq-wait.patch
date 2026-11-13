@@ -1,17 +1,17 @@
 diff --git a/config/release.json b/config/release.json
-index a505cce..025141f 100644
+index bc0afa8..68271ad 100644
 --- a/config/release.json
 +++ b/config/release.json
 @@ -8,7 +8,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "e07a9c198e5d9087040290b8b2cc4e779292f273",
-+    "target_tree": "94fba8e277ad86439c2711d6dae4448277696a27",
+-    "target_tree": "534d7ad7ac4f74c8c433de575b7d17c4f21fa406",
++    "target_tree": "450d68db3af2824514f917c3d2745a640c282f04",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0135-iris-wait-threaded-irq-on-poweroff.patch b/patches/linux/7.3/0135-iris-wait-threaded-irq-on-poweroff.patch
+diff --git a/patches/linux/7.3/0136-iris-wait-threaded-irq-on-poweroff.patch b/patches/linux/7.3/0136-iris-wait-threaded-irq-on-poweroff.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..71a54eeb66054ce3f9660bf2f7d4541392c15a90
 GIT binary patch
@@ -96,32 +96,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index cf9353e..6014a74 100644
+index e3b51f6..6e681b8 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "e07a9c198e5d9087040290b8b2cc4e779292f273",
+-  "target_tree": "534d7ad7ac4f74c8c433de575b7d17c4f21fa406",
 -  "original_target_commit": "f8f655de8cd43ded8afacb38a04b67bf69595d47",
-+  "target_tree": "94fba8e277ad86439c2711d6dae4448277696a27",
++  "target_tree": "450d68db3af2824514f917c3d2745a640c282f04",
 +  "original_target_commit": "99d7ec96e5360fa7b30e5236bd24e4bb043fe7c3",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -1071,6 +1071,14 @@
+@@ -1079,6 +1079,14 @@
        "original_parent": "ac7353d78cc6b7e48683862e4cb6643be97267c5",
        "committer_date": "2026-10-25T19:08:49+08:00",
-       "tree": "e07a9c198e5d9087040290b8b2cc4e779292f273"
+       "tree": "534d7ad7ac4f74c8c433de575b7d17c4f21fa406"
 +    },
 +    {
-+      "file": "0135-iris-wait-threaded-irq-on-poweroff.patch",
++      "file": "0136-iris-wait-threaded-irq-on-poweroff.patch",
 +      "sha256": "633c911e75d8a4d17f4d36e3123efdf0e29951afca9d58fcf1b13ceec692fb6e",
 +      "original_commit": "99d7ec96e5360fa7b30e5236bd24e4bb043fe7c3",
 +      "original_parent": "f8f655de8cd43ded8afacb38a04b67bf69595d47",
 +      "committer_date": "2026-10-25T19:47:28+08:00",
-+      "tree": "94fba8e277ad86439c2711d6dae4448277696a27"
++      "tree": "450d68db3af2824514f917c3d2745a640c282f04"
      }
    ],
    "provenance": {

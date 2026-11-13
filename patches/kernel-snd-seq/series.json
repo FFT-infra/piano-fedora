@@ -2,17 +2,17 @@
   "schema_version": 1,
   "target": "sunuefi",
   "base": {
-    "sunuefi_commit": "3a7e5c1b799f305a8cf5972d733332a6c55174a1"
+    "sunuefi_commit": "018634f18c74704e6668ee5d816d038bc6591849"
   },
   "patches": [
     {
       "file": "0001-enable-alsa-sequencer.patch",
-      "summary": "Fedora 正式配置里把 ALSA sequencer 编成模块，alsa-lib 的 snd-seq 加载不再每次开机失败，/dev/snd/seq 可用",
+      "summary": "Fedora \u6b63\u5f0f\u914d\u7f6e\u91cc\u628a ALSA sequencer \u7f16\u6210\u6a21\u5757\uff0calsa-lib \u7684 snd-seq \u52a0\u8f7d\u4e0d\u518d\u6bcf\u6b21\u5f00\u673a\u5931\u8d25\uff0c/dev/snd/seq \u53ef\u7528",
       "targets": {
-        "tools/build_piano_full_kernel.py": "293b9303d9522e52ee4c1788101bdfca44c6e651cbd1180be7fccdc3f91e2056"
+        "tools/build_piano_full_kernel.py": "ab40e0f5d7384c4707d33b2aa26f2394c97800da9dc3a6669ba774f13df437be"
       },
       "creates": []
     }
   ],
-  "note": "snd-seq 是 alsa-lib 自己会去加载的模块，内核没编就在每次声卡加载时留一条 not found。这项是 tristate，没有 depends on，跟 SND 一起做模块即可；默认桌面上不会有人加载它。"
+  "note": "snd-seq \u662f alsa-lib \u81ea\u5df1\u4f1a\u53bb\u52a0\u8f7d\u7684\u6a21\u5757\uff0c\u5185\u6838\u6ca1\u7f16\u5c31\u5728\u6bcf\u6b21\u58f0\u5361\u52a0\u8f7d\u65f6\u7559\u4e00\u6761 not found\u3002\u8fd9\u9879\u662f tristate\uff0c\u6ca1\u6709 depends on\uff0c\u8ddf SND \u4e00\u8d77\u505a\u6a21\u5757\u5373\u53ef\uff1b\u9ed8\u8ba4\u684c\u9762\u4e0a\u4e0d\u4f1a\u6709\u4eba\u52a0\u8f7d\u5b83\u3002"
 }

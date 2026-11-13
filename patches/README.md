@@ -67,6 +67,10 @@ BOOT，记录随之失效，之后模块里每次「切换系统」都会在身�
 4. 从 ODM 动态传感器配置里读出 `sns_dynamic_libraries` 列出的库，从 vendor
    的 `/lib/rfsa/adsp` 导入 `/var/lib/piano-sensors/rfsa/adsp`；vendor 上
    不存在的库（如 `sns_tppe.so`）记录后跳过。
+5. `piano-sensors-lp-table` 按分区名后缀选 super 的元数据槽。liblp 每个 Android
+   启动槽各有一份元数据（`_a` 是 0、`_b` 是 1）；OTA 到 Slot B 的设备在槽 0 里
+   留着旧的 Slot A 元数据，`_b` 条目存在但没有 extent。工具原先写死槽 0，
+   导入在 `odm_b has no extents` 处停。
 
 库目录通过在 `adsprpcd-sensorspd.service` 的 `30-adsp-library.conf` 里设置
 `ADSP_LIBRARY_PATH` 暴露给 file service。
@@ -100,3 +104,89 @@ XATTR / POSIX_ACL / SECURITY 三项对应镜像制作时用 `tar --xattrs --acls
 2. 为 `REPORT_LUNS` 增加 5 次有界重试，单次延时 50ms 并重试唤醒。
 3. 为 `READ_CAPACITY_16` 增加 5 次有界重试，单次延时 20ms。
 
+
+## uefi-ebs-identity
+
+修复 systemd-stub 258 以上直入内核时，SunUEFI 拒绝 UKI 启动的问题。
+
+### 现象与根因
+
+菜单选 Linux 后立即回到菜单，提示「Linux 启动镜像格式不受支持，请更新镜像」。
+日志里是 `PIANO_EBS_CALL` 之后紧跟 `PIANO_EBS_REFUSE stage=before-exit
+status=Access Denied`，菜单再把 `EFI_LOAD_ERROR` 显示成这句话。
+
+systemd-stub 258 起，没有 shim 时不再把 UKI 内嵌的内核 `LoadImage()` 成子镜像，
+而是直接跳内核入口。跳转前它临时把 UKI 自己的 `EFI_LOADED_IMAGE_PROTOCOL`
+的 `ImageBase`/`ImageSize` 改成内核的地址和大小，返回后恢复。`ExitBootServices`
+发生在跳转内部，SunUEFI 的 `ValidateInstalledEfiImage()` 拿 `StartImage` 前记下的
+`BaseIdentity`/`SizeIdentity` 去比，看到被改写的值就返回 `uki-identity` 与
+`EFI_ACCESS_DENIED`，EBS 因此被拒绝。
+
+上游碰不到：它的 rootfs 是 Debian trixie，systemd 257.13，`linux_exec()`
+无条件 `LoadImage()` 内核，父镜像字段始终不动。stub 到 258 以上才会触发，
+上游换 rootfs 后同样会坏。
+
+### 补丁改动
+
+`ValidateInstalledEfiImage()` 里把 `ImageBase`/`ImageSize` 的相等比较限定在
+EBS 调用者不是 UKI 句柄的情况。直入内核时调用者就是 UKI 句柄；老的
+`LoadImage()` 路径里调用者是内核子句柄，仍走严格比较。handle、`ParentHandle`、
+`DeviceHandle`、镜像状态与父链检查一条没动。
+
+### 验证与退役
+
+固件重编刷机后看 `uki-identity` 是否消失、DT 与内存校验走到哪一步。真机验证
+前不把这一节当成已修复。上游修好这个假设后整组删掉，并同步删掉
+`docs/known-issues.md` 里对应条目。
+
+## uefi-dwc3-halt
+
+### 现象与根因
+
+菜单选 Linux 后停在「未能启动系统 / 系统交接失败」，状态 `0x8000000000000012`
+（`EFI_TIMEOUT`）。`uki-identity` 那一关已经过了，失败发生在资源交接
+（`PianoProductOwnersRetire`）里 USB 服务停止这一步，日志是：
+
+```
+SUNUEFI_USB_SERVICE_CLEANUP stage=begin start_status=Success allocated=9 programmed=1 dctl=80F00000 dsts=0000C858
+SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=...
+PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out
+```
+
+停 USB 在 `ExitBootServices` 的固件钩子里执行，主机这时已经在重新枚举设备，
+链路停在 Address（`USBLNKST=4`）。清 RunStop 之后 `DevCtrlHlt` 与 `CoreIdle`
+都不置位，2 秒等待走完仍然如此。本仓库先后改过四版：结束挂起传输、轮询时确认
+event ring、END_TRANSFER 带 CMDIOC、先等 Rx FIFO 空再清 RunStop，都没有让
+core 停下来。
+
+### 上游已修
+
+`a139e996` 与 `3ab0085a` 修的是同一处。清 RunStop 前给每个挂起端点发
+END_TRANSFER，DMA 缓冲保持映射，直到 `DevCtrlHlt` 确认为止；等待期间确认事件
+环；HS/FS 下临时清 `GUSB2PHYCFG` 的 SUSPHY/ENBLSLPM。总线复位时，EP0 停在
+SETUP 阶段的接收不再结束重提，按 `dwc3_ep0_reset_state()` 保持挂起，其他控制
+阶段停传后回到 SETUP。跟进 `4f663563` 时四版补丁整组删除。
+
+### 补丁改动
+
+`0001-halt-soft-reset-fallback.patch` 只补上游 `Halt()` 的错误分支。上游在等待
+超时或 END_TRANSFER 命令失败时直接返回 `EFI_TIMEOUT`，没有复位兜底。补丁先按
+`ServiceReset()` 与 Linux `dwc3_core_soft_reset()` 的顺序唤醒两路 PHY，再做
+core soft reset，以复位后的 `DevCtrlHlt` 作为已停止的证明。成功判据不看
+`DSTS.DCNRD`，它表示「控制器未就绪」，Linux 等的是它清零。
+
+### 验证与退役
+
+2026-11-12 的实机日志（旧 pin 上的第四版）显示，2 秒等待结束时 `hlt=0 idle=0`、
+`link=4`、`rxf=0`，soft reset 之后变成 `hlt=1 idle=1 rxf=1`，随后
+`stage=halt status=Success`、`allocated=9 freed=9 retained=0`，Linux 起进 Plasma。
+
+2026-11-13 刷上新 pin 的固件后，同样的交接一次通过：`stage=halt status=Success`，
+`dctl` 从 `80F00000` 变成 `00F00000`，`stage=done` 是 `allocated=9 freed=9
+retained=0`，没有 `PIANO_START_FAILED`，也没有 `SUNUEFI_USB_HALT_RESULT`，说明
+上游的序列自己停住了 core，兜底没有触发。新固件用现有的 wrapped BOOT 跑
+`piano-boot-repack upgrade` 换核后写回 `boot_b`，app generation 从 `43bedc58`
+变成 `c0768ed7`，启动后进入 Plasma。兜底仍然只过了离线检查，设备上没有被触发过。
+
+上游自己补上复位兜底后删掉整个 series，并同步删掉 `docs/known-issues.md` 里
+对应条目。

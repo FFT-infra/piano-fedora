@@ -10,8 +10,8 @@ Fastboot。脚本此前带着这条命令，文档还写着“已清空，使用
 
 * `flash-linux.sh` / `flash-linux.bat` 不得出现任何 `fastboot erase`，也不得
   出现 `fastboot -w`、`fastboot format`、`flashing` 之类的破坏性命令。
-* 两个脚本只允许写 `boot_a`、`sunuefi_esp`、`sunuefi_root` 三个分区，且不得
-  调用 `set_active`（合体 BOOT 留在当前槽，不切槽）。
+* 两个脚本只允许写活动槽的 boot 分区（`boot_a` 或 `boot_b`）、`sunuefi_esp`、
+  `sunuefi_root`，且不得调用 `set_active`（合体 BOOT 留在当前槽，不切槽）。
 * 安装文档不得再声称擦除活动槽的 dtbo，也不得把 `erase dtbo_a` / `erase dtbo_b`
   写进步骤里。
 """
@@ -27,7 +27,7 @@ INSTALL_DOC = ROOT / "docs/installation.md"
 INSTALLER_README = ROOT / "scripts/installer/README-INSTALL.txt"
 
 # Partitions the one-click installer is allowed to write.
-ALLOWED_FLASH_TARGETS = {"boot_a", "sunuefi_esp", "sunuefi_root"}
+ALLOWED_FLASH_TARGETS = {"boot_a", "boot_b", "sunuefi_esp", "sunuefi_root"}
 
 # The scripts route every device write through a wrapper that pins the serial:
 # `fb` in shell, `%FASTBOOT%` in batch. Match all three command spellings.
@@ -47,7 +47,11 @@ DESTRUCTIVE = re.compile(
 # option may carry a value (`-S 128M`, `-s SERIAL`); the value never looks like
 # the `flash` subcommand, so it is matched explicitly.
 FLASH_CALL = re.compile(
-    FB + r"\s+(?:-\S+(?:\s+[A-Za-z0-9][^\s-]*)?\s+)*flash\s+([A-Za-z0-9_]+)")
+    FB + r"\s+(?:-\S+(?:\s+[A-Za-z0-9][^\s-]*)?\s+)*flash\s+(\"[^\"]+\"|[A-Za-z0-9_!%${}]+)")
+
+# Both installers derive the boot partition from the active slot instead of
+# hardcoding one. Accept the three spellings as `boot_a` plus `boot_b`.
+BOOT_PART_VARS = {"$BOOT_PART", "${BOOT_PART}", "!BOOT_PART!", "%BOOT_PART%"}
 
 
 def strip_comments(text, suffix):
@@ -73,7 +77,13 @@ def check_script(path):
     if hit:
         failures.append(f"{path.name}: destructive fastboot command: {hit.group(0)!r}")
 
-    targets = set(FLASH_CALL.findall(code))
+    targets = set()
+    for raw in FLASH_CALL.findall(code):
+        target = raw.strip('"')
+        if target in BOOT_PART_VARS:
+            targets |= {"boot_a", "boot_b"}
+        else:
+            targets.add(target)
     unexpected = targets - ALLOWED_FLASH_TARGETS
     if unexpected:
         failures.append(f"{path.name}: unexpected flash targets {sorted(unexpected)}")
@@ -156,20 +166,20 @@ def check_boot_image_selection():
 
     # ZIP 内的 README 要写清 boot_a 该用哪个文件，并明确禁止 boot_sunuefi.img。
     # 手动命令与一键脚本一样必须带 `-S 128M`：裸写 512 MiB ESP 会让 ABL 停响应。
-    if "fastboot -S 128M flash boot_a device-boot/boot_linux.img" not in readme:
+    if 'fastboot -S 128M flash "boot_${SLOT}" device-boot/boot_linux.img' not in readme:
         failures.append(
             "README-INSTALL.txt: manual flash still does not write "
-            "device-boot/boot_linux.img to boot_a with -S 128M")
+            "device-boot/boot_linux.img to the active slot's boot partition with -S 128M")
     if "fastboot flash boot_a boot_sunuefi.img" in readme:
         failures.append(
             "README-INSTALL.txt: manual flash still writes boot_sunuefi.img to boot_a")
     if "NEVER flash boot_sunuefi.img to boot_a" in readme:
         failures.append(
             "README-INSTALL.txt: still names the retired boot_sunuefi.img")
-    if "/EFI/Linux/sunuefi.efi" not in readme or "not a boot_a image" not in readme:
+    if "/EFI/Linux/sunuefi.efi" not in readme or "not a device boot image" not in readme:
         failures.append(
             "README-INSTALL.txt: does not warn that the ESP payload is not a "
-            "boot_a image")
+            "device boot image")
     # 每条手动 flash 命令都要带 -S；漏一条就够让用户踩到挂死。
     for lineno, line in enumerate(readme.splitlines(), 1):
         stripped = line.strip()
@@ -191,7 +201,7 @@ def check_docs():
     # which sends users straight to a script that must reject their device.
     for required in ("原始 GPT", "一键脚本不能运行",
                      "docs/installation.md#四-从原始-gptufs-开始的首次安装",
-                     "current-slot` 返回 `a`",
+                     "current-slot` 返回 `a` 或 `b`",
                      "build-bundle", "deploy-bundle", "prepare-install",
                      "root-install"):
         if required not in readme:
@@ -206,8 +216,8 @@ def check_docs():
     for required in ("THIS INSTALLER DOES NOT PARTITION A STOCK TABLET.",
                      "sunuefi_esp and sunuefi_root",
                      "follow docs/installation.md section 4 first",
-                     "Android stays bootable from Slot A",
-                     'must be "a" for this first-install path',
+                     "Android stays bootable",
+                     'must be "a" or "b" for this first-install',
                      "partition-size:sunuefi_root",
                      "expanded_bytes"):
         if required not in installer_readme:
@@ -230,7 +240,7 @@ def check_docs():
     # The manual flash chapter must exist and cover the required ground. Each
     # flash command carries `-S 128M`; a bare 512 MiB ESP write hangs the ABL.
     required = ("手动刷写", "SHA256SUMS", "sha256sum -c",
-                "fastboot -S 128M flash boot_a",
+                'fastboot -S 128M flash "${BOOT_PART}"',
                 "fastboot -S 128M flash sunuefi_esp",
                 "fastboot -S 128M flash sunuefi_root")
     for token in required:
@@ -278,8 +288,8 @@ def main():
             print(f"FAIL: {item}", file=sys.stderr)
         return 1
 
-    print("OK: 一键脚本无 erase/-w/format，只写 boot_a/sunuefi_esp/sunuefi_root 且不切槽；"
-          "文档保留原厂 dtbo 且含手动刷机章节")
+    print("OK: 一键脚本无 erase/-w/format，只写活动槽的 boot 分区与 sunuefi_esp/sunuefi_root "
+          "且不切槽；文档保留原厂 dtbo 且含手动刷机章节")
     return 0
 
 

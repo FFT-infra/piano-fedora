@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-11-12",
+  "checked_date": "2026-11-13",
   "note": "只列构建链实际读取的上游；研究与后端参考单独记录在 docs/upstreams.json。vendor-kernel 与 vendor-blobs 只被对照任务读取，不进任何出货产物。",
   "sources": {
     "dtc": {
@@ -12,9 +12,9 @@
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "3a7e5c1b799f305a8cf5972d733332a6c55174a1",
+      "commit": "018634f18c74704e6668ee5d816d038bc6591849",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
-      "checked_date": "2026-11-12"
+      "checked_date": "2026-11-13"
     },
     "linux-piano": {
       "url": "https://github.com/blu-sharky/linux-piano.git",
@@ -24,8 +24,8 @@
     },
     "vendor-kernel": {
       "url": "https://github.com/xiaomi-pad-8-pro-development/android_kernel_xiaomi_piano.git",
-      "ref": "seventeen",
-      "commit": "ed494167a93f36b98a7a8db7e4106cd9f8d2bb12",
+      "ref": "6.6",
+      "commit": "0d7cc8a05dbadf647c69ec8e4fe80c85c03fc259",
       "role": "厂商 Android 下游内核的 DTS 源码，作为 overlay 的审阅基准。不进任何出货产物，只被 scripts/compare-vendor-dt.py 读取"
     },
     "vendor-blobs": {
@@ -79,7 +79,7 @@
     "crosvm": {
       "url": "https://github.com/google/crosvm.git",
       "ref": "main",
-      "commit": "1eb6337c644025bc6e67786d7f186e47a8e97d3d",
+      "commit": "9b63ea5f62f1493b5d2bb1c0da54f090d5e25ebe",
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {
@@ -91,7 +91,7 @@
     "piano-integration": {
       "url": "https://github.com/yzddmr6/xiaomipad-8pro-mainline.git",
       "ref": "main",
-      "commit": "d91782217b66d0739caddb5024e973a6e311e376",
+      "commit": "e24b3007dd4d06a660291a4f558578bde41c1743",
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者"
     },
     "uperf": {

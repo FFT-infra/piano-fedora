@@ -8,11 +8,13 @@
 约束来自本机实测：
 - 逻辑/物理扇区都是 4096 字节
 - userdata 占满盘尾，全盘无空位
-- userdata 是加密 dm 映射，无损缩容的前提不成立
+- userdata 是加密 dm 映射。宿主机读不到明文超级块，section 大小只能在
+  设备上通过解密映射读取，用 `--f2fs-section-bytes` 传进来
 
 计划只有一种产物，输入有两种：
 - tail-split：保持 userdata 起点不变，只缩短它，在尾部放 ESP + root。
-  这会破坏 userdata 里的现有数据，是初装路径。
+  不带 `--f2fs-section-bytes` 时会破坏 userdata 里的现有数据，是初装路径；
+  带上时按 section 对齐，配合设备侧在线缩容保留 Android 数据。
 - inspect-only：只报告现状与可行性，不改任何东西。
 
 分区表的输入有三种：文本 dump（规划用）、整块设备或整盘镜像、两段 dd 读数。
@@ -114,7 +116,7 @@ def find_userdata(parts):
     return rows[0]
 
 
-def build_plan(disk, parts, esp_mib, root_mib=None, userdata_mib=None):
+def build_plan(disk, parts, esp_mib, root_mib=None, userdata_mib=None, f2fs_section_bytes=None):
     if disk.get("logical_sector") != SECTOR:
         raise PlanError(
             f"this plan assumes {SECTOR}-byte logical sectors, got {disk.get('logical_sector')}"
@@ -175,6 +177,19 @@ def build_plan(disk, parts, esp_mib, root_mib=None, userdata_mib=None):
         if type(root_mib) is not int or root_mib < 1024:
             raise PlanError("root size must be at least 1024 MiB")
         root_first = align_down(root_last - root_mib * SECTORS_PER_MIB + 1, ALIGN_SECTORS)
+
+    # 无损缩容时 F2FS 的内核 resize 接口要求新 block_count 是 section 的整数倍，
+    # 且 section 从 userdata 起点量起。userdata 起点已按 1 MiB 对齐，section 是
+    # 512 块（2 MiB），所以把 root 起点再对齐一次就同时满足两边。对齐往前推，
+    # root 只会变大，不会小于请求值。
+    if f2fs_section_bytes is not None:
+        if type(f2fs_section_bytes) is not int or f2fs_section_bytes < SECTOR or f2fs_section_bytes % SECTOR:
+            raise PlanError("F2FS section size must be a positive multiple of 4 KiB")
+        section = f2fs_section_bytes // SECTOR
+        offset = root_first - userdata["first"]
+        root_first = userdata["first"] + offset - offset % section
+        if root_first <= userdata["first"]:
+            raise PlanError("F2FS section alignment leaves no Android userdata")
     new_userdata_last = root_first - 1
 
     if min(root_last - root_first + 1, new_userdata_last - userdata["first"] + 1) < 1024 * SECTORS_PER_MIB:
@@ -197,6 +212,7 @@ def build_plan(disk, parts, esp_mib, root_mib=None, userdata_mib=None):
         "status": "PLAN",
         "schema_version": 1,
         "mode": "tail-split",
+        "lossless": f2fs_section_bytes is not None,
         "allocation": ("explicit-android-size" if userdata_mib is not None
                        else "explicit-root-size" if root_mib is not None
                        else "equal-userdata-after-esp"),
@@ -204,13 +220,20 @@ def build_plan(disk, parts, esp_mib, root_mib=None, userdata_mib=None):
             json.dumps(canonical(disk, parts), sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
         "disk": disk,
         "original_partitions": parts,
-        "android_data_preserved": False,
+        "android_data_preserved": f2fs_section_bytes is not None,
         "capacity": {
             "android_userdata_mib": (new_userdata_last - userdata["first"] + 1) // SECTORS_PER_MIB,
             "linux_root_mib": root_sectors // SECTORS_PER_MIB,
             "esp_bytes": esp_sectors * SECTOR,
             "equal_split_difference_bytes": abs(root_sectors - (new_userdata_last - userdata["first"] + 1)) * SECTOR,
         },
+        "f2fs_shrink": (None if f2fs_section_bytes is None else {
+            "section_bytes": f2fs_section_bytes,
+            # 这是缩短后的分区容量，也是设备侧 `piano-resize-f2fs shrink
+            # --target-bytes` 的入参。工具自己再减一个 section 作为 F2FS 的
+            # 新 block_count，给分区尾部留对齐余量。
+            "userdata_bytes": (new_userdata_last - userdata["first"] + 1) * SECTOR,
+        }),
         "changes": [
             {
                 "partition": userdata["number"],
@@ -218,7 +241,9 @@ def build_plan(disk, parts, esp_mib, root_mib=None, userdata_mib=None):
                 "first": userdata["first"],
                 "old_last": userdata["last"],
                 "new_last": new_userdata_last,
-                "note": "起点不变，只缩短尾部；分区内现有数据不再可用",
+                "note": ("起点不变，只缩短尾部；先在线缩容 F2FS，再写这张表，Android 数据保留"
+                         if f2fs_section_bytes is not None else
+                         "起点不变，只缩短尾部；分区内现有数据不再可用"),
             },
             {
                 "partition": free_numbers[0],
@@ -242,11 +267,15 @@ def build_plan(disk, parts, esp_mib, root_mib=None, userdata_mib=None):
                 "label": "SUNUEFI_ESP",
             },
         ],
-        "warnings": [
-            "这会破坏 userdata 内的现有数据，是初装路径，不是无损缩容。",
-            "保留 Android 固定系统分区；userdata 清空重建，不对加密文件系统做无损缩容。",
-            "GPT 和原 BOOT 恢复材料不包含 Android 用户数据。",
-        ],
+        "warnings": (
+            ["先在线缩容 F2FS，再写这张表。缩容与写表之间不能重启或断电。",
+             "分区表写入后 Android 首次开机走原厂文件系统检查；数据保留，容量已缩小。",
+             "GPT 和原 BOOT 恢复材料不包含 Android 用户数据。"]
+            if f2fs_section_bytes is not None else
+            ["这会破坏 userdata 内的现有数据，是初装路径，不是无损缩容。",
+             "保留 Android 固定系统分区；userdata 清空重建，不对加密文件系统做无损缩容。",
+             "GPT 和原 BOOT 恢复材料不包含 Android 用户数据。"]
+        ),
         "device_writes": False,
     }
 
@@ -413,6 +442,9 @@ def main(argv=None):
     sizes.add_argument("--userdata-mib", type=int,
                        help="Android userdata 容量；Linux root 取扣除 ESP 后的剩余空间")
     sizes.add_argument("--equal-split", action="store_true", help="扣除 ESP 后的 userdata 对半分（默认）")
+    parser.add_argument("--f2fs-section-bytes", type=int,
+                        help="无损缩容：userdata 明文 F2FS 的 section 字节数；"
+                             "给出时按 section 对齐新 userdata 尾部，并在计划里带上缩容目标")
     parser.add_argument("--inspect-only", action="store_true")
     parser.add_argument("--output", help="把计划写入这个 JSON")
     parser.add_argument("--plan", help="复核过的计划 JSON；先核对现场表再按它写 blob")
@@ -445,7 +477,8 @@ def main(argv=None):
         else:
             if not 64 <= args.esp_mib <= 2048:
                 raise PlanError(f"esp size must be 64..2048 MiB, got {args.esp_mib}")
-            result = build_plan(disk, parts, args.esp_mib, args.root_mib, args.userdata_mib)
+            result = build_plan(disk, parts, args.esp_mib, args.root_mib, args.userdata_mib,
+                                args.f2fs_section_bytes)
 
         if args.emit_gpt is not None:
             if gpt is None:

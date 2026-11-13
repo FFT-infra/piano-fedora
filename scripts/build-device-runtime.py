@@ -171,14 +171,14 @@ def build(args):
     compiler = shutil.which("gcc")
     flags = [compiler, "-O2", "-Wall", "-Wextra", "-Werror"]
     touch, touch_proof = runtime.derive_touch_source(public, build)
-    # piano-camerad is built by packages/piano-camera: the two Fedora patches
-    # (gcc bounds and owned-pix route) are part of that spec now. Building a
-    # second copy here produced a same-path, different-bytes RPM and DNF
-    # refused the transaction. The proof below records where it comes from.
+    # piano-camerad is built by packages/piano-camera: its local changes are
+    # maintained directly in that package's src/, no separate Fedora patches.
+    # Building a second copy here produced a same-path, different-bytes RPM
+    # and DNF refused the transaction. The proof records the build inputs.
     camera_proof = {"built_by": "packages/piano-camera",
-                    "patches": {name: sha256(ROOT / "packages/piano-camera" / name)
-                                for name in ("camerad-gcc-bounds.patch",
-                                             "camerad-owned-pix-route.patch")}}
+                    "sources": {name: sha256(ROOT / "packages/piano-camera" / name)
+                                for name in ("piano-camera.spec", "src/Makefile",
+                                             "src/piano-camerad.c")}}
     pen_files, pen_proof = runtime.build_pen_core(build, flags)
     helpers = dict(pen_files)
     bsp_sources = getattr(runtime, "BSP_SOURCES", {})

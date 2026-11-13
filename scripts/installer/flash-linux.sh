@@ -36,8 +36,9 @@ Flashing utility for Fedora 44 Linux on Xiaomi Pad 8 Pro (piano).
 
 Options:
   -y, --yes            Skip safety confirmation prompt (non-interactive)
-  --boot <file>        Device-specific boot_a image (boot_linux.img from
-                       prepare-device-boot.py). Never the ESP payload.
+  --boot <file>        Device-specific boot image for the active slot
+                       (boot_linux.img from prepare-device-boot.py). Never the
+                       ESP payload.
   --esp <file>         Path to SunUEFI ESP image (sunuefi_esp.img)
   --root <file>        Path to the prepared rootfs transport (pianoroot.f2fs.sparse.img)
   --root-sha256sums <file>
@@ -190,14 +191,14 @@ if [ "$CURRENT_SLOT" != "a" ] && [ "$CURRENT_SLOT" != "b" ]; then
     echo -e "${RED}[ERROR] Could not read a valid current-slot ('${CURRENT_SLOT}').${NC}"
     exit 1
 fi
-if [ "$CURRENT_SLOT" != "a" ]; then
-    echo -e "${RED}[ERROR] Android must be active on Slot A before running this installer.${NC}"
-    echo "This installer writes the combined BOOT to the active slot (boot_a);"
-    echo "Android Slot B has no stock super partitions and is not a first-install target."
-    echo "Switch the active slot back to A from stock Fastboot (see README-INSTALL.txt),"
-    echo "then rerun. ABL swaps the slot type GUIDs and the UFS boot LUN."
-    exit 1
-fi
+# ABL loads only the active slot, so the combined BOOT goes into boot_a or
+# boot_b depending on where Android currently runs. Factory devices boot Slot A;
+# one that OTA'd to HyperOS 4 boots Slot B and has only super_b logical
+# partitions. Never switch slots here.
+slot_suffix="_${CURRENT_SLOT}"
+BOOT_PART="boot_${CURRENT_SLOT}"
+DTBO_PART="dtbo_${CURRENT_SLOT}"
+echo -e "[INFO] Active Android slot: ${GREEN}${slot_suffix}${NC} (writing ${BOOT_PART})"
 
 # 3c. The target partitions must exist and be big enough. Flashing a 512 MiB ESP
 # into a missing or shrunken partition is exactly the kind of silent corruption
@@ -239,7 +240,7 @@ require_partition() {
 
 echo -e "[INFO] Verifying target partitions..."
 ROOT_PARTITION_SIZE=""
-require_partition boot_a 67108864
+require_partition "$BOOT_PART" 67108864
 require_partition sunuefi_esp 536870912
 require_partition sunuefi_root 1073741824 ROOT_PARTITION_SIZE
 
@@ -261,13 +262,14 @@ find_file() {
     return 1
 }
 
-# Auto-detect the boot_a image.
+# Auto-detect the device boot image.
 # The ESP payload (/EFI/Linux/sunuefi.efi inside sunuefi_esp.img) is a UKI.
 # SunUEFI's firmware loads it from the ESP; ABL cannot. Older archives named a
 # copy of the old boot-container payload boot_sunuefi.img; writing either one
-# to boot_a leaves the tablet in Fastboot with no bootable slot, so neither is
-# ever used here. boot_a takes the device-specific image that
-# prepare-device-boot.py repacks from the stock 96 MiB BOOT.
+# to the active slot's boot partition leaves the tablet in Fastboot with no
+# bootable slot, so neither is ever used here. boot_a/boot_b takes the
+# device-specific image that prepare-device-boot.py repacks from the stock
+# 96 MiB BOOT.
 if [ -z "$BOOT_IMG" ]; then
     if FOUND=$(find_file "boot_linux.img"); then
         BOOT_IMG="$FOUND"
@@ -275,7 +277,7 @@ if [ -z "$BOOT_IMG" ]; then
         BOOT_IMG="$FOUND"
     fi
 elif [ "$(basename "$BOOT_IMG")" = "boot_sunuefi.img" ]; then
-    echo -e "${RED}[ERROR] --boot is the ESP payload from an older bundle, not a boot_a image.${NC}"
+    echo -e "${RED}[ERROR] --boot is the ESP payload from an older bundle, not a device boot image.${NC}"
     echo "Pass device-boot/boot_linux.img from prepare-device-boot.py instead."
     exit 1
 fi
@@ -413,7 +415,7 @@ if [ "$SKIP_CHECKSUM" -eq 0 ]; then
         echo -e "  ${GREEN}✓${NC} ${target_name} checksum valid."
     }
 
-    # boot_a is the one image that usually lives outside the staging directory:
+    # The device boot image usually lives outside the staging directory:
     # prepare-device-boot.py writes it to device-boot/ from this tablet's own
     # stock BOOT. A missing manifest there must stop the installer, not skip the
     # check, because this is the partition that decides whether the tablet boots.
@@ -479,10 +481,11 @@ if [ "$SKIP_CHECKSUM" -eq 0 ]; then
     if [ "$root_expanded_bytes" -lt "$ROOT_PARTITION_SIZE" ]; then
         echo -e "  ${GREEN}✓${NC} root image fits sunuefi_root; the first boot grows it to $ROOT_PARTITION_SIZE bytes."
     fi
-    if [ "$root_android_slot" != "_a" ]; then
-        echo -e "${RED}[ERROR] root-install was prepared for Android slot '${root_android_slot}', but this installer requires '_a'.${NC}"
-        echo "The first-install path writes the combined BOOT to the active Slot A."
-        echo "Generate root-install with --android-slot _a before flashing."
+    if [ "$root_android_slot" != "$slot_suffix" ]; then
+        echo -e "${RED}[ERROR] root-install was prepared for Android slot '${root_android_slot}', but the device runs '${slot_suffix}'.${NC}"
+        echo "The first-install path writes the combined BOOT to the active slot, and the"
+        echo "root image imports sensors from that slot's logical partitions."
+        echo "Generate root-install with --android-slot ${slot_suffix} before flashing."
         exit 1
     fi
     if [ "$root_image_size" = "$ROOT_PARTITION_SIZE" ]; then
@@ -501,7 +504,7 @@ echo -e "[INFO] Flashing targets resolved:"
 if [ -n "$BOOT_IMG" ]; then
     echo -e "  - Boot image   : ${GREEN}${BOOT_IMG}${NC} ($(stat -c%s "$BOOT_IMG" 2>/dev/null || stat -f%z "$BOOT_IMG") bytes)"
 else
-    echo -e "  - Boot image   : ${YELLOW}none${NC}; boot_a is left untouched"
+    echo -e "  - Boot image   : ${YELLOW}none${NC}; ${BOOT_PART} is left untouched"
 fi
 echo -e "  - ESP image    : ${GREEN}${ESP_IMG}${NC} ($(stat -c%s "$ESP_IMG" 2>/dev/null || stat -f%z "$ESP_IMG") bytes)"
 echo -e "  - RootFS image : ${GREEN}${ROOT_IMG}${NC} (${root_image_size} transfer bytes, ${root_expanded_bytes} expanded bytes)"
@@ -512,7 +515,7 @@ fi
 # 7. Safety Confirmation
 if [ "$AUTO_CONFIRM" -eq 0 ]; then
     echo -e "\n${YELLOW}${BOLD}⚠️  CRITICAL SAFETY WARNING ⚠️${NC}"
-    echo "1. This action writes the combined SunUEFI BOOT to the active slot (boot_a only)."
+    echo "1. This action writes the combined SunUEFI BOOT to the active slot (${BOOT_PART} only)."
     echo "2. This action will overwrite 'sunuefi_esp' and 'sunuefi_root' partitions."
     echo "3. Android stays bootable from the same slot through the SunUEFI chooser."
     echo "4. Ensure your Bootloader is UNLOCKED and battery is above 30%."
@@ -596,14 +599,14 @@ from pathlib import Path
 path = Path(sys.argv[1])
 data = path.read_bytes()
 if len(data) != 100663296:
-    sys.exit(f"{path.name}: {len(data)} bytes, expected the 96 MiB boot_a image")
+    sys.exit(f"{path.name}: {len(data)} bytes, expected the 96 MiB BOOT image")
 if data[:8] != b"ANDROID!":
     sys.exit(f"{path.name}: not an Android boot container")
 version = struct.unpack_from("<I", data, 40)[0]
 if version != 4:
     sys.exit(f"{path.name}: Header v{version}; SM8750 ABL requires v4")
-# The combined BOOT keeps the upstream unsigned AVB NONE metadata. Slot A's
-# ABL loads it directly; 2026-10-21 on device, the same unsigned image booted
+# The combined BOOT keeps the upstream unsigned AVB NONE metadata. The active
+# slot's ABL loads it directly; 2026-10-21 on device, the same unsigned image booted
 # Android and Linux. Check the wrapper shape only. Do not require a non-zero
 # os_version or an RSA4096 signature: piano-boot-repack authenticates the
 # wrapper header byte-for-byte, and patching offset 16 breaks the Android
@@ -627,10 +630,10 @@ PYEOF
 fi
 
 if [ -n "$BOOT_IMG" ]; then
-    echo -e "\n--> Step 1/4: Keeping active Slot A; no slot switch..."
+    echo -e "\n--> Step 1/4: Keeping active slot ${CURRENT_SLOT}; no slot switch..."
 else
-    echo -e "\n--> Step 1/3: No boot_a image given; the boot slot is left as it is."
-    echo -e "    ${YELLOW}boot_a keeps its current content. Run prepare-device-boot.py and pass${NC}"
+    echo -e "\n--> Step 1/3: No boot image given; the boot slot is left as it is."
+    echo -e "    ${YELLOW}${BOOT_PART} keeps its current content. Run prepare-device-boot.py and pass${NC}"
     echo -e "    ${YELLOW}--boot device-boot/boot_linux.img to write it.${NC}"
 fi
 
@@ -638,16 +641,16 @@ fi
 # authenticates the whole boot chain of the active slot and rejects an
 # empty/foreign DTBO with "Failed to load/authenticate boot image: Device
 # Error"; erasing it has been observed to leave the tablet stuck in Fastboot.
-# SunUEFI reads its board DTB from vendor_boot plus the stock dtbo_a overlay
+# SunUEFI reads its board DTB from vendor_boot plus the stock dtbo overlay
 # fragments, so the stock content must stay in place.
-echo -e "\n--> Skipping dtbo_a: keeping the stock DTBO for the active slot."
+echo -e "\n--> Skipping ${DTBO_PART}: keeping the stock DTBO for the active slot."
 
 # Piano ABL can stop responding to a single 512 MiB raw ESP write. `-S 128M`
 # makes fastboot split every image into bounded transfers; the upstream
 # install_piano.py flash() sends the same flag.
 if [ -n "$BOOT_IMG" ]; then
-    echo -e "\n--> Step 2/4: Flashing device boot image to boot_a..."
-    fb -S 128M flash boot_a "$BOOT_IMG"
+    echo -e "\n--> Step 2/4: Flashing device boot image to ${BOOT_PART}..."
+    fb -S 128M flash "$BOOT_PART" "$BOOT_IMG"
     echo -e "\n--> Step 3/4: Flashing SunUEFI ESP to sunuefi_esp..."
 else
     echo -e "\n--> Step 2/3: Flashing SunUEFI ESP to sunuefi_esp..."
@@ -676,7 +679,7 @@ echo "  - Switch back to Android: Open GNOME App Drawer -> Click 'Return to Andr
 echo ""
 
 if [ "$DO_REBOOT" -eq 1 ] && [ -z "$BOOT_IMG" ]; then
-    echo -e "--> Not rebooting: boot_a was not written, so the active slot stays as it was."
+    echo -e "--> Not rebooting: the boot image was not written, so the active slot stays as it was."
 elif [ "$DO_REBOOT" -eq 1 ]; then
     echo -e "--> Rebooting tablet into Fedora 44 Linux..."
     fb reboot

@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "target": "sunuefi",
-  "note": "覆盖层用锁定内核的 dt-bindings 预处理，保留标签目标及局部引用；打包需要 libfdt 1.8.1，避免旧版覆盖基树 phandle。",
+  "note": "\u8986\u76d6\u5c42\u7528\u9501\u5b9a\u5185\u6838\u7684 dt-bindings \u9884\u5904\u7406\uff0c\u4fdd\u7559\u6807\u7b7e\u76ee\u6807\u53ca\u5c40\u90e8\u5f15\u7528\uff1b\u6253\u5305\u9700\u8981 libfdt 1.8.1\uff0c\u907f\u514d\u65e7\u7248\u8986\u76d6\u57fa\u6811 phandle\u3002",
   "base": {
-    "sunuefi_commit": "3a7e5c1b799f305a8cf5972d733332a6c55174a1"
+    "sunuefi_commit": "018634f18c74704e6668ee5d816d038bc6591849"
   },
   "patches": [
     {
       "file": "0001-preprocess-and-resolve-label-targets.patch",
-      "summary": "补齐笔座覆盖层的预处理与标签目标解析，失败时输出工具 stderr，并拒绝既有 phandle 被覆盖",
+      "summary": "\u8865\u9f50\u7b14\u5ea7\u8986\u76d6\u5c42\u7684\u9884\u5904\u7406\u4e0e\u6807\u7b7e\u76ee\u6807\u89e3\u6790\uff0c\u5931\u8d25\u65f6\u8f93\u51fa\u5de5\u5177 stderr\uff0c\u5e76\u62d2\u7edd\u65e2\u6709 phandle \u88ab\u8986\u76d6",
       "targets": {
-        "tools/package_release.py": "f1fe8164799fe2c81bf5e1a5cd26521ad70c6e581ed277e1d16fed8c9a6b3fa8"
+        "tools/package_release.py": "2117cfda11a084e883f0e5b8b83f88ff357563721cca39f8c656b874f8abbca2"
       },
       "creates": []
     }

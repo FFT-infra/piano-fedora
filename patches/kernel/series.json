@@ -2,113 +2,120 @@
   "schema_version": 1,
   "target": "sunuefi",
   "base": {
-    "sunuefi_commit": "3a7e5c1b799f305a8cf5972d733332a6c55174a1"
+    "sunuefi_commit": "018634f18c74704e6668ee5d816d038bc6591849"
   },
   "patches": [
     {
       "file": "0001-linux-73-series.patch",
-      "summary": "在 7.3 的封存 mail 序列里登记 Iris 解码顺序与去块、DPU 从通道延后清理、功放增益上限、触屏屏型与 THP 字符设备四条补丁，并把 series 与 config 的 target_tree 一起推进",
+      "summary": "\u5728 7.3 \u7684\u5c01\u5b58 mail \u5e8f\u5217\u91cc\u767b\u8bb0 Iris \u89e3\u7801\u987a\u5e8f\u4e0e\u53bb\u5757\u3001DPU \u4ece\u901a\u9053\u5ef6\u540e\u6e05\u7406\u3001\u529f\u653e\u589e\u76ca\u4e0a\u9650\u3001\u89e6\u5c4f\u5c4f\u578b\u4e0e THP \u5b57\u7b26\u8bbe\u5907\u56db\u6761\u8865\u4e01\uff0c\u5e76\u628a series \u4e0e config \u7684 target_tree \u4e00\u8d77\u63a8\u8fdb",
       "targets": {
-        "config/release.json": "df8f23981a7f6e2aaf4e2a76eb2b07e252ac82067909e5ea3d7da9cca18d8c69",
-        "patches/linux/7.3/series.json": "33bb9ebcd157d8e344be6a624bf3b81beeb8e71e74fe5f652829315be20b7193"
+        "config/release.json": "0d1a3e4b05520a5ebd1e5b3e2cbb2a88c4b804ff11a31b51f1c703a4d9f7aacb",
+        "patches/linux/7.3/series.json": "1bfc77f3c28993169c50b75260ba0d1104c4e11d26038a49b23849e51f540ce1"
       },
       "creates": [
-        "patches/linux/7.3/0105-dpu-defer-slave-cleanup.patch",
-        "patches/linux/7.3/0106-media-iris-decode-order-and-deblocking.patch",
-        "patches/linux/7.3/0107-asoc-piano-speaker-gain-limit.patch",
-        "patches/linux/7.3/0108-input-nt36532e-panel-vendor-misc.patch"
-      ]
+        "patches/linux/7.3/0106-dpu-defer-slave-cleanup.patch",
+        "patches/linux/7.3/0107-media-iris-decode-order-and-deblocking.patch",
+        "patches/linux/7.3/0108-asoc-piano-speaker-gain-limit.patch",
+        "patches/linux/7.3/0109-input-nt36532e-panel-vendor-misc.patch"
+      ],
+      "dropped": []
     },
     {
       "file": "0002-linux-73-gpi-dma-deep-idle.patch",
-      "summary": "把 GPI DMA 深度空闲修复加进 7.3 封存序列，0092 之后 target_tree 推进到 03617229",
+      "summary": "\u628a GPI DMA \u6df1\u5ea6\u7a7a\u95f2\u4fee\u590d\u52a0\u8fdb 7.3 \u5c01\u5b58\u5e8f\u5217\uff0c0092 \u4e4b\u540e target_tree \u63a8\u8fdb\u5230 03617229",
       "targets": {
-        "config/release.json": "d1ff9237c89ec04057484c49063a80a2e144668c5112c6fc4db7d053df0dec12",
-        "patches/linux/7.3/series.json": "4172b39fd6f7efe8252be86c61b05594b7665f67be4b3aa21f6b8b7294dd1be1"
+        "config/release.json": "5952e5b8a04051fcfe74f79f166817e0e240cdfdd3b37389ffd67e8fd30c36b8",
+        "patches/linux/7.3/series.json": "bcbd8aca8a5e91a8b73c11a6ebabf05860a4c730a3eb776d55cd88a526026b56"
       },
       "creates": [
-        "patches/linux/7.3/0109-spi-geni-gpi-dma-deep-idle.patch"
-      ]
+        "patches/linux/7.3/0110-spi-geni-gpi-dma-deep-idle.patch"
+      ],
+      "dropped": []
     },
     {
       "file": "0003-linux-73-upstream-2026-10.patch",
-      "summary": "把 yzddmr6 上游 2026-10 的六组修复并进 7.3 封存序列（绑定与诊断配置、孤儿时钟接管与 SM8750 MDSS 域、REGDMA 拆除与 DSI FIFO 诊断、Iris 时间戳与 ktz8866 HWEN、ath12k/电源/PMIC GLINK、tx-macro 通道掩码），target_tree 推进到 8f01e4e8",
+      "summary": "\u628a yzddmr6 \u4e0a\u6e38 2026-10 \u7684\u516d\u7ec4\u4fee\u590d\u5e76\u8fdb 7.3 \u5c01\u5b58\u5e8f\u5217\uff08\u7ed1\u5b9a\u4e0e\u8bca\u65ad\u914d\u7f6e\u3001\u5b64\u513f\u65f6\u949f\u63a5\u7ba1\u4e0e SM8750 MDSS \u57df\u3001REGDMA \u62c6\u9664\u4e0e DSI FIFO \u8bca\u65ad\u3001Iris \u65f6\u95f4\u6233\u4e0e ktz8866 HWEN\u3001ath12k/\u7535\u6e90/PMIC GLINK\u3001tx-macro \u901a\u9053\u63a9\u7801\uff09\uff0ctarget_tree \u63a8\u8fdb\u5230 8f01e4e8",
       "targets": {
-        "config/release.json": "5f96895e9dc776e73da32c0b79747d75d6eff8bd518548c4b1c2612e78963047",
-        "patches/linux/7.3/series.json": "be6b85a6798a0ec02ff08d6e40593516c2c7749c7a80a9201145ac8c0ad7ec1f"
+        "config/release.json": "bf1ad62826855921c0e63eb9acedf92266ff658c9c713b551ffcb383068d9df9",
+        "patches/linux/7.3/series.json": "26fde6bbde3506f56360a0352022f70ef7a2000a449c1a296b73230313f83c5b"
       },
       "creates": [
-        "patches/linux/7.3/0110-bindings-and-diag-configs.patch",
-        "patches/linux/7.3/0111-clk-orphan-and-sm8750-mdss-domain.patch",
-        "patches/linux/7.3/0112-drm-regdma-and-dsi-diagnostics.patch",
-        "patches/linux/7.3/0113-iris-metadata-and-ktz8866-hwen.patch",
-        "patches/linux/7.3/0114-ath12k-power-soc-usb.patch",
-        "patches/linux/7.3/0115-asoc-tx-macro-channel-mask.patch"
-      ]
+        "patches/linux/7.3/0111-bindings-and-diag-configs.patch",
+        "patches/linux/7.3/0112-clk-orphan-and-sm8750-mdss-domain.patch",
+        "patches/linux/7.3/0113-drm-regdma-and-dsi-diagnostics.patch",
+        "patches/linux/7.3/0114-iris-metadata-and-ktz8866-hwen.patch",
+        "patches/linux/7.3/0115-ath12k-power-soc-usb.patch",
+        "patches/linux/7.3/0116-asoc-tx-macro-channel-mask.patch"
+      ],
+      "dropped": []
     },
     {
       "file": "0004-linux-73-rpmsg-glink.patch",
-      "summary": "把 GLINK 暂存回调就绪前到达消息的修复加进 7.3 封存序列，修 QRTR 名字服务 HELLO 在冷启动时被丢弃导致音频/充电/传感器服务全连不上，target_tree 推进到 fd786146",
+      "summary": "\u628a GLINK \u6682\u5b58\u56de\u8c03\u5c31\u7eea\u524d\u5230\u8fbe\u6d88\u606f\u7684\u4fee\u590d\u52a0\u8fdb 7.3 \u5c01\u5b58\u5e8f\u5217\uff0c\u4fee QRTR \u540d\u5b57\u670d\u52a1 HELLO \u5728\u51b7\u542f\u52a8\u65f6\u88ab\u4e22\u5f03\u5bfc\u81f4\u97f3\u9891/\u5145\u7535/\u4f20\u611f\u5668\u670d\u52a1\u5168\u8fde\u4e0d\u4e0a\uff0ctarget_tree \u63a8\u8fdb\u5230 fd786146",
       "targets": {
-        "config/release.json": "8bb4e1186df603ea54ca57de3896957a5aaa99da1ce0f4f39024219e9acce6d6",
-        "patches/linux/7.3/series.json": "1d52de144f392ca6edef9f876d4c80ce957c968781d52f6d9f7a50d29015ee0a"
+        "config/release.json": "71a84644dfdf69b66a0d6715dd5407bfe6e2d3eca0d33c8f6dccfab93625d498",
+        "patches/linux/7.3/series.json": "e72a3ea4c6a63ccf1768efda956f16440e837975349dcf235bf0f7e1f95dea6f"
       },
       "creates": [
-        "patches/linux/7.3/0116-rpmsg-glink-hold-early-messages.patch"
-      ]
+        "patches/linux/7.3/0117-rpmsg-glink-hold-early-messages.patch"
+      ],
+      "dropped": []
     },
     {
       "file": "0005-linux-73-mainline-cherry-picks.patch",
-      "summary": "把上游 piano/dev 里 18 条能干净落地的主线 cherry-pick 加进 7.3 封存序列（APR 回调时序、UFS 健康事件 quirk、ath12k 两条、GPU RPMH 依赖投票、mptcp、DPU 带宽与文档、Iris 三处、UCSI、DP 两条、tzmem、clk 孤儿、qmp-combo），target_tree 推进到 58d2adb9",
+      "summary": "\u628a\u4e0a\u6e38 piano/dev \u91cc 18 \u6761\u80fd\u5e72\u51c0\u843d\u5730\u7684\u4e3b\u7ebf cherry-pick \u52a0\u8fdb 7.3 \u5c01\u5b58\u5e8f\u5217\uff08APR \u56de\u8c03\u65f6\u5e8f\u3001UFS \u5065\u5eb7\u4e8b\u4ef6 quirk\u3001ath12k \u4e24\u6761\u3001GPU RPMH \u4f9d\u8d56\u6295\u7968\u3001mptcp\u3001DPU \u5e26\u5bbd\u4e0e\u6587\u6863\u3001Iris \u4e09\u5904\u3001UCSI\u3001DP \u4e24\u6761\u3001tzmem\u3001clk \u5b64\u513f\u3001qmp-combo\uff09\uff0ctarget_tree \u63a8\u8fdb\u5230 58d2adb9",
       "targets": {
-        "config/release.json": "39cba04a9ff7f6078a68fac8a229ef16711967b8a6a0cd44ea0d8b54f900542e",
-        "patches/linux/7.3/series.json": "0bd2577113d71bd4cf2c1f5ffe74565917112fa40502b4601e9639aa962e3760"
+        "config/release.json": "5aff248dc5c0c45c7a3b134f92e2d0f6bde32f23d7af3626a3974ff1059b84e1",
+        "patches/linux/7.3/series.json": "7be33e2d6ea34aa85c6c1769c49b58c5d7256168e1595897a8c4d9fb134746d6"
       },
       "creates": [
-        "patches/linux/7.3/0117-soc-apr-gpr-callback-before-probe.patch",
-        "patches/linux/7.3/0118-scsi-ufs-skip-refused-health-critical.patch",
-        "patches/linux/7.3/0119-ath12k-wcn7860-disable-qdss-cfg-miss.patch",
-        "patches/linux/7.3/0120-drm-a6xx-rpmh-dependency-votes.patch",
-        "patches/linux/7.3/0121-ath12k-scan-during-recovery.patch",
-        "patches/linux/7.3/0122-mptcp-timer-ival-reset.patch",
-        "patches/linux/7.3/0123-drm-dpu-crtc-bandwidth-from-state.patch",
-        "patches/linux/7.3/0124-iris-guard-null-hfi-sys-ops.patch",
-        "patches/linux/7.3/0125-iris-cancel-sys-error-work.patch",
-        "patches/linux/7.3/0126-iris-disable-irq-nosync.patch",
-        "patches/linux/7.3/0127-drm-dpu-mdss-kernel-doc.patch",
-        "patches/linux/7.3/0128-dt-bindings-regdma-conditional.patch",
-        "patches/linux/7.3/0129-usb-ucsi-connector-before-notify.patch",
-        "patches/linux/7.3/0130-drm-dp-link-training-after-reinit.patch",
-        "patches/linux/7.3/0131-drm-dp-serialize-hpd-state.patch",
-        "patches/linux/7.3/0132-qcom-tzmem-do-once-sleepable.patch",
-        "patches/linux/7.3/0133-clk-rpm-enable-before-orphans.patch",
-        "patches/linux/7.3/0134-phy-qmp-combo-typec-mux-committed.patch"
-      ]
+        "patches/linux/7.3/0118-soc-apr-gpr-callback-before-probe.patch",
+        "patches/linux/7.3/0119-scsi-ufs-skip-refused-health-critical.patch",
+        "patches/linux/7.3/0120-ath12k-wcn7860-disable-qdss-cfg-miss.patch",
+        "patches/linux/7.3/0121-drm-a6xx-rpmh-dependency-votes.patch",
+        "patches/linux/7.3/0122-ath12k-scan-during-recovery.patch",
+        "patches/linux/7.3/0123-mptcp-timer-ival-reset.patch",
+        "patches/linux/7.3/0124-drm-dpu-crtc-bandwidth-from-state.patch",
+        "patches/linux/7.3/0125-iris-guard-null-hfi-sys-ops.patch",
+        "patches/linux/7.3/0126-iris-cancel-sys-error-work.patch",
+        "patches/linux/7.3/0127-iris-disable-irq-nosync.patch",
+        "patches/linux/7.3/0128-drm-dpu-mdss-kernel-doc.patch",
+        "patches/linux/7.3/0129-dt-bindings-regdma-conditional.patch",
+        "patches/linux/7.3/0130-usb-ucsi-connector-before-notify.patch",
+        "patches/linux/7.3/0131-drm-dp-link-training-after-reinit.patch",
+        "patches/linux/7.3/0132-drm-dp-serialize-hpd-state.patch",
+        "patches/linux/7.3/0133-qcom-tzmem-do-once-sleepable.patch",
+        "patches/linux/7.3/0134-clk-rpm-enable-before-orphans.patch",
+        "patches/linux/7.3/0135-phy-qmp-combo-typec-mux-committed.patch"
+      ],
+      "dropped": []
     },
     {
       "file": "0006-linux-73-iris-irq-wait.patch",
-      "summary": "补上上游 0adb163ceb：iris 关电前等线程化 IRQ 退出，用 iris_acquire/release_core_lock 取代本树在 iris_core_deinit 里的自制绕行，target_tree 推进到 58f5ee34",
+      "summary": "\u8865\u4e0a\u4e0a\u6e38 0adb163ceb\uff1airis \u5173\u7535\u524d\u7b49\u7ebf\u7a0b\u5316 IRQ \u9000\u51fa\uff0c\u7528 iris_acquire/release_core_lock \u53d6\u4ee3\u672c\u6811\u5728 iris_core_deinit \u91cc\u7684\u81ea\u5236\u7ed5\u884c\uff0ctarget_tree \u63a8\u8fdb\u5230 58f5ee34",
       "targets": {
-        "config/release.json": "ba8142538fd052d277ed4f4f9843e9c74637d0709006b65e2b23566d2e3114a7",
-        "patches/linux/7.3/series.json": "4a0f5b58169d72ce1a808897970d8110ec734443ea07a94f0fddfc7c8d029d53"
+        "config/release.json": "d47888c70b748d71212d6cd68cf6c32da4c1bc88a0a7c82ceb702cf4bba60595",
+        "patches/linux/7.3/series.json": "34ce70f9f7cd7a2f629c886973d9f549648fd04390c1b829946286ff77c58b0b"
       },
       "creates": [
-        "patches/linux/7.3/0135-iris-wait-threaded-irq-on-poweroff.patch"
-      ]
+        "patches/linux/7.3/0136-iris-wait-threaded-irq-on-poweroff.patch"
+      ],
+      "dropped": []
     },
     {
       "file": "0007-linux-73-ufs-mcq-and-board-thermistors.patch",
-      "summary": "把 UFS MCQ 多队列与 11 路板级测温/PMIC5 Gen4 ADC 补丁加进 7.3 封存序列，target_tree 推进到 7a0b0da0",
+      "summary": "\u628a UFS MCQ \u591a\u961f\u5217\u4e0e 11 \u8def\u677f\u7ea7\u6d4b\u6e29/PMIC5 Gen4 ADC \u8865\u4e01\u52a0\u8fdb 7.3 \u5c01\u5b58\u5e8f\u5217\uff0ctarget_tree \u63a8\u8fdb\u5230 7a0b0da0",
       "targets": {
-        "config/release.json": "67f461f0c3097c58cec28ff280f317298c9d78244d8fb2dbec3aeaeb050e751d",
-        "patches/linux/7.3/series.json": "0bc1ddba324154c1e2252c26c51d04c6105ad4d836963a10f8b8bf7402c1705b"
+        "config/release.json": "cef2b0e3e114eae152ec7a5a340997391c6eb0a799bd1c25fed205eeb992c99d",
+        "patches/linux/7.3/series.json": "4d34fa458b3a74165eaf007e670bf7ba90c195d8af2840dd7e1affc14b9ae944"
       },
       "creates": [
-        "patches/linux/7.3/0136-arm64-dts-sm8750-ufs-mcq-enable.patch",
-        "patches/linux/7.3/0137-arm64-dts-sm8750-ufs-mcq-window-limit.patch",
-        "patches/linux/7.3/0138-arm64-dts-sm8750-pmics-pmk8550-adc.patch",
-        "patches/linux/7.3/0139-arm64-dts-piano-board-thermistors.patch"
-      ]
+        "patches/linux/7.3/0137-arm64-dts-sm8750-ufs-mcq-enable.patch",
+        "patches/linux/7.3/0138-arm64-dts-sm8750-ufs-mcq-window-limit.patch",
+        "patches/linux/7.3/0139-arm64-dts-sm8750-pmics-pmk8550-adc.patch",
+        "patches/linux/7.3/0140-arm64-dts-piano-board-thermistors.patch"
+      ],
+      "dropped": []
     }
   ]
 }

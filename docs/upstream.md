@@ -19,7 +19,7 @@
 
 `packages/xiaomi-piano-firmware` 的 `%prep` 现在核对上游自带的 `SHA256SUMS`（99 项）。在此之前 `Source0` 只订了提交号，tarball 内容被换掉也发现不了。
 
-固件包还要再叠一层厂商 ROM。SunUEFI 的 `config/release.json` 用 `firmware.overlays` 声明 `vendor/firmware/hyperos4-{adsp,cdsp,fingerprint}` 与 `vendor/firmware/piano-display` 四份，每份带 `manifest.json`，逐文件记 bytes 与 sha256，可选的 `directory` 给出落点。上游 piano-firmware tarball 里没有 cdsp 与指纹固件，adsp 也是另一版 ROM，所以 99 项之外还有 88 个文件来自这一层，由 `packages/xiaomi-piano-firmware/firmware-overlays.py` 在写盘前逐个核对。`piano-display` 的两份面板校准写成 `qcom/sm8750/`，其余三份落在固件根目录；落点由清单声明，脚本不另写一份映射。清单从 `release.json` 读，叠层的提交号与 `sources.lock.json` 的 `sunuefi` pin 相同，`tests/check_firmware_overlays.py` 守住两者一致。
+固件包还要再叠一层厂商 ROM。SunUEFI 的 `config/release.json` 用 `firmware.overlays` 声明厂商叠层，当前 10 份、109 个文件，全部来自 OS4.0.6.0.XPYCNXM：`hyperos4-{adsp,cdsp,fingerprint}`、`piano-display`，以及 `piano-{ath12k,bluetooth,keyboard,qcom,qcom-vpu,touch}`。每份带 `manifest.json`，逐文件记 bytes 与 sha256，可选的 `directory` 给出落点。上游 piano-firmware tarball 里没有 cdsp 与指纹固件，adsp 也是另一版 ROM，所以 99 项之外还有这一层，由 `packages/xiaomi-piano-firmware/firmware-overlays.py` 在写盘前逐个核对。`piano-display` 的两份面板校准写成 `qcom/sm8750/`，其余各份落在固件根目录；落点由清单声明，脚本不另写一份映射。清单从 `release.json` 读，叠层的提交号与 `sources.lock.json` 的 `sunuefi` pin 相同，`tests/check_firmware_overlays.py` 守住两者一致。
 
 ## 自动跟踪
 
@@ -48,6 +48,32 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 2. 启动、交接、内存、DTB、模块或硬件准备有变时，重读相关合同与消费者。检查补丁 series 的 base 和目标摘要。不要直接替换某一件旧产物。
 3. 改 pin 之前核对所有消费路径、构建容器和依赖。重新生成受影响的内核、运行时、root 文件系统、initramfs、ESP 和 BOOT。清单同步更新。
 4. 下载并核对实际产物，更新部署入口。构建、文件验证和实机行为分别记账。不能继承上游另一台设备的结果。
+
+### 2026-11-13（续）
+
+`sunuefi` `4f663563` → `018634f1`（14 个提交），`crosvm` `75f930e9` → `9b63ea5f`，`piano-integration` `d9178221` → `e24b3007`。
+
+SunUEFI 这 14 个提交里有三处动到了本仓库的补丁面。`uefi/core` 按子系统拆成 `usb/`、`product/`、`storage/` 等目录，`uefi-dwc3-halt`、`uefi-ebs-identity`、`uefi-ufs` 三个补丁的目标路径跟着改。`tools/host/` 改名 `tools/desktop/`，`kernel-f2fs/0001` 里引用这两个路径的一行要重写，其余三个内核配置补丁靠这一行的输出顺序自然接上。`tools/package_release.py` 加了 `cpp` 预处理和 label 目标解析，本仓库的 `packaging-overlays/0001` 重新 rebase，保留 `__fixups__` 解析、`target-path` 判空与 phandle 覆盖检查，并把 include 目录在 `--kernel-source` 缺省时回落到锁定的内核检出。
+
+内核封存序列 104 → 105 条，新增 `0105-dpu-piano-fractional-sampling.patch`（非整数倍放大的接缝采样）。它和本仓库的 `0105-dpu-defer-slave-cleanup` 同号但不同文件（改 `dpu_plane.c`，本仓库改 `dpu_encoder*.c`），所以 35 条自有补丁整体后移到 `0106`–`0140`，`target_tree` 由 `60db9588` 推进到 `8848124d`。
+
+固件换到 OS4.0.6.0.XPYCNXM，叠层从 4 份扩到 10 份。新增的 `piano-tsens.dtso` 没有跟进：它的 `#include` 由上游在 `--kernel-source` 下从内核源码生成 `sm8750-thermal-zones.dtsi`，本仓库的 bundle 任务没有那棵源码树，温区仍由厂商 `board.dtb` 的 `/soc/thermal-zones` 提供。
+
+`crosvm` 的 5 个提交全是 recipe 依赖滚动。`piano-integration` 的 40 个提交是 1.3.0 候选版本的 Ubuntu 侧改动，本仓库只取 `device/piano-thp/`、`device/camera/` 与 `tools/extract-thp-calibration.py`，这些路径在这批提交里没有变化，只有 `NOTICE` 多了 Mesa 与 NPU 的署名段。
+
+### 2026-11-13
+
+`vendor-kernel` 的上游删掉了 `seventeen` 分支，默认分支改为 `6.6`。pin 从 `ed494167` 移到 `6.6` 的 `0d7cc8a`，比原来多 6 个提交：Focus Pen 的 HID 上报、nt36532 笔设备去掉 `ABS_BRAKE`、`qcom_reboot_reason` 的越界修复、cnss2 加载 piano 板级文件，以及一次 android15-6.6 合并。这些提交没有改 `arch/arm64/boot/dts/`，重跑的 `compare-vendor-dt.py` 结果不变：23 个 overlay、75 个目标，`missing_in_vendor_unexplained` 为 0。`vendor-blobs` 分支未变，仍在 `seventeen` 的 `c1e5a318`。
+
+同时核对了其余 15 个锁定源，pin 都是远端当前 HEAD。
+
+### 2026-11-12（续）
+
+`sunuefi` `3a7e5c1b` → `4f663563`，`crosvm` `1eb6337c` → `75f930e9`，`piano-integration` 不动。SunUEFI 的 10 个提交里，`a139e996` 与 `3ab0085a` 修 DWC3 停止，其余是构建、GDM 等待 KMS 显示接口、Wayland 开发包与 CI 缓存权限。内核封存序列、`config/release.json`、`tools/package_release.py`、`tools/build_piano_full_kernel.py` 在这批提交里没有变化。crosvm 只有一条 dev-container 依赖滚动。
+
+`patches/uefi-dwc3-halt/` 的四版补丁删除，只剩 `0001-halt-soft-reset-fallback.patch`：上游 `Halt()` 在等待超时或 END_TRANSFER 失败时直接返回 `EFI_TIMEOUT`，补丁在这条错误分支上补 core soft reset，以复位后的 `DevCtrlHlt` 作成功判据。`patches/uefi-ebs-identity/` 的目标摘要随 `PianoProductCore.c` 的上游改动重算。
+
+已核：`scripts/apply-patches.py --check` 在新 pin 上给出 `CHECKED`；新固件用 wrapped BOOT 换核写回 `boot_b` 后启动到 Plasma，`stage=halt status=Success` 一次通过，兜底没有触发。未核：整条发布链、新固件配合新内核的冷装。
 
 ### 2026-11-12
 
