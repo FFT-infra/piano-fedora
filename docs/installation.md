@@ -244,6 +244,8 @@ sha256sum -c SHA256SUMS
 
 默认路径清空 `userdata`。需要保留 Android 数据时加 `--lossless`：先在 Android 上把解密后的 F2FS 缩到新容量，再写分区表，全程不擦除。前提是设备已 root、已装与当前 BOOT 匹配的「SunUEFI 引导助手」模块（`piano-resize-f2fs` 随模块提供），并且 `userdata` 的空闲块够用。
 
+分区表要先是首装规划器接受的形态：没有 `sunuefi_root`、`sunuefi_esp`，`userdata` 是最后一个分区并顶到盘尾。设备上已经有 Linux 分区时，先删掉它们再把这 `userdata` 拉回盘尾；这一步没有工具，由操作者手工改表。
+
 `plan` 与 `apply` 都要带 `--lossless`，且都不能带 `--accept-data-loss`。计划里会多出 `f2fs_shrink.userdata_bytes`，那是设备侧缩容的目标容量；新 `userdata` 长度按 F2FS section 对齐，section 大小由设备上的解密映射读出，宿主机读不到。
 
 ```sh
@@ -257,7 +259,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
 
 失败时执行器不自动重试、不擦除、不重新分区，`result.json` 里记着原 GPT 的两段备份和恢复说明。先看 `f2fs_shrink` 字段有没有写进去，再决定是恢复 GPT 还是继续。
 
-这条路径的真机验收见[已知问题](known-issues.md#无损首装)。在那之前它按显式启用处理，默认仍是清空路径。
+这条路径 2026-11-13 在一台 Slot B 设备上验收通过，记录与剩余限制见[已知问题](known-issues.md#无损首装)。默认路径仍是清空。
 
 ### 1. 自动分区
 

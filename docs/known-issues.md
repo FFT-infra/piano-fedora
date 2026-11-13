@@ -342,7 +342,13 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 
 工具链是上游现成的两步：`piano-resize-f2fs shrink --target-bytes N --execute` 走 `F2FS_IOC_RESIZE_FS`，`piano-storage apply` 写 GPT 并留备份。宿主机只负责计划、推送和核对，因为加密 `/data` 的明文超级块只有在设备上经 vold 解密映射才读得到，section 大小也从那里取。
 
-未验证：截至 2026-11-13 没有在保留数据的设备上跑完一次。已核的是离线部分——计划器的 section 对齐、安装器先缩后写的顺序、缩容失败时不写 GPT，都由 `make test` 覆盖。真机要验的是四件事：缩容后 Android 首次开机数据可读、Linux 正常启动、往返切换正常、失败时能回到原分区表。
+2026-11-13 在一台 OTA 到 HyperOS 4（活动槽 `_b`）的 1 TB 设备上跑完一次：`userdata` 从 938 GiB 缩到 200 GiB，`sunuefi_root` 737.5 GiB，`sunuefi_esp` 512 MiB。Android 里的测试文件 sha256 前后一致，Linux 首启自动登录，触控与笔正常，两系统往返各一次。
+
+还有三件事没验：重复安装、`--accept-data-loss` 路径、缩到余量很小的容量。
+
+尺寸只在首装这一次定。`userdata` 起点不动、root 从它后面接，所以只能缩不能长，上限就是当前的盘尾。装完再改没有入口：`install-f2fs.py` 的 `--android-data-mib` 与 `--lossless` 在已有分区时直接拒绝，`update-f2fs.py` 只替换文件。要改就得先把 `sunuefi_root`、`sunuefi_esp` 从 GPT 删掉、把 `userdata` 拉回盘尾，再跑一遍，Linux 数据会丢，Android 保留；删分区这一步没有工具，目前是手工改表。
+
+发布资产里的 `flash-linux.sh` 与手动刷写章节仍只写 Slot A，Slot B 设备只能用 `install-f2fs.py`。
 
 设备侧的前置条件是已装与当前 BOOT 匹配的「SunUEFI 引导助手」模块，`piano-resize-f2fs` 由它提供。缺这个模块时 `plan --lossless` 直接报错，不会退化成清空路径。
 
