@@ -17,7 +17,7 @@
 | 罗盘 | 可用：`/net/hadess/SensorProxy/Compass` 上 `HasCompass=true` | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 之前查的是父对象，接口在子对象上 | 完成 |
 | 构建断言 | 完成：`build-kernel.yml` 断言 20 项，`check_kernel_config_assertions.py` 锁住 | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | — | 完成 |
 | 文档口径 | 完成：README 与 `known-issues.md` 的红外/HDR/指纹三节按实机状态重写 | — | — | 完成 |
-| 自动亮度 | 2026-11-14 装 `piano-gnome-extras` 后验过：profile 加载、目标亮度 66.7%、背光 1023 → 1360 | GSD 按原厂 lux 曲线调背光 | 遮住/移开传感器的跟随曲线仍待做 | P2 |
+| 自动亮度 | 已验：profile 加载、目标亮度 66.7%、背光 1023 → 1360 | GSD 按原厂 lux 曲线调背光 | 遮住/移开传感器的跟随曲线仍待做 | P2 |
 | 键盘背光热插拔 | extras 的 GSD 带 50.1 补丁，背光设备随键盘盖插拔更新 | 背光走 UPower/GNOME | 同上，接上/取下键盘盖，看 `/sys/class/leds` 与 UPower | P2 |
 | KDE HDR/广色域 | 完成：extras 的 KWin 带退出 HDR 恢复背光补丁，2026-11-12 冷启动真机开关两轮，背光 1024 → 2047 → 1024 | KWin 可切换，退出 HDR 恢复背光 | 色深与色调映射没量，见[已知问题](known-issues.md#hdr) | 完成 |
 | 指纹录入 | 用户态已接，`piano-fingerprint-ctl` 与 fprintd 都可用；录入没测 | libfprint/fprintd 完整录入与认证 | `fprintd-enroll` 走完一次，再 `fprintd-verify` | P2 |
@@ -82,7 +82,7 @@ Not Authorized: net.reactivated.fprint.device.verify
 
 设备证据来自同一份探针的前后对照。旧模块把消费端请求的 8160x6120 钳回 1920x1440，`SOURCE_CHANGE` 订阅返回 `EINVAL`；换模块后消费端读回 8160x6120，生产端收到事件重新协商，守护进程日志有 `output negotiated to 8160x6120 NV12`。抓到的帧是 74,908,800 字节，后摄曝光从 8 行加到 6412 行时同一场景平均亮度从 2.2 升到 255，说明帧内容是真实感光而不是黑帧。
 
-走 portal 与 pipewire 的客户端是另一条链，跟直连 `/dev/video40` 的表现不同。Fedora 45 的 `pipewire-1.6.11-1` 缺 1.6 分支之后收的三处 GStreamer 修复，GNOME Snapshot 先拿到 16x4 的预览，修好尺寸后又在 `gst_base_sink_drain` 里段错误。我们出 `piano-pipewire-gstreamer` 顶掉官方子包，带 1.6 分支 tip 在 `src/gst/` 下的全部提交和一条只进过 master 的 backport，`Provides`/`Obsoletes` 保证同一个插件只有一份包提供。尺寸的前后对照用 `GstDeviceMonitor` 读设备 caps：原包 raw 是 `width=[16,8160]`、fixate 到 16x4；换上之后是 `width={1920,[16,8160]}`、fixate 到 1920x1440，两个摄像头都是。崩溃与重连的验证在 [已知问题](known-issues.md)，删包条件见 #64。
+走 portal 与 pipewire 的客户端是另一条链，跟直连 `/dev/video40` 的表现不同。Fedora 45 的 `pipewire-1.6.11-1` 缺 1.6 分支之后收的三处 GStreamer 修复，GNOME Snapshot 先拿到 16x4 的预览，修好尺寸后又在 `gst_base_sink_drain` 里段错误。我们出 `piano-pipewire-gstreamer` 顶掉官方子包，带 1.6 分支 tip 在 `src/gst/` 下的全部提交和一条只进过 master 的 backport，`Provides`/`Obsoletes` 保证同一个插件只有一份包提供。尺寸对照用 `GstDeviceMonitor` 读设备 caps：官方包的 fixate 是 16x4，替换后两个摄像头都 fixate 到 1920x1440。崩溃与重连的验证在 [已知问题](known-issues.md)，删包条件见 #64。
 
 ## 电源策略
 
