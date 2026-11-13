@@ -1,0 +1,33 @@
+--- a/piano-sensors/piano-sensors-lp-table
++++ b/piano-sensors/piano-sensors-lp-table
+@@ -1,12 +1,20 @@
+ #!/usr/bin/env python3
+ """Print a read-only device-mapper linear table for one logical partition
+-of an Android super partition (liblp metadata, primary copy, slot 0)."""
++of an Android super partition (liblp metadata, the metadata slot of the
++Android slot named in the partition)."""
+ import struct, sys
+ 
+ GEOMETRY_MAGIC = 0x616C4467
+ HEADER_MAGIC = 0x414C5030
+ SECTOR = 512
+ 
++def metadata_slot(name):
++    # liblp keeps one metadata slot per Android boot slot: _a is 0 and _b is 1.
++    # A device that OTA'd to Slot B still carries the stale Slot A metadata in
++    # slot 0, where the _b entries exist but have no extents; reading slot 0
++    # for a _b partition returns nothing and the importer stops.
++    return {'_a': 0, '_b': 1}.get(name[-2:], 0)
++
+ def main(dev, name):
+     with open(dev, 'rb') as f:
+         f.seek(4096)
+@@ -14,7 +22,7 @@
+         magic, _size, _csum, meta_max, _slots, _lbs = struct.unpack_from('<II32sIII', geo)
+         if magic != GEOMETRY_MAGIC:
+             sys.exit('no super geometry')
+-        f.seek(4096 + 4096 * 2)  # primary metadata, slot 0
++        f.seek(4096 + 4096 * 2 + metadata_slot(name) * meta_max)
+         hdr = f.read(meta_max)
+     magic, major, minor, hsize = struct.unpack_from('<IHHI', hdr)
+     if magic != HEADER_MAGIC:

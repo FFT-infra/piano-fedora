@@ -67,6 +67,10 @@ BOOT，记录随之失效，之后模块里每次「切换系统」都会在身�
 4. 从 ODM 动态传感器配置里读出 `sns_dynamic_libraries` 列出的库，从 vendor
    的 `/lib/rfsa/adsp` 导入 `/var/lib/piano-sensors/rfsa/adsp`；vendor 上
    不存在的库（如 `sns_tppe.so`）记录后跳过。
+5. `piano-sensors-lp-table` 按分区名后缀选 super 的元数据槽。liblp 每个 Android
+   启动槽各有一份元数据（`_a` 是 0、`_b` 是 1）；OTA 到 Slot B 的设备在槽 0 里
+   留着旧的 Slot A 元数据，`_b` 条目存在但没有 extent。工具原先写死槽 0，
+   导入在 `odm_b has no extents` 处停。
 
 库目录通过在 `adsprpcd-sensorspd.service` 的 `30-adsp-library.conf` 里设置
 `ADSP_LIBRARY_PATH` 暴露给 file service。
