@@ -60,6 +60,10 @@ find %{buildroot}%{_firmwaredir} -type f -exec chmod 0644 {} \;
 %{_firmwaredir}/*
 
 %changelog
+* Fri Nov 13 2026 FFT-infra <dev@piano.invalid> - 20261113-1
+- 跟随 SunUEFI 018634f1：固件换到 OS4.0.6.0.XPYCNXM，叠层从 4 份扩到 10 份
+- 新增 ath12k、bluetooth、qcom、qcom-vpu、touch 与 keyboard 六份叠层
+
 * Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 20261110-1
 - 跟随 SunUEFI 61b6c592：叠层按 manifest 的 directory 落位，新增 display 校准两份
 

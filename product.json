@@ -19,5 +19,8 @@
     "root_size_mib": 8192,
     "partition_allocation": "equal-userdata-after-esp"
   },
-  "note": "root_size_mib 是封存镜像的容量，与设备无关；sunuefi_root 的实际容量一律从实时 GPT 算，文件系统在首启时长满该分区。"
+  "note": "root_size_mib 是封存镜像的容量，与设备无关；sunuefi_root 的实际容量一律从实时 GPT 算，文件系统在首启时长满该分区。 piano-tsens.dtso 的 include 由上游在 --kernel-source 下从内核源码生成 sm8750-thermal-zones.dtsi，bundle 任务没有那棵源码树，所以不进我们这条 overlay 链；温区仍由厂商 board.dtb 的 /soc/thermal-zones 提供。",
+  "dtb_overlays_not_shipped": [
+    "linux/dts/piano-tsens.dtso"
+  ]
 }

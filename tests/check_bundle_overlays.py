@@ -24,11 +24,10 @@ def main():
     kernel = json.loads((SUN / 'config/release.json').read_text())['kernel']
     workflow = (ROOT / '.github/workflows/build-bundle.yml').read_text()
     passed = re.findall(r'--dtb-overlay\s+(\S+)', workflow)
-    # piano-tsens.dtso 的 #include 由上游在 --kernel-source 下从内核源码生成，
-    # 本仓库的 bundle 任务没有那棵源码树，所以不传它，温区仍由厂商 board.dtb
-    # 的 /soc/thermal-zones 提供。补上内核侧生成之后再从这里删掉。
+    # 不发货的 overlay 记在 product.json，workflow 里不该出现。
+    skipped = set(json.loads((ROOT / 'product.json').read_text())['dtb_overlays_not_shipped'])
     expected = ['build/sources/sunuefi/' + name for name in kernel['additional_dtb_overlays']
-                if name != 'linux/dts/piano-tsens.dtso']
+                if name not in skipped]
     assert passed == expected, f'workflow overlays differ from release.json: {passed}'
     cpu = re.findall(r'--cpu-model-overlay\s+(\S+)', workflow)
     assert cpu == ['build/sources/sunuefi/' + kernel['cpu_model_overlay']], cpu
@@ -42,7 +41,7 @@ def main():
         before = read_fdt(board.read_bytes())
         overlays = ['cpu-model'] + [Path(item).name[len('piano-'):-len('.dtso')]
                                     for item in kernel['additional_dtb_overlays']
-                                    if item != 'linux/dts/piano-tsens.dtso']
+                                    if item not in skipped]
         for name in overlays:
             print('APPLY:', name, flush=True)
             package.apply_cpu_model_overlay(board, SUN / f'linux/dts/piano-{name}.dtso',
