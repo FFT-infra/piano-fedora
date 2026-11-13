@@ -29,7 +29,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 USERSPACE = (
     "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
     "piano-camera", "piano-fingerprint", "piano-libfprint",
-    "xiaomi-piano-thp", "sm8750-video-accel",
+    "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
     "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
 )
 # 内核包：与用户态包一起发布。装到设备上之后由包自己的 %posttrans 重建
@@ -48,6 +48,7 @@ BUILD_ORDER = (
     "piano-camera",
     "piano-fingerprint",
     "piano-libfprint",
+    "piano-pipewire-gstreamer",
     "xiaomi-piano-thp",
     "sm8750-video-accel",
     "uperf-linux",
