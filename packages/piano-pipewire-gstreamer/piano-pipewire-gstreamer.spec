@@ -22,7 +22,7 @@ Version:        1.6.11
 Release:        5%{?dist}
 Summary:        GStreamer 1.0 plugin for PipeWire, GStreamer fixes from the 1.6 branch tip
 License:        MIT
-URL:            https://pipewire.org/
+URL:            https://gitlab.freedesktop.org/pipewire/pipewire
 Source0:        %{url}/-/archive/%{version}/pipewire-%{version}.tar.gz
 Patch0:         0001-gst-clamp-a-fraction-that-does-not-fit-a-GstFraction.patch
 Patch1:         0002-gst-keep-the-value-a-source-prefers-when-converting-.patch
@@ -56,21 +56,17 @@ BuildRequires:  pkgconfig(gstreamer-base-1.0) >= 1.10.0
 BuildRequires:  pkgconfig(gstreamer-plugins-base-1.0) >= 1.10.0
 BuildRequires:  pkgconfig(gstreamer-net-1.0) >= 1.10.0
 BuildRequires:  pkgconfig(gstreamer-allocators-1.0) >= 1.10.0
-BuildRequires:  pkgconfig(sndfile)
 BuildRequires:  pkgconfig(systemd)
 BuildRequires:  pkgconfig(openssl)
-BuildRequires:  pkgconfig(libpulse) >= 13.0
-BuildRequires:  pkgconfig(libcanberra)
-BuildRequires:  pkgconfig(ncursesw)
-BuildRequires:  pkgconfig(sdl2)
-BuildRequires:  pkgconfig(libselinux)
 BuildRequires:  pkgconfig(libsystemd)
-BuildRequires:  pkgconfig(vulkan)
-BuildRequires:  pkgconfig(webrtc-audio-processing-1) >= 1.0
 BuildRequires:  systemd-rpm-macros
-BuildRequires:  python3-docutils
-BuildRequires:  pkgconfig(fftw3f)
 BuildRequires:  pkgconfig(libdrm)
+
+# 只声明这个包实际编译的那条路径：核心库加 GStreamer 插件。sndfile、
+# libpulse、libcanberra、ncursesw、sdl2、libselinux、vulkan、fftw3f 与
+# echo-cancel-webrtc 这些子系统或者被构建段关掉、或者本来就是可选探测，
+# 声明它们只会让构建环境膨胀。webrtc 还有一层原因：Fedora 45 只提供
+# webrtc-audio-processing-2，照抄上游 spec 的 -1 会永远装不上。
 
 %description
 This package replaces the distribution pipewire-gstreamer plugin with the one
@@ -107,6 +103,8 @@ which can hand an unmapped buffer to a copy.
   -Dsystemd-user-service=disabled \
   -Dlogind=disabled \
   -Dx11=disabled \
+  -Dx11-xfixes=disabled \
+  -Draop=disabled \
   -Dlibusb=disabled \
   -Dreadline=disabled \
   -Dpw-cat=disabled \
@@ -127,6 +125,8 @@ which can hand an unmapped buffer to a copy.
   -Dsdl2=disabled \
   -Dsndfile=disabled \
   -Dlibmysofa=disabled \
+  -Decho-cancel-webrtc=disabled \
+  -Dfftw=disabled \
   -Dopus=disabled \
   -Dlibffado=disabled \
   -Djack=disabled \

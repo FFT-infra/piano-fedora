@@ -168,7 +168,8 @@ jobs:
                 mesa-libEGL-devel mesa-libGLES-devel mesa-libgbm-devel \
                 dbus-devel polkit-devel json-c-devel gtk4-devel libadwaita-devel \
                 libgudev-devel libgusb-devel pixman-devel openssl-devel \
-                cargo rust libjpeg-turbo-devel libyuv-devel glibc-static
+                cargo rust libjpeg-turbo-devel libyuv-devel glibc-static \
+                gstreamer1-devel gstreamer1-plugins-base-devel
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory /workspace/build/sources/sunuefi
               export KERNEL_PAYLOAD=/workspace/build/kernel
