@@ -57,17 +57,17 @@ brew install zstd android-platform-tools mtools   # python3 随 Command Line Too
   - sunuefi_root (剩余空间, F2FS，GPT 顶层分区)
 ```
 
-合体 BOOT 把 Android 内核、3 秒选择器与 UEFI 核心装进同一个 `boot_a`。开机前 3 秒按音量键进入 SunUEFI 菜单。不按则按请求页里的持久选择进入 Android 或 Linux。系统不切换活动槽，`boot_b` 原样保留。
+合体 BOOT 把 Android 内核、3 秒选择器与 UEFI 核心装进活动槽的 BOOT：出厂设备是 `boot_a`，OTA 到 HyperOS 4 的设备是 `boot_b`。上图按 Slot A 画，Slot B 设备把这两个名字对调，其余相同。开机前 3 秒按音量键进入 SunUEFI 菜单。不按则按请求页里的持久选择进入 Android 或 Linux。系统不切换活动槽，另一槽的 BOOT 原样保留。
 
 > **不要擦除 `dtbo_a` 或 `dtbo_b`。** 高通 ABL 启动时校验活动槽位的整条引导链。空 DTBO 会被拒绝，高通 ABL 报 `Failed to load/authenticate boot image: Device Error`，平板卡在 Fastboot。
 >
-> SunUEFI 的板级 DTB 来自 `vendor_boot_a` 底包，再叠加原厂 `dtbo_a` 的增量片段。原厂 `dtbo_a` 内容必须留在原位。
+> SunUEFI 的板级 DTB 来自活动槽的 `vendor_boot` 底包，再叠加原厂 `dtbo<槽>` 的增量片段。原厂 DTBO 内容必须留在原位。
 
 ### 分区用途
 
 * `sunuefi_esp`（512 MiB，FAT32）：SunUEFI EDK2 固件、合并设备树（DTB）、Linux 7.2 适配内核与 initramfs。
 * `sunuefi_root`（F2FS）：Fedora 45 根文件系统。桌面按档位装配。F2FS 为闪存设计，能发挥 UFS 4.0 的顺序与随机读写性能。
-* `boot_a`：合体 BOOT。Linux 与 Android 都从这里启动。
+* `boot_a` 或 `boot_b`：合体 BOOT，随活动槽。Linux 与 Android 都从这里启动。
 
 ### 引导稳定性
 
@@ -77,7 +77,7 @@ brew install zstd android-platform-tools mtools   # python3 随 Command Line Too
 
 容量不是固定值。每台设备按自己实时的 GPT 计算，512 GiB、1 TiB 或其他容量都走同一套规则：
 
-1. 保留 Android 的全部固定分区（`boot_a`、`dtbo_a`、`super` 等）不动。
+1. 保留 Android 的全部固定分区（`boot_a`、`boot_b`、`dtbo_a`、`super` 等）不动。
 2. 从尾部缩短 `userdata`，让出 Linux 需要的空间。
 3. 让出的空间放 `sunuefi_esp`（512 MiB）和 `sunuefi_root`（其余全部）。
 4. `userdata` 与 `sunuefi_root` 默认按剩余空间对半分配。固定 Android 容量的方法见第四节。
@@ -174,7 +174,7 @@ Linux 内核不在归档里单独出现。它在 `sunuefi_esp.img` 的 `/EFI/Lin
 
 归档里没有 `device-boot/boot_linux.img`。合体 BOOT 含这台平板当前的 Android 内核，因此只有本机能生成。
 
-归档里的 `make-device-boot.sh` 一次做完全部步骤：用 `adb` 读 `boot_a`、核对 96 MiB 与设备侧摘要、调 `scripts/prepare-device-boot.py` 重打包。
+归档里的 `make-device-boot.sh` 一次做完全部步骤：用 `adb` 读活动槽的 boot 分区（`--slot a|b`，默认从设备当前槽推断）、核对 96 MiB 与设备侧摘要、调 `scripts/prepare-device-boot.py` 重打包。
 
 ```sh
 ./make-device-boot.sh            # 只有一台设备连着时可以省略 --serial
@@ -185,7 +185,7 @@ Linux 内核不在归档里单独出现。它在 `sunuefi_esp.img` 的 `/EFI/Lin
 
 原厂 ABL 不实现 `fastboot fetch`，所以归档不教这条命令。它只会返回一个 0 字节文件。
 
-`boot_a` 只写 `device-boot/boot_linux.img`。`sunuefi_esp.img` 是分区镜像，ABL 不认，刷进 `boot_a` 也放不下。
+活动槽的 boot 分区只写 `device-boot/boot_linux.img`。`sunuefi_esp.img` 是分区镜像，ABL 不认，刷进 boot 分区也放不下。
 
 ### 6. 暂存目录
 
@@ -239,6 +239,27 @@ sha256sum -c SHA256SUMS
 本节面向还没有 `sunuefi_esp` 与 `sunuefi_root` 的设备。设备已经有这两个分区时，跳过本节，直接看第七节的更新入口。
 
 `install-f2fs.py apply` 会清空 `userdata`，不能用它做更新。
+
+### 0. 保留 Android 数据的首装（`--lossless`）
+
+默认路径清空 `userdata`。需要保留 Android 数据时加 `--lossless`：先在 Android 上把解密后的 F2FS 缩到新容量，再写分区表，全程不擦除。前提是设备已 root、已装与当前 BOOT 匹配的「SunUEFI 引导助手」模块（`piano-resize-f2fs` 随模块提供），并且 `userdata` 的空闲块够用。
+
+分区表要先是首装规划器接受的形态：没有 `sunuefi_root`、`sunuefi_esp`，`userdata` 是最后一个分区并顶到盘尾。设备上已经有 Linux 分区时，先删掉它们再把这 `userdata` 拉回盘尾；这一步没有工具，由操作者手工改表。
+
+`plan` 与 `apply` 都要带 `--lossless`，且都不能带 `--accept-data-loss`。计划里会多出 `f2fs_shrink.userdata_bytes`，那是设备侧缩容的目标容量；新 `userdata` 长度按 F2FS section 对齐，section 大小由设备上的解密映射读出，宿主机读不到。
+
+```sh
+python3 boot-tools/installer/scripts/install-f2fs.py plan \
+  --sunuefi boot-tools/installer/sunuefi --serial <序列号> \
+  --bundle . --root-install root-install --device-boot device-boot \
+  --stock-boot stock-recovery/boot.img --plan lossless-plan.json --lossless
+```
+
+执行顺序与默认路径相反：先 `piano-resize-f2fs shrink`，再写 GPT，然后直接刷镜像，没有 `fastboot erase userdata`。缩容成功而写表失败时，文件系统比分区小，是安全状态，Android 照常启动，只是少了空间。反过来永远不会发生。
+
+失败时执行器不自动重试、不擦除、不重新分区，`result.json` 里记着原 GPT 的两段备份和恢复说明。先看 `f2fs_shrink` 字段有没有写进去，再决定是恢复 GPT 还是继续。
+
+这条路径 2026-11-13 在一台 Slot B 设备上验收通过，记录与剩余限制见[已知问题](known-issues.md#无损首装)。默认路径仍是清空。
 
 ### 1. 自动分区
 
@@ -407,7 +428,7 @@ fastboot reboot
 
 `device-boot-manifest.json` 的 `active_slot` 是 `_a`，`app_generation` 必须与归档里的 `PianoUEFI-product.img` 中的 APPv1 载荷一致。
 
-3 秒选择器在“正在引导的那份镜像”末尾读请求页。ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装进 Slot A，Linux 与 Android 都从同一份 `boot_a` 启动，请求页因此指向 `boot_a`。不切槽，也不存在第二份需要同步的页。
+3 秒选择器在“正在引导的那份镜像”末尾读请求页。ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装进活动槽，Linux 与 Android 都从同一份 `boot<槽>` 启动，请求页因此指向它。不切槽，也不存在第二份需要同步的页。
 
 活动槽不写进镜像，也不写进 ESP：`piano-next-boot-helper` 每次请求时只读主备 GPT 和高通 A/B 属性现算，再读那份 BOOT 的实际 generation。所以换槽、OTA 之后都不需要重新配置，也不存在“猜错设备名”这条失败路径。
 
@@ -415,7 +436,7 @@ fastboot reboot
 
 ## 五、 手动刷写 Linux
 
-本节是主路径。第六节的一键脚本执行同样的写入。`dtbo_a` 一律不动。
+本节是主路径。第六节的一键脚本执行同样的写入。活动槽的 `dtbo` 一律不动。
 
 ### 1. 确认设备和槽位
 
@@ -424,14 +445,14 @@ fastboot reboot
 ```sh
 fastboot devices
 fastboot getvar product        # 必须是 piano
-fastboot getvar current-slot   # 必须是 a，合体 BOOT 写进当前槽
+fastboot getvar current-slot   # a 或 b，合体 BOOT 写进这个槽的 boot 分区
 fastboot getvar unlocked       # 必须是 yes
 fastboot getvar is-userspace   # 必须是 no
 ```
 
 任一项不对就停下，不要写任何分区。以下情况都算不对：`product` 不是 `piano`、`unlocked` 不是 `yes`、`is-userspace` 是 `yes`（说明落在 fastbootd，不是原厂 ABL）。
 
-`current-slot` 必须是 `a`。当前槽是 `b` 时，手动流程也必须停：首装布局只支持原厂 Android 所在的 Slot A。
+`current-slot` 是 `a` 或 `b` 都行，合体 BOOT 写进这个槽的 boot 分区。`root-install-manifest.json` 的 `android_slot` 必须与它一致：出厂设备是 `_a`，OTA 到 HyperOS 4 的设备是 `_b`，后者的 super 里只有 `_b` 那一套逻辑分区。不一致时 `prepare-install` 生成的 root 镜像装上去也没有传感器配置，刷写前就停下。
 
 刷写前读分区容量，把十六进制换算成字节：
 
@@ -458,8 +479,10 @@ sha256sum sunuefi_esp.img      # 记下新摘要，读回校验用这个值
 按顺序执行四条命令：
 
 ```sh
-# 1. 合体 BOOT -> boot_a（活动槽保持 A，不切槽）
-fastboot -S 128M flash boot_a device-boot/boot_linux.img
+# 1. 合体 BOOT -> 活动槽的 boot 分区（不切槽）
+SLOT=$(fastboot getvar current-slot 2>&1 | awk '/^current-slot:/{print $2}')
+BOOT_PART="boot_${SLOT}"
+fastboot -S 128M flash "${BOOT_PART}" device-boot/boot_linux.img
 
 # 2. ESP -> sunuefi_esp
 fastboot -S 128M flash sunuefi_esp sunuefi_esp.img
@@ -475,14 +498,14 @@ fastboot reboot
 
 每条命令都必须打印 `OKAY`。出现 `FAILED`，立刻停下，不要继续后面的步骤。
 
-`boot_a` 要写的是 `prepare-device-boot.py` 用本机原厂 BOOT 重打包出的 `device-boot/boot_linux.img`。归档里没有另一个能直接刷的 Linux 内核文件：内核与 initramfs 都在 `sunuefi_esp.img` 的 `/EFI/Linux/sunuefi.efi` 里，由 SunUEFI 固件加载。`sunuefi_esp.img` 是整分区镜像，只能写 `sunuefi_esp`。写进 `boot_a` 会让 ABL 停在 Fastboot。
+活动槽的 boot 分区要写的是 `prepare-device-boot.py` 用本机原厂 BOOT 重打包出的 `device-boot/boot_linux.img`。归档里没有另一个能直接刷的 Linux 内核文件：内核与 initramfs 都在 `sunuefi_esp.img` 的 `/EFI/Linux/sunuefi.efi` 里，由 SunUEFI 固件加载。`sunuefi_esp.img` 是整分区镜像，只能写 `sunuefi_esp`。写进 boot 分区会让 ABL 停在 Fastboot。
 
-合体 BOOT 保持上游的 unsigned AVB NONE 元数据。`prepare-device-boot.py` 不补 `os_version`，也不重新签名。Slot A 的 ABL 直接加载这份镜像。同一份未签名镜像已在真机上完成 Android→Linux→Android 往返。不要自行补 `os_version` 或 RSA4096 footer：`piano-boot-repack` 的 probe/request/adopt 会把首块与包装器里保存的原厂头逐字节比较。改了偏移 16，Android 侧的引导助手就认不出当前 BOOT，`switch linux` 会直接失败。
+合体 BOOT 保持上游的 unsigned AVB NONE 元数据。`prepare-device-boot.py` 不补 `os_version`，也不重新签名。活动槽的 ABL 直接加载这份镜像。同一份未签名镜像已在真机上完成 Android→Linux→Android 往返。不要自行补 `os_version` 或 RSA4096 footer：`piano-boot-repack` 的 probe/request/adopt 会把首块与包装器里保存的原厂头逐字节比较。改了偏移 16，Android 侧的引导助手就认不出当前 BOOT，`switch linux` 会直接失败。
 
 不要执行这些命令：
 
 - `fastboot erase dtbo_a`、`fastboot erase dtbo_b`
-- `fastboot erase boot_a`
+- `fastboot erase boot_a`、`fastboot erase boot_b`
 - `fastboot erase userdata`
 - `fastboot -w`
 - 写 `abl`、`xbl`、`tz`、`modem` 等引导链分区
@@ -544,10 +567,11 @@ ls /usr/lib/modules/
 
 Linux 起不来时，先从 3 秒选择器选 Android。开机前 3 秒按音量键进入菜单，或者在 Android 正常时执行 `piano-next-boot android --reboot`。
 
-合体 BOOT 本身损坏时，把备份的原厂引导镜像刷回 `boot_a`。不需要改动分区或活动槽：
+合体 BOOT 本身损坏时，把备份的原厂引导镜像刷回活动槽的 boot 分区。不需要改动分区或活动槽：
 
 ```sh
-fastboot flash boot_a stock-recovery/boot.img
+SLOT=$(fastboot getvar current-slot 2>&1 | awk '/^current-slot:/{print $2}')
+fastboot flash "boot_${SLOT}" stock-recovery/boot.img
 fastboot reboot
 ```
 
@@ -559,7 +583,7 @@ fastboot reboot
 
 一键脚本执行第五节的全部步骤，并在写入前做更多检查。一键脚本要求分区已由 `install-f2fs.py apply` 或第四节建立。原厂设备只有 Android 的 `userdata`，没有 `sunuefi_esp` / `sunuefi_root`，一键脚本会拒绝执行。清空分区是首次安装的破坏性步骤，不能由一键脚本代劳。
 
-一键脚本把合体 BOOT 写进当前活动槽，运行前 Android 必须在 Slot A。当前槽是 B 时，一键脚本在任何写入前就退出。
+一键脚本把合体 BOOT 写进当前活动槽，`a` 或 `b` 都行；`root-install` 的 `android_slot` 必须与当前槽一致，不一致时在任何写入前就退出。
 
 ### 1. 运行
 
@@ -596,15 +620,15 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 2. 确认产品代号是 `piano`，防止误刷。
 3. 按归档的 `SHA256SUMS` 与 `root-install/SHA256SUMS` 分别校验 BOOT/ESP 和 sparse root。
 4. 打印安全告知，要求输入大写 `YES` 确认。
-5. 保持 Slot A，不切槽。
-6. 刷入合体 BOOT：`fastboot -S 128M flash boot_a device-boot/boot_linux.img`。
+5. 保持当前活动槽，不切槽。
+6. 刷入合体 BOOT：`fastboot -S 128M flash boot<当前槽> device-boot/boot_linux.img`。
 7. 刷入 ESP 分区：`fastboot -S 128M flash sunuefi_esp sunuefi_esp.img`。
 8. 刷入系统根分区：`fastboot -S 128M flash sunuefi_root pianoroot.f2fs.sparse.img`。
 9. 自动重启：`fastboot reboot`。
 
 `device-boot/boot_linux.img` 由 `scripts/prepare-device-boot.py` 用本机原厂 BOOT 重打包产生。`device-boot/boot_linux.img` 不在归档里，必须自己生成一次。一键脚本按 `boot_linux.img`、`device-boot/boot_linux.img` 的顺序在暂存目录里找它，也可以用 `--boot` 指定。归档里没有可以直接刷的 Linux 内核文件，一键脚本不会把 `sunuefi_esp.img` 当 BOOT。
 
-脚本不写 `dtbo_a`、`init_boot_a`、`vendor_boot_a`、`vbmeta_a`，也不擦除 `userdata`。
+脚本不写 `dtbo`、`init_boot`、`vendor_boot`、`vbmeta`（两槽都不写），也不擦除 `userdata`。
 
 ---
 
@@ -618,11 +642,12 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 缺 FDT 或解析失败就停下，不要跳过检查。
 
-`stock-recovery/boot.img` 是设备当前槽的原厂 BOOT。执行器要求它 96 MiB 且摘要与设备一致。原厂 ABL 不实现 `fastboot fetch`，从 Android 侧读：
+`stock-recovery/boot.img` 是设备当前槽的原厂 BOOT。执行器要求它 96 MiB 且摘要与设备一致。原厂 ABL 不实现 `fastboot fetch`，从 Android 侧读；槽位从 `ro.boot.slot_suffix` 取，出厂设备是 `boot_a`，OTA 到 HyperOS 4 的设备是 `boot_b`：
 
 ```sh
-adb -s <serial> shell su -c 'sha256sum /dev/block/by-name/boot_a'
-adb -s <serial> exec-out su -c 'dd if=/dev/block/by-name/boot_a bs=1048576' \
+SLOT=$(adb -s <serial> shell getprop ro.boot.slot_suffix | tr -d '\r')
+adb -s <serial> shell su -c "sha256sum /dev/block/by-name/boot${SLOT}"
+adb -s <serial> exec-out su -c "dd if=/dev/block/by-name/boot${SLOT} bs=1048576" \
   > stock-recovery/boot.img
 sha256sum stock-recovery/boot.img    # 与上一条相同
 ```
@@ -762,11 +787,11 @@ ls /usr/lib/modules/          # 有与 uname -r 同名的目录
 
 高通 ABL 在开机时没收到明确的 `Successful = 1` 标记，会在连续重启后递减尝试次数，归零后掉进 Fastboot。
 
-系统稳定启动后，确认 `qbootctl.service` 在运行，或手动执行 `sudo qbootctl -m` 把当前槽标记为 `Successful: 1`。设备始终从 Slot A 启动。Linux 起不来时按第五节的回滚步骤刷回原厂 `boot_a`。
+系统稳定启动后，确认 `qbootctl.service` 在运行，或手动执行 `sudo qbootctl -m` 把当前槽标记为 `Successful: 1`。设备始终从原来的活动槽启动。Linux 起不来时按第五节的回滚步骤刷回原厂 BOOT。
 
 ### Q2: 误将 Android 数据格式化了？
 
-Slot A 保留着完整的原厂 Android 分区（`super`、`userdata` 等）。合体 BOOT 只替换 `boot_a`，备份的原厂镜像可以随时刷回。
+活动槽保留着完整的原厂 Android 分区（`super`、`userdata` 等）。合体 BOOT 只替换 `boot<槽>`，备份的原厂镜像可以随时刷回。
 
 在 Fastboot 里执行 `fastboot erase userdata && fastboot reboot`，Android 会重建加密分区并走首次开机引导。重启后若停在 Recovery 并显示 `Couldn't initialize user 0`，在 Recovery 里选一次“清除数据”再继续。
 

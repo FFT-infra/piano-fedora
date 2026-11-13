@@ -50,7 +50,7 @@ deploy-bundle 自带 sparse。Release 归档里带的是 `prepare-install` 产�
 
 上游 `esp-manifest.json` 用 `esp.img` 指代 ESP 镜像，`esp_files` 只列 `/EFI/Linux/sunuefi.efi`，UKI 的节区、`ukify` 与 stub 摘要记在 `uki` 字段。`verify-bundle.py` 把 `esp.img` 映射成 `sunuefi_esp.img`，不要求归档保留第二套文件名。它还流式展开压缩 root 文件系统，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
 
-ESP 上只有 `/EFI/Linux/sunuefi.efi` 一个 Linux 载荷。它是 UKI，内核、initramfs、板级 DTB 与 cmdline 都在 PE 节区里。合体 BOOT 含当前 Android 内核，必须用本机当前 stock BOOT、Slot A 和 generation 另行包装。通用构建产物不包含这些个人设备输入。
+ESP 上只有 `/EFI/Linux/sunuefi.efi` 一个 Linux 载荷。它是 UKI，内核、initramfs、板级 DTB 与 cmdline 都在 PE 节区里。合体 BOOT 含当前 Android 内核，必须用本机当前 stock BOOT、活动槽和 generation 另行包装。通用构建产物不包含这些个人设备输入。
 
 已装系统升级内核不需要 deploy-bundle。`kernel-piano` 提供 `kernel-core`。`dnf upgrade` 装上之后，`kernel-piano` 的 `%posttrans` 重建 initramfs，并重打 ESP 上的 UKI。语义与回滚见 [COPR 软件源](copr-repository.md)。
 

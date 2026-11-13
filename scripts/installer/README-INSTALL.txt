@@ -8,7 +8,8 @@ sunuefi_esp and sunuefi_root. For a brand-new or stock GPT/UFS device, stop
 here and follow docs/installation.md section 4 first. That flow creates the
 partitions, erases userdata, and lets Android initialize it before Linux is
 installed. This installer writes the combined SunUEFI BOOT to the active
-Slot A; Android stays bootable from Slot A through the 3-second chooser.
+slot (boot_a or boot_b, whichever Android boots from); Android stays bootable
+from that slot through the 3-second chooser.
 
 Requirements:
 1. Xiaomi Pad 8 Pro with Bootloader UNLOCKED.
@@ -114,13 +115,11 @@ script printed.
 Windows users inject the key manually with mcopy before flashing. See the
 prompt in flash-linux.bat.
 
-Before step 3, confirm current-slot is "a". If current-slot is "b", stop. This
-first-install path targets the stock Android layout on Slot A. Run the following
-command once to switch back:
-   fastboot set_active a
-Run that command from stock Fastboot, then rerun the one-step script. ABL's
-SwitchPtnSlots swaps the slot type GUIDs and the UFS boot LUN. No manual GPT
-edit is required.
+Before step 3, confirm current-slot is "a" or "b". This installer writes the
+combined BOOT to whichever slot Android runs from, and root-install must target
+the same slot: an archive's root-install is built for _a, so on a Slot B device
+run prepare-install.yml with android_slot=_b first. Do not switch slots to
+match an artifact; the script stops before writing anything when they differ.
 
 Manual Flashing (no installer script):
 The one-step scripts wrap the commands below. Run these commands instead if you
@@ -136,26 +135,28 @@ Step 2 - Confirm the prepared root exists:
    test -f root-install/pianoroot.f2fs.sparse.img
    Raw or compressed root images cannot be flashed directly.
 
-Step 2b - Build the boot_a image (needs adb with root on the tablet):
+Step 2b - Build the device boot image (needs adb with root on the tablet):
    ./make-device-boot.sh
-   It reads this tablet's own boot_a through adb. It refuses a read that is not
-   exactly 96 MiB, or that differs from the tablet's digest. It then repacks
-   device-boot/boot_linux.img. Nothing is written to the tablet.
+   It reads the active slot's boot partition through adb (--slot a|b overrides
+   the inferred slot). It refuses a read that is not exactly 96 MiB, or that
+   differs from the tablet's digest. It then repacks device-boot/boot_linux.img.
+   Nothing is written to the tablet.
 
 Step 3 - Confirm the device before writing anything:
    fastboot devices
    fastboot getvar product          -> must be "piano"
    fastboot getvar unlocked         -> must be "yes"
    fastboot getvar is-userspace     -> must be "no" (stock ABL, not fastbootd)
-   fastboot getvar current-slot     -> must be "a" for this first-install path
-                                     (the combined BOOT goes to boot_a)
+   fastboot getvar current-slot     -> must be "a" or "b" for this first-install
+                                     path (the combined BOOT goes to boot_<slot>)
    fastboot getvar partition-size:sunuefi_root
                                     -> must be at least expanded_bytes in
                                        root-install-manifest.json; the root
                                        grows to fill the partition on first boot
 
 Step 4 - Flash, one command at a time (each must print OKAY):
-   fastboot -S 128M flash boot_a device-boot/boot_linux.img
+   SLOT=$(fastboot getvar current-slot 2>&1 | awk '/^current-slot:/{print $2}')
+   fastboot -S 128M flash "boot_${SLOT}" device-boot/boot_linux.img
    fastboot -S 128M flash sunuefi_esp sunuefi_esp.img
    fastboot -S 128M flash sunuefi_root root-install/pianoroot.f2fs.sparse.img
    fastboot reboot
@@ -164,16 +165,17 @@ Step 4 - Flash, one command at a time (each must print OKAY):
    stops responding to a single 512 MiB raw ESP write, and the tablet then
    needs a power cycle. Do not drop this flag.
 
-   Flash boot_a with device-boot/boot_linux.img. Generate that file once by
-   running make-device-boot.sh (which calls scripts/prepare-device-boot.py)
-   against this tablet's stock boot_a. The file keeps the upstream unsigned AVB
-   NONE metadata. Slot A's ABL boots boot_linux.img directly, the same way it
-   boots the stock Android image. Do not add os_version, and do not re-sign the
-   image: piano-boot-repack compares the wrapper header byte-for-byte, and a
-   patched os_version breaks the Android boot-assistant module.
-   The ESP payload /EFI/Linux/sunuefi.efi is not a boot_a image. SunUEFI loads
-   it; the ABL does not. If you flash it to boot_a, the tablet sticks in
-   Fastboot with no bootable slot.
+   Flash the active slot's boot partition with device-boot/boot_linux.img.
+   Generate that file once by running make-device-boot.sh (which calls
+   scripts/prepare-device-boot.py) against this tablet's stock boot image. The
+   file keeps the upstream unsigned AVB NONE metadata. The active slot's ABL
+   boots boot_linux.img directly, the same way it boots the stock Android image.
+   Do not add os_version, and do not re-sign the image: piano-boot-repack
+   compares the wrapper header byte-for-byte, and a patched os_version breaks
+   the Android boot-assistant module.
+   The ESP payload /EFI/Linux/sunuefi.efi is not a device boot image. SunUEFI
+   loads it; the ABL does not. If you flash it to boot_a or boot_b, the tablet
+   sticks in Fastboot with no bootable slot.
 
 Step 5 - Verify after reboot:
    Confirm: the GNOME desktop appears; "uname -r" shows the release kernel;
@@ -187,9 +189,10 @@ WARNING - never run these:
      "Failed to load/authenticate boot image: Device Error" and the tablet
      sticks in Fastboot.
    * Erasing userdata: destroys all Android user data irreversibly.
-   * Erasing boot_a, "fastboot -w", or any write to abl, xbl, tz, modem.
-SunUEFI reads its board DTB from vendor_boot_a plus the stock dtbo_a overlay,
-so the stock DTBO content must stay in place.
+   * Erasing boot_a or boot_b, "fastboot -w", or any write to abl, xbl, tz,
+     modem.
+SunUEFI reads its board DTB from the active slot's vendor_boot plus the stock
+dtbo overlay, so the stock DTBO content must stay in place.
 
 Login Credentials:
 - Username: piano

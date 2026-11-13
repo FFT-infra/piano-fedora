@@ -199,7 +199,7 @@ userdata。安装脚本目前只做擦除，操作者要在现场执行这一步
 
 ## 双系统切换
 
-双系统切换按上游 SunUEFI 的合体 BOOT 模型工作。`boot_a` 里是原厂 Android 内核、3 秒选择器与 UEFI 核心，请求页在 `boot_a` 镜像末尾。Android 与 Linux 都从 Slot A 启动，不切活动槽，也不改 GPT。
+双系统切换按上游 SunUEFI 的合体 BOOT 模型工作。活动槽的 BOOT 里是原厂 Android 内核、3 秒选择器与 UEFI 核心，请求页在这份镜像末尾。Android 与 Linux 都从同一个活动槽启动，不切活动槽，也不改 GPT。出厂设备的活动槽是 `_a`，OTA 到 HyperOS 4 的设备是 `_b`。
 
 - Linux → Android：`piano-next-boot android --reboot` 把持久请求写成 target=0，
   正常重启后选择器进入 Android。
@@ -335,6 +335,22 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 `Piano Focus Pen Pro`（`virtual:0022:5081`）与蓝牙侧的
 `Xiaomi Focus Pen Pro Mouse/Keyboard`。蓝牙键盘/鼠标节点上的按键、捏握、
 防误触、绘图应用效果、充电与重连仍需分别验证。
+
+## 无损首装
+
+`install-f2fs.py` 加了 `--lossless`：先在 Android 上把解密后的 F2FS 缩到新容量，再写分区表，不擦 `userdata`。顺序不能反过来——文件系统比分区小是安全的，反过来会读出越界。
+
+工具链是上游现成的两步：`piano-resize-f2fs shrink --target-bytes N --execute` 走 `F2FS_IOC_RESIZE_FS`，`piano-storage apply` 写 GPT 并留备份。宿主机只负责计划、推送和核对，因为加密 `/data` 的明文超级块只有在设备上经 vold 解密映射才读得到，section 大小也从那里取。
+
+2026-11-13 在一台 OTA 到 HyperOS 4（活动槽 `_b`）的 1 TB 设备上跑完一次：`userdata` 从 938 GiB 缩到 200 GiB，`sunuefi_root` 737.5 GiB，`sunuefi_esp` 512 MiB。Android 里的测试文件 sha256 前后一致，Linux 首启自动登录，触控与笔正常，两系统往返各一次。
+
+还有三件事没验：重复安装、`--accept-data-loss` 路径、缩到余量很小的容量。
+
+尺寸只在首装这一次定。`userdata` 起点不动、root 从它后面接，所以只能缩不能长，上限就是当前的盘尾。装完再改没有入口：`install-f2fs.py` 的 `--android-data-mib` 与 `--lossless` 在已有分区时直接拒绝，`update-f2fs.py` 只替换文件。要改就得先把 `sunuefi_root`、`sunuefi_esp` 从 GPT 删掉、把 `userdata` 拉回盘尾，再跑一遍，Linux 数据会丢，Android 保留；删分区这一步没有工具，目前是手工改表。
+
+发布归档里的 `root-install` 按 `_a` 构建，Slot B 设备要用同一次 bundle run 跑 `prepare-install.yml` 并传 `android_slot=_b`。一键脚本与手动章节已跟随活动槽，槽位与 root-install 不一致时在写入前退出。
+
+设备侧的前置条件是已装与当前 BOOT 匹配的「SunUEFI 引导助手」模块，`piano-resize-f2fs` 由它提供。缺这个模块时 `plan --lossless` 直接报错，不会退化成清空路径。
 
 ## 触屏、网络、音频与相机
 

@@ -9,12 +9,12 @@
 提取出来执行一遍**，配一个桩 `fastboot`，验证
 
 * 文档里的命令逐条可执行，没有笔误或引用了不存在的资产名；
-* 写入顺序是 boot_a -> sunuefi_esp -> sunuefi_root，全程不切槽；
+* 写入顺序是活动槽的 boot -> sunuefi_esp -> sunuefi_root，全程不切槽；
 * 全程没有任何 erase/-w/format；
 * 两份真实摘要（deploy-bundle 与 root-install）分别校验通过；
 * root-install 的来源摘要与当前 deploy-bundle 不一致时必须失败；
 * 首次分区执行器在 GPT 写入后显式执行 `fastboot erase userdata`。
-* 首装请求页与合体 BOOT 都留在 `boot_a`，不再写 `boot_b`。
+* 首装请求页与合体 BOOT 都留在活动槽的 BOOT（`boot_a` 或 `boot_b`），不切槽。
 
 桩 fastboot 会把每次调用记进日志并返回合理输出，不触碰任何真实设备。
 """
@@ -78,6 +78,7 @@ elif cmd == "getvar":
         # Android fastboot prints these as bare hexadecimal; the installer must
         # not compare that text directly with decimal manifest bytes.
         "partition-size:boot_a": format(100663296, "x"),
+        "partition-size:boot_b": format(100663296, "x"),
         "partition-size:sunuefi_esp": format(537899008, "x"),
         "partition-size:sunuefi_root": format(515225600000, "x"),
     }
@@ -127,16 +128,23 @@ def extract_shell_blocks(chapter):
 
 
 def executed_commands(block):
-    """Yield commands that can run without a live device or mtools."""
+    """Yield commands that can run without a live device or mtools.
+
+    Simple `NAME=value` assignments are included: the documented blocks tell the
+    reader to derive the slot once and then use `boot_${SLOT}`, so the block
+    must run as one shell to keep that state.
+    """
     for raw_line in block.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        if line.startswith(("fastboot", "sha256sum", "(cd ", "head ")):
+        if re.match(r"^[A-Z_]+=", line):
+            yield line
+        elif line.startswith(("fastboot", "sha256sum", "(cd ", "head ")):
             yield line
 
 
-def make_asset_set(root, cross_bundle=False):
+def make_asset_set(root, cross_bundle=False, slot="_a"):
     """Build two artifacts with the same layout prepare-install publishes."""
     staging = root
     root_install = root / "root-install"
@@ -154,7 +162,7 @@ def make_asset_set(root, cross_bundle=False):
     bundle_manifest.write_text('{"status":"fixture"}\n')
     root_manifest.write_text('{"format":"raw-f2fs"}\n')
     root_install_manifest = {
-        "android_slot": "_a",
+        "android_slot": slot,
         "expanded_bytes": 515225600000,
         "source_bundle_manifest_sha256": hashlib.sha256(
             (bundle_manifest.read_bytes() if not cross_bundle else b"other-bundle")).hexdigest(),
@@ -289,19 +297,24 @@ def main():
         ran = 0
         executed = []
         for block in blocks:
-            for line in executed_commands(block):
-                executed.append(line)
-                # The manual chapter runs from the staging directory, where
-                # deploy-bundle files are at the top level and root-install is
-                # a sibling subdirectory.
-                res = subprocess.run(line, shell=True, cwd=staging, env=env,
-                                     capture_output=True, text=True)
-                ran += 1
-                if res.returncode != 0:
-                    failures.append(
-                        f"documented command failed: {line}\n"
-                        f"    stdout: {res.stdout.strip()[:200]}\n"
-                        f"    stderr: {res.stderr.strip()[:200]}")
+            lines = list(executed_commands(block))
+            if not lines:
+                continue
+            executed.extend(lines)
+            ran += len(lines)
+            # Run the block as one shell so `SLOT=$(...)` stays visible to the
+            # commands that follow it, the way a reader pastes the block.
+            # The manual chapter runs from the staging directory, where
+            # deploy-bundle files are at the top level and root-install is
+            # a sibling subdirectory.
+            script = "\n".join(lines)
+            res = subprocess.run(["bash", "-e", "-c", script], cwd=staging, env=env,
+                                 capture_output=True, text=True)
+            if res.returncode != 0:
+                failures.append(
+                    f"documented commands failed in one block:\n{script}\n"
+                    f"    stdout: {res.stdout.strip()[:200]}\n"
+                    f"    stderr: {res.stderr.strip()[:200]}")
 
         if ran == 0:
             failures.append("no documented commands were executed")
@@ -347,10 +360,10 @@ def main():
                 continue
             index = args.index("flash")
             partition = args[index + 1] if index + 1 < len(args) else ""
-            if partition not in ("sunuefi_esp", "sunuefi_root", "boot_a"):
+            if partition not in ("sunuefi_esp", "sunuefi_root", "boot_a", "boot_b"):
                 continue
             target = args[index + 2] if index + 2 < len(args) else ""
-            if partition == "boot_a" and "stock-recovery" in target:
+            if partition.startswith("boot_") and "stock-recovery" in target:
                 continue
             if "-S" not in args or args[args.index("-S") + 1] != "128M":
                 failures.append(f"documented flash of {partition} lacks -S 128M: {' '.join(args)}")
@@ -375,8 +388,10 @@ def main():
         # 请求页在"正在引导的那份镜像"末尾；合体 BOOT 装进当前槽 A。
         # 上游 7dbabdc 之后不再有 boot-request.json，活动槽由只读 GPT 与
         # 高通 A/B 属性判定，文档要写这条判定依据而不是旧配置文件。
-        if "`boot_a`" not in document:
-            failures.append("first-install slot is not documented as boot_a")
+        if "`boot_a`" not in document or "`boot_b`" not in document:
+            failures.append("installation guide does not document both slot boot partitions")
+        if "活动槽" not in chapter:
+            failures.append("manual chapter does not explain the active-slot rule")
         if "/dev/disk/by-partlabel/boot_b`" in document:
             failures.append("first-install boot request is still documented as boot_b")
         if "高通 A/B 属性" not in document:
@@ -483,12 +498,11 @@ def main():
         if not assert_no_device_write(slot_log):
             failures.append("wrong-slot root-install caused a device write")
 
-        # The one-click installer writes the combined BOOT to the active Slot A.
-        # If Android is currently on B, it must stop before overwriting the
-        # Android boot path.
+        # The one-click installer writes the combined BOOT to the active slot.
+        # A Slot B device with a matching root-install must install into boot_b.
         current = work / "current-slot-b"
         current.mkdir()
-        current_assets, _ = make_asset_set(current)
+        current_assets, _ = make_asset_set(current, slot="_b")
         current_staging = copy_asset_set(current_assets, current / "piano-install")
         current_log = current / "fastboot.log"
         current_env = {
@@ -498,11 +512,39 @@ def main():
             "ESP_IMG": str(current_staging / "sunuefi_esp.img"),
         }
         result = invoke_installer(current_staging, current_env, boot=device_boot)
-        if result.returncode == 0 or "Android must be active on Slot A" not in (
+        if result.returncode != 0:
+            failures.append("installer rejected a Slot B device with a matching root-install: "
+                            + (result.stdout + result.stderr).strip()[:300])
+        else:
+            slot_verbs = []
+            for line in current_log.read_text().splitlines():
+                args = line.split()
+                if "flash" in args:
+                    i = args.index("flash")
+                    slot_verbs.append(("flash", args[i + 1] if i + 1 < len(args) else ""))
+            if slot_verbs[:3] != [("flash", "boot_b"), ("flash", "sunuefi_esp"),
+                                  ("flash", "sunuefi_root")]:
+                failures.append(f"Slot B install wrote {slot_verbs}, expected boot_b/ESP/root")
+
+        # An _a root-install on a Slot B device must stop before any write: the
+        # root image imports sensors from the slot Android actually runs.
+        mismatch = work / "current-slot-b-mismatch"
+        mismatch.mkdir()
+        mismatch_assets, _ = make_asset_set(mismatch)
+        mismatch_staging = copy_asset_set(mismatch_assets, mismatch / "piano-install")
+        mismatch_log = mismatch / "fastboot.log"
+        mismatch_env = {
+            **env,
+            "STUB_LOG": str(mismatch_log),
+            "STUB_CURRENT_SLOT": "b",
+            "ESP_IMG": str(mismatch_staging / "sunuefi_esp.img"),
+        }
+        result = invoke_installer(mismatch_staging, mismatch_env, boot=device_boot)
+        if result.returncode == 0 or "the device runs '_b'" not in (
                 result.stdout + result.stderr):
-            failures.append("installer accepted Android currently on Slot B")
-        if not assert_no_device_write(current_log):
-            failures.append("Android-on-Slot-B case caused a device write")
+            failures.append("Slot B device accepted an _a root-install")
+        if not assert_no_device_write(mismatch_log):
+            failures.append("Slot B with a mismatched root-install caused a device write")
 
         # First install is not a recovery path: the legacy checksum bypass must
         # not skip provenance, slot, capacity, or sparse-transport validation.

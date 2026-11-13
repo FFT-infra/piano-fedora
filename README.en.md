@@ -1,6 +1,6 @@
 > **Experimental project.** This repository targets driver work and hardware bring-up. It is not a stable system for daily use.
 >
-> Flashing unlocks the bootloader and rewrites the GPT. It replaces the combined BOOT in `boot_a` and rewrites the Linux partition. A careless step can brick the tablet or destroy all data. Back up every partition and your personal data before you start.
+> Flashing unlocks the bootloader and rewrites the GPT. It replaces the combined BOOT in the active slot's `boot` partition and rewrites the Linux partition. A careless step can brick the tablet or destroy all data. Back up every partition and your personal data before you start.
 >
 > This project ships under the [MIT license](LICENSE) as is. The authors and contributors take no responsibility for damaged hardware, lost data, or a voided warranty.
 
@@ -27,7 +27,7 @@ Fedora 45 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
 | Sensors | ✅ | SSC backend (`libssc` + `iio-sensor-proxy-ssc` over QRTR/MHI). The accelerometer, ambient light and proximity sensors all report data. Auto-rotate works on device: the screen turns 90° when the tablet is set to `left-up` |
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are not verified yet |
-| Dual boot | ✅ | The combined BOOT lives in `boot_a`. Linux→Android uses `piano-next-boot android --reboot`. Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two round trips are verified on device, see [known issues](docs/known-issues.md#双系统切换) |
+| Dual boot | ✅ | The combined BOOT lives in the active slot's `boot` partition (`boot_a` or `boot_b`). Linux→Android uses `piano-next-boot android --reboot`. Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two round trips are verified on device, see [known issues](docs/known-issues.md#双系统切换) |
 | Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally. 1906 axis events, 22 proximity events and 18 tip events were captured, see [known issues](docs/known-issues.md#手写笔) |
 | Fingerprint | ❌ | Side-mounted capacitive, Goodix. Authentication runs in the TEE's `gfpia` TA. The kernel side is in place: `uio_piano_fingerprint`, `qcomtee` and `/dev/tee0` are all present, and so is the DT node. What is missing is the libfprint backend. Upstream has it, this repository has not wired it in yet. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
 | IR | ✅ | The consumer IR blaster (QUPv3 SE15) is wired to the standard `ir-spi` driver and LIRC. `/dev/lirc0` and `/sys/class/rc/rc0` exist, and `ir-ctl` can send. Optical output is not measured. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
@@ -62,7 +62,7 @@ There are two paths. The manual path is the primary one: it lists each command, 
 
    The other profiles are separate archives and are not needed. The unpacked directory is the staging directory. It holds the flash scripts, `root-install/` and the component manifests. Run `bash scripts/unpack-release.sh --tag <tag> --desktop <profile>` to perform these three steps. When you build from source, use the `deploy-bundle-<profile>` from one successful `build-bundle` run and the `root-install-<profile>` that `prepare-install` produced from that same run. Do not mix assets from different runs.
 4. Run `./make-device-boot.sh` in the staging directory. `make-device-boot.sh` repacks this tablet's own stock BOOT into `device-boot/boot_linux.img`. The archived ESP image cannot replace `boot_linux.img`.
-5. Power off the device. Hold `Power + Volume Down` until Fastboot appears. Verify that `fastboot getvar current-slot` returns `a`. Then follow [Manual flashing](docs/installation.md#五-手动刷写-linux). Check both `SHA256SUMS` files and confirm the device identity. Write `boot_a`, `sunuefi_esp` and `sunuefi_root` in that order, then run `fastboot reboot`.
+5. Power off the device. Hold `Power + Volume Down` until Fastboot appears. Verify that `fastboot getvar current-slot` returns `a` or `b`. Then follow [Manual flashing](docs/installation.md#五-手动刷写-linux). Check both `SHA256SUMS` files and confirm the device identity. Write the active slot's `boot` partition (`boot_a` or `boot_b`), `sunuefi_esp` and `sunuefi_root` in that order, then run `fastboot reboot`.
 
    To do it in one run, execute `./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub` from the staging directory (Linux / macOS), or double-click `flash-linux.bat` (Windows, which does not inject a key). The one-step script performs the same writes and adds a few checks before writing.
 
@@ -74,7 +74,7 @@ There are two paths. The manual path is the primary one: it lists each command, 
 
 - Linux to Android: click "Return to Android" in the app grid, or run `piano-next-boot android --reboot`. Verified on device.
 - Android to Linux: install the SunUEFI boot-assistant module and choose Linux there. Without the module, press a volume key within the first 3 seconds and pick Linux. The choice is saved.
-- Both directions write the same request page in `boot_a`. Neither direction switches slots or writes the GPT.
+- Both directions write the same request page, which lives in that active-slot BOOT. Neither direction switches slots or writes the GPT.
 
 ## Release artifacts
 
