@@ -302,14 +302,16 @@ def main():
         upstream = SimpleNamespace(_new_header=new_header, parse_gpt=lambda *unused: gpt,
             LINUX_TYPE=uuid.UUID("0fc63daf-8483-4772-8e79-3d69d8477de4").bytes_le,
             ESP_TYPE=uuid.UUID("c12a7328-f81f-11d2-ba4b-00a0c93ec93b").bytes_le)
-    installer.require_install_slot("_a", existing=False)
-    installer.require_install_slot("_b", existing=True)
+    installer.require_install_slot("_a")
+    installer.require_install_slot("_b")
+    stock = SimpleNamespace(text=lambda command: "odm_b\nvendor_b\nsystem_b\n")
+    installer.require_stock_super(stock, "_b")
     try:
-        installer.require_install_slot("_b", existing=False)
+        installer.require_stock_super(stock, "_a")
     except ValueError as error:
-        assert "first install requires Android Slot A" in str(error), error
+        assert "super has no system_a" in str(error), error
     else:
-        raise AssertionError("first install accepted Android Slot B")
+        raise AssertionError("a slot without stock super partitions was accepted")
     mbr = bytes(510) + b"\x55\xaa" + bytes(3584)
     plan = installer.partition_plan(gpt)
     expected, head, tail, original_head, original_tail = installer.new_gpt(upstream, gpt, plan, mbr)
@@ -427,7 +429,7 @@ def main():
     check_wait_factory_survives_a_missing_serial(installer)
     check_restore_gpt_blobs_is_defined(installer)
     check_lossless_shrink(installer)
-    print("OK: first GPT byte preservation, CRC, half capacity, Slot A contract, deterministic new entries, "
+    print("OK: first GPT byte preservation, CRC, half capacity, active-slot contract, deterministic new entries, "
           "explicit Android capacity, explicit ESP capacity, stale-plan rejection, dd probe, "
           "bootloader wait, GPT restore and the lossless F2FS shrink step" +
           ("; actual pinned parser exercised" if args.sunuefi else "; byte oracle exercised"))

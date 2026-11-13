@@ -199,7 +199,7 @@ userdata。安装脚本目前只做擦除，操作者要在现场执行这一步
 
 ## 双系统切换
 
-双系统切换按上游 SunUEFI 的合体 BOOT 模型工作。`boot_a` 里是原厂 Android 内核、3 秒选择器与 UEFI 核心，请求页在 `boot_a` 镜像末尾。Android 与 Linux 都从 Slot A 启动，不切活动槽，也不改 GPT。
+双系统切换按上游 SunUEFI 的合体 BOOT 模型工作。活动槽的 BOOT 里是原厂 Android 内核、3 秒选择器与 UEFI 核心，请求页在这份镜像末尾。Android 与 Linux 都从同一个活动槽启动，不切活动槽，也不改 GPT。出厂设备的活动槽是 `_a`，OTA 到 HyperOS 4 的设备是 `_b`。
 
 - Linux → Android：`piano-next-boot android --reboot` 把持久请求写成 target=0，
   正常重启后选择器进入 Android。

@@ -174,7 +174,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
   --plan first-install-plan.json
 ```
 
-`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量。任何一项与现场不符就停下。同时确认设备当前 `current-slot` 是 `a`，`root-install-manifest.json` 顶层的 `android_slot` 是 `_a`。首装只能用 `_a`。合体 BOOT 写进 Android 的当前槽，`_b` 没有原厂 super 逻辑分区。
+`plan` 只读，不写设备。逐项复核计划里的产品、序列号、磁盘、槽位、完整 GPT 基线、原 BOOT 摘要、输入包摘要与 Linux root 容量。任何一项与现场不符就停下。同时确认 `root-install-manifest.json` 顶层的 `android_slot` 与设备当前槽一致，并且 super 里有 `system<槽>`、`vendor<槽>`、`odm<槽>` 三个逻辑分区。首装目标就是原厂 Android 所在的槽：合体 BOOT 写进这个槽，ABL 只加载它。出厂设备是 `_a`，OTA 到 HyperOS 4 的设备是 `_b`，后者的 super 里没有 `_a` 那一套。
 
 计划本身是一份 JSON，`--plan` 指到哪里就写到哪里，通常是 `first-install-plan.json`。它记录磁盘几何、原分区表、每个分区的 `first`/`last` 变化与容量，`baseline_sha256` 绑定这份表的来源。`apply` 重算一遍，再逐字段比较。设备或输入包有任何变化都停。
 

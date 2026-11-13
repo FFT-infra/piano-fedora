@@ -32,7 +32,7 @@ DEFAULT_ESP_MIB = 512
 # 封存 root 镜像的最小容量，与 build-f2fs-image.py 的下限一致。
 MIN_ROOT_MIB = 64
 # 请求页由选择器在"正在引导的那份镜像"末尾读取，ABL 只加载当前槽；合体 BOOT
-# 装进 Android 的当前槽（首装是 A），请求配置因此必须指向 boot<当前槽>。
+# 装进 Android 的当前槽，请求配置因此必须指向 boot<当前槽>。
 BUNDLE_ASSETS = {
     "sunuefi_esp.img": "sunuefi_esp.img",
     "PianoUEFI-product.img": "PianoUEFI-product.img",
@@ -112,16 +112,29 @@ def checked(path, meta):
     require(path.stat().st_size == meta["bytes"] and sha256(path) == meta["sha256"], "input hash/size differs: " + str(path))
 
 
-def require_install_slot(slot, existing):
-    """Keep the first-install path on Android Slot A.
+def require_install_slot(slot):
+    """Keep the first install on the Android active slot.
 
     The combined BOOT is written to the Android active slot and Linux boots
-    from the same slot; a first install that started from Android Slot B would
-    leave the request page in a partition the ABL does not load next.
+    from the same partition, so the first install must target that slot. A
+    factory device boots Slot A; one that OTA'd to HyperOS 4 boots Slot B and
+    has only super_b logical partitions. Writing Slot A's BOOT on such a device
+    would leave a boot partition the ABL never loads.
     """
     require(slot in ("_a", "_b"), "unknown active Android slot")
-    if not existing:
-        require(slot == "_a", "first install requires Android Slot A; the stock super partitions are _a")
+
+
+def require_stock_super(device, slot):
+    """Prove the active slot's super logical partitions are the ones Android booted from.
+
+    Android runs from the current slot's logical partitions, so a booted system
+    is already evidence. The names matter because the sensor importer maps them
+    by name: on a Slot B device they are odm_b/vendor_b, and a root image
+    configured for the other slot imports nothing.
+    """
+    names = set(device.text("ls /dev/block/mapper").split())
+    for name in ("system", "vendor", "odm"):
+        require(name + slot in names, "super has no " + name + slot + " logical partition")
 
 
 def root_capacity(image_bytes, partition_bytes):
@@ -197,7 +210,9 @@ def installation_plan(upstream, device, bundle, root_install, boot, stock_boot, 
         section = read_f2fs_section(device) if lossless else None
         layout = partition_plan(snapshot["gpt"], android_data_mib, esp_mib, section)
     slot = device.text("getprop ro.boot.slot_suffix")
-    require_install_slot(slot, existing)
+    require_install_slot(slot)
+    if not existing:
+        require_stock_super(device, slot)
     prepared_manifest = root_install / "root-install-manifest.json"
     root = json.loads(prepared_manifest.read_text()) if prepared_manifest.is_file() else {}
     combined = json.loads((boot / "device-boot-manifest.json").read_text())
@@ -577,9 +592,11 @@ def execute(upstream, device, plan, bundle, root_install, boot, stock_boot, sess
             "sunuefi_root": sha256(root_sparse),
             "boot" + slot: combined["files"]["boot_android.img"]["sha256"],
         }
-        images = {"sunuefi_esp": bundle / "sunuefi_esp.img",
-                  "sunuefi_root": root_sparse,
-                  "boot" + slot: boot / "boot_android.img"}
+        # 先 boot、再 ESP、最后 root：写完大分区后原厂 ABL 可能挂死，只能断电。
+        # 那时 boot 与 ESP 已经落地，断电回来后 Linux 仍能启动。
+        images = {"boot" + slot: boot / "boot_android.img",
+                  "sunuefi_esp": bundle / "sunuefi_esp.img",
+                  "sunuefi_root": root_sparse}
         # The manifest was verified above, so the install-time key can now be
         # added to a session copy of the ESP. Never modify the input bundle.
         if ssh_key is not None:

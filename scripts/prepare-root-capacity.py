@@ -89,14 +89,13 @@ def resize_and_verify(source, target, target_mib, work):
             "fsck_consistency_checks": len(checks), "device_tested": False}
 
 
-# super 里的逻辑分区不随 boot 槽变化。真机（1TB piano）上启动槽是 _b、但
-# super 只有 odm_a/vendor_a，用 piano-sensors-lp-table 逐个探过：odm_b/vendor_b
-# 都返回 "partition not found"。传感器导入按这个常量取名，不跟 boot 槽。
-SENSOR_LOGICAL_SLOT = "_a"
+# super 里的逻辑分区跟着原厂 Android 所在的槽走：出厂设备在 _a，OTA 到
+# HyperOS 4 的设备在 _b，另一槽的逻辑分区在 OTA 后被删掉。传感器导入按名字
+# 映射 odm/vendor，所以它与 --android-slot 取同一个值。
 
 # 请求页在"正在引导的那份镜像"末尾：选择器按 Base + align(original_image_size)
 # 定位（uefi/handoff/bootselect/BootSelect.c），ABL 只加载当前槽。合体 BOOT
-# 装进 Android 的当前槽（首装是 A），Linux 的 helper 因此写 boot<当前槽> 的页。
+# 装进 Android 的当前槽，Linux 的 helper 因此写 boot<当前槽> 的页。
 
 
 def configure_source(source, bundle, slot, work):
@@ -119,8 +118,8 @@ def configure_source(source, bundle, slot, work):
         sensors_name = "etc/systemd/system/piano-sensors-import.service.d/android-slot.conf"
         sensors = safe_destination(mount, sensors_name)
         sensors.parent.mkdir(parents=True, exist_ok=True)
-        sensors.write_text("[Service]\nEnvironment=PIANO_SENSORS_ODM_NAME=odm" + SENSOR_LOGICAL_SLOT +
-                           "\nEnvironment=PIANO_SENSORS_VENDOR_NAME=vendor" + SENSOR_LOGICAL_SLOT + "\n")
+        sensors.write_text("[Service]\nEnvironment=PIANO_SENSORS_ODM_NAME=odm" + slot +
+                           "\nEnvironment=PIANO_SENSORS_VENDOR_NAME=vendor" + slot + "\n")
         sensors.chmod(0o644)
         users = {}
         for line in (mount / "etc/passwd").read_text().splitlines():
@@ -145,8 +144,8 @@ def configure_source(source, bundle, slot, work):
         run("umount", mount)
         mount.rmdir()
     return {"app_generation": app_generation, "android_slot": slot,
-            "sensor_logical_partitions": ["odm" + SENSOR_LOGICAL_SLOT, "vendor" + SENSOR_LOGICAL_SLOT],
-            "sensor_logical_slot_source": "device-probed (super has _a only)",
+            "sensor_logical_partitions": ["odm" + slot, "vendor" + slot],
+            "sensor_logical_slot_source": "the stock Android slot (--android-slot)",
             "ssh_public_key_in_image": False, "ssh_public_key_source": "installer --ssh-key to ESP",
             "private_key_in_image": False}
 
