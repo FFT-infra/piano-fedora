@@ -89,7 +89,7 @@ jobs:
                   data = present[filename].read_bytes()
                   assert len(data) == record["bytes"], filename
                   assert hashlib.sha256(data).hexdigest() == record["sha256"], filename
-          assert len(manifest["srpms"]) == 5, sorted(manifest["srpms"])
+          assert len(manifest["srpms"]) == len(expected), sorted(manifest["srpms"])
           print("OK: extras manifest has", len(manifest["files"]), "RPMs")
           PY
           rm -rf build/piano-extras-artifact
