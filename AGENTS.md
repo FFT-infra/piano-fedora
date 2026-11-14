@@ -70,7 +70,7 @@ make selinux               # 从 .te 重新生成 piano_hardware.pp
 
 ## 提交
 
-格式 `{type}: {description}`，type 取 `feat`、`fix`、`refactor`、`docs`、`chore`。一个提交一件事，不混。
+格式 `{type}: {description}`，type 取 `feat`、`fix`、`refactor`、`docs`、`chore`。
 
 ## 表达
 
