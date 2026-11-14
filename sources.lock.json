@@ -12,7 +12,7 @@
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "4d369d37dc90e5a0ffef272e6ef3597b802ec2fa",
+      "commit": "2cc5cd62d36acb71205d0f017886f2a64c2d7a8e",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
       "checked_date": "2026-11-14"
     },

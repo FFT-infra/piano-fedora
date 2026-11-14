@@ -155,7 +155,7 @@ PACKAGES = (
         "tarball_sha256": "e7de8d30ae2d63c7a9a21f8f0247219275cbc1d7f5ed09205e4a47642666f6ae",
         "patches": [
             ("gnome-settings-daemon/0001-power-optional-device-ambient-profile-51.patch",
-             "b32b0ef0451bc5b86884a84d84b769ce7bfb73cb8e5a2b4006c3b8bb017306ff",
+             "5c27bf914802dad89a41f306d2810fb90dd1e28e1f9f8e30bd1676e04e09d3c2",
              "piano-ambient-profile.patch"),
             # 50.1 的原始补丁和 ambient 补丁都在 gsd_power_manager_stop() 里插入
             # 清理代码，直接叠加时后一个 hunk 匹配不上。这份本地补丁以 51.1 +

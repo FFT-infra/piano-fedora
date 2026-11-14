@@ -2,7 +2,7 @@
   "schema_version": 1,
   "target": "sunuefi",
   "base": {
-    "sunuefi_commit": "4d369d37dc90e5a0ffef272e6ef3597b802ec2fa"
+    "sunuefi_commit": "2cc5cd62d36acb71205d0f017886f2a64c2d7a8e"
   },
   "patches": [
     {

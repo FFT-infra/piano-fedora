@@ -3,7 +3,7 @@
   "target": "sunuefi",
   "note": "Fedora \u6b63\u5f0f\u5185\u6838\u9ed8\u8ba4\u5305\u542b\u5b8c\u6574 built-in Gunyah\uff1b\u9a71\u52a8\u6309\u9501\u5b9a commit \u539f\u6837\u5bfc\u5165\uff0c\u6e90\u7801\u6e05\u5355\u4f9b SDK \u91cd\u653e\u6838\u9a8c\u3002",
   "base": {
-    "sunuefi_commit": "4d369d37dc90e5a0ffef272e6ef3597b802ec2fa"
+    "sunuefi_commit": "2cc5cd62d36acb71205d0f017886f2a64c2d7a8e"
   },
   "patches": [
     {
