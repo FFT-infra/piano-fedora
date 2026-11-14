@@ -315,10 +315,10 @@ jobs:
           root = Path(sys.argv[1])
           manifest = json.loads((root / "manifest.json").read_text())
           assert manifest["status"] == "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
-          expected = {"gnome-settings-daemon-piano", "kwin", "gtk3",
+          expected = {"gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
                       "piano-gnome-extras", "piano-kde-extras"}
           assert set(manifest["packages"]) == expected, sorted(manifest["packages"])
-          for name in ("gnome-settings-daemon-piano", "kwin", "gtk3"):
+          for name in ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm"):
               assert "piano1" in manifest["packages"][name]["release"], name
           PYEOF
 

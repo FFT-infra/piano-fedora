@@ -1,7 +1,7 @@
 #!/bin/sh
 # Remove the optional extras meta packages and disable the extras repository.
-# It does not downgrade KWin/GTK3 automatically; the printed commands do that
-# after a dry-run.
+# It does not downgrade KWin/GTK3/mutter/gdm automatically; the printed
+# commands do that after a dry-run.
 set -eu
 
 REPO_ID="copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras"
@@ -20,8 +20,8 @@ fi
 cat <<'EOF'
 Extras removed. To return same-name packages to Fedora's versions, run:
 
-  dnf distro-sync --repo fedora --dry-run kwin gtk3
-  dnf distro-sync --repo fedora kwin gtk3
+  dnf distro-sync --repo fedora --dry-run kwin gtk3 mutter gdm
+  dnf distro-sync --repo fedora kwin gtk3 mutter gdm
   dnf swap gnome-settings-daemon-piano gnome-settings-daemon --repo fedora
 
 Run the dry-run first; it prints every package the sync would change.

@@ -2,9 +2,13 @@
 
 设备装好 Fedora 后，配置、固件、相机、触控、传感器、VA-API、调度器和内核都可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
 
-**当前状态：10 个矩阵包加上 Mesa 与 FFmpeg 两组图形栈可以 `dnf upgrade` 升级，内核在内。** 项目是 `xinyang26/piano-fedora`，chroot 跟 `product.json` 的 releasever 走，现在是 `fedora-45-aarch64`。项目存在但缺这个 chroot 时，发布脚本会先 `copr-cli modify --chroot` 补上，否则 `copr-cli build` 会被 COPR 拒掉。仓库里有全部 10 个包：
+**当前状态：13 个矩阵包、3 个设备运行时包，加上 Mesa 与 FFmpeg 两组图形栈，共 18 个包可以 `dnf upgrade` 升级，内核在内。** 项目是 `xinyang26/piano-fedora`，chroot 跟 `product.json` 的 releasever 走，现在是 `fedora-45-aarch64`。项目存在但缺这个 chroot 时，发布脚本会先 `copr-cli modify --chroot` 补上，否则 `copr-cli build` 会被 COPR 拒掉。仓库里有全部 18 个包：
 
-`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-camera`、`piano-fedora-configs`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。
+矩阵包：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-camera`、`piano-fedora-configs`、`piano-fingerprint`、`piano-libfprint`、`piano-pipewire-gstreamer`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。
+
+运行时包：`piano-runtime`、`piano-crosvm`、`librevm`。
+
+图形栈：`mesa-piano-*` 与 `ffmpeg-piano`。
 
 核对方法见下面的[启用仓库](#启用仓库)一节，或在设备上跑 `python3 scripts/verify-copr-device.py`。
 
@@ -35,7 +39,7 @@ sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi
 
 Fedora 官方 COPR 实例没有启用二进制 RPM 上传。运行中实例的 API 描述里没有 `/build/create/rpm-upload`，只有 `/build/create/upload`（SRPM）。源码里这条路由由 `DIRECT_RPM_UPLOAD` 控制，默认关闭，公开实例没打开。`copr-cli` 2.4 也没有 `uploadrpm` 子命令。
 
-发布链因此改成：矩阵构建同时产出 SRPM，COPR 在干净的 `fedora-44-aarch64` chroot 里从 SRPM 重建。仓库因此能从源码复现，不会留下一堆来路不明的二进制。
+发布链因此改成：矩阵构建同时产出 SRPM，COPR 在干净的 `fedora-45-aarch64` chroot 里从 SRPM 重建。仓库因此能从源码复现，不会留下一堆来路不明的二进制。
 
 ## 发布流程（维护者）
 
@@ -73,14 +77,16 @@ sudo dnf upgrade --refresh
 
 ## 可选的 extras 软件源
 
-默认镜像与上面的默认仓库都不带补丁版桌面组件。需要 GNOME 自动亮度、键盘背光热插拔或 KDE HDR 退出后背光恢复时，再单独启用 `xinyang26/piano-fedora-extras`。这个项目默认关闭，不装它时四档桌面仍用 Fedora 原版 GSD、KWin 与 GTK3。
+默认镜像与上面的默认仓库都不带补丁版桌面组件。需要 GNOME 自动亮度、键盘背光热插拔、GNOME 触摸崩溃修复、GNOME 登录前等 DRM connector 或 KDE HDR 退出后背光恢复时，再单独启用 `xinyang26/piano-fedora-extras`。这个项目默认关闭，不装它时四档桌面仍用 Fedora 原版 GSD、KWin、GTK3、mutter 与 gdm。
 
 | 包 | 内容 |
 | --- | --- |
 | `gnome-settings-daemon-piano` | 官方 GSD 改名重建，带自动亮度设备 profile、键盘背光热插拔与启动时锁屏状态同步三个补丁 |
 | `kwin` | 同名重建，`Release` 带 `.piano1`，带 HDR 背光恢复补丁 |
 | `gtk3` | 同名重建，`Release` 带 `.piano1`，带 XI2 工具原子补丁 |
-| `piano-gnome-extras` | noarch meta，拉入 GSD 与 GTK3，并写入 `20-piano-ambient` dconf drop-in |
+| `mutter` | 同名重建，`Release` 带 `.piano1`，只带取消的触摸 grab 空指针补丁 |
+| `gdm` | 同名重建，`Release` 带 `.piano1`，登录前等原生 KMS connector；只对 GNOME 档有意义 |
+| `piano-gnome-extras` | noarch meta，拉入 GSD、GTK3 与 mutter，并写入 `20-piano-ambient` dconf drop-in |
 | `piano-kde-extras` | noarch meta，拉入 KWin 与 GTK3 |
 
 启用并安装：
@@ -89,12 +95,14 @@ sudo dnf upgrade --refresh
 sudo dnf copr enable -y xinyang26/piano-fedora-extras
 sudo dnf config-manager setopt \
   'copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras'.priority=1
-sudo dnf upgrade kwin gtk3
+sudo dnf upgrade kwin gtk3 mutter gdm
 sudo dnf install --allowerasing piano-gnome-extras   # 或 piano-kde-extras
 sudo dconf update
 ```
 
-`priority=1` 让 extras 的数字小于 Fedora 仓库，DNF5 因此优先用 `.piano1` 的 KWin/GTK3，哪怕 Fedora 后来发了更高版本。代价是 Fedora 对这几个包的更新会被遮住，直到 extras 按新 SRPM 重编。手动 `dnf copr enable` 不会自动写这个优先级，要自己补上。meta 包只写裸 `Requires`，原版已装时依赖就算满足，所以装 meta 前先 `dnf upgrade kwin gtk3`，否则只装 meta 不换组件。
+`priority=1` 让 extras 的数字小于 Fedora 仓库，DNF5 因此优先用 `.piano1` 的 KWin、GTK3、mutter 与 gdm，哪怕 Fedora 后来发了更高版本。代价是 Fedora 对这几个包的更新会被遮住，直到 extras 按新 SRPM 重编。gdm 是登录管理器，mutter 是 GNOME 合成器，这两条被遮住的更新比 KWin/GTK3 更值得盯。手动 `dnf copr enable` 不会自动写这个优先级，要自己补上。
+
+meta 包只写裸 `Requires`，原版已装时依赖就算满足，所以装 meta 前先 `dnf upgrade kwin gtk3 mutter gdm`，否则只装 meta 不换组件。gdm 不进 meta 的硬依赖：在非 GNOME 档装 `piano-gnome-extras` 不该顺带拉进一个登录管理器，GNOME 用户手动升级它。
 
 卸载回退：
 
@@ -106,9 +114,9 @@ sudo dconf update
 sudo dnf distro-sync --repo fedora
 ```
 
-`distro-sync` 把同名的 KWin/GTK3 换回 Fedora 版本。GSD 用 `sudo dnf swap gnome-settings-daemon-piano gnome-settings-daemon --repo fedora`。先加 `--assumeno` 看清楚要动的包。
+`distro-sync` 把同名的 KWin、GTK3、mutter 与 gdm 换回 Fedora 版本。GSD 用 `sudo dnf swap gnome-settings-daemon-piano gnome-settings-daemon --repo fedora`。先加 `--assumeno` 看清楚要动的包。
 
-增量安装、KDE HDR 与自动亮度都已在真机验过，结果见[桌面档](desktops.md#extras-可选组件)与[已知问题](known-issues.md#hdr)。键盘背光未验，手边没有悬浮键盘。
+增量安装、KDE HDR 与自动亮度都已在真机验过，结果见[桌面档](desktops.md#extras-可选组件)与[已知问题](known-issues.md#hdr)。mutter 与 gdm 这一轮才进 extras，键盘背光仍未验，手边没有悬浮键盘。
 
 ## 核对与回滚
 
@@ -162,7 +170,7 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 
 ## 边界
 
-- COPR 覆盖全部 10 个包，包括内核。ESP 上的 `/EFI/Linux/sunuefi.efi` 由 `kernel-piano` 的 `%posttrans` 维护，`.dtb` 节区沿用现有 UKI。板级 overlay 不在这条升级路径上更新。
+- COPR 覆盖全部 18 个包，包括内核。ESP 上的 `/EFI/Linux/sunuefi.efi` 由 `kernel-piano` 的 `%posttrans` 维护，`.dtb` 节区沿用现有 UKI。板级 overlay 不在这条升级路径上更新。
 - 设备的 `.repo` 只指向项目自己的 COPR。Hyprland 档位在构建期另加第三方源
   `lionheartp/Hyprland`（Fedora 44 官方仓库没有 Hyprland 及其配套组件）。仓库以
   `--repofrompath` 临时加入并校验公钥，不写进镜像的持久配置。四档里只有
@@ -171,6 +179,6 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 
 ## 设备侧验证
 
-`verify-copr-device.py` 在平板上跑。只读模式核对：仓库里的 10 个矩阵包和 Mesa/FFmpeg 齐全、图形栈是改名后的 `mesa-piano-*` 与 `ffmpeg-piano` 且仓库里没有同名的 Fedora 包（避免升级时被官方包覆盖）、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。
+`verify-copr-device.py` 在平板上跑。只读模式核对：仓库里的 13 个矩阵包、3 个运行时包和 Mesa/FFmpeg 齐全、图形栈是改名后的 `mesa-piano-*` 与 `ffmpeg-piano` 且仓库里没有同名的 Fedora 包（避免升级时被官方包覆盖）、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。
 
-`--extras` 换到 extras 仓库：核对 GSD/KWin/GTK3 与两个 meta 包齐全、三个桌面包的 `Release` 含 `.piano1`、两个 meta 是 noarch、仓库里没有官方的 `gnome-settings-daemon`，报告写到 `copr-extras-device-check.json`。
+`--extras` 换到 extras 仓库：核对 GSD/KWin/GTK3/mutter/gdm 与两个 meta 包齐全、五个桌面包的 `Release` 含 `.piano1`、两个 meta 是 noarch、仓库里没有官方的 `gnome-settings-daemon`，报告写到 `copr-extras-device-check.json`。

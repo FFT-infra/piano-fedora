@@ -71,13 +71,13 @@ jobs:
           root = Path("build/piano-extras")
           manifest = json.loads((root / "manifest.json").read_text())
           assert manifest["status"] == "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
-          expected = {"gnome-settings-daemon-piano", "kwin", "gtk3",
+          expected = {"gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
                       "piano-gnome-extras", "piano-kde-extras"}
           assert set(manifest["packages"]) == expected, sorted(manifest["packages"])
           for name, row in manifest["packages"].items():
               assert row["binary_package"] == name, (name, row)
               assert row["desktops"], name
-              if name in {"gnome-settings-daemon-piano", "kwin", "gtk3"}:
+              if name in {"gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm"}:
                   assert "piano1" in row["release"], (name, row["release"])
           for kind, key, subdir, pattern in (
                   ("RPM", "files", "rpms", "*.rpm"),

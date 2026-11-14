@@ -267,7 +267,7 @@ def check_power_files_match_the_declared_kind():
             assert files == {}, (desktop, files)
             assert required == ["etc/dconf/db/local.d/00-power"], (desktop, required)
         elif kind == "kconfig":
-            assert list(files) == ["etc/xdg/powerdevilrc"], (desktop, files)
+            assert files == {}, (desktop, files)
             assert required == ["etc/xdg/powerdevilrc"], (desktop, required)
         else:
             assert files == {} and required == [], (desktop, files, required)
@@ -288,7 +288,8 @@ def check_kde_power_policy_is_safe():
     """
     import configparser
     context = piano_desktop.load("kde", "44")
-    text = piano_desktop.power_files(context)["etc/xdg/powerdevilrc"]
+    target = ROOT / context["profile"]["power_policy"]["source"]
+    text = target.read_text(encoding="utf-8")
     policy = configparser.ConfigParser(interpolation=None, strict=False)
     policy.read_string(text)
     for profile_id in ("AC", "Battery", "LowBattery"):
@@ -351,6 +352,11 @@ def check_kde_desktop_defaults():
     # autoRotation 只有 KWin 能读到传感器时才出现；kwin 自己没声明这个包。
     assert "qt6-qtsensors" in context["profile"]["dnf_packages"], \
         "KDE 档没有装 qt6-qtsensors，Plasma 不会提供自动旋转"
+
+    # 包里的那份环境变量文件必须与配方一致：包是唯一写者。
+    packaged = (ROOT / "packages/piano-fedora-configs/etc/environment.d/60-piano-display.conf"
+                ).read_text(encoding="utf-8")
+    assert packaged == "KWIN_DRM_FORCE_SCALING_MODE=FULL\n", packaged
 
     # KWin 的键对其它桌面没有意义：别的档位既不写每用户配置，也不带
     # 桌面专用环境变量。

@@ -24,7 +24,7 @@ SPEC = PKG / "piano-pipewire-gstreamer.spec"
 
 def main():
     patches = sorted(p.name for p in PKG.glob("*.patch"))
-    assert len(patches) == 7, f"补丁序列应为 7 个，实际 {patches}"
+    assert len(patches) == 8, f"补丁序列应为 8 个，实际 {patches}"
     body = "\n".join((PKG / name).read_text() for name in patches)
     # 三条必须都在：首选值进 caps、回收 buffer 的加锁顺序、首帧空指针。
     assert "set_pref_int_range" in body and "gst_value_list_append_and_take_value" in body, \
@@ -47,6 +47,11 @@ def main():
     assert "gst_caps_is_subset (current_caps, possible_caps)" in body, \
         "缺少不重连的判定，reconfigure 会继续反复重连"
     assert "97699d70" in body, "手工 backport 没有记 master 提交号"
+    # 第 8 个来自 SunUEFI：MemPtr 指向的映射在重协商时会被移除，必须拷贝后再
+    # 交出；fd 背书的内存仍走 share。少了这条，sink 手里的 buffer 会在池子
+    # 拆掉后读到已解映射的地址。
+    assert "SPA_DATA_MemPtr" in body and "has_shared_memory" in body, \
+        "缺少 MemPtr 拷贝路径，下游 buffer 仍会引用已移除的映射"
 
     spec = SPEC.read_text()
     assert re.search(r"^Version:\s+1\.6\.11$", spec, re.M), "版本没有对上 Fedora 的 1.6.11"

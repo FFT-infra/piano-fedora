@@ -71,9 +71,14 @@ def add_patches(text, patch_names):
         raise ValueError("package has no patches")
     used = sorted(int(match.group(1))
                   for match in re.finditer(r"^Patch(\d+):", text, re.MULTILINE))
+    bare = len(re.findall(r"^Patch:", text, re.MULTILINE))
+    if used and bare:
+        raise ValueError("spec mixes numbered and unnumbered Patch tags")
     if used and used != list(range(used[-1] + 1)):
         raise ValueError(f"existing Patch numbers are not contiguous from 0: {used}")
-    start = used[-1] + 1 if used else 0
+    # Fedora 的 gdm 用不带编号的 `Patch:`，rpm 按出现顺序把它们编成 0..N-1。
+    # 追加时从 bare 之后开始，否则显式 Patch0 会和第一条撞名。
+    start = used[-1] + 1 if used else bare
     lines = []
     for offset, patch_name in enumerate(patch_names):
         slot = start + offset
@@ -99,7 +104,7 @@ def adapt_gsd(text):
     text = replace_once(text, "Name:           gnome-settings-daemon\n",
                         "Name:           gnome-settings-daemon-piano\n")
     text = replace_once(text, "Release:        %autorelease\n",
-                        "Release:        2.piano1%{?dist}\n")
+                        "Release:        3.piano1%{?dist}\n")
     text = replace_once(
         text,
         "Source0:        https://download.gnome.org/sources/%{name}/"
@@ -143,12 +148,24 @@ def adapt_gtk3(text):
     return add_patches(text, ["piano-gtk3-xi2.patch"])
 
 
+def adapt_mutter(text):
+    text = replace_once(text, "Release:       %autorelease\n",
+                        "Release:       1.piano1%{?dist}\n")
+    return add_patches(text, ["piano-mutter-touch-cancel.patch"])
+
+
+def adapt_gdm(text):
+    text = replace_once(text, "Release:        %autorelease\n",
+                        "Release:        1.piano1%{?dist}\n")
+    return add_patches(text, ["piano-gdm-kms-connectors.patch"])
+
+
 PACKAGES = (
     {
         "source": "gnome-settings-daemon",
         "binary": "gnome-settings-daemon-piano",
         "version": "51.1",
-        "release": "2.piano1",
+        "release": "3.piano1",
         "url": "https://kojipkgs.fedoraproject.org/packages/gnome-settings-daemon/"
                "51.1/1.fc45/src/gnome-settings-daemon-51.1-1.fc45.src.rpm",
         "srpm_sha256": "e528cb1b4e1fc4822ca3b11ab7c2cb28616e3fb92ce4f35a96cc6a2219363f72",
@@ -222,6 +239,49 @@ PACKAGES = (
         "adapt": adapt_gtk3,
         "changelog": "Use the device display for XI2 tool atoms on X11",
     },
+    {
+        "source": "mutter",
+        "binary": "mutter",
+        "version": "51.1",
+        "release": "1.piano1",
+        "url": "https://kojipkgs.fedoraproject.org/packages/mutter/51.1/1.fc45/src/"
+               "mutter-51.1-1.fc45.src.rpm",
+        "srpm_sha256": "bc4d1b72b0ae0c0ae8a8c7de4fc648faccc93716fa6deda91237b55062bc8c41",
+        "spec_sha256": "3eae50962d75dcf031796ee3d1e7846cd0c8e2ed841e11712a18122d5d612c9a",
+        "tarball_sha256": "0d311d87901dbcb94518fb89304febe30852ce5d8a4befa9f87e85c68eceefde",
+        "patches": [
+            ("linux/desktops/gnome/patches/mutter/"
+             "0003-wayland-touch-ignore-cancelled-grab.patch",
+             "c4d7b5ad80d120a1e66af9f1c0c72b2e8fb12ea6c5581e3eb5e264907a5b368a",
+             "piano-mutter-touch-cancel.patch"),
+        ],
+        "runtime": ("mutter", "mutter-common"),
+        "required": ("mutter", "mutter-common"),
+        "desktops": ("gnome",),
+        "adapt": adapt_mutter,
+        "changelog": "Ignore cancelled touch grabs instead of dereferencing the cleared focus surface",
+    },
+    {
+        "source": "gdm",
+        "binary": "gdm",
+        "version": "51.1.1",
+        "release": "1.piano1",
+        "url": "https://kojipkgs.fedoraproject.org/packages/gdm/51.1.1/1.fc45/src/"
+               "gdm-51.1.1-1.fc45.src.rpm",
+        "srpm_sha256": "6f7f139aea3ab0610adc601c58b839faa3263da2cefbe9fb29eb99679264774c",
+        "spec_sha256": "5a06cc2453851bbe452338375b78950ffb0b1259c3b2e4510b4d523bd0f9a36e",
+        "tarball_sha256": "390ae9e7540f71db28a3dc64319a8f687f4d88bd4d5f1ff816b7a9f2249ab4aa",
+        "patches": [
+            ("gdm/51.0/0001-local-display-wait-for-kms-connectors.patch",
+             "9528d83ec19a8dc007e9a47ecc15e1ed89c51eaf0da01d12081e3e647f84e663",
+             "piano-gdm-kms-connectors.patch"),
+        ],
+        "runtime": ("gdm",),
+        "required": ("gdm",),
+        "desktops": ("gnome",),
+        "adapt": adapt_gdm,
+        "changelog": "Wait for native KMS connectors before starting the greeter",
+    },
 )
 
 
@@ -266,6 +326,9 @@ def build_one(entry, sun, output):
     for patch_rel, patch_sha, patch_name in entry["patches"]:
         if patch_rel.startswith("repo:"):
             patch = ROOT / patch_rel.removeprefix("repo:")
+        elif patch_rel.startswith("linux/"):
+            # GNOME 桌面补丁在上游树根下的 linux/desktops/，不在 patches/。
+            patch = sun / patch_rel
         else:
             patch = sun / "patches" / patch_rel
         verify(patch, patch_sha, "patch")

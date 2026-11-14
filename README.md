@@ -47,8 +47,8 @@
 
 每档一个归档，装哪一档就下哪一档。每档的登录、电源行为、旋转能力与已知
 缺口见[桌面档](docs/desktops.md)。默认镜像用 Fedora 原版桌面组件；需要自动亮度、
-键盘背光或 KDE HDR 背光恢复时，可选用默认关闭的 extras 源，见
-[COPR 软件源](docs/copr-repository.md#可选的-extras-软件源)。
+键盘背光、GNOME 触摸或登录修复、KDE HDR 背光恢复时，可选用默认关闭的 extras
+源，见 [COPR 软件源](docs/copr-repository.md#可选的-extras-软件源)。
 
 ## 安装
 
@@ -94,7 +94,7 @@ Release 由维护者用 tag 手工 dispatch，tag push 不会触发发布。一�
 - [交付物与流水线](docs/artifacts.md)：内核、RPM、initramfs 与 bundle 的组装标准
 - [本地构建与验证](docs/build.md)：工具清单、取源、离线门槛、出货顺序与换 pin 的步骤
 - [维护与验收](docs/internals.md)：流水线入口、产物绑定、各步的 run id、PR 门槛
-- [COPR 软件源](docs/copr-repository.md)：全部 10 个包的在线升级，包括内核。回滚边界与失败模式
+- [COPR 软件源](docs/copr-repository.md)：全部 18 个包的在线升级，包括内核。回滚边界与失败模式
 - [上游跟踪](docs/upstream.md)：当前 pin、漂移看板、跟进规则
 - [设备树](docs/device-tree.md)：三条 DT 血缘、出货基线的谱系、16 个 overlay 的作用
 - [已知问题](docs/known-issues.md)：未解决与观察中的问题

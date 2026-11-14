@@ -35,7 +35,7 @@ def load_module():
 
 def test_package_table(module):
     assert {entry["source"] for entry in module.PACKAGES} == {
-        "gnome-settings-daemon", "kwin", "gtk3"}
+        "gnome-settings-daemon", "kwin", "gtk3", "mutter", "gdm"}
     for entry in module.PACKAGES:
         name = entry["source"]
         assert entry["url"].endswith(".src.rpm"), name
@@ -60,6 +60,11 @@ def test_package_table(module):
     assert set(gtk3["desktops"]) == {"gnome", "kde", "niri", "hyprland"}
     kwin = next(e for e in module.PACKAGES if e["source"] == "kwin")
     assert kwin["desktops"] == ("kde",)
+    mutter = next(e for e in module.PACKAGES if e["source"] == "mutter")
+    assert mutter["desktops"] == ("gnome",) and len(mutter["patches"]) == 1
+    assert set(mutter["required"]) == {"mutter", "mutter-common"}
+    gdm = next(e for e in module.PACKAGES if e["source"] == "gdm")
+    assert gdm["desktops"] == ("gnome",) and len(gdm["patches"]) == 1
 
 
 GSD_SPEC = """Name:           gnome-settings-daemon
@@ -93,7 +98,7 @@ Requires:       %{name}%{?_isa} = %{version}-%{release}
 def test_gsd_spec_rewrite(module):
     rewritten = module.adapt_gsd(GSD_SPEC)
     assert "Name:           gnome-settings-daemon-piano" in rewritten
-    assert "Release:        2.piano1%{?dist}" in rewritten
+    assert "Release:        3.piano1%{?dist}" in rewritten
     assert "Patch0:        piano-ambient-profile.patch" in rewritten
     assert "Patch1:        piano-keyboard-backlight.patch" in rewritten
     assert "Patch2:        piano-screensaver-state.patch" in rewritten
@@ -109,8 +114,8 @@ def test_gsd_spec_rewrite(module):
     assert "Conflicts:      gnome-settings-daemon%{?_isa}" in rewritten
     assert "Provides:       gnome-settings-daemon-devel = %{version}-%{release}" in rewritten
     assert "Obsoletes:      gnome-settings-daemon-devel < %{version}-%{release}" in rewritten
-    final = module.add_changelog(rewritten, "51.1", "2.piano1", "note")
-    assert "* Wed Nov 11 2026 FFT-infra <dev@piano.invalid> - 51.1-2.piano1" in final
+    final = module.add_changelog(rewritten, "51.1", "3.piano1", "note")
+    assert "* Wed Nov 11 2026 FFT-infra <dev@piano.invalid> - 51.1-3.piano1" in final
     assert final.count("* Wed Nov 11 2026") == 1
 
 
@@ -125,13 +130,30 @@ def test_same_name_specs(module):
         "Patch0: first.patch\nPatch1: second.patch\n%prep\n%changelog\n")
     assert "Release: 7.piano1%{?dist}" in gtk3
     assert "Patch2:        piano-gtk3-xi2.patch" in gtk3
+    mutter = module.adapt_mutter(
+        "Name:    mutter\nRelease:       %autorelease\n%prep\n%changelog\n")
+    assert "Release:       1.piano1%{?dist}" in mutter
+    assert "Patch0:        piano-mutter-touch-cancel.patch" in mutter
+    gdm = module.adapt_gdm(
+        "Name:    gdm\nRelease:        %autorelease\n%prep\n%changelog\n")
+    assert "Release:        1.piano1%{?dist}" in gdm
+    assert "Patch0:        piano-gdm-kms-connectors.patch" in gdm
+    # Fedora 的 gdm 用三个无编号 Patch:，rpm 按顺序编成 0..2；我们的补丁
+    # 必须落在 Patch3，写成 Patch0 会和第一条重复定义。
+    gdm_bare = module.adapt_gdm(
+        "Name:    gdm\nRelease:        %autorelease\n"
+        "Patch: a.patch\nPatch: b.patch\nPatch: c.patch\n"
+        "%description\n%prep\n%changelog\n")
+    assert "Patch3:        piano-gdm-kms-connectors.patch" in gdm_bare
 
 
 def test_rewrites_refuse_drifted_specs(module):
     for call, spec in (
             (module.adapt_gsd, GSD_SPEC.replace("Name:           gnome-settings-daemon\n", "")),
             (module.adapt_kwin, "Release: 4%{?dist}\n%prep\n%changelog\n"),
-            (module.adapt_gtk3, "Release: 6%{?dist}\n%prep\n%changelog\n")):
+            (module.adapt_gtk3, "Release: 6%{?dist}\n%prep\n%changelog\n"),
+            (module.adapt_mutter, "Release:       1%{?dist}\n%prep\n%changelog\n"),
+            (module.adapt_gdm, "Release:        2%{?dist}\n%prep\n%changelog\n")):
         try:
             call(spec)
         except ValueError:
@@ -140,6 +162,7 @@ def test_rewrites_refuse_drifted_specs(module):
             raise AssertionError(f"drifted spec was accepted: {call.__name__}")
     for bad in ("%prep\n%prep\n", "Patch999: old.patch\n%prep\n",
                 "Patch0: first.patch\nPatch2: third.patch\n%prep\n",
+                "Patch0: first.patch\nPatch: bare.patch\n%prep\n",
                 "Name: foo\n"):
         try:
             module.add_patches(bad, ["a.patch", "b.patch"])
@@ -158,6 +181,7 @@ def test_workflow_wires_extras():
                   "build/piano-extras/rpms",
                   "build/piano-extras/srpms",
                   "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED",
+                  "mutter", "gdm",
                   "piano-gnome-extras", "piano-kde-extras"):
         assert token in text, f"extras workflow does not carry {token}"
     default = DEFAULT_WORKFLOW.read_text()
@@ -171,7 +195,10 @@ def test_workflow_wires_extras():
 def test_profiles_and_finalizer():
     profiles = json.loads(PROFILES.read_text())
     for desktop, profile in profiles.items():
-        for name in ("gnome-settings-daemon-piano", "kwin", "gtk3", "ibus"):
+        # gdm 是 GNOME 档的核心包，必须留在 profile；extras 用同名 .piano1
+        # 构建替换它。其余几个是 extras 专有名字或只由 gnome-shell 拉入。
+        for name in ("gnome-settings-daemon-piano", "kwin", "gtk3",
+                     "mutter", "ibus"):
             assert name not in (profile.get("dnf_packages") or []), (desktop, name)
             assert name not in (profile.get("required_packages") or []), (desktop, name)
 
@@ -190,6 +217,8 @@ def test_sunuefi_patch_hashes(module):
         for relative, expected, _ in entry["patches"]:
             if relative.startswith("repo:"):
                 path = ROOT / relative.removeprefix("repo:")
+            elif relative.startswith("linux/"):
+                path = SUNUEFI / relative
             else:
                 path = patches / relative
             assert path.is_file(), f"missing patch: {path}"

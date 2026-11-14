@@ -309,31 +309,13 @@ def desktop_packages(context):
 
 
 def power_files(context):
-    """构建器要写的电源策略文件。
+    """构建器要写的电源策略文件。现在一律为空。
 
-    GNOME 的 `00-power` 由 `piano-fedora-configs` 这个 RPM 拥有并安装，
-    构建器再写一份就是同一路径的第二个写者（内容分叉时 RPM 校验也发现
-    不了）；那一档只核对，不写。KDE 的 `powerdevilrc` 没有包拥有它，
-    所以由构建器落盘。
+    GNOME 的 `00-power` 与 KDE 的 `powerdevilrc` 都由 piano-fedora-configs
+    这个 RPM 拥有并安装，构建器再写一份就是同一路径的第二个写者（内容分叉时
+    RPM 校验也发现不了）。配方仍用 `power_required()` 核对安装后的树。
     """
-    policy = context["profile"]["power_policy"]
-    if policy["kind"] == "kconfig":
-        source = ROOT / policy["source"]
-        return {policy["target"]: source.read_text(encoding="utf-8")}
-    # dconf 档：文件由自有 RPM 安装。
-    # logind-only：没有桌面侧文件，电源键交给 logind 的默认动作。
     return {}
-
-
-def power_user_units(context):
-    """桌面档要挂进 graphical-session.target 的用户单元。
-
-    助手是各桌面自己的：GNOME 那份调 Mutter 与 org.gnome.ScreenSaver，KDE
-    那份调 PowerDevil 与 org.kde.LogoutPrompt，换到别的桌面起不来。包本身
-    不 enable，由装配脚本按档位建链接，纯 logind 档没有。
-    """
-    unit = context["profile"]["power_policy"].get("user_unit")
-    return [unit] if unit else []
 
 
 def power_required(context):
@@ -352,11 +334,13 @@ def dconf_profile_required(context):
 
 
 def environment_files(context):
-    """桌面档声明的 /etc/environment.d 变量。
+    """桌面档声明的 /etc/environment.d 变量，只用于核对，不再由构建器写。
 
     systemd 的用户管理器只从这里取环境变量，`kwin_wayland` 这类会话内的
     服务继承的就是它。KDE 面板的源分辨率不是生成出来的 DRM 模式，KWin
-    不带 `KWIN_DRM_FORCE_SCALING_MODE=FULL` 时会拒绝按它缩放。
+    不带 `KWIN_DRM_FORCE_SCALING_MODE=FULL` 时会拒绝按它缩放。这份文件由
+    piano-fedora-configs 安装；这里返回内容供测试与 `environment_required()`
+    核对配方与包载荷是否一致。
     """
     values = context["profile"].get("environment") or {}
     if not values:

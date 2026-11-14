@@ -44,7 +44,7 @@ Images are built per profile from the same release chain. They differ only in th
 | `niri` | niri | greetd + tuigreet | None, manual `transform` | Desktop reached |
 | `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None, manual rotate | Desktop reached |
 
-Each profile ships as one archive. Download only the profile you install. Login, power behavior, rotation and known gaps per profile are in [Desktops](docs/desktops.md). Default images use stock Fedora desktop components. If you need automatic brightness, keyboard backlight hotplug or KDE HDR backlight restore, enable the optional, default-disabled extras repository; see [COPR repository](docs/copr-repository.md#可选的-extras-软件源).
+Each profile ships as one archive. Download only the profile you install. Login, power behavior, rotation and known gaps per profile are in [Desktops](docs/desktops.md). Default images use stock Fedora desktop components. If you need automatic brightness, keyboard backlight hotplug, GNOME touch or login fixes, or KDE HDR backlight restore, enable the optional, default-disabled extras repository; see [COPR repository](docs/copr-repository.md#可选的-extras-软件源).
 
 ## Install
 
@@ -90,7 +90,7 @@ An archive holds the platform images, that profile's `root-install/`, the compon
 - [Artifacts and pipeline](docs/artifacts.md): how the kernel, RPMs, initramfs, and bundle are assembled
 - [Local build and verification](docs/build.md): tool list, source checkout, offline gates, build order, and the steps for a pin bump
 - [Maintenance and acceptance](docs/internals.md): pipeline entry points, artifact binding, run id plumbing, PR gate
-- [COPR repository](docs/copr-repository.md): online upgrades for all ten packages, kernel included, plus the rollback boundary and failure modes
+- [COPR repository](docs/copr-repository.md): online upgrades for all eighteen packages, kernel included, plus the rollback boundary and failure modes
 - [Upstream tracking](docs/upstream.md): current pin, drift dashboard, follow-up rules
 - [Device tree](docs/device-tree.md): the three DT lineages, provenance of the shipped baseline, and what each of the sixteen overlays does
 - [Known issues](docs/known-issues.md): open problems and items under observation

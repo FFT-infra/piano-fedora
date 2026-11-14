@@ -77,7 +77,7 @@
     },
     "power_policy": {
       "kind": "kconfig",
-      "source": "scripts/profiles/desktops/kde/powerdevilrc",
+      "source": "packages/piano-fedora-configs/etc/xdg/powerdevilrc",
       "target": "etc/xdg/powerdevilrc",
       "user_unit": "piano-plasma-power-button.service"
     },

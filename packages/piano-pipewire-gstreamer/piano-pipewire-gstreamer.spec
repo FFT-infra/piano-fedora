@@ -12,14 +12,15 @@
 #    1.6 分支还没有）。
 #
 # 前 6 个补丁是 1.6 分支 tip（9376731）在 src/gst/ 下的全部提交，套完后两个
-# 源文件与分支 tip 逐字节一致；第 7 个补上与 master 的差距。Fedora 跟上之后
-# 整份包删除。
+# 源文件与分支 tip 逐字节一致；第 7 个补上与 master 的差距。第 8 个来自
+# SunUEFI：MemPtr 指向的映射会在流重协商时被移除，下游持有 buffer 引用也留不住，
+# 改成拷贝后再交出。Fedora 跟上之后整份包删除。
 #
 # 这份包只替换 pipewire-gstreamer 这一个插件（它只含 libgstpipewire.so）。
 # spa v4l2 的修复（865c43d6、f528e254）在 pipewire-libs 里，不在下发范围。
 Name:           piano-pipewire-gstreamer
 Version:        1.6.11
-Release:        5%{?dist}
+Release:        6%{?dist}
 Summary:        GStreamer 1.0 plugin for PipeWire, GStreamer fixes from the 1.6 branch tip
 License:        MIT
 URL:            https://gitlab.freedesktop.org/pipewire/pipewire
@@ -31,6 +32,7 @@ Patch3:         0004-gstpipewiresrc-fix-locking-order.patch
 Patch4:         0005-gstpipewiresrc-fix-NULL-gst_buffer_unref-on-first-bu.patch
 Patch5:         0006-gst-fix-format-conversion-failure-on-32-bit-architec.patch
 Patch6:         0007-gstpipewiresrc-skip-restart-when-running-caps-still-fit.patch
+Patch7:         0008-gst-copy-memptr.patch
 
 ExclusiveArch:  aarch64
 
@@ -165,6 +167,11 @@ rm -rf %{buildroot}%{_libdir}/libspa-0.2.so*
 %{_libdir}/gstreamer-1.0/libgstpipewire.so
 
 %changelog
+* Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 1.6.11-6
+- 加第 8 个补丁：MemPtr chunk 改成拷贝后再交出。MemPtr 指向的 PipeWire
+  映射会在流重协商时被移除，下游持有 buffer 引用也留不住；fd 背书的内存
+  仍走 share，只对真正共享的 chunk 保留父 buffer
+
 * Sat Nov 14 2026 FFT-infra <dev@piano.invalid> - 1.6.11-5
 - 加 Conflicts: pipewire-gstreamer > 本版本。Obsoletes 只压得住旧版本，
   更高版本会被 dnf 当成升级把我们的插件换掉，相机静默退回崩溃；冲突

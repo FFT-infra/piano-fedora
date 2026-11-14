@@ -32,9 +32,9 @@ KERNEL_PACKAGE = "kernel-piano"
 # 替代的 Fedora 原名。
 GRAPHICS_RENAMES = {"mesa-piano-dri-drivers": "mesa-dri-drivers",
                     "ffmpeg-piano": "ffmpeg-free"}
-EXTRAS_PACKAGES = {"gnome-settings-daemon-piano", "kwin", "gtk3",
+EXTRAS_PACKAGES = {"gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
                    "piano-gnome-extras", "piano-kde-extras"}
-EXTRAS_DESKTOP = ("gnome-settings-daemon-piano", "kwin", "gtk3")
+EXTRAS_DESKTOP = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm")
 EXTRAS_META = ("piano-gnome-extras", "piano-kde-extras")
 
 
@@ -237,6 +237,9 @@ def main():
                 "piano-camera", "piano-fingerprint", "piano-libfprint",
                 "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
                 "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
+                # 设备原生运行时：由 build-device-runtime 从锁定源码编译，
+                # 在默认 COPR 里提供升级，不再冻结在镜像里。
+                "piano-runtime", "piano-crosvm", "librevm",
                 # 图形栈：这两个是本地重建的包，靠改名后声明 Provides/Conflicts
                 # 压过官方版本。仓库里没有它们，设备 dnf upgrade 就会装回官方版。
                 "mesa-piano-dri-drivers", "ffmpeg-piano",

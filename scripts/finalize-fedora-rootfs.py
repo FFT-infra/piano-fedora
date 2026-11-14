@@ -23,12 +23,6 @@ import piano_desktop
 DEFAULT_PIANO_LOGIN = "piano"
 DEFAULT_PIANO_PASSWORD = "piano123456"
 
-# 上游 piano-debug-bootstrap 在 NCM gadget 上使用的固定 dev MAC。NM profile 只按
-# 这个 MAC 匹配，避免绑定可能被内核改名的 usb0。
-PIANO_DEBUG_NCM_MAC = "02:87:50:00:00:01"
-PIANO_DEBUG_NCM_ADDRESS = "192.168.77.1/30"
-PIANO_DEBUG_NM_UUID = "5b1c9a2e-6f3d-4a71-8c2b-0d4e5f607182"
-
 # 重建 FFmpeg 只装运行时库和 CLI；-devel 与 freeworld 不进设备镜像。集合必须
 # 恰好等于这 8 个改名后的包，空集合或漏包都要拒绝，否则 NEVRA 校验会被空清单
 # 绕过。名字带 -piano 是压住官方版的手段：它们声明 Provides 原名、与原名冲突。
@@ -69,45 +63,12 @@ def password_locked(field):
 def stage_linux_debug_handoff(root):
     """成功交接后的 debug 消费者：piano-linux-debug + Fedora 原生 ttyGS0 getty。
 
-    正常 root 不提供免密 root shell：linux-debug.conf 用 shell=0，串口 getty 走
-    系统默认的账户/口令认证，不启用上游自动 root shell 的 piano-linux-serial。
-    NCM 静态地址由 NetworkManager 按 gadget 固定 dev MAC 匹配，不改接口名、不
-    DHCP、不设默认路由。
+    linux-debug.conf、NM profile 与串口 getty 的 drop-in 由
+    piano-fedora-configs 安装，这里只建两个 enable 链接：目标单元分别来自
+    本包与 Fedora 的 systemd，链接本身是启用动作，留在装配更合适。
+    正常 root 不提供免密 root shell：linux-debug.conf 用 shell=0，串口 getty
+    走系统默认的账户/口令认证，不启用上游自动 root shell 的 piano-linux-serial。
     """
-    files = {
-        # 串口 getty 实例只在 piano-linux-debug 建立 gadget 之后启动，并保留登录认证。
-        "etc/systemd/system/serial-getty@ttyGS0.service.d/20-piano-debug.conf":
-            "[Unit]\nRequires=piano-linux-debug.service\nAfter=piano-linux-debug.service\n",
-        # 上游 opt-in 配置：正常 root 不提供免密 root shell。
-        "etc/piano/linux-debug.conf":
-            "usb=acm-ncm\nshell=0\n"
-            f"ipv4={PIANO_DEBUG_NCM_ADDRESS}\nrecovery_seconds=0\n",
-        # 只按 gadget 固定 dev MAC 匹配，避免绑定可能被改名的 usb0。
-        "etc/NetworkManager/system-connections/piano-debug-ncm.nmconnection":
-            "[connection]\n"
-            "id=piano-debug-ncm\n"
-            f"uuid={PIANO_DEBUG_NM_UUID}\n"
-            "type=ethernet\n"
-            "autoconnect=true\n"
-            "\n"
-            "[ethernet]\n"
-            f"mac-address={PIANO_DEBUG_NCM_MAC}\n"
-            "\n"
-            "[ipv4]\n"
-            "method=manual\n"
-            f"address1={PIANO_DEBUG_NCM_ADDRESS}\n"
-            "never-default=true\n"
-            "\n"
-            "[ipv6]\n"
-            "method=disabled\n",
-    }
-    modes = {"etc/piano/linux-debug.conf": 0o600,
-             "etc/NetworkManager/system-connections/piano-debug-ncm.nmconnection": 0o600}
-    for name, text in files.items():
-        target = safe_destination(root, name)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
-        target.chmod(modes.get(name, 0o644))
     # 启用 debug stage 与原生 ttyGS0 getty（不启用上游自动 root shell service）。
     wants = {
         "etc/systemd/system/multi-user.target.wants/piano-linux-debug.service":
@@ -123,7 +84,7 @@ def stage_linux_debug_handoff(root):
         if link.exists() or link.is_symlink():
             raise ValueError("existing debug enable link differs: " + name)
         link.symlink_to(destination)
-    return sorted([*files, *wants])
+    return sorted(wants)
 
 
 def normalize_launcher_links(root):
@@ -179,112 +140,21 @@ def prune_missing_manpage_links(root):
 
 
 def stage_boot_diagnostics(root, context):
-    """相机与电源诊断文件。
+    """核对由 RPM 安装的诊断载荷，并交接 debug 消费者。
 
-    显示管理器直接开机启动。旧实现往 gdm/plasmalogin/greetd 上加
-    `Requires=piano-display.service`，上游删掉这个 unit 之后依赖永远不满足，
-    桌面起不来；冷启动实测去掉 drop-in 后 gdm 正常拉起，所以不再生成。
+    这些静态文件都由矩阵包拥有：相机与电源诊断配置在 piano-camera、
+    piano-fedora-configs、xiaomi-piano-thp 的 %files 里，构建器再写一份就是
+    同一路径的第二个写者。显示管理器直接开机启动，旧实现往 gdm/plasmalogin/
+    greetd 上加 `Requires=piano-display.service`，上游删掉这个 unit 之后依赖
+    永远不满足，桌面起不来，那段也不再生成。
     """
-    files = {
-        "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf":
-            "[Unit]\nWants=piano-camera.service\nAfter=piano-camera.service\n"
-            "StartLimitIntervalSec=60\nStartLimitBurst=3\n",
-        "etc/systemd/system/piano-touch.service.d/20-fast-restart.conf":
-            "[Service]\nRestartSec=1\n",
-        "etc/piano/camera.conf":
-            "PIANO_CAMERA_OUTPUT=nv12\n",
-        "etc/wireplumber/wireplumber.conf.d/50-piano-camera.conf":
-            "# Applications get the cameras from the v4l2loopback devices that\n"
-            "# piano-camerad feeds with the hardware ISP output. The CAMSS capture nodes\n"
-            "# belong to the daemon, and libcamera must not claim the sensors.\n"
-            "wireplumber.profiles = {\n"
-            "  main = {\n"
-            "    monitor.libcamera = disabled\n"
-            "  }\n"
-            "}\n"
-            "monitor.v4l2.rules = [\n"
-            "  {\n"
-            "    matches = [ { device.product.name = \"Qualcomm Camera Subsystem\" } ]\n"
-            "    actions = { update-props = { device.disabled = true } }\n"
-            "  }\n"
-            "]\n",
-        "etc/udev/rules.d/70-piano-camera.rules":
-            "# libcamera allocates frame buffers from the system DMA heap (see\n"
-            "# /usr/lib/piano/camera-start); let video group members and the active\n"
-            "# session user open it.\n"
-            'SUBSYSTEM=="dma_heap", KERNEL=="system", GROUP="video", MODE="0660", TAG+="uaccess"\n',
-        "etc/udev/rules.d/70-piano-power-button.rules":
-            "# Let the active session user open the power key and the keyboard-cover\n"
-            "# lid switch: the piano-power-button system service owns both (see\n"
-            "# /usr/lib/piano/power-button).  The power key is grabbed; the lid switch\n"
-            "# is only read, so its state stays visible to logind and GNOME.\n"
-            'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="pmic_pwrkey", TAG+="uaccess"\n'
-            'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="soc:piano-hall-ml", TAG+="uaccess"\n',
-        "etc/modules-load.d/piano-bwmon.conf":
-            "# CPU bandwidth monitors: icc-bwmon samples each CPU cluster's memory\n"
-            "# traffic and votes on the APPS->EBI1 interconnect path.\n"
-            "icc-bwmon\n",
-        "etc/modules-load.d/piano-stats.conf":
-            "# RPMh sleep statistics: /sys/kernel/debug/qcom_stats counters for the\n"
-            "# AOSS/CX/DDR low-power modes and the ADSP/CDSP subsystems.\n"
-            "qcom_stats\n",
-        "etc/systemd/sleep.conf.d/piano.conf":
-            "# SPDX-License-Identifier: BSD-2-Clause-Patent\n"
-            "[Sleep]\n"
-            "AllowSuspend=yes\n"
-            "AllowHibernation=no\n"
-            "AllowHybridSleep=no\n"
-            "AllowSuspendThenHibernate=no\n"
-            "SuspendState=mem\n"
-            "MemorySleepMode=deep\n",
-        "etc/systemd/system/qbootctl.service.d/piano.conf":
-            "# qbootctl finds the slots through the partition labels. Right after the\n"
-            "# switch to the root filesystem udev may not have recreated them yet, and\n"
-            "# qbootctl then fails with \"No slots found\": wait for both boot partitions.\n"
-            "[Unit]\n"
-            "Wants=dev-disk-by\\x2dpartlabel-boot_a.device dev-disk-by\\x2dpartlabel-boot_b.device\n"
-            "After=dev-disk-by\\x2dpartlabel-boot_a.device dev-disk-by\\x2dpartlabel-boot_b.device\n",
-    }
-    for name, text in files.items():
-        target = safe_destination(root, name)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
-    staged = list(files)
     # piano-collect-boot 由 piano-fedora-configs RPM 拥有，这里只核对在位，
     # 不再覆盖一份同路径的副本，否则 rpm 的文件归属与镜像内容会分叉。
     target = safe_destination(root, "usr/bin/piano-collect-boot")
     if not target.is_file() or not target.stat().st_mode & 0o111:
         raise ValueError("rootfs lacks the packaged collector: usr/bin/piano-collect-boot")
-    return sorted([*staged, "usr/bin/piano-collect-boot", *stage_linux_debug_handoff(root)])
+    return sorted(["usr/bin/piano-collect-boot", *stage_linux_debug_handoff(root)])
 
-
-# 真机上逐条验过的平台修复。每一条都对应一个已经发生的故障，不是预防性配置。
-PIANO_CLOCK_RESTORE = """#!/bin/sh
-# Boot-time clock floor. This device's PMIC RTC reads 1970 and refuses set_time
-# (rtc-pm8xxx gates writes behind the allow-set-time DT property), so the clock
-# starts in the past and rpm/dnf signature checks fail before NTP can help.
-set -eu
-STAMP=/var/lib/piano-clock/last
-[ -r "$STAMP" ] || exit 0
-saved=$(cat "$STAMP" 2>/dev/null || echo 0)
-case "$saved" in ''|*[!0-9]*) exit 0 ;; esac
-now=$(date -u +%s)
-if [ "$saved" -gt 1735689600 ] && [ "$saved" -gt "$now" ]; then
-  date -u -s "@$saved"
-  logger -t piano-clock "restored clock floor to $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-fi
-"""
-
-PIANO_CLOCK_SAVE = """#!/bin/sh
-# Persist the current time for piano-clock-restore. Never persist a bogus past
-# time: a device that boots in 1970 must not overwrite a good stamp.
-set -eu
-now=$(date -u +%s)
-[ "$now" -gt 1735689600 ] || exit 0
-mkdir -p /var/lib/piano-clock
-printf '%s\\n' "$now" > /var/lib/piano-clock/.last.tmp
-mv /var/lib/piano-clock/.last.tmp /var/lib/piano-clock/last
-"""
 
 # The offline clock floor can revisit a date already used by bootlog's dateext.
 # Include the time so recovery does not overwrite an earlier boot's archive.
@@ -300,94 +170,9 @@ PIANO_BOOT_LOG_ROTATION = """/var/log/boot.log
 }
 """
 
-PIANO_CLOCK_RESTORE_UNIT = """[Unit]
-Description=Piano clock floor from the last saved time
-DefaultDependencies=no
-After=systemd-remount-fs.service
-Before=sysinit.target
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/libexec/piano-clock-restore
-[Install]
-WantedBy=sysinit.target
-"""
-
-PIANO_CLOCK_SAVE_UNIT = """[Unit]
-Description=Save the current time for the next boot
-DefaultDependencies=no
-Before=shutdown.target
-After=local-fs.target
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/libexec/piano-clock-save
-ExecStop=/usr/libexec/piano-clock-save
-[Install]
-WantedBy=multi-user.target
-"""
-
-PIANO_CLOCK_SAVE_TIMER = """[Unit]
-Description=Periodic clock save
-[Timer]
-OnCalendar=hourly
-Persistent=false
-[Install]
-WantedBy=timers.target
-"""
-
-# 显示子系统比 graphical.target 晚几百毫秒才注册出 msm 的 DRM 节点，
-# 显示管理器抢在前面时 gnome-shell 只会看到 simpledrm 或半初始化的节点，
-# 随后以「No GPUs found」退出或撞上 mutter 的 KMS 断言。等 msm 的 card
-# 出现再交出启动权，四个桌面档都用同一个 display-manager 别名排序。
-PIANO_WAIT_DISPLAY = """#!/bin/sh
-# 等到显示控制器自己的 DRM 设备注册完。GPU 那张卡叫 adreno，显示器这张
-# 的驱动目录叫 msm_dpu；只看卡存在会命中没完成 KMS 初始化的中间态。
-# 最多等 20 秒，超时也放行，免得一次探测失败把图形界面永远挡住。
-i=0
-while [ "$i" -lt 200 ]; do
-    for card in /sys/class/drm/card[0-9]*; do
-        [ -e "$card/device/driver" ] || continue
-        case $(basename "$(readlink -f "$card/device/driver")") in
-            msm_dpu|msm) exit 0 ;;
-        esac
-    done
-    i=$((i + 1))
-    sleep 0.1
-done
-echo "piano-wait-display: no msm_dpu DRM device after 20s" >&2
-exit 0
-"""
-
-PIANO_WAIT_DISPLAY_UNIT = """[Unit]
-Description=Wait for the msm DRM device before the display manager
-DefaultDependencies=no
-After=systemd-udevd.service
-Before=display-manager.service
-[Service]
-Type=oneshot
-ExecStart=/usr/libexec/piano-wait-display
-[Install]
-WantedBy=graphical.target
-"""
-
-# 自建服务跑在 init_t，没有域宏可用（镜像里没有 selinux-policy-devel），
-# 所以策略模块是手写的定向 allow；每条规则对应真机上一条 AVC。
-PIANO_SELINUX_UNIT = """[Unit]
-Description=Install the piano SELinux policy module
-DefaultDependencies=no
-After=systemd-remount-fs.service
-Before=sysinit.target
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/bin/sh -c 'semodule -l | grep -q "^piano_hardware" || semodule -i /usr/share/piano/selinux/piano_hardware.pp'
-[Install]
-WantedBy=sysinit.target
-"""
-
 # 所有桌面共用：电源键抓取、logind 默认动作。桌面专属的电源文件由
-# piano_desktop.power_required() 提供（GNOME dconf / KDE powerdevilrc / 无）。
+# piano_desktop.power_required() 核对（GNOME dconf / KDE powerdevilrc / 无），
+# 两份都由 piano-fedora-configs 安装，构建器不写。
 POWER_OVERLAY_FILES = (
     "usr/lib/piano/power-button",
     "usr/lib/systemd/user/piano-power-button.service",
@@ -443,53 +228,25 @@ def seed_clock_floor(root):
 
 
 def stage_piano_hardware_fixes(root, context):
-    """真机验证过的平台修复：时钟兜底、SELinux 策略与桌面电源策略。"""
+    """装配期才能定值的平台修复：时钟戳、SELinux 模块与日志轮转覆写。
+
+    静态载荷（时钟脚本与单元、wait-display 脚本与单元、SELinux 安装单元、
+    restore-first drop-in、KDE 的 powerdevilrc 与环境变量文件）都由
+    piano-fedora-configs 安装，构建器不再写第二份。这里只留下三样装配动作：
+    /var/lib/piano-clock/last 的构建时间戳、编译后的策略模块、以及对
+    plymouth 拥有的 /etc/logrotate.d/bootlog 的有意覆写（daily 同日轮转会撞上
+    离线时钟恢复，改用带时分秒的 dateformat）。
+    """
     remove_legacy_power_overrides(root)
-    scripts = {
-        "usr/libexec/piano-clock-restore": PIANO_CLOCK_RESTORE,
-        "usr/libexec/piano-clock-save": PIANO_CLOCK_SAVE,
-        "usr/libexec/piano-wait-display": PIANO_WAIT_DISPLAY,
-    }
-    files = {
-        **scripts,
-        "etc/logrotate.d/bootlog": PIANO_BOOT_LOG_ROTATION,
-        "usr/lib/systemd/system/piano-clock-restore.service": PIANO_CLOCK_RESTORE_UNIT,
-        "usr/lib/systemd/system/piano-clock-save.service": PIANO_CLOCK_SAVE_UNIT,
-        "usr/lib/systemd/system/piano-clock-save.timer": PIANO_CLOCK_SAVE_TIMER,
-        "usr/lib/systemd/system/piano-wait-display.service": PIANO_WAIT_DISPLAY_UNIT,
-        "usr/lib/systemd/system/piano-selinux-policy.service": PIANO_SELINUX_UNIT,
-        # sysinit 阶段那次在真机上没有留下痕迹（单元显示成功但时钟仍是 1970），
-        # 所以在 multi-user 阶段再校正一次：两条路都走，任一条生效即可。
-        "etc/systemd/system/piano-clock-save.service.d/restore-first.conf":
-            "[Service]\nExecStartPre=/usr/libexec/piano-clock-restore\n",
-        # 电源策略来自桌面档：KDE 的 powerdevilrc 由构建器落盘；GNOME 的
-        # dconf 文件由 piano-fedora-configs 这个 RPM 安装，这里不写第二份。
-        # 纯 logind 档位没有文件。原来这里写死一份 org.gnome.* 契约。
-        **piano_desktop.power_files(context),
-        **piano_desktop.environment_files(context),
-    }
+    files = {"etc/logrotate.d/bootlog": PIANO_BOOT_LOG_ROTATION}
     for name, text in files.items():
         target = safe_destination(root, name)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text)
-        if name in scripts:
-            target.chmod(0o755)
-    # 电源键助手是各桌面专属的 user 单元，包本身不 enable：由这里按档位建
-    # 链接，其余档不留链接，免得它在没有对应会话总线的环境里反复重启。
-    units = []
-    for unit in piano_desktop.power_user_units(context):
-        name = f"etc/systemd/user/graphical-session.target.wants/{unit}"
-        stale = Path(root).resolve() / name
-        if stale.is_symlink():
-            stale.unlink()
-        link = safe_destination(root, name)
-        link.parent.mkdir(parents=True, exist_ok=True)
-        link.symlink_to("/usr/lib/systemd/user/" + unit)
-        units.append(name)
     module = safe_destination(root, "usr/share/piano/selinux/piano_hardware.pp")
     module.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "rootfs/selinux/piano_hardware.pp", module)
-    return sorted([*files, *units, "usr/share/piano/selinux/piano_hardware.pp",
+    return sorted([*files, "usr/share/piano/selinux/piano_hardware.pp",
                    seed_clock_floor(root)])
 
 
@@ -508,17 +265,13 @@ def verify_power_overlay(root, context):
             raise ValueError("installed desktop power policy is missing: " + name)
 
     kind = context["profile"]["power_policy"]["kind"]
-    # 助手只在挂链接的那一档跑；其他档没有它，电源键归桌面自己管。
-    wanted = {f"etc/systemd/user/graphical-session.target.wants/{unit}"
-              for unit in piano_desktop.power_user_units(context)}
+    # 两条 vendor wants 链接都由包提供，单元各自的 ConditionEnvironment 决定
+    # 当前会话跑哪一个。装配脚本不再按桌面档删另一条链接。
     for unit in POWER_HELPER_UNITS:
         name = f"etc/systemd/user/graphical-session.target.wants/{unit}"
         # 直接看链接本身：guest_resolve 会跟着链接走，看不出它是否存在。
-        present = (Path(root).resolve() / name).is_symlink()
-        if present != (name in wanted):
-            raise ValueError(
-                ("installed power helper is not enabled for this desktop: " if not present
-                 else "installed power helper leaks into another desktop: ") + name)
+        if not (Path(root).resolve() / name).is_symlink():
+            raise ValueError("installed power helper is not enabled: " + name)
     if kind == "dconf":
         profile = guest_resolve(root, "/etc/dconf/profile/user")
         if not profile.is_file() or "system-db:local" not in {

@@ -3,7 +3,7 @@
 
 Name:           xiaomi-piano-thp
 Version:        0.2.0
-Release:        4%{?dist}
+Release:        5%{?dist}
 Summary:        Touch Host Processor (THP) and Xiaomi Focus Pen driver for Xiaomi Pad 8 Pro (piano)
 License:        Apache-2.0 AND MIT
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -36,7 +36,7 @@ make -C src all CXXFLAGS="%{optflags} -std=c++20"
 
 %install
 mkdir -p %{buildroot}%{_bindir}
-cp -a usr %{buildroot}/
+cp -a usr etc %{buildroot}/
 if [ -f src/build/piano-thp-live ]; then
     install -m 0755 src/build/piano-thp-live %{buildroot}%{_bindir}/piano-thp-live
 fi
@@ -49,6 +49,7 @@ fi
 # and rpm aborted the transaction on the three that had already drifted apart.
 %{_bindir}/piano-thp-live
 %{_unitdir}/piano-touch.service
+%config(noreplace) %{_sysconfdir}/systemd/system/piano-touch.service.d/20-fast-restart.conf
 %dir %{_datadir}/piano/touch
 %{_datadir}/piano/touch/piano-csot.json
 %{_datadir}/piano/touch/piano-boe.json
@@ -70,6 +71,10 @@ fi
 %systemd_postun_with_restart piano-touch.service
 
 %changelog
+* Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 0.2.0-5
+- piano-touch 的快速重启 drop-in 由构建器直接写 rootfs 改为本包载荷，
+  dnf upgrade 能送到已装设备，装配脚本不再覆盖 RPM 拥有的路径
+
 * Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 0.2.0-4
 - p81c-radio.json 补上 `slide`：与上游 BSP 副本逐字节一致。piano-runtime
   的 pen-bluetooth 要求这个键，缺了它每次开机都抛 KeyError 退出

@@ -2,6 +2,9 @@
 Description=Piano Plasma power key gestures
 PartOf=graphical-session.target
 After=graphical-session.target
+# 与 GNOME 助手共用一份 vendor wants 链接集合，靠条件互斥。KDE 的用户管理器
+# 导入 XDG_CURRENT_DESKTOP=KDE（2026-11-15 在设备上实测）。
+ConditionEnvironment=XDG_CURRENT_DESKTOP=KDE
 
 [Service]
 # /usr/lib/piano 下的脚本是 lib_t，直接执行时进程读不到 /dev/input/event*

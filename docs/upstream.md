@@ -61,7 +61,7 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 `2cc5cd62` 之前的两条提交改 GNOME 桌面电源策略。自动亮度不再按 lux 比例直降，改用原厂 108 点 lux→nits 曲线与 KTZ8866 指数电流映射算相对变化，灭屏时停止调光并保留用户亮度基准；电源管理器启动时读锁屏状态配置显示电源，避免重启后黑画面仍点亮背光。改动落在 `patches/gnome-settings-daemon/48.1`、`51.0` 与 `linux/desktops/gnome/ambient-policy/`，`config/release.json`、7.3 封存序列与 BSP manifest 三个 blob 逐字节未变。`scripts/build-fedora-desktop-patches.py` 固化的 ambient 补丁摘要跟着更新，本地 `51.1` 键盘背光叠加补丁在新基线上按 `--fuzz=0` 17 个 hunk 全过。
 
-上游的锁屏状态同步补丁是 `48.1` 与 `51.0` 两版，调 `gsd_screen_saver_call_get_active_sync()`；Fedora 51.1 没有这个生成包装，改用 `g_dbus_proxy_call_sync` 读 `GetActive`。本地补了 51.1 适配版 `0002`，按 51.1 + ambient + 键盘背光叠加之后的基线改写，三补丁按 `--fuzz=0` 全部通过，spec 里按 `Patch0/1/2` 顺序应用。GSD、KWin、GTK3 的 `Release` 从 `1.piano1`、`3.piano1`、`6.piano1` 抬到 `2.piano1`、`4.piano1`、`7.piano1`，让设备上 `dnf upgrade` 能收到新包。
+上游的锁屏状态同步补丁是 `48.1` 与 `51.0` 两版，调 `gsd_screen_saver_call_get_active_sync()`；Fedora 51.1 没有这个生成包装，改用 `g_dbus_proxy_call_sync` 读 `GetActive`。本地补了 51.1 适配版 `0002`，按 51.1 + ambient + 键盘背光叠加之后的基线改写，三补丁按 `--fuzz=0` 全部通过，spec 里按 `Patch0/1/2` 顺序应用。GSD、KWin、GTK3 的 `Release` 从 `1.piano1`、`3.piano1`、`6.piano1` 抬到 `2.piano1`、`4.piano1`、`7.piano1`，让设备上 `dnf upgrade` 能收到新包。v45.4 又把 GSD 抬到 `3.piano1`，并新增 `mutter-51.1-1.piano1` 与 `gdm-51.1.1-1.piano1` 两条 extras 包。
 
 首次启动 GPU 未绑定的修复随 `0001` 进 `config/release.json` 的 `command_line`：加正的 `deferred_probe_timeout`，给 `gpucc` 留出延迟探测窗口。`tests/check_boot_cmdline.py` 离线锁这条合同，编译前后按正整数断言，数值只写在补丁里。判据与证据分层见 `docs/known-issues.md`。
 

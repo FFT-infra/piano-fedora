@@ -55,6 +55,13 @@ BUILD_ORDER = (
     "kernel-piano",
 )
 
+# 设备原生运行时：由 build-device-runtime 从锁定源码编译，与钢琴矩阵共用
+# 同一次 kernel run，但在单独的 artifact 里打包，所以从 --runtime 提交。
+# librevm 的 Requires 里有 piano-crosvm，crosvm 必须先构建。
+RUNTIME_PACKAGES = ("piano-runtime", "piano-crosvm", "librevm")
+RUNTIME_ORDER = ("piano-crosvm", "librevm", "piano-runtime")
+RUNTIME_STATUS = "FEDORA_RUNTIME_BUILT_NOT_DEVICE_VERIFIED"
+
 RELEASEVER = json.loads(
     (PROJECT_ROOT / "product.json").read_text(encoding="utf-8"))["target"]["releasever"]
 CHROOT = f"fedora-{RELEASEVER}-aarch64"
@@ -79,12 +86,12 @@ GRAPHICS = {
 GRAPHICS_ORDER = ("mesa", "ffmpeg")
 
 # 可选 extras 仓库：默认不启用，只放桌面补丁和两个 meta 包。GSD 改名，
-# KWin/GTK3 保持同名、release 带 .piano1。GTK3 先编，两个 meta 最后。
-EXTRAS_ORDER = ("gtk3", "kwin", "gnome-settings-daemon-piano",
+# KWin/GTK3/mutter/gdm 保持同名、release 带 .piano1。GTK3 先编，两个 meta 最后。
+EXTRAS_ORDER = ("gtk3", "kwin", "mutter", "gdm", "gnome-settings-daemon-piano",
                 "piano-gnome-extras", "piano-kde-extras")
 EXTRAS_STATUS = "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
 EXTRAS_PROJECT = "xinyang26/piano-fedora-extras"
-DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3")
+DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm")
 
 
 class PublishError(Exception):
@@ -190,6 +197,54 @@ def verify_artifacts(rpms_dir, manifest, run):
     return names, str(kernel_run)
 
 
+def verify_runtime(directory, kernel_release):
+    """核对 runtime artifact：状态、内核绑定、三份 SRPM 与摘要。
+
+    runtime 与 piano-rpms 是同一次 kernel run 的产物。manifest 里的
+    kernel_release 必须和矩阵 manifest 一致，防止把两次 run 的包拼在一起。
+    """
+    directory = Path(directory)
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.is_file():
+        raise PublishError(f"missing {manifest_path}")
+    manifest = json.loads(manifest_path.read_text())
+    problems = []
+    if manifest.get("status") != RUNTIME_STATUS:
+        problems.append(f"runtime: unexpected manifest status {manifest.get('status')!r}")
+    if manifest.get("device_tested") is not False:
+        problems.append("runtime: device_tested must stay false until verification")
+    if manifest.get("kernel_release") != kernel_release:
+        problems.append(f"runtime: kernel release {manifest.get('kernel_release')!r} "
+                        f"!= matrix {kernel_release!r}")
+    recorded = manifest.get("srpms")
+    if not isinstance(recorded, dict) or not recorded:
+        problems.append("runtime: manifest has no srpms")
+        recorded = {}
+    present = {p.name: p for p in (directory / "srpms").glob("*.src.rpm")}
+    for name, row in sorted(recorded.items()):
+        path = present.get(name)
+        if path is None:
+            problems.append(f"runtime: missing SRPM {name}")
+        elif path.stat().st_size != row.get("bytes"):
+            problems.append(f"runtime: SRPM {name} size changed")
+        elif sha256(path) != row.get("sha256"):
+            problems.append(f"runtime: SRPM {name} sha256 changed")
+    for name in sorted(set(present) - set(recorded)):
+        problems.append(f"runtime: unrecorded SRPM {name}")
+    for package in RUNTIME_PACKAGES:
+        matching = [name for name in recorded if name.startswith(package + "-")]
+        if len(matching) != 1:
+            problems.append(f"runtime: expected one SRPM for {package}, got {matching}")
+    if problems:
+        raise PublishError("; ".join(problems))
+    return {
+        "status": manifest["status"],
+        "kernel_release": manifest["kernel_release"],
+        "srpms": sorted(recorded),
+        "manifest_sha256": sha256(manifest_path),
+    }
+
+
 def verify_graphics(directory, name):
     """核对一个图形栈 artifact：状态、源包名、SRPM 与每个 RPM 的摘要。
 
@@ -246,8 +301,8 @@ def verify_graphics(directory, name):
 def verify_extras(directory):
     """核对独立 extras artifact：状态、包集合、文件摘要与 SRPM 唯一性。
 
-    GSD 改名，KWin/GTK3 与 Fedora 同名但 release 必须带 piano1；两个 meta
-    包是 noarch，不要求 piano1。这里不依赖 piano-rpms 的 manifest，extras
+    GSD 改名，KWin/GTK3/mutter/gdm 与 Fedora 同名但 release 必须带 piano1；
+    两个 meta 包是 noarch，不要求 piano1。这里不依赖 piano-rpms 的 manifest，extras
     可以单独构建、单独发布。
     """
     directory = Path(directory)
@@ -536,6 +591,8 @@ def main():
                         help="解包后的 piano-fedora-mesa artifact 目录")
     parser.add_argument("--ffmpeg", default="build/in/ffmpeg",
                         help="解包后的 piano-fedora-ffmpeg artifact 目录")
+    parser.add_argument("--runtime", default="build/in/runtime",
+                        help="解包后的 piano-fedora-runtime artifact 目录")
     parser.add_argument("--project", default="",
                         help="默认模式用 xinyang26/piano-fedora，extras 模式用 "
                              "xinyang26/piano-fedora-extras")
@@ -562,6 +619,7 @@ def main():
     manifest = load_manifest(args.rpms)
     packages, kernel_run = verify_artifacts(args.rpms, manifest, run)
     graphics = {name: verify_graphics(getattr(args, name), name) for name in GRAPHICS}
+    runtime = verify_runtime(args.runtime, manifest["kernel_release"])
     # 同一套 RPM 只能来自一次内核 run。manifest 的内核 run 必须和调用者
     # 声明的一致，否则说明 artifact 被换过或跨 run 混装。
     if args.kernel_run_id and str(args.kernel_run_id) != kernel_run:
@@ -578,6 +636,8 @@ def main():
         "sunuefi_commit": manifest["sunuefi_commit"],
         "packages": sorted(packages),
         "graphics": graphics,
+        "runtime": runtime,
+        "runtime_packages": list(RUNTIME_PACKAGES),
         "kernel_packages": list(KERNEL_PACKAGES),
         "manifest_sha256": sha256(Path(args.rpms) / "piano-rpms-manifest.json"),
     }
@@ -606,6 +666,12 @@ def main():
                 raise PublishError(f"{package} was not built by this run")
             output, build_id = submit(binary, config, project,
                                       Path(args.rpms) / "srpms", package)
+            outputs[package] = output
+            ids.append(build_id)
+        # runtime 来自单独 artifact，但绑定同一次 kernel run；crosvm 先于 librevm。
+        for package in RUNTIME_ORDER:
+            output, build_id = submit(binary, config, project,
+                                      Path(args.runtime) / "srpms", package)
             outputs[package] = output
             ids.append(build_id)
         states = wait_for_builds(binary, config, project, ids, timeout=args.timeout)

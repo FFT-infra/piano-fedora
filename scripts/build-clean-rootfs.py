@@ -699,15 +699,9 @@ def execute(plan_data):
                     f"cannot enable the {context['desktop']} display manager: {service}")
             pass
 
-    # 电源策略：KDE 的 powerdevilrc 由这里落盘；GNOME 的 dconf 文件由
-    # piano-fedora-configs 这个 RPM 安装，构建器不写第二个写者；
+    # 电源策略：GNOME 的 dconf 文件、KDE 的 powerdevilrc 与 60-piano-display.conf
+    # 都由 piano-fedora-configs 这个 RPM 安装，构建器不写第二个写者；
     # /etc/dconf/profile/user 同样由 dconf 包自带（已含 system-db:local）。
-    power = {**piano_desktop.power_files(context),
-             **piano_desktop.environment_files(context)}
-    for relative, text in power.items():
-        target = root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8")
     if piano_desktop.dconf_profile_required(context):
         profile_path = root / "etc" / "dconf" / "profile" / "user"
         if not profile_path.is_file() or "system-db:local" not in {

@@ -27,6 +27,8 @@ PACKAGES = ("piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware"
             "piano-camera", "piano-fingerprint", "piano-libfprint",
             "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
             "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano")
+RUNTIME = ("piano-runtime", "piano-crosvm", "librevm")
+KERNEL_RELEASE = "7.3.0-piano-gnome-g8c0e589d8829"
 
 
 def load_module():
@@ -382,6 +384,70 @@ def test_graphics_are_in_the_publish_order(module):
         assert name not in module.REQUIRED, f"{name} 不该出现在 piano-rpms 的必需清单里"
 
 
+def make_runtime(directory, *, status="FEDORA_RUNTIME_BUILT_NOT_DEVICE_VERIFIED",
+                 device_tested=False, kernel_release=KERNEL_RELEASE,
+                 drop_srpm=None, corrupt=None, extra_srpm=None):
+    """造一个 runtime artifact：manifest + srpms/。
+
+    runtime 与矩阵来自同一次 kernel run，但走独立 artifact，所以
+    kernel_release 必须和矩阵 manifest 对得上，防止两次 run 混装。
+    """
+    import hashlib
+
+    directory = Path(directory)
+    (directory / "srpms").mkdir(parents=True, exist_ok=True)
+    rows = {}
+    for name in RUNTIME:
+        payload = f"{name} source".encode()
+        srpm = f"{name}-0.2.0-5.fc45.src.rpm"
+        rows[srpm] = {"bytes": len(payload),
+                      "sha256": hashlib.sha256(payload).hexdigest()}
+        if name != drop_srpm:
+            (directory / "srpms" / srpm).write_bytes(payload)
+    if extra_srpm:
+        payload = b"extra source"
+        rows[extra_srpm] = {"bytes": len(payload),
+                            "sha256": hashlib.sha256(payload).hexdigest()}
+        (directory / "srpms" / extra_srpm).write_bytes(payload)
+    manifest = {
+        "status": status,
+        "device_tested": device_tested,
+        "kernel_release": kernel_release,
+        "srpms": rows,
+    }
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    if corrupt:
+        (directory / corrupt).write_bytes(b"tampered")
+    return directory
+
+
+def test_runtime_contract(module, tmp):
+    good = make_runtime(tmp / "runtime-good")
+    info = module.verify_runtime(good, KERNEL_RELEASE)
+    assert info["kernel_release"] == KERNEL_RELEASE, info
+    assert set(info["srpms"]) == {f"{name}-0.2.0-5.fc45.src.rpm" for name in RUNTIME}, info
+
+    def rejected(label, **changes):
+        candidate = make_runtime(tmp / ("runtime-bad-" + label), **changes)
+        expect_error(module, lambda: module.verify_runtime(candidate, KERNEL_RELEASE), "")
+
+    rejected("status", status="PIANO_RPMS_BUILT")
+    rejected("device", device_tested=True)
+    rejected("kernel", kernel_release="7.2.0-other")
+    rejected("missing", drop_srpm="librevm")
+    rejected("corrupt", corrupt="srpms/librevm-0.2.0-5.fc45.src.rpm")
+    rejected("extra", extra_srpm="piano-runtime-extra-0.2.0-5.fc45.src.rpm")
+
+
+def test_runtime_order(module):
+    """crosvm 必须先于 librevm；三个包都来自 --runtime，不在矩阵里。"""
+    assert module.RUNTIME_ORDER == ("piano-crosvm", "librevm", "piano-runtime")
+    assert set(module.RUNTIME_ORDER) == set(module.RUNTIME_PACKAGES)
+    assert module.RUNTIME_STATUS == "FEDORA_RUNTIME_BUILT_NOT_DEVICE_VERIFIED"
+    for name in module.RUNTIME_PACKAGES:
+        assert name not in module.REQUIRED, f"{name} 来自 runtime artifact，不该在矩阵清单里"
+
+
 def make_extras(directory, *, status="PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED",
                 release="4.piano1", source="gnome-settings-daemon",
                 device_tested=False, drop_file=None):
@@ -389,11 +455,13 @@ def make_extras(directory, *, status="PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED",
     (directory / "rpms").mkdir(parents=True)
     (directory / "srpms").mkdir()
     rows = {
-        "gnome-settings-daemon-piano": ("gnome-settings-daemon", "51.1", "2.piano1",
+        "gnome-settings-daemon-piano": ("gnome-settings-daemon", "51.1", "3.piano1",
                                         ["gnome"]),
         "kwin": ("kwin", "6.8.2", release, ["kde"]),
         "gtk3": ("gtk3", "3.24.52", "7.piano1", ["gnome", "kde"]),
-        "piano-gnome-extras": ("piano-gnome-extras", "0.1.0", "1.fc45", ["gnome"]),
+        "mutter": ("mutter", "51.1", "1.piano1", ["gnome"]),
+        "gdm": ("gdm", "51.1.1", "1.piano1", ["gnome"]),
+        "piano-gnome-extras": ("piano-gnome-extras", "0.1.0", "2.fc45", ["gnome"]),
         "piano-kde-extras": ("piano-kde-extras", "0.1.0", "1.fc45", ["kde"]),
     }
     files, srpms, packages = {}, {}, {}
@@ -449,9 +517,10 @@ def test_extras_contract(module, tmp):
 
 
 def test_extras_order(module):
-    assert module.EXTRAS_ORDER == ("gtk3", "kwin", "gnome-settings-daemon-piano",
+    assert module.EXTRAS_ORDER == ("gtk3", "kwin", "mutter", "gdm",
+                                   "gnome-settings-daemon-piano",
                                    "piano-gnome-extras", "piano-kde-extras")
-    for name in ("gtk3", "kwin", "gnome-settings-daemon-piano"):
+    for name in ("gtk3", "kwin", "mutter", "gdm", "gnome-settings-daemon-piano"):
         assert name not in module.REQUIRED
     assert module.EXTRAS_PROJECT == "xinyang26/piano-fedora-extras"
 
@@ -510,6 +579,10 @@ def test_workflow_contract():
     # The dry-run path must not receive credentials, and the real path must
     # fail when they are absent.
     assert "COPR_LOGIN is not configured" in text
+    # runtime 是独立 artifact，input、解析、下载与 --runtime 四步缺一不可。
+    for token in ("runtime_run_id", "piano-fedora-runtime",
+                  "--runtime build/in/runtime"):
+        assert token in text, f"publish-copr.yml is missing {token}"
     assert "COPR_TOKEN is not configured" in text
     # No device writes anywhere.
     for forbidden in ("fastboot flash", "fastboot erase", "adb push", "adb shell"):
@@ -615,6 +688,7 @@ def main():
         test_copr_config_is_private_and_removed(module, tmp, _MonkeyPatch())
         test_project_create_is_idempotent(module, tmp)
         test_submit_parses_every_created_build(module, tmp)
+        test_runtime_contract(module, tmp)
         test_extras_contract(module, tmp)
     test_project_listing_formats(module)
     test_run_id_validation(module, _MonkeyPatch())
@@ -622,6 +696,7 @@ def main():
     test_missing_credentials(module, _MonkeyPatch())
     test_build_failure_is_not_success(module)
     test_graphics_are_in_the_publish_order(module)
+    test_runtime_order(module)
     test_extras_order(module)
     test_build_scripts_ship_srpms()
     test_repo_file_contract()

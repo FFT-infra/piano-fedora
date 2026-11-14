@@ -2,8 +2,8 @@
 """Build the optional extras repository.
 
 The default image and default COPR stay on Fedora's stock desktop packages.
-This script builds the opt-in set instead: GSD, KWin and GTK3 from pinned
-Fedora SRPMs plus the two noarch meta packages. The result is consumed by
+This script builds the opt-in set instead: GSD, KWin, GTK3, mutter and gdm
+from pinned Fedora SRPMs plus the two noarch meta packages. The result is consumed by
 `publish-copr.py --mode extras` and by the release extras archive.
 
 Run as root on the native aarch64 Fedora builder:
@@ -23,9 +23,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STATUS = "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
-DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3")
+DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm")
 META_PACKAGES = ("piano-gnome-extras", "piano-kde-extras")
-PACKAGES = ("gtk3", "kwin", "gnome-settings-daemon-piano") + META_PACKAGES
+PACKAGES = ("gtk3", "kwin", "mutter", "gdm",
+            "gnome-settings-daemon-piano") + META_PACKAGES
 
 
 def sha256(path):

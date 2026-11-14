@@ -141,7 +141,7 @@ jobs:
           set -euo pipefail
           cp build/kernel-runtime/manifest.json build/device-runtime/kernel-abi.json
           tar -I 'zstd -6 -T0' -cf piano-fedora-runtime.tar.zst \
-            -C build/device-runtime manifest.json kernel-abi.json rpms
+            -C build/device-runtime manifest.json kernel-abi.json rpms srpms
           cat build/device-runtime/manifest.json
 
       - uses: actions/upload-artifact@v4

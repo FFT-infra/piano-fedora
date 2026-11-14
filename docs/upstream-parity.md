@@ -108,9 +108,13 @@ Not Authorized: net.reactivated.fprint.device.verify
 
 Fedora 45 是 `mutter-51.1-1.fc45`。上游三个补丁里只有 `0003-wayland-touch-ignore-cancelled-grab` 对得上：它的提交说明写着 "Two Piano crash dumps from Mutter 51.0 show a NULL first member of MetaWaylandTouchInfo ... The same unchecked dereference is present in upstream 51.1"，改的是 `touch_can_grab_surface()` 里 `focus_surface` 为空时的解引用。
 
-拿 mutter 51.1 官方源码核对过：`src/wayland/meta-wayland-touch.c:662` 就是 `touch_info->focus_surface->surface`，补丁 `patch --fuzz=0 --dry-run` 干净套用。这一版不重编 mutter：设备上没复现过这个崩溃，而发布一份替换系统 compositor 的包，需要先把崩溃场景跑出来，不然只是把一个未验证的二进制塞进镜像。
+拿 mutter 51.1 官方源码核对过：`src/wayland/meta-wayland-touch.c:662` 就是 `touch_info->focus_surface->surface`，补丁 `patch --fuzz=0 --dry-run` 干净套用。默认镜像仍用 Fedora 原版 mutter；这条补丁作为 opt-in extras 发布，默认关闭、手工 `priority=1` 才生效。设备上没复现过这个崩溃，所以不把它塞进默认镜像，也不默认启用。
 
 `0001-kms-empty-gamma-bypass` 针对的是 48.7 的 `SetCrtcGamma` 空数组路径。我们的 CRTC 上 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM` 都在，这条路径会不会踩到还没验。
+
+## gdm
+
+Fedora 45 是 `gdm-51.1.1-1.fc45`。上游 `0001-local-display-wait-for-kms-connectors` 在 Fedora 自带补丁之后 `--fuzz=0` 通过，改的是 `gdm-local-display-factory.c` 的 `udev_is_settled()`：跳过 firmware framebuffer，按 `card*-*` connector 判断显卡是否可用，等不到 connector 时 `SEAT0_GRAPHICS_CHECK_TIMEOUT` 10 秒后照常继续。默认镜像仍用 Fedora 原版 gdm；这条作为 extras 的可选包发布，只对 GNOME 档有意义。`0002-Xsession-no-ssh-agent` 改的是 ssh-agent 的启动方式，不是设备修复，不取。
 
 ## 桌面默认值
 

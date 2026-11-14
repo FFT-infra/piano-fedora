@@ -26,7 +26,7 @@
 
 Name:           kernel-piano
 Version:        7.3.3
-Release:        2.%{DEVICE_NAME}%{?dist}
+Release:        3.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
 URL:            https://github.com/blu-sharky/linux-piano
@@ -160,6 +160,11 @@ depmod -a "$RELEASE" || exit 1
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
+* Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 7.3.3-3.piano
+- 重发同一内核载荷，给设备上的 dnf upgrade 一个可见的新 NVRA。`%posttrans`
+  会重建 initramfs 并重打 ESP 上的 UKI；这条自动路径要在真机上验完才记账，
+  在验证前不写成已通过
+
 * Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 7.3.3-2.piano
 - 内核发布串从 -piano-sunuefi-cachy 变成 -piano-sunuefi-cachy-optimize，模块树
   目录随之改名。同一 NVRA 的下一个 Release 是设备侧 dnf 唯一能看见这次替换的

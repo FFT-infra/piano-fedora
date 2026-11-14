@@ -1,0 +1,10 @@
+[Unit]
+Description=Wait for the msm DRM device before the display manager
+DefaultDependencies=no
+After=systemd-udevd.service
+Before=display-manager.service
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/piano-wait-display
+[Install]
+WantedBy=graphical.target

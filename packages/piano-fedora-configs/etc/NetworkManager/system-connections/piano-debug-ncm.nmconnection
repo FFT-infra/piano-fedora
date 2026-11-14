@@ -1,0 +1,16 @@
+[connection]
+id=piano-debug-ncm
+uuid=5b1c9a2e-6f3d-4a71-8c2b-0d4e5f607182
+type=ethernet
+autoconnect=true
+
+[ethernet]
+mac-address=02:87:50:00:00:01
+
+[ipv4]
+method=manual
+address1=192.168.77.1/30
+never-default=true
+
+[ipv6]
+method=disabled

@@ -28,7 +28,10 @@ POWER_FILES = {
     "etc/udev/rules.d/70-piano-power-button.rules",
     "etc/systemd/logind.conf.d/piano.conf",
     "etc/dconf/db/local.d/00-power",
+    "etc/xdg/powerdevilrc",
+    "etc/environment.d/60-piano-display.conf",
 }
+POWER_HELPER_UNITS = ("piano-power-button.service", "piano-plasma-power-button.service")
 
 # finalizer 的桌面相关函数都按桌面档分派，GNOME 是默认档。
 GNOME = finalizer.piano_desktop.load("gnome", "44")
@@ -71,8 +74,7 @@ def check_power_overlay_owner():
     def policy_root(base, files, fallback=None):
         """把一份 overlay 摆成 finalizer 眼里的安装树。
 
-        上游目录里没有 GNOME 装配出来的 user 单元链接，这里按 GNOME 档补上，
-        其余缺的文件从矩阵副本取。
+        两条 vendor wants 链接都由包提供，不按桌面档筛选。
         """
         for name in POWER_FILES:
             source = files / name
@@ -83,9 +85,10 @@ def check_power_overlay_owner():
             target.write_bytes(source.read_bytes())
         wants = base / "etc/systemd/user/graphical-session.target.wants"
         wants.mkdir(parents=True, exist_ok=True)
-        link = wants / "piano-power-button.service"
-        if not link.is_symlink():
-            link.symlink_to("/usr/lib/systemd/user/piano-power-button.service")
+        for unit in POWER_HELPER_UNITS:
+            link = wants / unit
+            if not link.is_symlink():
+                link.symlink_to("/usr/lib/systemd/user/" + unit)
         profile = base / "etc/dconf/profile/user"
         profile.parent.mkdir(parents=True, exist_ok=True)
         profile.write_text("user-db:user\nsystem-db:local\n")
@@ -113,55 +116,41 @@ def check_power_overlay_owner():
 
 
 def check_kde_power_overlay_requires_its_helper():
-    """KDE 档挂自己那份助手，电源键动作留给助手，合盖留给 PowerDevil。
+    """两条 vendor wants 链接都在，单元条件决定当前会话跑哪一个。
 
-    两个助手同名不同桌面：装配后 KDE 的树里只能有 plasma 那条链接，GNOME
-    那条出现就是串档。动作值也要一起核对，`PowerButtonAction=64` 会让
-    PowerDevil 在按下时抢先关屏，长按的关机对话框就看不见了。
+    KDE 的 powerdevilrc 由包安装，合盖与电源键的动作值仍由
+    verify_power_overlay 逐段核对。`PowerButtonAction=64` 会让 PowerDevil 在
+    按下时抢先关屏，长按的关机对话框就看不见了。
     """
     package = ROOT / "packages" / "piano-fedora-configs"
 
-    def build(base, unit):
+    def build(base):
         for name in POWER_FILES:
             source = package / name
-            if not source.is_file():
-                continue
-            target = base / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(source.read_bytes())
-        for name, text in finalizer.piano_desktop.power_files(KDE).items():
-            target = base / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(text)
+            if source.is_file():
+                target = base / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(source.read_bytes())
         wants = base / "etc/systemd/user/graphical-session.target.wants"
         wants.mkdir(parents=True, exist_ok=True)
-        if unit:
+        for unit in POWER_HELPER_UNITS:
             (wants / unit).symlink_to("/usr/lib/systemd/user/" + unit)
         return base
 
     with tempfile.TemporaryDirectory() as temporary:
-        root = build(Path(temporary) / "kde", "piano-plasma-power-button.service")
+        root = build(Path(temporary) / "kde")
         finalizer.verify_power_overlay(root, KDE)
-        link = root / "etc/systemd/user/graphical-session.target.wants" / \
-            "piano-plasma-power-button.service"
-        link.unlink()
-        try:
-            finalizer.verify_power_overlay(root, KDE)
-        except ValueError as error:
-            assert "not enabled for this desktop" in str(error), error
-        else:
-            raise AssertionError("KDE image without the plasma power helper was accepted")
-        link.symlink_to("/usr/lib/systemd/user/piano-plasma-power-button.service")
-        gnome = root / "etc/systemd/user/graphical-session.target.wants" / \
-            "piano-power-button.service"
-        gnome.symlink_to("/usr/lib/systemd/user/piano-power-button.service")
-        try:
-            finalizer.verify_power_overlay(root, KDE)
-        except ValueError as error:
-            assert "leaks into another desktop" in str(error), error
-        else:
-            raise AssertionError("a GNOME power helper was accepted on the KDE image")
-        gnome.unlink()
+        # 少任何一条链接都是缺载荷，不再是"另一档串进来"。
+        for unit in POWER_HELPER_UNITS:
+            link = root / "etc/systemd/user/graphical-session.target.wants" / unit
+            link.unlink()
+            try:
+                finalizer.verify_power_overlay(root, KDE)
+            except ValueError as error:
+                assert "is not enabled" in str(error), error
+            else:
+                raise AssertionError("a missing power helper link was accepted")
+            link.symlink_to("/usr/lib/systemd/user/" + unit)
         powerdevil = root / "etc/xdg/powerdevilrc"
         saved = powerdevil.read_text()
         powerdevil.write_text(saved.replace("PowerButtonAction=0", "PowerButtonAction=64"))
@@ -172,6 +161,19 @@ def check_kde_power_overlay_requires_its_helper():
         else:
             raise AssertionError("a power key action that blanks before the dialog was accepted")
         powerdevil.write_text(saved)
+
+
+def stage_packaged_static_files(root):
+    """把矩阵包里的静态载荷摆进 fixture，模拟 DNF 安装后的树。"""
+    for package in ("piano-fedora-configs", "piano-camera", "xiaomi-piano-thp"):
+        source = ROOT / "packages" / package
+        for path in sorted(source.rglob("*")):
+            if not path.is_file() or path.is_symlink():
+                continue
+            relative = path.relative_to(source)
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
 
 
 def fixture(root):
@@ -198,16 +200,18 @@ def launcher_fixture(root):
 
 
 def check_debug_handoff(root, staged):
-    """debug 交接消费者、unit 关系、NM profile 权限与 MAC 匹配必须精确。"""
-    # 记录进 stage_boot_diagnostics 返回的文件列表。
+    """debug 交接只建两个 enable 链接；配置与 NM profile 由包安装。"""
+    # 配置、NM profile 与串口 drop-in 属于 piano-fedora-configs 的 %files，
+    # 不在 stage_boot_diagnostics 的返回清单里。
     expected = {
-        "etc/systemd/system/serial-getty@ttyGS0.service.d/20-piano-debug.conf",
-        "etc/piano/linux-debug.conf",
-        "etc/NetworkManager/system-connections/piano-debug-ncm.nmconnection",
         "etc/systemd/system/multi-user.target.wants/piano-linux-debug.service",
         "etc/systemd/system/getty.target.wants/serial-getty@ttyGS0.service",
     }
     assert expected <= set(staged), sorted(set(staged))
+    for name in ("etc/piano/linux-debug.conf",
+                 "etc/NetworkManager/system-connections/piano-debug-ncm.nmconnection",
+                 "etc/systemd/system/serial-getty@ttyGS0.service.d/20-piano-debug.conf"):
+        assert name not in staged, f"finalizer still writes the packaged file: {name}"
 
     # 串口 getty 实例必须在 piano-linux-debug 之后，且保留账户认证（不启用自动 root shell）。
     dropin = root / "etc/systemd/system/serial-getty@ttyGS0.service.d/20-piano-debug.conf"
@@ -324,14 +328,11 @@ def _libcrypt_crypt():
 
 
 def check_service_staging_order(root):
-    """在空树执行 main 的真实服务准备顺序，enable 时必须已有自建单元。"""
+    """在 DNF 安装后的树执行 main 的真实服务准备顺序。"""
     root.mkdir()
-    # main() 在服务准备之后才调用 stage_boot_diagnostics；它只核对 RPM 拥有的
-    # collector 在位，不再写一份副本，所以这里先按镜像的实际情况放好。
-    collector = root / "usr/bin/piano-collect-boot"
-    collector.parent.mkdir(parents=True)
-    collector.write_text("#!/bin/sh\n# packaged by piano-fedora-configs\n")
-    collector.chmod(0o755)
+    # 时钟单元、wait-display 单元与 collector 都由矩阵包安装；main() 的
+    # stage_boot_diagnostics 只核对 collector 在位，不再写一份副本。
+    stage_packaged_static_files(root)
     tree = ast.parse((ROOT / "scripts/finalize-fedora-rootfs.py").read_text())
     main_node = next(node for node in tree.body
                      if isinstance(node, ast.FunctionDef) and node.name == "main")
@@ -376,9 +377,10 @@ def check_service_staging_order(root):
             target.write_text("fixture")
         wants = root / "etc/systemd/user/graphical-session.target.wants"
         wants.mkdir(parents=True, exist_ok=True)
-        link = wants / "piano-power-button.service"
-        if not link.is_symlink():
-            link.symlink_to("/usr/lib/systemd/user/piano-power-button.service")
+        for unit in POWER_HELPER_UNITS:
+            link = wants / unit
+            if not link.is_symlink():
+                link.symlink_to("/usr/lib/systemd/user/" + unit)
         profile = root / "etc/dconf/profile/user"
         profile.parent.mkdir(parents=True, exist_ok=True)
         profile.write_text("user-db:user\nsystem-db:local\n")
@@ -414,15 +416,17 @@ def check_service_staging_order(root):
             else:
                 raise AssertionError("unsafe or inactive GNOME policy was accepted: " + unsafe)
         dconf.write_text(policy)
-        # 助手没挂上的 GNOME 镜像等于没有电源键策略，必须被判错。
-        link.unlink()
-        try:
-            finalizer.verify_power_overlay(root, GNOME)
-        except ValueError as error:
-            assert "not enabled for this desktop" in str(error), error
-        else:
-            raise AssertionError("GNOME image without the power helper was accepted")
-        link.symlink_to("/usr/lib/systemd/user/piano-power-button.service")
+        # 少任何一条 vendor wants 链接都等于丢了包载荷，必须被判错。
+        for unit in POWER_HELPER_UNITS:
+            link = wants / unit
+            link.unlink()
+            try:
+                finalizer.verify_power_overlay(root, GNOME)
+            except ValueError as error:
+                assert "is not enabled" in str(error), error
+            else:
+                raise AssertionError("GNOME image without a power helper was accepted")
+            link.symlink_to("/usr/lib/systemd/user/" + unit)
 
     namespace = {"root": root, "chroot": enable, "context": GNOME,
                  "piano_desktop": finalizer.piano_desktop,
@@ -479,13 +483,10 @@ def check_first_boot_ssh_key(root):
                          if not line.lstrip().startswith("#"))
         assert "authorized_keys" not in code, f"{name} still writes authorized_keys"
 
-    # Running the hardware staging on an empty tree must not create one either.
+    # Running the hardware staging on the packaged tree must not create one either.
     root.mkdir()
+    stage_packaged_static_files(root)
     finalizer.stage_piano_hardware_fixes(root, GNOME)
-    collector = root / "usr/bin/piano-collect-boot"
-    collector.parent.mkdir(parents=True, exist_ok=True)
-    collector.write_text("#!/bin/sh\n# packaged by piano-fedora-configs\n")
-    collector.chmod(0o755)
     finalizer.stage_boot_diagnostics(root, GNOME)
     seeded = [path for path in root.rglob("authorized_keys")]
     assert not seeded, "the finalized image carries pre-provisioned SSH keys: " + str(seeded)
@@ -530,36 +531,38 @@ def main():
             pass
         else:
             raise AssertionError("the finalizer must require the packaged collector")
+        stage_packaged_static_files(root)
         collector = root / "usr/bin/piano-collect-boot"
-        collector.write_text("#!/bin/sh\n# packaged by piano-fedora-configs\n")
-        collector.chmod(0o755)
         packaged = collector.read_bytes()
         staged = finalizer.stage_boot_diagnostics(root, GNOME)
         assert "usr/bin/piano-collect-boot" in staged
         assert collector.read_bytes() == packaged, "the finalizer overwrote the packaged collector"
-        # 显示管理器不再挂 piano-display 依赖：上游删掉了那个 unit，
-        # Requires 永远不满足，gdm 会在开机时被依赖失败拖死。
+        # 这些静态载荷都由矩阵包安装，finalizer 的返回清单里不能有它们。
+        owners = {}
+        for pkg in ("piano-fedora-configs", "piano-camera", "xiaomi-piano-thp"):
+            for path in (ROOT / "packages" / pkg).rglob("*"):
+                if path.is_file() and not path.is_symlink():
+                    owners[str(path.relative_to(ROOT / "packages" / pkg))] = path.read_bytes()
+        for name in (
+                "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf",
+                "etc/systemd/system/piano-touch.service.d/20-fast-restart.conf",
+                "etc/piano/camera.conf",
+                "etc/wireplumber/wireplumber.conf.d/50-piano-camera.conf",
+                "etc/udev/rules.d/70-piano-camera.rules",
+                "etc/udev/rules.d/70-piano-power-button.rules",
+                "etc/modules-load.d/piano-bwmon.conf",
+                "etc/modules-load.d/piano-stats.conf",
+                "etc/systemd/sleep.conf.d/piano.conf",
+                "etc/systemd/system/qbootctl.service.d/piano.conf",
+        ):
+            assert name not in staged, f"finalizer still writes the packaged file: {name}"
+            assert (root / name).read_bytes() == owners[name], name
+        assert "Wants=piano-camera.service" in (
+            root / "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf"
+        ).read_text()
+        assert "monitor.libcamera = disabled" in (
+            root / "etc/wireplumber/wireplumber.conf.d/50-piano-camera.conf").read_text()
         assert not (root / "etc/systemd/system/gdm.service.d/20-piano-display.conf").exists()
-        camera = root / "etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf"
-        assert "Wants=piano-camera.service" in camera.read_text()
-        assert "Requires=" not in camera.read_text()
-        assert "StartLimitBurst=3" in camera.read_text()
-        assert not (root / "etc/systemd/system/piano-camerad.service").is_symlink()
-        touch_drop = root / "etc/systemd/system/piano-touch.service.d/20-fast-restart.conf"
-        assert "RestartSec=1" in touch_drop.read_text()
-        assert (root / "etc/piano/camera.conf").read_text() == "PIANO_CAMERA_OUTPUT=nv12\n"
-        wp = root / "etc/wireplumber/wireplumber.conf.d/50-piano-camera.conf"
-        assert "monitor.libcamera = disabled" in wp.read_text()
-        dma_rules = root / "etc/udev/rules.d/70-piano-camera.rules"
-        assert 'SUBSYSTEM=="dma_heap"' in dma_rules.read_text() and 'TAG+="uaccess"' in dma_rules.read_text()
-        bwmon = root / "etc/modules-load.d/piano-bwmon.conf"
-        assert "icc-bwmon" in bwmon.read_text()
-        stats = root / "etc/modules-load.d/piano-stats.conf"
-        assert "qcom_stats" in stats.read_text()
-        sleep_conf = root / "etc/systemd/sleep.conf.d/piano.conf"
-        assert "MemorySleepMode=deep" in sleep_conf.read_text()
-        qboot_drop = root / "etc/systemd/system/qbootctl.service.d/piano.conf"
-        assert "boot_a.device" in qboot_drop.read_text()
         assert (root / "usr/bin/piano-collect-boot").stat().st_mode & 0o111
         check_debug_handoff(root, staged)
         check_piano_hardware_fixes(root)
@@ -635,8 +638,8 @@ def check_piano_hardware_fixes(root):
     """真机修复必须成套出现：脚本可执行、单元被启用、模块随镜像走。"""
     old_logind = root / "etc/systemd/logind.conf.d/10-piano-powerkey.conf"
     old_dconf = root / "etc/dconf/db/local.d/00-piano-session"
-    old_logind.parent.mkdir(parents=True)
-    old_dconf.parent.mkdir(parents=True)
+    old_logind.parent.mkdir(parents=True, exist_ok=True)
+    old_dconf.parent.mkdir(parents=True, exist_ok=True)
     old_logind.write_text("[Login]\nHandlePowerKey=ignore\n")
     old_dconf.write_text("[org/gnome/desktop/session]\nidle-delay=uint32 0\n"
                          "[org/gnome/desktop/screensaver]\nlock-enabled=false\n")
@@ -675,20 +678,23 @@ def check_piano_hardware_fixes(root):
     subprocess.run(["/bin/sh", script], env={**environment, "PIANO_FIXTURE_NOW": str(seed + 3600)},
                    check=True, capture_output=True)
     assert not capture.exists(), "a sane running clock was overwritten"
+    # 这里只核对装配期动作：时钟戳、编译后的策略模块、日志轮转覆写。
     expected = {
-        "usr/libexec/piano-clock-restore",
-        "usr/libexec/piano-clock-save",
-        "usr/lib/systemd/system/piano-clock-restore.service",
-        "usr/lib/systemd/system/piano-clock-save.service",
-        "usr/lib/systemd/system/piano-clock-save.timer",
-        "usr/lib/systemd/system/piano-selinux-policy.service",
-        "etc/systemd/system/piano-clock-save.service.d/restore-first.conf",
+        "etc/logrotate.d/bootlog",
         "usr/share/piano/selinux/piano_hardware.pp",
+        "var/lib/piano-clock/last",
     }
+    assert expected <= set(staged), sorted(set(staged))
+    for name in ("usr/libexec/piano-clock-restore", "usr/libexec/piano-clock-save",
+                 "usr/lib/systemd/system/piano-clock-restore.service",
+                 "usr/lib/systemd/system/piano-clock-save.service",
+                 "usr/lib/systemd/system/piano-clock-save.timer",
+                 "usr/lib/systemd/system/piano-selinux-policy.service",
+                 "etc/systemd/system/piano-clock-save.service.d/restore-first.conf"):
+        assert name not in staged, f"finalizer still writes the packaged file: {name}"
     # 第二道校正：即使 sysinit 那次没生效，multi-user 也会再设一次。
     dropin = (root / "etc/systemd/system/piano-clock-save.service.d/restore-first.conf").read_text()
     assert "ExecStartPre=/usr/libexec/piano-clock-restore" in dropin
-    assert expected <= set(staged), sorted(set(staged))
     assert not old_logind.exists() and not old_dconf.exists(), "legacy bring-up overrides survived"
     for name in ("piano-clock-restore", "piano-clock-save"):
         assert (root / "usr/libexec" / name).stat().st_mode & 0o111, name

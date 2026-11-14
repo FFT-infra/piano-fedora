@@ -3,7 +3,7 @@
 
 Name:           piano-camera
 Version:        0.1.0
-Release:        5%{?dist}
+Release:        6%{?dist}
 Summary:        Camera pipeline and v4l2loopback daemon for Xiaomi Pad 8 Pro (piano)
 License:        MIT
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -67,6 +67,8 @@ install -Dm0644 src/quad/vendor/demosaic/LICENSE-MIT \
 %{_unitdir}/piano-camera.service
 %config(noreplace) %{_sysconfdir}/udev/rules.d/70-piano-camera.rules
 %config(noreplace) %{_sysconfdir}/wireplumber/wireplumber.conf.d/50-piano-camera.conf
+%config(noreplace) %{_sysconfdir}/systemd/system/piano-camerad.service.d/20-camera-dependency.conf
+%config(noreplace) %{_sysconfdir}/piano/camera.conf
 
 %post
 %systemd_post piano-camerad.service piano-camera.service
@@ -79,6 +81,10 @@ systemctl enable piano-camerad.service piano-camera.service || :
 %systemd_postun_with_restart piano-camerad.service piano-camera.service
 
 %changelog
+* Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 0.1.0-6
+- 相机依赖 drop-in 与 camera.conf 由构建器直接写 rootfs 改为本包载荷，
+  dnf upgrade 能把这两份文件送到已装设备，装配脚本不再覆盖 RPM 拥有的路径
+
 * Tue Nov 10 2026 FFT-infra <dev@piano.invalid> - 0.1.0-5
 - 相机用户态换成上游 linux/userspace/camera：守护进程按 v4l2loopback 的
   生产者协商处理 S_FMT/S_PARM，后摄 8160x6120 走 RDI 全幅 Quad CFA，由

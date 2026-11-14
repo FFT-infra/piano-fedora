@@ -3,8 +3,19 @@
 # identical duplicates still make provenance ambiguous. Keep this list in
 # sync with packages/* specs; tests/check_package_ownership.py enforces it.
 /etc/dconf/db/local.d/00-power
+/etc/environment.d/60-piano-display.conf
+/etc/NetworkManager/system-connections/piano-debug-ncm.nmconnection
+/etc/piano/camera.conf
+/etc/piano/linux-debug.conf
 /etc/systemd/logind.conf.d/piano.conf
+/etc/systemd/system/piano-camerad.service.d/20-camera-dependency.conf
+/etc/systemd/system/piano-clock-save.service.d/restore-first.conf
+/etc/systemd/system/piano-touch.service.d/20-fast-restart.conf
+/etc/systemd/system/serial-getty@ttyGS0.service.d/20-piano-debug.conf
+/etc/udev/rules.d/70-piano-camera.rules
 /etc/udev/rules.d/70-piano-power-button.rules
+/etc/wireplumber/wireplumber.conf.d/50-piano-camera.conf
+/etc/xdg/powerdevilrc
 /etc/uperf-linux/config.json
 /etc/uperf-linux/perapp_powermode
 /etc/uperf-linux/sm8550.json
@@ -120,6 +131,10 @@
 /usr/lib/systemd/system/piano-camerad.service
 /usr/lib/systemd/system/piano-fake-tablet-mode.service
 /usr/lib/systemd/system/piano-first-boot-ssh-key.service
+/usr/lib/systemd/system/piano-selinux-policy.service
+/usr/lib/systemd/system/piano-wait-display.service
+/usr/lib/systemd/user/graphical-session.target.wants/piano-plasma-power-button.service
+/usr/lib/systemd/user/graphical-session.target.wants/piano-power-button.service
 /usr/lib/systemd/user/piano-plasma-power-button.service
 /usr/lib/systemd/user/piano-power-button.service
 /usr/lib/systemd/system/piano-touch.service
@@ -129,6 +144,7 @@
 /usr/lib64/dri/msm_drv_video.so
 /usr/libexec/piano-fake-tablet-mode
 /usr/libexec/piano-next-boot-helper
+/usr/libexec/piano-wait-display
 /usr/share/alsa/ucm2/Qualcomm/sm8750/Xiaomi-Pad-8-Pro/HiFi.conf
 /usr/share/alsa/ucm2/Qualcomm/sm8750/Xiaomi-Pad-8-Pro/Xiaomi-Pad-8-Pro.conf
 /usr/share/applications/org.sunuefi.BootMenu.desktop

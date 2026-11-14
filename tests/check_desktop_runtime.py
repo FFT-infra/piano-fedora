@@ -188,27 +188,39 @@ def check_power_button_is_a_user_service_plasma():
 
 
 def check_power_button_is_enabled_per_desktop():
-    """GNOME 与 KDE 各挂自己的助手，其余档不挂。"""
+    """两条 vendor wants 链接都由包提供，单元条件决定当前会话跑哪一个。"""
     profiles = (ROOT / "scripts" / "profiles" / "fedora-desktops.json").read_text(
         encoding="utf-8")
     assert profiles.count('"user_unit"') == 2, (
-        "only the GNOME and KDE profiles may enable a power button helper")
+        "only the GNOME and KDE profiles declare a power button helper")
     assert '"user_unit": "piano-power-button.service"' in profiles
     assert '"user_unit": "piano-plasma-power-button.service"' in profiles
-    desktop = (ROOT / "scripts" / "piano_desktop.py").read_text(encoding="utf-8")
-    assert "def power_user_units" in desktop
+
+    spec = (PACKAGE / "piano-fedora-configs.spec").read_text(encoding="utf-8")
+    wants = "%{_userunitdir}/graphical-session.target.wants/"
+    for helper in ("piano-power-button.service", "piano-plasma-power-button.service"):
+        assert wants + helper in spec, f"{helper} has no packaged vendor wants link"
+    for helper, condition in (("piano-power-button.service",
+                               "ConditionEnvironment=XDG_CURRENT_DESKTOP=GNOME*"),
+                              ("piano-plasma-power-button.service",
+                               "ConditionEnvironment=XDG_CURRENT_DESKTOP=KDE")):
+        unit = (PACKAGE / "usr/lib/systemd/user" / helper).read_text(encoding="utf-8")
+        assert condition in unit, f"{helper} is missing {condition}"
+
+    # 链接由包提供，finalize 只核对两条都在，不再按桌面档建或删。
     finalize = FINALIZE.read_text(encoding="utf-8")
     assert "POWER_HELPER_UNITS" in finalize
     assert "graphical-session.target.wants" in finalize
+    assert "link.symlink_to(\"/usr/lib/systemd/user/\"" not in finalize, (
+        "finalize must not create power helper wants links")
     # finalize 里的 system enable 列表不能再点名任何助手：它们是 user 单元。
     for helper in ("piano-power-button.service", "piano-plasma-power-button.service"):
         for line in finalize.splitlines():
             if "systemctl" in line and "enable" in line:
                 assert helper not in line, (
                     f"{helper} is a user unit and must not be enabled by the system manager")
-    # KDE 的动作设置必须让位：64 会在按下时关屏，长按看不见对话框。
-    powerdevil = (ROOT / "scripts" / "profiles" / "desktops" / "kde"
-                  / "powerdevilrc").read_text(encoding="utf-8")
+    # 包里的 powerdevilrc 是唯一真源，动作值必须让位给助手。
+    powerdevil = (PACKAGE / "etc/xdg/powerdevilrc").read_text(encoding="utf-8")
     assert "PowerButtonAction=0" in powerdevil
     assert "PowerButtonAction=64" not in powerdevil
     assert "LidAction=64" in powerdevil
@@ -237,7 +249,7 @@ def check_power_button_device_names_match_the_kernel():
     plasma = PLASMA_BUTTON.read_text(encoding="utf-8")
     assert f"KEY_NAME = '{KEY_DEVICE}'" in plasma, (
         "plasma-power-button must open the power key by its kernel input name")
-    for path in (UDEV_RULE, FINALIZE):
+    for path in (UDEV_RULE,):
         text = path.read_text(encoding="utf-8")
         assert f'ATTRS{{name}}=="{LID_DEVICE}"' in text, (
             f"{path.name} must grant uaccess on {LID_DEVICE}")

@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        16%{?dist}
+Release:        17%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND BSD-2-Clause-Patent AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -18,14 +18,13 @@ Requires:       python3-evdev
 # piano-power-button 用 gi.repository 的 Gio/GLib 走会话总线。
 Requires:       python3-gobject
 
-# Replaces the older standalone piano-runtime / piano-session-fixes packages.
-# The bound is written as `< %{version}-%{release}` so it can never reach this
-# package's own provide; a hard-coded number silently becomes wrong the next
-# time the version is bumped.
+# Replaces the older standalone piano-session-fixes package. The bound is
+# written as `< %{version}-%{release}` so it can never reach this package's
+# own provide; a hard-coded number silently becomes wrong the next time the
+# version is bumped. piano-runtime is a real package again (0.2.0-5), so it
+# must not be obsoleted here.
 Obsoletes:      piano-session-fixes < %{version}-%{release}
 Provides:       piano-session-fixes = %{version}-%{release}
-Obsoletes:      piano-runtime < %{version}-%{release}
-Provides:       piano-runtime = %{version}-%{release}
 
 %description
 System integration, hardware platform fixes, and power management configuration
@@ -88,6 +87,14 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %config %{_sysconfdir}/modprobe.d/dist-alsa.conf
 %config(noreplace) %{_sysconfdir}/udev/rules.d/70-piano-power-button.rules
 %config(noreplace) %{_sysconfdir}/dconf/db/local.d/00-power
+# KDE 的合盖动作在 0.1.0-16 之后从 0 改到 64，已装设备必须收到这份新文件。
+# 不带 noreplace：用户改过的旧文件留成 .rpmsave，不会被 .rpmnew 挡住。
+%config %{_sysconfdir}/xdg/powerdevilrc
+%{_sysconfdir}/environment.d/60-piano-display.conf
+%config(noreplace) %{_sysconfdir}/systemd/system/piano-clock-save.service.d/restore-first.conf
+%config(noreplace) %{_sysconfdir}/systemd/system/serial-getty@ttyGS0.service.d/20-piano-debug.conf
+%attr(0600,root,root) %config(noreplace) %{_sysconfdir}/piano/linux-debug.conf
+%attr(0600,root,root) %config(noreplace) %{_sysconfdir}/NetworkManager/system-connections/piano-debug-ncm.nmconnection
 
 %{_unitdir}/piano-clock-restore.service
 %{_unitdir}/piano-clock-save.service
@@ -96,13 +103,18 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_unitdir}/piano-physical-platform.service
 %{_unitdir}/piano-first-boot-ssh-key.service
 %{_unitdir}/xiaomi-charger-mode.service
+%{_unitdir}/piano-wait-display.service
+%{_unitdir}/piano-selinux-policy.service
 %{_prefix}/lib/systemd/system-shutdown/f2fs-root-shutdown
 %{_unitdir}/piano-linux-debug.service
 %{_userunitdir}/piano-power-button.service
 %{_userunitdir}/piano-plasma-power-button.service
+%{_userunitdir}/graphical-session.target.wants/piano-power-button.service
+%{_userunitdir}/graphical-session.target.wants/piano-plasma-power-button.service
 
 %{_libexecdir}/piano-clock-restore
 %{_libexecdir}/piano-clock-save
+%{_libexecdir}/piano-wait-display
 %{_libexecdir}/piano-fake-tablet-mode
 %{_libexecdir}/piano-physical-platform
 %{_libexecdir}/xiaomi-charger-mode
@@ -144,11 +156,11 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %post
 %systemd_post piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service qbootctl.service || :
-# 电源键助手是 GNOME 专属的 user 单元，由装配脚本按桌面档挂进
-# graphical-session.target.wants；包本身不 enable，KDE 等桌面不装它。
-# 旧安装把它当 system 单元 enable 过，rpm 只会删 /usr/lib/systemd/system
-# 下的文件，那条链接会指向一个不存在的单元。这段必须留在 %post，因为升级
-# 时 %preun 跑的是旧包的脚本。
+# 两个电源键助手的 vendor wants 链接都由包提供，单元各自的
+# ConditionEnvironment 决定当前会话跑哪一个，装配脚本不再按桌面档建链接。
+# 旧安装把 piano-power-button 当 system 单元 enable 过，rpm 只会删
+# /usr/lib/systemd/system 下的文件，那条链接会指向一个不存在的单元。这段必须
+# 留在 %post，因为升级时 %preun 跑的是旧包的脚本。
 # 旧进程还占着电源键的独占 grab，必须停掉，否则桌面收不到按键。
 systemctl --no-reload disable piano-power-button.service >/dev/null 2>&1 || :
 systemctl --no-reload stop piano-power-button.service >/dev/null 2>&1 || :
@@ -172,6 +184,19 @@ rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 
 %changelog
+* Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 0.1.0-17
+- 构建器直接写的静态文件收回 RPM：KDE 的 powerdevilrc 与 60-piano-display.conf、
+  三份只差注释的 %config、相机与调试的 drop-in、等待显示的单元与脚本、
+  SELinux 策略安装单元、日志轮转之外的调试落点都改由包提供，装配脚本不再
+  覆盖 RPM 拥有的路径，rpm -V 不再把包内文件报成改过
+- 两个电源键助手的 vendor wants 链接改由包提供，单元用
+  ConditionEnvironment=XDG_CURRENT_DESKTOP 互斥：GNOME 那份用 GNOME* 匹配
+  经典会话，KDE 那份匹配 KDE。旧镜像按桌面档建的链接在升级后仍由 %post 清掉
+- powerdevilrc 不带 noreplace：LidAction 从 0 改到 64 必须到达已装设备，
+  用户改过的旧文件留成 .rpmsave
+- 删掉 piano-runtime 的 Obsoletes/Provides：runtime 已是真包（0.2.0-5），
+  旧的 `< %{version}-%{release}` 界不再命中，留着只会误导
+
 * Sat Nov 14 2026 FFT-infra <dev@piano.invalid> - 0.1.0-16
 - KDE 档加 `piano-plasma-power-button` 用户服务：短按调 PowerDevil 自己的
   "Turn Off Screen" 动作，长按开关机对话框。PowerDevil 的动作在按下时就

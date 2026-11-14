@@ -72,12 +72,16 @@ def rpm_package(name, payload, output, requires=(), provides=(), version="0.1.0"
         "mkdir -p %{buildroot}\ncp -a . %{buildroot}/\n\n%files\n"
         + "".join('"/' + p.replace('%', '%%').replace('"', '\\"') + '"\n' for p in paths)
         + "\n%changelog\n", encoding="utf-8")
-    run(["rpmbuild", "--define", "_topdir " + str(top), "-bb", spec])
+    run(["rpmbuild", "--define", "_topdir " + str(top), "-ba", spec])
     rpms = list((top / "RPMS").rglob("*.rpm"))
-    if not rpms:
-        raise ValueError("rpmbuild produced no packages")
+    srpms = list((top / "SRPMS").rglob("*.src.rpm"))
+    if not rpms or not srpms:
+        raise ValueError("rpmbuild produced no binary or source packages")
+    (output / "srpms").mkdir(exist_ok=True)
     for p in rpms:
         shutil.copyfile(p, output / "rpms" / p.name)
+    for p in srpms:
+        shutil.copyfile(p, output / "srpms" / p.name)
     return rpms
 
 
@@ -156,6 +160,7 @@ def build(args):
     record, kernel_hash = inspect_kernel(kernel)
     output.mkdir(parents=True)
     (output / "rpms").mkdir()
+    (output / "srpms").mkdir()
     sys.path.insert(0, str(sun / "tools"))
     import build_piano_runtime_helpers as runtime
     import stage_piano_ram_hardware as hardware
@@ -303,6 +308,8 @@ def build(args):
     extras_proof = build_extras(sun.parent, output / "extras", rpm_package, put, sha256, run)
     for p in (output / "extras/rpms").glob("*.rpm"):
         shutil.copyfile(p, output / "rpms" / p.name)
+    for p in (output / "extras/srpms").glob("*.src.rpm"):
+        shutil.copyfile(p, output / "srpms" / p.name)
     # 上游的现行架构是标准 modalias：stage_piano_ram_hardware 的 removed_paths
     # 删掉按子系统手动拉起驱动的 piano-*-start 与对应 unit（display、radio、
     # audio、video、camera、keyboard、cpufreq），连同 wants 链接。BSP 与
@@ -353,6 +360,8 @@ def build(args):
                           "libssc", "iio-sensor-proxy"))
     provenance["rpms"] = {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
                           for p in (output / "rpms").glob("*.rpm")}
+    provenance["srpms"] = {p.name: {"sha256": sha256(p), "bytes": p.stat().st_size}
+                           for p in (output / "srpms").glob("*.src.rpm")}
     (output / "manifest.json").write_text(json.dumps(provenance, indent=2) + "\n")
 
 
