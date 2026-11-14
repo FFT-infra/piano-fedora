@@ -65,6 +65,15 @@ def check_spec(failures):
         failures.append("kernel-piano.spec does not disable strip; modules would "
                         "differ from the sealed kernel artifact")
 
+    # DNF 的 installonlypkgs 按包名或 provides 匹配。内核模块目录只由编译期
+    # release 决定，RPM Release 变化不改变目录名；提供任何一个 installonly
+    # 名字，dnf 就会把新 Release 当“再装一份”，在安装阶段撞 file conflict。
+    for provided in ("kernel", "kernel-core", "kernel-modules", "kernel-modules-core"):
+        if re.search(rf"^Provides:\s+{re.escape(provided)}\s*=", body, re.MULTILINE):
+            failures.append(
+                f"kernel-piano.spec provides {provided}; dnf would treat a Release "
+                "bump as installonly and collide on the shared module tree")
+
     # 设备侧内核升级：%posttrans 重建 initramfs 并重打 ESP 的 boot.img。镜像
     # 构建（dnf --installroot）里没有 ESP 载荷，必须先跳过再动手，否则
     # build-rootfs 会在 chroot 里失败。
@@ -84,15 +93,15 @@ def check_spec(failures):
         for token in ("depmod", "piano-kernel-esp-update"):
             if token not in script:
                 failures.append(f"%posttrans never runs {token}")
-        # installonly 升级后新旧内核共存，旧 manifest 仍在盘上；%posttrans 必须
-        # 点名刚装上的那一份，否则工具会拒绝在多份之间猜。
+        # manifest 名字带 NVRA。盘上留下多份时，%posttrans 必须点名刚装上的
+        # 那一份，否则工具会拒绝在多份之间猜。
         if "--manifest" not in script:
             failures.append("%posttrans does not name the manifest it just installed")
 
     # 实机教训（2026-10-22）：manifest 曾是固定路径 /usr/share/piano/
-    # kernel-manifest.json。kernel-piano 是 installonly，升级时两个版本同时
-    # 安装，rpm 报 "file ... conflicts with file from package" 并中止整个事务，
-    # 设备上的内核因此永远升不上去。名字必须带 NVRA。
+    # kernel-manifest.json。两个包同时拥有该路径时，rpm 报 "file ... conflicts
+    # with file from package" 并中止整个事务，设备上的内核因此永远升不上去。
+    # 名字必须带 NVRA。
     named = "%{_datadir}/piano/kernel-manifest-%{version}-%{release}.json"
     if named not in body:
         failures.append("kernel-piano.spec does not ship an NVRA-named kernel manifest; "

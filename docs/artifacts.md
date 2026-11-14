@@ -52,7 +52,7 @@ deploy-bundle 自带 sparse。Release 归档里带的是 `prepare-install` 产�
 
 ESP 上只有 `/EFI/Linux/sunuefi.efi` 一个 Linux 载荷。它是 UKI，内核、initramfs、板级 DTB 与 cmdline 都在 PE 节区里。合体 BOOT 含当前 Android 内核，必须用本机当前 stock BOOT、活动槽和 generation 另行包装。通用构建产物不包含这些个人设备输入。
 
-已装系统升级内核不需要 deploy-bundle。`kernel-piano` 提供 `kernel-core`。`dnf upgrade` 装上之后，`kernel-piano` 的 `%posttrans` 重建 initramfs，并重打 ESP 上的 UKI。语义与回滚见 [COPR 软件源](copr-repository.md)。
+已装系统升级内核不需要 deploy-bundle。`kernel-piano` 按普通包升级。`dnf upgrade` 装上之后，`%posttrans` 重建 initramfs，并重打 ESP 上的 UKI。语义与回滚见 [COPR 软件源](copr-repository.md)。
 
 ## 参考来源
 

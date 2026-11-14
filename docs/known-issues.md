@@ -534,13 +534,15 @@ extras 的 KWin 带退出 HDR 恢复背光的补丁，内核封存序列里也�
 `systemctl --failed` 为空，目前只有日志噪声。来源是 coresight qdss 的时钟在
 runtime PM 里被重复关闭，属于上游驱动的问题，不是本仓库的补丁。
 
-`kernel-piano` 是 installonly 包，升级后旧内核的模块树与 `modules.weakdep`、
-`updates/` 会留在 `/usr/lib/modules/` 下（rpm 删掉的是 rpm 自己拥有的文件，这些
-是 `depmod` 之后生成的）。这些残留文件不影响启动，`dnf` 也不会再引用。要清理只能手工删目录。
+`kernel-piano` 按普通包升级，新的 RPM Release 替换旧包，模块树目录也跟着替换。
+`depmod` 之后生成的文件不归 rpm 所有，替换后可能留下少量旧文件；它们不影响启动，
+`dnf` 也不会再引用。回滚要先 `dnf downgrade kernel-piano` 把旧模块树装回来，再恢复
+UKI 的 `.bak`。只恢复 `.bak` 会启动一个模块树已经不在了的内核。
 
 manifest 按 NVRA 命名（`/usr/share/piano/kernel-manifest-<version>-<release>.json`）。
-固定名字会让两个版本争同一个路径，rpm 直接中止升级事务——这条在设备上撞过
-一次，症状是 `file ... conflicts with file from package`。
+盘上可能留下多份，`piano-kernel-esp-update` 要求 `%posttrans` 点名要用哪一份。固定
+名字还会让两个包争同一个路径，rpm 直接中止事务——这条在设备上撞过一次，症状是
+`file ... conflicts with file from package`。
 
 ## 上游修复的可移植边界
 

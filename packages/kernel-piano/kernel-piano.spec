@@ -26,7 +26,7 @@
 
 Name:           kernel-piano
 Version:        7.3.3
-Release:        3.%{DEVICE_NAME}%{?dist}
+Release:        4.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
 URL:            https://github.com/blu-sharky/linux-piano
@@ -35,10 +35,11 @@ Source0:        %{kernel_payload_tar}
 
 ExclusiveArch:  aarch64
 
-Provides:       kernel = %{version}-%{release}
-Provides:       kernel-core = %{version}-%{release}
-Provides:       kernel-modules = %{version}-%{release}
-Provides:       kernel-modules-core = %{version}-%{release}
+# 不提供 kernel / kernel-core / kernel-modules / kernel-modules-core。DNF 的
+# installonly 按这些 provides 匹配，会把新的 Release 当成再装一份内核；模块树
+# 的目录只由编译期 release 决定（7.3.3-piano-sunuefi-cachy-optimize），两个
+# Release 指向同一批文件，事务在安装阶段直接报 file conflict。这里按普通包
+# 升级，%posttrans 仍在事务收尾时重建 initramfs 并重打 ESP 的 UKI。
 
 Requires:       dracut
 Requires:       qbootctl
@@ -108,11 +109,11 @@ test -s "$(find %{buildroot}%{_prefix}/lib/modules -name 'modules.dep' | head -n
 # Record which upstream commit this kernel came from, so a shipped image can be
 # traced back without unpacking the RPM.
 #
-# The name carries the package NVRA: kernel-piano is installonly, so an upgrade
-# leaves the old package installed. A fixed /usr/share/piano/kernel-manifest.json
-# made the two versions collide and rpm refused the transaction ("file ...
-# conflicts with file from package kernel-piano-7.2.9-1"), which blocked every
-# kernel upgrade on a device.
+# The name still carries the package NVRA. A fixed
+# /usr/share/piano/kernel-manifest.json collided when two packages owned it and
+# rpm refused the whole transaction ("file ... conflicts with file from package
+# kernel-piano-7.2.9-1"). The NVRA name also keeps leftover manifests
+# distinguishable for piano-kernel-esp-update.
 if [ -f manifest.json ]; then
     install -D -m 0644 manifest.json \
         %{buildroot}%{_datadir}/piano/kernel-manifest-%{version}-%{release}.json
@@ -149,17 +150,24 @@ if [ ! -f "$ESP/sunuefi.efi" ]; then
     echo "piano: no ESP payload at $ESP; skipping the UKI rebuild"
     exit 0
 fi
-# installonly 让新旧内核共存，manifest 也按 NVRA 各存一份。这里读刚装上的
-# 那份：%{version}-%{release} 在构建时就已展开成这一版的字符串。
+# manifest 按 NVRA 各存一份，盘上可能留着旧版本。这里读刚装上的那份：
+# %{version}-%{release} 在构建时就已展开成这一版的字符串。
 MANIFEST=%{_datadir}/piano/kernel-manifest-%{version}-%{release}.json
 [ -f "$MANIFEST" ] || exit 1
 RELEASE=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["kernel_release"])' "$MANIFEST") || exit 1
 [ -d "/usr/lib/modules/$RELEASE" ] || exit 1
 depmod -a "$RELEASE" || exit 1
-# 旧内核的 manifest 还在盘上，必须点名这一份，否则工具拒绝在多份之间猜。
+# 点名本包的 manifest，不让工具在盘上留下的多份之间猜。
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
+* Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 7.3.3-4.piano
+- 去掉 kernel / kernel-core / kernel-modules / kernel-modules-core 这四个
+  provides。DNF 按它们判定 installonly，而模块树目录只跟编译期 release 走，
+  新旧 Release 争同一批文件，`dnf upgrade` 在安装阶段报 file conflict（-3
+  在真机上撞到，没有装上）。改成普通升级，`%posttrans` 照旧重建 initramfs
+  并重打 UKI
+
 * Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 7.3.3-3.piano
 - 重发同一内核载荷，给设备上的 dnf upgrade 一个可见的新 NVRA。`%posttrans`
   会重建 initramfs 并重打 ESP 上的 UKI；这条自动路径要在真机上验完才记账，

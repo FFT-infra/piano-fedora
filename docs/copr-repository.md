@@ -24,7 +24,9 @@
 
 挂起与唤醒各测了两轮，都能回到桌面，`systemctl --failed` 保持为空。挂起路径上每次会打 4 条 `qdss already disabled/unprepared` 的 clk 警告（`amba_pm_runtime_suspend` 对 coresight qdss 重复 disable）。这条警告不影响唤醒，没有对应的故障现象。
 
-manifest 的名字带 NVRA。`kernel-piano` 是 installonly，升级时新旧版本同时安装。固定的 `/usr/share/piano/kernel-manifest.json` 会让两个包争同一路径，rpm 报 `file ... conflicts with file from package` 并中止整个事务。`%posttrans` 读的是自己那一版，并把文件名传给 `piano-kernel-esp-update`。盘上有多份 manifest 时，工具不猜用哪一份。
+manifest 的名字带 NVRA，`%posttrans` 读自己那一版并把文件名传给 `piano-kernel-esp-update`；盘上留下多份时，工具不猜用哪一份。
+
+`kernel-piano` 不提供 `kernel` / `kernel-core` 这类名字。DNF 的 installonlypkgs 按名字或 provides 匹配，提供它们会把新的 RPM Release 当成“再装一份内核”。模块树目录只由编译期 release 决定（`7.3.3-piano-sunuefi-cachy-optimize`），两个 Release 指向同一批文件，rpm 在安装阶段报 `file ... conflicts with file from package` 并中止整个事务。去掉这些 provides 后，`dnf upgrade` 按普通包替换本包。
 
 已经装好但起不来的内核没有自动回滚。上游没有 boot counter（`PianoNvJournal` 是现成的双槽 NV journal，只是没有人往里写尝试计数），回滚只能手工做：
 
@@ -33,7 +35,7 @@ manifest 的名字带 NVRA。`kernel-piano` 是 installonly，升级时新旧版
 sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi
 ```
 
-`dnf history undo` 只回滚 RPM，不动 ESP，所以单跑它不会让设备回到旧内核。`kernel-piano` 提供 `kernel-core`，旧模块树与 `/boot/vmlinuz-*` 在 `installonly_limit` 之内会保留下来。要把它们重新装进 ESP，得再走一次重打。
+`dnf history undo` 只回滚 RPM，不动 ESP，所以单跑它不会让设备回到旧内核。内核按普通包升级，旧模块树在事务里被新包替换，`.bak` 里的旧内核没有可用的模块树。回滚要先 `dnf downgrade kernel-piano` 把旧模块树装回来，再把 `.bak` 复制回 ESP 重打。
 
 ## 为什么是 COPR 重建，而不是上传二进制
 

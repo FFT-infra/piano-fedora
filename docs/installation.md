@@ -683,7 +683,7 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 
 ### 2. 只升级内核
 
-装好之后，内核跟着 `dnf upgrade` 走，不需要重跑刷写，也不需要 bundle。`kernel-piano` 提供 `kernel-core`，是 installonly 包，新内核与旧内核的模块树并存。
+装好之后，内核跟着 `dnf upgrade` 走，不需要重跑刷写，也不需要 bundle。`kernel-piano` 按普通包升级，新包替换旧包；回滚要先 `dnf downgrade kernel-piano`，再恢复 UKI 的 `.bak`。
 
 ```sh
 sudo dnf upgrade --refresh
