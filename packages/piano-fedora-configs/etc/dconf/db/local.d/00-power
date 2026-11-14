@@ -1,7 +1,8 @@
-# Deliberate divergence from SunUEFI's linux/desktops/gnome/power-overlay copy:
-# that one suspends after 10 min on AC and 5 min on battery, and suspend/resume
-# on this device is still unreliable. Both sleep-inactive types stay 'nothing'
-# and idle blanking is 300 s. verify_power_overlay() in
+# SunUEFI's linux/desktops/gnome/power-overlay copy suspends after 10 min on AC
+# and 5 min on battery. This image does not: the power key turns the screen off
+# and locks, which is what the stock tablet firmware does, and an idle sleep
+# timer would put the machine down on its own. Both sleep-inactive types stay
+# 'nothing' and idle blanking is 300 s. verify_power_overlay() in
 # scripts/finalize-fedora-rootfs.py enforces these values; re-review them before
 # syncing anything back from upstream.
 [org/gnome/settings-daemon/plugins/media-keys]

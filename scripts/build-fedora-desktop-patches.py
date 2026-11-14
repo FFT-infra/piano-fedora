@@ -160,10 +160,11 @@ PACKAGES = (
              "piano-ambient-profile.patch"),
             # 50.1 的原始补丁和 ambient 补丁都在 gsd_power_manager_stop() 里插入
             # 清理代码，直接叠加时后一个 hunk 匹配不上。这份本地补丁以 51.1 +
-            # ambient 补丁为基线重排了那个 hunk，其余改动与 SunUEFI 补丁相同。
+            # ambient 补丁为基线重排了那个 hunk，其余改动与 SunUEFI 补丁相同，
+            # 包括 backlight_iface_emit_changed() 里只给键盘接口加 Steps 的守卫。
             ("repo:patches/gnome-settings-daemon/51.1/"
              "0001-power-refresh-keyboard-backlight-after-hotplug.patch",
-             "98cdaf76fbfa28bce72adafbfc38dd5a3f9eaca86e5cf73d157b98e62a89724b",
+             "80fd66b103753c13509bec1ce9b42300e6e0027292ab3b4dadb4492fdf515416",
              "piano-keyboard-backlight.patch"),
             # 上游 0002 用 gsd_screen_saver_call_get_active_sync()，51.1 没有这个
             # 生成包装，只留 g_dbus_proxy_call_sync。这份按 51.1 + ambient + 键盘

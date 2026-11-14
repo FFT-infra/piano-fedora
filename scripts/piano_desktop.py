@@ -90,6 +90,11 @@ def _require(profile, desktop):
     if policy["kind"] != "logind-only" and not policy.get("source"):
         raise DesktopError(
             f"desktop {desktop!r} power_policy={policy['kind']} needs a source file")
+    unit = policy.get("user_unit")
+    if unit is not None and (not isinstance(unit, str) or not unit.endswith(".service")
+                             or "/" in unit or ".." in unit):
+        raise DesktopError(
+            f"desktop {desktop!r} power_policy.user_unit must be a bare unit name: {unit!r}")
     # 可选项，但写了就要完整：文件必须真的在仓库里，目标不许逃出 home。
     for entry in profile.get("user_config") or []:
         if sorted(entry) != ["source", "target"] or not entry["target"]:
@@ -318,6 +323,16 @@ def power_files(context):
     # dconf 档：文件由自有 RPM 安装。
     # logind-only：没有桌面侧文件，电源键交给 logind 的默认动作。
     return {}
+
+
+def power_user_units(context):
+    """桌面档要挂进 graphical-session.target 的用户单元。
+
+    电源键助手是 GNOME 专属：它调 Mutter 与 org.gnome.ScreenSaver，在其他
+    桌面起不来。包本身不 enable，由装配脚本按档位建链接，纯 logind 档没有。
+    """
+    unit = context["profile"]["power_policy"].get("user_unit")
+    return [unit] if unit else []
 
 
 def power_required(context):

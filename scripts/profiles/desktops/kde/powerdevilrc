@@ -1,9 +1,10 @@
 # System-wide PowerDevil defaults for the piano KDE image.
 #
-# Mirrors the GNOME contract in
-# packages/piano-fedora-configs/etc/dconf/db/local.d/00-power, and for the same
-# reason: suspend/resume on this device is still unreliable, so nothing here
-# may put the machine to sleep on its own.
+# Power button and lid turn the screen off and lock the session, the way the
+# stock tablet firmware behaves. Neither suspends: the machine stays running
+# so the next press repaints immediately, and `AutoSuspendAction` stays NoAction
+# in all three profiles. Stock PowerDevil would put the machine to sleep here,
+# which is a laptop policy and not what this device's owner expects.
 #
 # Group layout and key names come from powerdevil 6.8.1's
 # PowerDevilProfileSettings.kcfg (groups are [$ProfileId][$Group], profile ids
@@ -11,17 +12,17 @@
 # daemon/powerdevilenums.h: NoAction=0, Sleep=1, Hibernate=2, Shutdown=8,
 # PromptLogoutDialog=16, LockScreen=32, TurnOffScreen=64.
 #
-# Power button and lid: the piano-power-button user service grabs the power key
-# and reads the hall lid switch itself, so both stay NoAction here (0), exactly
-# like power-button-action='nothing' on the GNOME side.
+# Power key is handled here, not by a helper: the piano-power-button user
+# service in piano-fedora-configs is GNOME-only and is not enabled on this
+# desktop.
 # Idle: blank and lock after 300 s, matching idle-delay=uint32 300 and
 # lock-enabled=true.
 
 [AC][SuspendAndShutdown]
 AutoSuspendAction=0
-PowerButtonAction=0
+PowerButtonAction=64
 PowerDownAction=0
-LidAction=0
+LidAction=64
 SleepMode=1
 
 [AC][Display]
@@ -32,9 +33,9 @@ LockBeforeTurnOffDisplay=true
 
 [Battery][SuspendAndShutdown]
 AutoSuspendAction=0
-PowerButtonAction=0
+PowerButtonAction=64
 PowerDownAction=0
-LidAction=0
+LidAction=64
 SleepMode=1
 
 [Battery][Display]
@@ -45,9 +46,9 @@ LockBeforeTurnOffDisplay=true
 
 [LowBattery][SuspendAndShutdown]
 AutoSuspendAction=0
-PowerButtonAction=0
+PowerButtonAction=64
 PowerDownAction=0
-LidAction=0
+LidAction=64
 SleepMode=1
 
 [LowBattery][Display]

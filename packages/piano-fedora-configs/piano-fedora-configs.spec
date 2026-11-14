@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        14%{?dist}
+Release:        15%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND BSD-2-Clause-Patent AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -15,6 +15,8 @@ Requires:       qbootctl
 Requires:       util-linux
 Requires:       f2fs-tools
 Requires:       python3-evdev
+# piano-power-button 用 gi.repository 的 Gio/GLib 走会话总线。
+Requires:       python3-gobject
 
 # Replaces the older standalone piano-runtime / piano-session-fixes packages.
 # The bound is written as `< %{version}-%{release}` so it can never reach this
@@ -33,7 +35,7 @@ for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
 - PMIC RTC software clock floor restore and periodic background save
 - Gunyah hypervisor DT node masking to restore GNOME battery & power panel
 - GNOME auto-rotation fake tablet mode daemon (SW_TABLET_MODE)
-- Power key and hall sensor udev, sleep, and system service rules
+- Power key and hall sensor udev rules plus the GNOME power-button user service
 - Interconnect bwmon and RPMh stats module auto-loading
 - Dual-boot SunUEFI / Android return launchers and polkit rules
 - CPU schedutil 2ms rate limit tuning for instantaneous touch response
@@ -96,7 +98,7 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_unitdir}/xiaomi-charger-mode.service
 %{_prefix}/lib/systemd/system-shutdown/f2fs-root-shutdown
 %{_unitdir}/piano-linux-debug.service
-%{_unitdir}/piano-power-button.service
+%{_userunitdir}/piano-power-button.service
 
 %{_libexecdir}/piano-clock-restore
 %{_libexecdir}/piano-clock-save
@@ -138,12 +140,15 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_datadir}/polkit-1/rules.d/49-piano-boot-request.rules
 
 %post
-%systemd_post piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service piano-power-button.service
-systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service piano-power-button.service qbootctl.service || :
-# 电源键服务现在是 system 单元。rpm 只会删 /usr/lib/systemd/system 下的
-# 文件，旧安装 enable 出来的 user 链接会指向一个不再存在的单元；这段必须
-# 留在 %post，因为升级时 %preun 跑的是旧包的脚本。
-rm -f /etc/systemd/user/graphical-session.target.wants/piano-power-button.service
+%systemd_post piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
+systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service qbootctl.service || :
+# 电源键助手是 GNOME 专属的 user 单元，由装配脚本按桌面档挂进
+# graphical-session.target.wants；包本身不 enable，KDE 等桌面不装它。
+# 旧安装把它当 system 单元 enable 过，rpm 只会删 /usr/lib/systemd/system
+# 下的文件，那条链接会指向一个不存在的单元。这段必须留在 %post，因为升级
+# 时 %preun 跑的是旧包的脚本。
+systemctl --no-reload disable piano-power-button.service >/dev/null 2>&1 || :
+rm -f /etc/systemd/system/multi-user.target.wants/piano-power-button.service
 if [ -x %{_bindir}/dconf ]; then
     %{_bindir}/dconf update || :
 fi
@@ -157,12 +162,17 @@ systemctl --no-reload disable piano-boot-request-autoconfig.service >/dev/null 2
 rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.service
 
 %preun
-%systemd_preun piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service piano-power-button.service
+%systemd_preun piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 
 %postun
-%systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service piano-power-button.service
+%systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 
 %changelog
+* Sat Nov 14 2026 FFT-infra <dev@piano.invalid> - 0.1.0-15
+- 电源键助手换成 SunUEFI 的 GNOME 实现：不再独占电源键，锁屏与熄屏走
+  Mutter 的 PowerSaveMode 和 ScreenSaver 异步 D-Bus，随 graphical-session
+  生命周期启停。单元改为 user 级，只在 GNOME 档启用
+
 * Thu Nov 12 2026 FFT-infra <dev@piano.invalid> - 0.1.0-14
 - 虚拟平板模式跟随上游 nanosic 的 `Nanosic WN8030 tablet mode` 节点。键盘盖
   接上时不把 `SW_TABLET_MODE` 置 ON，避免 libinput 屏蔽悬浮键盘触控板（#22）

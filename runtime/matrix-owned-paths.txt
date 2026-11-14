@@ -119,7 +119,7 @@
 /usr/lib/systemd/system/piano-camerad.service
 /usr/lib/systemd/system/piano-fake-tablet-mode.service
 /usr/lib/systemd/system/piano-first-boot-ssh-key.service
-/usr/lib/systemd/system/piano-power-button.service
+/usr/lib/systemd/user/piano-power-button.service
 /usr/lib/systemd/system/piano-touch.service
 /usr/lib/systemd/system/uperf-linux.service
 /usr/lib/tmpfiles.d/cpufreq-schedutil.conf

@@ -49,13 +49,18 @@
 
 ## 电源行为
 
-电源键与合盖由 `piano-fedora-configs` 里的 `piano-power-button` 用户服务统一
-处理，四档一致。短按只关背光，再按恢复。合盖同上。长按弹出关机入口。
+电源键和合盖都只关屏并锁屏，不把机器挂起，与出厂系统的动作一致。长按弹出关机
+入口。四档都不开自动挂起。
 
-长按时，关机入口按以下顺序回退：先调 GNOME 的
-`org.gnome.SessionManager.Shutdown`；失败时调 KDE 的
-`org.kde.Shutdown.logoutAndShutdown`；两者都没有时调 `systemctl poweroff`。
-每一步失败都写日志。`piano-power-button` 不会在任一档位上静默无响应。
+GNOME 档由 `piano-fedora-configs` 的 `piano-power-button` 用户服务补这段策略。
+它不独占输入设备，按键事件照常流向 compositor；熄屏走 Mutter 的
+`PowerSaveMode`，锁屏走 `org.gnome.ScreenSaver`，长按走
+`org.gnome.SessionManager.Shutdown`。单元随 `graphical-session.target` 启停，
+只在 GNOME 档挂进 `graphical-session.target.wants`。
+
+KDE 档不装这个助手，电源键和合盖交给 PowerDevil。niri、Hyprland 与 server 没有
+桌面侧文件，靠 logind 的 `HandlePowerKey=ignore`、`HandleLidSwitch=ignore`、
+`IdleAction=ignore` 保证它不抢这两个输入。
 
 三种电源策略的落点：
 
@@ -63,15 +68,14 @@
   `piano-fedora-configs` 这个 RPM 安装，构建器只核对不重写。两种自动睡眠都是
   `nothing`，空闲 300 秒关屏并锁屏。
 - **kconfig**（KDE）：`etc/xdg/powerdevilrc`，由构建器落盘，没有包拥有它。
-  AC / Battery / LowBattery 三个 profile 的 `AutoSuspendAction`、
-  `PowerButtonAction`、`LidAction` 全是 `0`（NoAction），空闲 300 秒关屏并锁屏。
-- **仅 logind**（niri / Hyprland / server）：没有桌面侧文件。logind 的
-  `HandlePowerKey=ignore`、`HandleLidSwitch=ignore`、`IdleAction=ignore` 保证
-  它不跟用户服务抢这两个输入。
+  AC / Battery / LowBattery 三个 profile 的 `AutoSuspendAction` 是 `0`
+  （NoAction），`PowerButtonAction` 与 `LidAction` 是 `64`（TurnOffScreen），
+  空闲 300 秒关屏并锁屏。
+- **仅 logind**（niri / Hyprland / server）：没有桌面侧文件，电源键与合盖都不
+  触发动作。
 
-`rtcwake -m mem -s 20` 实测正常。桌面上做挂起/唤醒两轮，都回到了原会话。
-四档关掉自动睡眠。电源键与合盖已由 `piano-power-button` 统一接管，桌面再自己
-睡一次会和它抢同一个事件。
+`rtcwake -m mem -s 20` 实测正常。桌面上做挂起/唤醒两轮，都回到了原会话。那是
+用户主动发起的挂起，默认策略里没有任何一条会自动睡下去。
 
 ## KDE 默认值
 

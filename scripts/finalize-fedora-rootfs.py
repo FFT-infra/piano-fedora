@@ -390,10 +390,12 @@ WantedBy=sysinit.target
 # piano_desktop.power_required() 提供（GNOME dconf / KDE powerdevilrc / 无）。
 POWER_OVERLAY_FILES = (
     "usr/lib/piano/power-button",
-    "usr/lib/systemd/system/piano-power-button.service",
+    "usr/lib/systemd/user/piano-power-button.service",
     "etc/udev/rules.d/70-piano-power-button.rules",
     "etc/systemd/logind.conf.d/piano.conf",
 )
+# 这些用户单元只服务 GNOME，装配后只允许在声明了它们的桌面档里被挂上。
+POWER_HELPER_UNITS = ("piano-power-button.service",)
 LEGACY_POWER_OVERRIDES = {
     "etc/systemd/logind.conf.d/10-piano-powerkey.conf":
         b"[Login]\nHandlePowerKey=ignore\n",
@@ -470,10 +472,23 @@ def stage_piano_hardware_fixes(root, context):
         target.write_text(text)
         if name in scripts:
             target.chmod(0o755)
+    # 电源键助手是 GNOME 专属的 user 单元，包本身不 enable：由这里按档位建
+    # 链接，其他桌面不留链接，免得它在没有 Mutter 与会话总线的环境里反复重启。
+    units = []
+    for unit in piano_desktop.power_user_units(context):
+        name = f"etc/systemd/user/graphical-session.target.wants/{unit}"
+        stale = Path(root).resolve() / name
+        if stale.is_symlink():
+            stale.unlink()
+        link = safe_destination(root, name)
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to("/usr/lib/systemd/user/" + unit)
+        units.append(name)
     module = safe_destination(root, "usr/share/piano/selinux/piano_hardware.pp")
     module.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "rootfs/selinux/piano_hardware.pp", module)
-    return sorted([*files, "usr/share/piano/selinux/piano_hardware.pp", seed_clock_floor(root)])
+    return sorted([*files, *units, "usr/share/piano/selinux/piano_hardware.pp",
+                   seed_clock_floor(root)])
 
 
 def verify_power_overlay(root, context):
@@ -491,6 +506,17 @@ def verify_power_overlay(root, context):
             raise ValueError("installed desktop power policy is missing: " + name)
 
     kind = context["profile"]["power_policy"]["kind"]
+    # 助手只在挂链接的那一档跑；其他档没有它，电源键归桌面自己管。
+    wanted = {f"etc/systemd/user/graphical-session.target.wants/{unit}"
+              for unit in piano_desktop.power_user_units(context)}
+    for unit in POWER_HELPER_UNITS:
+        name = f"etc/systemd/user/graphical-session.target.wants/{unit}"
+        # 直接看链接本身：guest_resolve 会跟着链接走，看不出它是否存在。
+        present = (Path(root).resolve() / name).is_symlink()
+        if present != (name in wanted):
+            raise ValueError(
+                ("installed power helper is not enabled for this desktop: " if not present
+                 else "installed power helper leaks into a non-GNOME desktop: ") + name)
     if kind == "dconf":
         profile = guest_resolve(root, "/etc/dconf/profile/user")
         if not profile.is_file() or "system-db:local" not in {
@@ -519,9 +545,10 @@ def verify_power_overlay(root, context):
 
     if kind == "kconfig":
         # KDE 的分组写法是 [Profile][Group]，configparser 读进来是一整段
-        # section 名。逐段比对挂在 idle 上的动作：任何一段允许自动挂起或
-        # 把电源键交给桌面，都会在没有可靠唤醒的硬件上把机器睡过去。
-        # 读的是镜像里那份文件，不是仓库源文件——两者分叉正是要抓的东西。
+        # section 名。逐段比对动作值：电源键和合盖只关屏 (64)，自动挂起必须
+        # 是 NoAction (0)。任何一段改成 Sleep(1) 都会把平板睡过去，而这是
+        # 原生平板从不做的动作。读的是镜像里那份文件，不是仓库源文件——两者
+        # 分叉正是要抓的东西。
         powerdevil = configparser.ConfigParser(interpolation=None, strict=False)
         for name in piano_desktop.power_required(context):
             try:
@@ -531,8 +558,8 @@ def verify_power_overlay(root, context):
                     f"installed desktop power policy is not valid INI: {name}") from error
         required = {
             "AutoSuspendAction": "0",
-            "PowerButtonAction": "0",
-            "LidAction": "0",
+            "PowerButtonAction": "64",
+            "LidAction": "64",
         }
         for profile_id in ("AC", "Battery", "LowBattery"):
             section = f"{profile_id}][SuspendAndShutdown"

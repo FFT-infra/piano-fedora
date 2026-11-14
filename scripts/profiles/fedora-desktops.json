@@ -38,7 +38,8 @@
     },
     "power_policy": {
       "kind": "dconf",
-      "source": "packages/piano-fedora-configs/etc/dconf/db/local.d/00-power"
+      "source": "packages/piano-fedora-configs/etc/dconf/db/local.d/00-power",
+      "user_unit": "piano-power-button.service"
     }
   },
   "kde": {

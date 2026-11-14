@@ -277,10 +277,11 @@ def check_power_files_match_the_declared_kind():
 
 
 def check_kde_power_policy_is_safe():
-    """KDE 的 powerdevilrc 三个 profile 段都不得自动挂起或接管电源键。
+    """KDE 的 powerdevilrc 三个 profile 段都只关屏，从不自动挂起。
 
-    真机上睡眠/唤醒仍不可靠，GNOME 侧早已把两种自动睡眠改成 nothing；KDE
-    侧必须是同一份契约，否则换桌面就换掉了电源行为。
+    电源键和合盖的动作跟 GNOME 档对齐：关屏并锁屏，机器继续跑。三个 profile
+    的 AutoSuspendAction 必须是 NoAction，任何一段改成 Sleep 都会让平板在没人
+    碰的时候自己睡下去。
     """
     import configparser
     context = piano_desktop.load("kde", "44")
@@ -290,8 +291,11 @@ def check_kde_power_policy_is_safe():
     for profile_id in ("AC", "Battery", "LowBattery"):
         section = f"{profile_id}][SuspendAndShutdown"
         assert policy.has_section(section), f"missing [{section}]"
-        for key in ("AutoSuspendAction", "PowerButtonAction", "LidAction"):
-            assert policy.get(section, key) == "0", f"{profile_id} {key} is not NoAction"
+        assert policy.get(section, "AutoSuspendAction") == "0", (
+            f"{profile_id} AutoSuspendAction is not NoAction")
+        for key in ("PowerButtonAction", "LidAction"):
+            assert policy.get(section, key) == "64", (
+                f"{profile_id} {key} is not TurnOffScreen")
     display = "AC][Display"
     assert policy.get(display, "TurnOffDisplayIdleTimeoutSec") == "300"
 

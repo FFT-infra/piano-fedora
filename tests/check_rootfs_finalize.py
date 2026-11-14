@@ -22,7 +22,7 @@ spec.loader.exec_module(finalizer)
 
 POWER_FILES = {
     "usr/lib/piano/power-button",
-    "usr/lib/systemd/system/piano-power-button.service",
+    "usr/lib/systemd/user/piano-power-button.service",
     "etc/udev/rules.d/70-piano-power-button.rules",
     "etc/systemd/logind.conf.d/piano.conf",
     "etc/dconf/db/local.d/00-power",
@@ -68,8 +68,8 @@ def check_power_overlay_owner():
     def policy_root(base, files, fallback=None):
         """把一份 overlay 摆成 finalizer 眼里的安装树。
 
-        上游那份可能还按 user 单元摆放，单元路径不是这份检查的对象（它只
-        比对 dconf 策略），上游缺的文件从矩阵副本补上。
+        上游目录里没有 GNOME 装配出来的 user 单元链接，这里按 GNOME 档补上，
+        其余缺的文件从矩阵副本取。
         """
         for name in POWER_FILES:
             source = files / name
@@ -78,6 +78,11 @@ def check_power_overlay_owner():
             target = base / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(source.read_bytes())
+        wants = base / "etc/systemd/user/graphical-session.target.wants"
+        wants.mkdir(parents=True, exist_ok=True)
+        link = wants / "piano-power-button.service"
+        if not link.is_symlink():
+            link.symlink_to("/usr/lib/systemd/user/piano-power-button.service")
         profile = base / "etc/dconf/profile/user"
         profile.parent.mkdir(parents=True, exist_ok=True)
         profile.write_text("user-db:user\nsystem-db:local\n")
@@ -285,13 +290,12 @@ def check_service_staging_order(root):
             selected.append(node)
     assert len(selected) == 5, "service setup execution path changed; review this test"
     required = {"piano-clock-restore.service", "piano-clock-save.service",
-                "piano-clock-save.timer", "piano-selinux-policy.service",
-                "piano-power-button.service"}
+                "piano-clock-save.timer", "piano-selinux-policy.service"}
     enabled = []
 
     def enable(guest, *command):
         assert guest == root and command[0:1] == ("systemctl",)
-        assert "--global" not in command, "piano-power-button is a system unit now"
+        assert "--global" not in command, "system units are enabled without --global"
         assert command[1:2] == ("enable",)
         assert required <= set(command[2:]), "enable path omitted required custom units"
         for name in required:
@@ -305,6 +309,11 @@ def check_service_staging_order(root):
             target = root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("fixture")
+        wants = root / "etc/systemd/user/graphical-session.target.wants"
+        wants.mkdir(parents=True, exist_ok=True)
+        link = wants / "piano-power-button.service"
+        if not link.is_symlink():
+            link.symlink_to("/usr/lib/systemd/user/piano-power-button.service")
         profile = root / "etc/dconf/profile/user"
         profile.parent.mkdir(parents=True, exist_ok=True)
         profile.write_text("user-db:user\nsystem-db:local\n")
@@ -340,6 +349,15 @@ def check_service_staging_order(root):
             else:
                 raise AssertionError("unsafe or inactive GNOME policy was accepted: " + unsafe)
         dconf.write_text(policy)
+        # 助手没挂上的 GNOME 镜像等于没有电源键策略，必须被判错。
+        link.unlink()
+        try:
+            finalizer.verify_power_overlay(root, GNOME)
+        except ValueError as error:
+            assert "not enabled for this desktop" in str(error), error
+        else:
+            raise AssertionError("GNOME image without the power helper was accepted")
+        link.symlink_to("/usr/lib/systemd/user/piano-power-button.service")
 
     namespace = {"root": root, "chroot": enable, "context": GNOME,
                  "piano_desktop": finalizer.piano_desktop,

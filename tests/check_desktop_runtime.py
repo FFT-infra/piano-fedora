@@ -3,8 +3,8 @@
 
 三处硬编码藏在 `packages/piano-fedora-configs` 里：
 
-- `usr/lib/piano/power-button` 长按只调 `org.gnome.SessionManager.Shutdown`，
-  换到 KDE / niri / Hyprland 就静默无响应。
+- `usr/lib/piano/power-button` 只服务 GNOME：它调 Mutter 与 GNOME 的会话
+  总线接口，在其他桌面装上去只会反复重启。
 - `usr/libexec/piano-fake-tablet-mode` 扫 `gnome-shell` 进程，其余桌面下
   `SW_TABLET_MODE` 永远打不开。
 - `usr/bin/piano-collect-boot`（initramfs 消费的副本
@@ -88,152 +88,73 @@ def load_module(name, path, stub_modules=()):
                 sys.modules[key] = value
 
 
-def check_power_button_falls_back_across_desktops():
-    """长按的关机入口按 GNOME → KDE → logind 依次回退，每步都记日志。
+def check_power_button_uses_standard_gnome_interfaces():
+    """助手只补按键策略，锁屏与熄屏都交给 GNOME 自己的接口。
 
-    真机上只有一种桌面会应答；其余两条必须被尝试过，而不是第一次失败就
-    静默返回。两条桌面接口走会话总线（以会话用户身份），logind 那条是
-    root 直接调的 systemctl。
+    上游 7b77e52f6b 之后助手不再独占输入设备，compositor 能收到真实按键
+    自己去唤醒；0917d5adad 又把锁屏改成异步并取消唤醒后的延迟灭屏。这两件
+    事是这套实现相对 sheng 那套的全部价值，改写时最容易丢，所以逐条钉住：
+
+    - 不出现 EVIOCGRAB，按键事件继续流向会话；
+    - 熄屏走 org.gnome.Mutter.DisplayConfig 的 PowerSaveMode；
+    - 锁屏走 org.gnome.ScreenSaver 的 GetActive / Lock，并用 LockedHint 判重；
+    - 长按走 org.gnome.SessionManager.Shutdown；
+    - 整条路径不写 sysfs 背光。
     """
-    module = load_module("power_button", POWER_BUTTON)
-    session = ("1", 1000, "piano")
-    attempts = []
-    messages = []
-    module.active_session = lambda: session
-    module.say = messages.append
-
-    def stub_with(succeeds_when):
-        def record(_session, args, operation, timeout=4):
-            attempts.append((operation, args))
-            return succeeds_when(operation)
-        module.session_call = record
-        module.call = lambda args, operation, timeout=4: record(None, args, operation)
-
-    stub_with(lambda operation: operation == "GNOME power menu")
-    assert module.power_dialog(None) is True
-    assert [row[0] for row in attempts] == ["GNOME power menu"], attempts
-
-    stub_with(lambda operation: operation == "KDE power menu")
-    attempts.clear()
-    assert module.power_dialog(None) is True
-    order = [row[0] for row in attempts]
-    assert order == ["GNOME power menu", "KDE power menu"], order
-
-    stub_with(lambda _operation: False)
-    attempts.clear()
-    assert module.power_dialog(None) is False
-    order = [row[0] for row in attempts]
-    assert order == ["GNOME power menu", "KDE power menu", "systemctl poweroff"], order
-    assert attempts[-1][1][-1] == "poweroff", attempts[-1]
-    assert any("no shutdown path succeeded" in message for message in messages), messages
-
-    # 两条 D-Bus 调用的目标必须是各自的真实接口名。
     text = POWER_BUTTON.read_text(encoding="utf-8")
-    for needle in ("org.gnome.SessionManager.Shutdown",
-                   "org.kde.Shutdown.logoutAndShutdown",
-                   "/org/kde/Shutdown",
-                   "org.kde.Shutdown"):
-        assert needle in text, f"{needle} missing from the power button fallback chain"
+    assert "EVIOCGRAB" not in text, "the helper must not grab the power key"
+    assert "/sys/class/backlight" not in text, (
+        "the helper must not write the panel backlight itself")
+    for needle in ("org.gnome.Mutter.DisplayConfig", "PowerSaveMode",
+                   "org.gnome.ScreenSaver", "LockedHint",
+                   "org.gnome.SessionManager", "Shutdown"):
+        assert needle in text, f"{needle} missing from the power button helper"
+    # 唤醒那一按要是被当成又一次熄屏，屏幕就再也亮不起来。
+    for needle in ("unblanked_at", "pending_blank", "generation"):
+        assert needle in text, (
+            f"{needle} missing: the wake press must be told apart from a blank request")
 
 
-def check_power_button_blank_uses_mutter_power_save_mode():
-    """GNOME 下短按切 PowerSaveMode、锁会话，唤醒时注入 KEY_WAKEUP。
+def check_power_button_is_a_user_service():
+    """电源键助手跟图形会话走，不是 system 单元。
 
-    背光写 0 在 GNOME 49+ 上撑不过几毫秒：shell 拥有背光，自动亮度开启时
-    会把任何外部写入重算成 min + (max - min) * (abTarget + value - 0.5)，
-    0 因此变成约 17% 的亮度，屏幕仍然发光。这里锁住的是 sheng-gnome-fix 的
-    那套动作：PowerSaveMode 开关 + `loginctl lock-sessions` + uinput
-    KEY_WAKEUP，整条路径上不写背光。
+    它调 Mutter 与 org.gnome.ScreenSaver 的会话总线接口，必须长在用户会话
+    里。system 单元看不见会话总线，2026-11-14 在平板上抓到的
+    `SimulateUserActivity skipped: no graphical session` 就是这套结构的产物。
     """
-    module = load_module("power_button", POWER_BUTTON)
-    session = ("1", 1000, "piano")
-    calls = []
-    module.active_session = lambda: session
-    module.session_call = lambda sess, args, operation, timeout=4: (
-        calls.append(("session", args)), True)[1]
-    module.call = lambda args, operation, timeout=4: (
-        calls.append(("system", args)), True)[1]
-    module.say = lambda _msg: None
-    module.mutter_power_save_mode = lambda sess: 0
-    wakeups = []
-    module.simulate_wakeup = lambda: (wakeups.append(True), True)[1]
-
-    screen = module.Screen()
-    assert screen.is_blank() is False
-
-    # 亮屏短按 -> PowerSaveMode 3 + logind 锁会话
-    screen.toggle()
-    joined = [" ".join(args) for _, args in calls]
-    assert any("PowerSaveMode" in row and "<int32 3>" in row for row in joined), calls
-    assert any("lock-sessions" in row for row in joined), calls
-    assert not any("brightness" in row for row in joined), calls
-
-    # 熄屏状态下短按 -> 先注入 KEY_WAKEUP，再 PowerSaveMode 0
-    calls.clear()
-    module.mutter_power_save_mode = lambda sess: 3
-    assert screen.is_blank() is True
-    screen.toggle()
-    joined = [" ".join(args) for _, args in calls]
-    assert any("PowerSaveMode" in row and "<int32 0>" in row for row in joined), calls
-    assert wakeups, "wake must inject KEY_WAKEUP so the compositor repaints"
-    assert not any("lock-sessions" in row for row in joined), calls
-    assert not any("brightness" in row for row in joined), calls
-
-
-def check_power_button_falls_back_to_the_backlight_outside_gnome():
-    """没有 Mutter 的桌面继续用背光开关，行为与改动前一致。"""
-    module = load_module("power_button", POWER_BUTTON)
-    session = ("1", 1000, "piano")
-    writes = []
-    activity = []
-    module.active_session = lambda: session
-    module.mutter_power_save_mode = lambda sess: None
-    module.session_call = lambda sess, args, operation, timeout=4: (
-        activity.append(operation), True)[1]
-    module.find_backlight = lambda: "panel_backlight"
-    module.max_brightness = lambda _bl: 255
-    module.brightness = lambda _bl: 180
-    module.set_backlight = lambda bl, value: (writes.append((bl, value)), True)[1]
-    module.say = lambda _msg: None
-
-    screen = module.Screen()
-    assert screen.is_blank() is False
-
-    screen.toggle()
-    assert writes == [("panel_backlight", 0)], writes
-    assert screen.saved == ("panel_backlight", 180)
-
-    writes.clear()
-    assert screen.is_blank() is True
-    screen.toggle()
-    assert writes == [("panel_backlight", 180)], writes
-    assert screen.saved is None
-    assert any("SimulateUserActivity" in operation for operation in activity), activity
-
-
-def check_power_button_is_a_system_service():
-    """电源键服务必须是 system 单元，且不能再随包发一份 user 单元。
-
-    root 是这套机制的硬前提：`loginctl lock-sessions` 从 user manager 调用要
-    过 polkit（实测 4 秒超时且锁屏没生效），uinput 设备也只有 root 能建。
-    """
-    unit = PACKAGE / "usr" / "lib" / "systemd" / "system" / "piano-power-button.service"
-    stale = PACKAGE / "usr" / "lib" / "systemd" / "user" / "piano-power-button.service"
-    assert unit.is_file(), "power-button unit must live under systemd/system"
-    assert not stale.exists(), "the user unit must be removed, not shipped twice"
+    unit = PACKAGE / "usr" / "lib" / "systemd" / "user" / "piano-power-button.service"
+    stale = PACKAGE / "usr" / "lib" / "systemd" / "system" / "piano-power-button.service"
+    assert unit.is_file(), "power-button unit must live under systemd/user"
+    assert not stale.exists(), "the system unit must be removed, not shipped twice"
     text = unit.read_text(encoding="utf-8")
-    assert "WantedBy=multi-user.target" in text, text
-    # /usr/lib/piano 下的脚本是 lib_t，systemd 直接执行时进程停在 init_t，
-    # 读不了 /dev/input/event*（2026-11-05 在平板上实测 event3 报
-    # PermissionError）。经 bin_t 的 python3 启动才会落到
-    # unconfined_service_t，和 piano-fake-tablet-mode 一致。
+    assert "PartOf=graphical-session.target" in text, text
+    assert "WantedBy=graphical-session.target" in text, text
+    # /usr/lib/piano 下的脚本是 lib_t，直接执行时读不到 /dev/input/event*。
     assert "ExecStart=/usr/bin/python3 /usr/lib/piano/power-button" in text, (
         "the unit must exec the script through python3; a lib_t executable "
-        "stays in init_t and cannot open the power key")
+        "cannot open the power key")
     spec = (PACKAGE / "piano-fedora-configs.spec").read_text(encoding="utf-8")
-    assert "%{_userunitdir}/piano-power-button.service" not in spec
-    assert "%systemd_user_post piano-power-button.service" not in spec
-    assert "%systemd_user_preun piano-power-button.service" not in spec
+    assert "%{_userunitdir}/piano-power-button.service" in spec
+    assert "%{_unitdir}/piano-power-button.service" not in spec
+    enable = next(line for line in spec.splitlines()
+                  if line.startswith("systemctl enable piano-clock-restore"))
+    assert "piano-power-button" not in enable, (
+        "the helper is enabled per desktop, not by the package")
+
+
+def check_power_button_is_enabled_per_desktop():
+    """只有 GNOME 档给它挂 graphical-session.target.wants。"""
+    profiles = (ROOT / "scripts" / "profiles" / "fedora-desktops.json").read_text(
+        encoding="utf-8")
+    assert profiles.count('"user_unit"') == 1, (
+        "only the GNOME profile may enable the power button helper")
+    assert '"user_unit": "piano-power-button.service"' in profiles
+    desktop = (ROOT / "scripts" / "piano_desktop.py").read_text(encoding="utf-8")
+    assert "def power_user_units" in desktop
+    finalize = FINALIZE.read_text(encoding="utf-8")
+    assert "POWER_HELPER_UNITS" in finalize
+    assert "graphical-session.target.wants" in finalize
+
 
 def check_power_button_device_names_match_the_kernel():
     """服务按名字找设备，udev 规则也按名字授权；三处必须是同一个字符串。
@@ -527,10 +448,9 @@ def check_login_units_match_the_profiles():
 
 
 def main():
-    check_power_button_falls_back_across_desktops()
-    check_power_button_blank_uses_mutter_power_save_mode()
-    check_power_button_falls_back_to_the_backlight_outside_gnome()
-    check_power_button_is_a_system_service()
+    check_power_button_uses_standard_gnome_interfaces()
+    check_power_button_is_a_user_service()
+    check_power_button_is_enabled_per_desktop()
     check_power_button_device_names_match_the_kernel()
     check_tablet_mode_asks_logind_for_a_user_session()
     check_tablet_mode_follows_the_keyboard_cover()

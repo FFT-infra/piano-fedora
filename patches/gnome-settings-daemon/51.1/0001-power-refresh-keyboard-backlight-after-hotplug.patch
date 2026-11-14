@@ -88,18 +88,22 @@
  static void
  backlight_iface_emit_changed (GsdPowerManager *manager,
                                const char      *interface_name,
-@@ -1765,8 +1798,8 @@
+@@ -1765,8 +1798,12 @@
          if (connection == NULL)
                  return;
  
 -        params = g_variant_new_parsed ("(%s, [{'Brightness', <%i>}], @as [])", interface_name,
 -                                       value);
-+        params = g_variant_new_parsed ("(%s, [{'Brightness', <%i>}, {'Steps', <%i>}], @as [])",
-+                                       interface_name, value, backlight_get_n_steps (manager));
++        if (g_strcmp0 (interface_name, GSD_POWER_DBUS_INTERFACE_KEYBOARD) == 0)
++                params = g_variant_new_parsed ("(%s, [{'Brightness', <%i>}, {'Steps', <%i>}], @as [])",
++                                               interface_name, value, backlight_get_n_steps (manager));
++        else
++                params = g_variant_new_parsed ("(%s, [{'Brightness', <%i>}], @as [])",
++                                               interface_name, value);
          g_dbus_connection_emit_signal (connection,
                                         NULL,
                                         GSD_POWER_DBUS_PATH,
-@@ -1796,7 +1829,7 @@
+@@ -1796,7 +1833,7 @@
          gint max;
          gint now;
  
@@ -108,7 +112,7 @@
                  return TRUE;
  
          now = manager->kbd_brightness_now;
-@@ -1825,7 +1858,7 @@
+@@ -1825,7 +1862,7 @@
                              gpointer     user_data)
  {
          GsdPowerManager *manager = GSD_POWER_MANAGER (user_data);
@@ -117,7 +121,7 @@
          const gchar *source;
  
          if (g_strcmp0 (signal_name, "BrightnessChangedWithSource") != 0)
-@@ -1839,11 +1872,7 @@
+@@ -1839,11 +1876,7 @@
          if (g_strcmp0 (source, "external") == 0)
                  return;
  
@@ -130,7 +134,7 @@
  }
  
  static gboolean
-@@ -1923,7 +1952,7 @@
+@@ -1923,7 +1956,7 @@
                  disable_monitors (manager);
  
                  /* only toggle keyboard if present and not already toggled */
@@ -139,7 +143,7 @@
                      manager->kbd_brightness_old == -1) {
                          if (upower_kbd_toggle (manager, &error) < 0) {
                                  g_warning ("failed to turn the kbd backlight off: %s",
-@@ -1960,7 +1989,7 @@
+@@ -1960,7 +1993,7 @@
                  shell_brightness_set_dimming (manager, FALSE);
  
                  /* only toggle keyboard if present and already toggled off */
@@ -148,7 +152,7 @@
                      manager->kbd_brightness_old != -1) {
                          if (upower_kbd_toggle (manager, &error) < 0) {
                                  g_warning ("failed to turn the kbd backlight on: %s",
-@@ -2509,114 +2538,166 @@
+@@ -2509,114 +2542,166 @@
          update_active_power_profile (manager);
  }
  
@@ -406,7 +410,7 @@
  }
  
  static void
-@@ -3299,15 +3380,16 @@
+@@ -3299,15 +3384,16 @@
  
          /* connect to UPower for keyboard backlight control */
          manager->kbd_brightness_now = -1;
@@ -425,7 +429,7 @@
  
          manager->shell_brightness_proxy =
                  g_dbus_proxy_new_for_bus_sync (G_BUS_TYPE_SESSION,
-@@ -3363,6 +3445,10 @@
+@@ -3363,6 +3449,10 @@
          g_clear_handle_id (&manager->ambient_profile_update_id, g_source_remove);
          g_clear_pointer (&manager->ambient_profile, gsd_ambient_profile_free);
  
@@ -436,7 +440,7 @@
          if (manager->inhibit_lid_switch_timer_id != 0) {
                  g_source_remove (manager->inhibit_lid_switch_timer_id);
                  manager->inhibit_lid_switch_timer_id = 0;
-@@ -3525,9 +3611,7 @@
+@@ -3525,9 +3615,7 @@
          if (manager->upower_kbd_proxy &&
                     g_strcmp0 (interface_name, GSD_POWER_DBUS_INTERFACE_KEYBOARD) == 0) {
                  if (g_strcmp0 (property_name, "Brightness") == 0) {
@@ -447,7 +451,7 @@
                          retval =  g_variant_new_int32 (value);
                  } else if (g_strcmp0 (property_name, "Steps") == 0) {
                          value = backlight_get_n_steps (manager);
-@@ -3586,6 +3670,11 @@
+@@ -3586,6 +3674,11 @@
          }
  
          if (g_strcmp0 (interface_name, GSD_POWER_DBUS_INTERFACE_KEYBOARD) == 0) {
