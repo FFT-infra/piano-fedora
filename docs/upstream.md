@@ -67,6 +67,10 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 已核：干净 HEAD 上 9 组补丁 `CHECKED`/`APPLIED`，`load_series()` 通过，146 条 `git am` 重放逐条对上 `tree`，`make test` 87 OK / 1 SKIP，新 ambient 基线与本地 `51.1` 键盘背光、锁屏状态三补丁 `--fuzz=0` 全过，spec 的 `Patch0/1/2` 顺序正确。未核：内核与固件编译、发布链、extras 编译（本机容器受限，交 CI）、F2FS 归还、充电功率与温控、GPU 绑定、UKI `%posttrans` 升级、冷装、三补丁在设备上的锁屏与亮度行为。
 
+### 2026-11-14（续）
+
+`crosvm` 同一天又滚了 1 个提交。`4f5fefd8` 只改 `infra/README.recipes.md` 与 `infra/config/recipes.cfg`，源码没动，`sources.lock.json` 同步到新提交。下一次运行时构建要重编 `piano-crosvm`：`verify_runtime_extras()` 要求运行时清单里的 `extras.crosvm.commit` 与锁文件一致，旧产物会在镜像装配时被拒。`make test` 87 OK。
+
 ### 2026-11-13（续）
 
 `sunuefi` `4f663563` → `018634f1`（14 个提交），`crosvm` `75f930e9` → `9b63ea5f`，`piano-integration` `d9178221` → `e24b3007`。
