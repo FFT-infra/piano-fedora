@@ -38,6 +38,7 @@ test:
 	python3 tests/check_firmware_overlays.py
 	python3 tests/check_patches.py
 	python3 tests/check_fedora_kernel.py
+	python3 tests/check_boot_cmdline.py
 	python3 tests/check_iris_source.py
 	python3 tests/check_production_kernel.py
 	python3 tests/check_kernel_ccache.py

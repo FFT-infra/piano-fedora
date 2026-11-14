@@ -157,9 +157,15 @@ jobs:
               assert 'CONFIG_' + name + '=' + value in config, (name, value)
           assert 'CONFIG_LSM="selinux"' in config
           # 引导参数不再编进内核：它由 config/release.json 进 UKI 的 .cmdline。
+          # 首启冷装的延迟探测窗口会到期，GPU 的 SMMU 被判超时后不再重试。
+          # 具体数值只在 patches/kernel/0001 定义，这里只断言合同。
           release = json.loads(Path('config/release.json').read_text())['kernel']['command_line']
           assert 'rootfstype=f2fs' in release.split(), release
           assert 'rdinit=/pianoinit' in release.split(), release
+          assert any(token.startswith('deferred_probe_timeout=') and
+                     token.split('=', 1)[1].isdigit() and
+                     int(token.split('=', 1)[1]) > 0
+                     for token in release.split()), release
           print('Fedora F2FS/SELinux configuration verified before the long build')
           PY
 
@@ -199,6 +205,10 @@ jobs:
           tokens = manifest['command_line'].split()
           assert 'rootfstype=f2fs' in tokens, tokens
           assert 'rdinit=/pianoinit' in tokens, tokens
+          assert any(token.startswith('deferred_probe_timeout=') and
+                     token.split('=', 1)[1].isdigit() and
+                     int(token.split('=', 1)[1]) > 0
+                     for token in tokens), tokens
           print('UKI command line carries the F2FS root:', manifest['command_line'])
           PY
 
