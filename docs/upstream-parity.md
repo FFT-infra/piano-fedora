@@ -17,7 +17,7 @@
 | 罗盘 | 可用：`/net/hadess/SensorProxy/Compass` 上 `HasCompass=true` | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 之前查的是父对象，接口在子对象上 | 完成 |
 | 构建断言 | 完成：`build-kernel.yml` 断言 20 项，`check_kernel_config_assertions.py` 锁住 | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | — | 完成 |
 | 文档口径 | 完成：README 与 `known-issues.md` 的红外/HDR/指纹三节按实机状态重写 | — | — | 完成 |
-| 自动亮度 | 已验：profile 加载、目标亮度 66.7%、背光 1023 → 1360 | GSD 按原厂 lux 曲线调背光 | 遮住/移开传感器的跟随曲线仍待做 | P2 |
+| 自动亮度 | 已验：profile 加载、目标亮度换算；遮住与强光往返 lux 8–2527、背光 1600–2047 跟随，延迟 1–2 秒 | GSD 按原厂 lux 曲线调背光 | 基准落在暗处时暗端偏高；按面板 nits 校准 | P3 |
 | 键盘背光热插拔 | extras 的 GSD 带 50.1 补丁，背光设备随键盘盖插拔更新 | 背光走 UPower/GNOME | 同上，接上/取下键盘盖，看 `/sys/class/leds` 与 UPower | P2 |
 | KDE HDR/广色域 | 完成：extras 的 KWin 带退出 HDR 恢复背光补丁，2026-11-12 冷启动真机开关两轮，背光 1024 → 2047 → 1024 | KWin 可切换，退出 HDR 恢复背光 | 色深与色调映射没量，见[已知问题](known-issues.md#hdr) | 完成 |
 | 指纹录入 | 完成：`fprintd-enroll` 走完、`fprintd-verify` 通过、锁屏用指纹解开，在 v45.3 之前的镜像上验过 | libfprint/fprintd 完整录入与认证 | — | 完成 |
@@ -27,7 +27,7 @@
 | exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编成 y，挂载没测 | 读写 | 真机挂载两种 U 盘并读写 | P3 |
 | 10-bit 与 144 Hz | 面板与驱动支持，没量过色深与刷新率 | 面板 10bpc，144 Hz 可选 | 只验，不改默认（KDE 120，GNOME 可到 144） | P3 |
 
-真正缺代码的只有自动亮度与键盘背光，已经放进 extras。HDR 的 KWin 补丁在 2026-11-12 冷启动真机上验过退出后背光恢复。隐私灯与录像已在 2026-11-11 的真机上验过。手写笔进阶与存储挂载仍是验收项，不是新的适配项。测出真实缺口再单独开范围，不在这轮顺手改。
+自动亮度与键盘背光的补丁都在 extras 里，自动亮度已在真机验过，键盘背光还缺验收。HDR 的 KWin 补丁在 2026-11-12 冷启动真机上验过退出后背光恢复。隐私灯与录像已在 2026-11-11 的真机上验过。手写笔进阶与存储挂载仍是验收项，不是新的适配项。测出真实缺口再单独开范围，不在这轮顺手改。
 
 ## 指纹
 
