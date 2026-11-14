@@ -49,6 +49,20 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 3. 改 pin 之前核对所有消费路径、构建容器和依赖。重新生成受影响的内核、运行时、root 文件系统、initramfs、ESP 和 BOOT。清单同步更新。
 4. 下载并核对实际产物，更新部署入口。构建、文件验证和实机行为分别记账。不能继承上游另一台设备的结果。
 
+### 2026-11-14
+
+16 个锁定源的 pin 都停在各自远端 HEAD，没有新提交要跟。`sunuefi` 从 `018634f1` 推进到 `4d369d37`，`crosvm` 推进到 `1472e011`，其余 14 个源不动。
+
+变化集中在充电栈。7 条补丁进入封存序列 `0106`–`0112`，把原厂 4.0.6 循环充电策略、QC/PPS 输入与直充能力选择、电池健康降流和 PPS 调压步长接进 `piano_mca.c` 与 `bq27xxx`。这批代码随封存序列编译，功率、温控与关机充电还没有真机记录，45 W 不作声称。用户态新增按需运行的 `piano-charge-monitor.service`，默认关闭，用法与边界见 `docs/known-issues.md` 充电节。固定源码下载增加同源镜像回退，`config/release.json` 补入 `stable_source_mirrors`，上游 `command_line` 未改。
+
+删除 Linux 分区、把空间还给 Android 不再需要手工改表。上游引导助手在 WebUI 存储页提供 **删除并归还 Android 空间**。分区目标与 F2FS 元数据能覆盖的容量分开记账，SIT、SSA 与 section 大小决定文件系统能扩到多大，盖不住整块 `userdata` 时只扩到可覆盖范围；重启后由 SukiSU 早期维护用 `resize.f2fs -k -t` 完成。`docs/installation.md` 与 `docs/known-issues.md` 已改成指向这个入口。`install-f2fs.py` 不消费新增的两个目标字段，安装接口没变。
+
+内核封存序列完成全链重放与身份修复。`0095-input-nt36532e-matrix.patch` 把手指矩阵解码搬进内核，与用户态 5 级卡尔曼滤波路径冲突，排除。排除后上游保留 111 条，自有 35 条后移到 `0112`–`0146`，全序列 146 条，末树 `target_tree 507067737e5e`。旧生成脚本把 `original_commit` 写成了 `git am` 新生成的提交哈希，17 条上游行的 `tree` 还带着含 `0095` 的全链结果；现在前者改回补丁 `From` 头里的格式补丁身份，全部 `tree` 按排除 `0095` 后的基线重放重算。7 个 `patches/kernel/000*` 与 `patches/kernel/series.json` 的目标摘要及 creates 清单同步重生成。
+
+首次启动 GPU 未绑定的修复随 `0001` 进 `config/release.json` 的 `command_line`：加正的 `deferred_probe_timeout`，给 `gpucc` 留出延迟探测窗口。`tests/check_boot_cmdline.py` 离线锁这条合同，编译前后按正整数断言，数值只写在补丁里。判据与证据分层见 `docs/known-issues.md`。
+
+已核：干净 HEAD 上 9 组补丁 `CHECKED`/`APPLIED`，`load_series()` 通过，146 条 `git am` 重放逐条对上 `tree`，`make test` 87 OK / 1 SKIP。未核：内核与固件编译、发布链、F2FS 归还、充电功率与温控、GPU 绑定、UKI `%posttrans` 升级、冷装。
+
 ### 2026-11-13（续）
 
 `sunuefi` `4f663563` → `018634f1`（14 个提交），`crosvm` `75f930e9` → `9b63ea5f`，`piano-integration` `d9178221` → `e24b3007`。

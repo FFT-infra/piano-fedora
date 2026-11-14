@@ -197,6 +197,20 @@ userdata。安装脚本目前只做擦除，操作者要在现场执行这一步
 `findmnt -bno SIZE /` 报的是 statfs 数据块，比分区小约 2 MiB，那是 F2FS 扣掉保留块后的结果，不能拿它和分区
 字节数直接比。
 
+## 首次启动 GPU 未绑定
+
+已定位，修复待真机验证。全新安装后的第一次开机，`msm_dpu ae01000.display-controller: no GPU device was found`，KWin 退回软件渲染，第二次开机恢复正常。这跟「开机日志里的红色报错」表里那条同名输出不同：那条之后 adreno 会绑上，这条不会，整次启动都没有 `[drm] Initialized msm`。
+
+确证的部分：运行内核有 `CONFIG_DRIVER_DEFERRED_PROBE_TIMEOUT=10`，命令行里没有覆盖它的参数。失败那次日志里 `arm-smmu 3da0000.iommu`、`adreno 3d00000.gpu`、`qcom-camss ad27000.isp-ml` 与辅助桥都报 `deferred probe timeout, ignoring dependency`，正常那次是 0 条。这条消息只从 `driver_deferred_probe_check_state()` 的 `driver_deferred_probe_timeout == 0` 分支出来，清零只发生在延迟探测定时器到期时，所以定时器确实到期了。到期后依赖被放弃，`arm-smmu 3da0000.iommu` 以 `-110` 永久失败，adreno 依赖它一起失败。
+
+推断的部分：慢在哪一段没有逐段计时证据。失败那次 systemd 报内核阶段 114.8 秒，但该次 boot 的 printk 单调时间戳被 clocksource 切换压缩，且 systemd 有 `System time advanced` 与 `rtc-pm8xxx setting system clock` 两次 realtime 跳变，不能拿这个数字反推各阶段耗时。定时器的实际语义是没有驱动注册活动的静默期上限：`driver_register()` 成功会经 `deferred_probe_extend_timeout()` 续命。冷装首次启动时 UEFI 交接、内核解压或 UFS 首次枚举偏长，使 `late_initcall` 到 initramfs 首个 `insmod` 之间没有注册活动；第二次启动这些路径变热，正好在窗口内。
+
+实测排除的怀疑：首启扩容 `ROOT_GROW_STARTED` 到 `ROOT_GROW_DONE` 相差 9.967 ms；设备上 6 GiB 扩到 738 GiB，`resize.f2fs` 1.36 秒、两次 `fsck.f2fs -f` 合计约 0.8 秒。分区发现循环也没空转，`DISK_INIT_BEGIN` 到 `DISK_ROOT_INSPECTED` 是 9.5 ms。日志里 `ROOT_GROW_STARTED` 与超时消息只差 92 µs 是时间戳相邻，扩容不是主因，也不能据此推出因果。
+
+处理方向是放宽延迟探测窗口，让待探测设备继续等模块，不假设慢在哪一段。取值只放在 `patches/kernel/0001-linux-73-series.patch` 对 `config/release.json` 的 `command_line` 里，随 UKI 的 `.cmdline` 进内核。取正整数而非 0 或负值：0 会在 initcalls 结束时就放弃依赖，负值永不收尾，正值到期后仍按原逻辑结束 `fw_devlink` 等待。`tests/check_boot_cmdline.py` 离线锁住这条合同。
+
+待验证：重编内核与 UKI、全新冷装，确认首启日志没有 `deferred probe timeout`，出现 `[drm] Initialized msm`，camss 与辅助桥不再被误伤，KWin 走硬件渲染。
+
 ## 双系统切换
 
 双系统切换按上游 SunUEFI 的合体 BOOT 模型工作。活动槽的 BOOT 里是原厂 Android 内核、3 秒选择器与 UEFI 核心，请求页在这份镜像末尾。Android 与 Linux 都从同一个活动槽启动，不切活动槽，也不改 GPT。出厂设备的活动槽是 `_a`，OTA 到 HyperOS 4 的设备是 `_b`。
@@ -311,11 +325,31 @@ Android 实测运行在 SELinux Permissive，启动参数带 `selinux=permissive
 charge_current、mipps_auth、charge_policy 都开启。参数开启不等于实际达到
 45 W。
 
-上游 A16 这一轮的 11 条充电、温控与 FFC 补丁已经收进封存序列：`0093`、`0094`、`0096`–`0104`。覆盖停充保留温控、关机充电、MCA 会话恢复、bq27xxx 挂起恢复、Gen4 测温、满电重充、原厂温度、皮肤温控策略、PMIC GLINK 注册时序、带认证的 FFC 与 FFC 停充失败退出。补丁 0036 是这条驱动的历史参考，对应实现已经在固定内核里，不要重复套用。
+上游 A16 这一轮的充电、温控与 FFC 补丁收在封存序列的 `0093`、`0094`、`0096`–`0104`，覆盖停充保留温控、关机充电、MCA 会话恢复、bq27xxx 挂起恢复、Gen4 测温、满电重充、原厂温度、皮肤温控策略、PMIC GLINK 注册时序、带认证的 FFC 与 FFC 停充失败退出。2026-11-14 的 pin 又补进 7 条（`0106`–`0112`），接原厂 4.0.6 循环充电策略、QC/PPS 输入与直充能力选择、电池健康降流和 PPS 调压步长。补丁 0036 是这条驱动的历史参考，对应实现已经在固定内核里，不要重复套用。新 7 条的功率、温控与关机充电表现没有真机记录。
 
 当前镜像（`kernel-piano-7.3.3-2.piano`）上用 PD 充电器实测：`MiPPS adapter authenticated` 之后进入 `FFC battery charging mode`，直充总线从 7.6 V 抬到 8.94 V，电池电流升到 8.8–8.9 A、电压约 4.0 V，按 sysfs 估算电池侧约 35 W。SC8541 online 从旧记录的 0 变成 1，自身温度 42.5 → 55.5 °C 后回落，双电芯 29–36 °C，电量 17% → 39% 约 17 分钟。中途断开电源时打出 `source lost during direct charging`，直充退出并回到标准充电，没有停在直充状态。
 
 这些是 sysfs 读数，不是外置功率计。满电停充、温控降流与关机充电还没有记录，45 W 依旧不作声称。
+
+### 充电记录
+
+`piano-charge-monitor.service` 默认关闭。脚本 `/usr/lib/piano/charge-monitor` 随运行时 RPM 落地，unit 与 preset 在 `/usr/lib/systemd/`，preset 写的是 `disable piano-charge-monitor.service`，`python3` 由基础包提供。程序只读 power-supply、IIO、hwmon、thermal、Type-C 与 CPU/GPU 频率，不改充电设置，不阻止系统睡眠。接电时每 2 秒采样，离线时每 60 秒采样，插拔会立即重新采样。记录写入 `/var/log/piano-charge-monitor/` 的 `samples.jsonl`，旧段压缩成 `samples-*.jsonl.gz`，总量不超过 20 MiB，满后删最早段。
+
+临时观察就启动服务，要每次开机都记录再设成开机自启，取消用 `disable --now`：
+
+```sh
+sudo systemctl start piano-charge-monitor.service
+sudo systemctl enable --now piano-charge-monitor.service
+sudo systemctl disable --now piano-charge-monitor.service
+```
+
+导出记录：
+
+```sh
+sudo tar -C /var/log -czf "$HOME/charging-logs.tar.gz" piano-charge-monitor
+```
+
+这一轮没有在设备上跑过这个服务，状态记为未真机验证，不作可用声称。
 
 ## 传感器与自动旋转
 
@@ -348,7 +382,7 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 
 还有三件事没验：重复安装、`--accept-data-loss` 路径、缩到余量很小的容量。
 
-尺寸只在首装这一次定。`userdata` 起点不动、root 从它后面接，所以只能缩不能长，上限就是当前的盘尾。装完再改没有入口：`install-f2fs.py` 的 `--android-data-mib` 与 `--lossless` 在已有分区时直接拒绝，`update-f2fs.py` 只替换文件。要改就得先把 `sunuefi_root`、`sunuefi_esp` 从 GPT 删掉、把 `userdata` 拉回盘尾，再跑一遍，Linux 数据会丢，Android 保留；删分区这一步没有工具，目前是手工改表。
+尺寸只在首装这一次定。`userdata` 起点不动、root 从它后面接，所以只能缩不能长，上限就是当前的盘尾。装完再改没有入口：`install-f2fs.py` 的 `--android-data-mib` 与 `--lossless` 在已有分区时直接拒绝，`update-f2fs.py` 只替换文件。要改容量就先把 `sunuefi_root`、`sunuefi_esp` 从 GPT 删掉、把 `userdata` 拉回盘尾，再跑一遍，Linux 数据会丢，Android 保留。删分区不用手工改表：Android 的「SunUEFI 引导助手」WebUI 存储页有 **删除并归还 Android 空间**，它检查扩容条件、写新 GPT 并留备份，下次启动由 SukiSU 早期维护用 `resize.f2fs -k -t` 扩大加密 F2FS；分区目标与文件系统目标分别核对，原有元数据盖不住整块 `userdata` 时只扩到元数据可覆盖范围。这步需要支持早期 init 配置的 SukiSU，本轮未真机验证。
 
 发布归档里的 `root-install` 按 `_a` 构建，Slot B 设备要用同一次 bundle run 跑 `prepare-install.yml` 并传 `android_slot=_b`。一键脚本与手动章节已跟随活动槽，槽位与 root-install 不一致时在写入前退出。
 
@@ -650,7 +684,7 @@ Oops 或 panic。没有稳定复现，没有抓到完整串口日志，也没有
 | `[NVT-ts-spi]` | 2 | `nvt_thp_stylus_write` 与 `nvt_thp_raw_write` 用 `pr_err` 打 info 级内容 | 攒着。改 linux-piano 的驱动要动 7.3 补丁序列、重算 `target_tree`，和下一轮内核重编一起做 |
 | `Bluetooth: HCI_IBS_WAKE_ACK in tx state 0` | 2 | wcn7850 上电序列里 hci_qca 的状态机输出 | 不改 |
 | `bluetoothd` | 1 | `No matching connection for device` | 不改 |
-| `msm_dpu` | 1 | `no GPU device was found`。`separate_gpu_kms=1` 下 DPU 比 adreno 先探测，之后两块卡都绑上 | 不改。GNOME 跑在 adreno 上 |
+| `msm_dpu` | 1 | `no GPU device was found`。`separate_gpu_kms=1` 下 DPU 比 adreno 先探测，之后两块卡都绑上 | 不改。GNOME 跑在 adreno 上；首启那次一直不绑，见「首次启动 GPU 未绑定」 |
 
 还有一条已经消掉：`snd-seq`。`CONFIG_SND_SEQUENCER` 在内核里没开，Fedora 的
 alsa-lib 仍然在 `dist-alsa.conf` 里给 `snd-pcm` 挂 `modprobe snd-seq`，每次加载
