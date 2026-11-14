@@ -29,7 +29,7 @@
 | 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk 与 virtio-net、单 vCPU 客体启动。SMP、图形与 GUI 操作待验收 |
 | 双系统往返 | ✅ | 合体 BOOT 装在活动槽的 `boot` 分区（`boot_a` 或 `boot_b`）。Linux→Android 用 `piano-next-boot android --reboot`，Android→Linux 用「SunUEFI 引导助手」模块或开机 3 秒选择器。两次往返实测，见[已知问题](docs/known-issues.md#双系统切换) |
 | 手写笔 | ✅ | Type 29 协议就绪，压感 0–1，位置与倾斜正常。实测捕获 1906 条轴事件、22 条 proximity、18 条 tip，见[已知问题](docs/known-issues.md#手写笔) |
-| 指纹 | ❌ | 侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。用户态已接上：`piano-fingerprint` 提供原生客户端，`piano-libfprint` 把 Goodix 静态库链进打过补丁的 libfprint，两个包默认随镜像安装，fprintd 能认到传感器。缺的是录入与解锁的真机验收记录，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
+| 指纹 | ✅ | 侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。`piano-fingerprint` 提供原生客户端，`piano-libfprint` 把 Goodix 静态库链进打过补丁的 libfprint，两个包默认随镜像安装。录入、认证与锁屏解锁在 v45.3 之前的镜像上验过，v45.3 没有重测，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 | 红外 | ✅ | 消费级红外发射器（QUPv3 SE15）已接到标准 `ir-spi` 与 LIRC，`/dev/lirc0`、`/sys/class/rc/rc0` 均存在，可用 `ir-ctl` 发码。光学输出未实测，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 | HDR | ❌ | 面板支持 HDR10。DSI-1 上已挂 `HDR_OUTPUT_METADATA`，CRTC 上 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM` 齐全，但整条 HDR 输出链路没有验证过，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 
