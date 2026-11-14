@@ -61,9 +61,11 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 `2cc5cd62` 之前的两条提交改 GNOME 桌面电源策略。自动亮度不再按 lux 比例直降，改用原厂 108 点 lux→nits 曲线与 KTZ8866 指数电流映射算相对变化，灭屏时停止调光并保留用户亮度基准；电源管理器启动时读锁屏状态配置显示电源，避免重启后黑画面仍点亮背光。改动落在 `patches/gnome-settings-daemon/48.1`、`51.0` 与 `linux/desktops/gnome/ambient-policy/`，`config/release.json`、7.3 封存序列与 BSP manifest 三个 blob 逐字节未变。`scripts/build-fedora-desktop-patches.py` 固化的 ambient 补丁摘要跟着更新，本地 `51.1` 键盘背光叠加补丁在新基线上按 `--fuzz=0` 17 个 hunk 全过。
 
+上游的锁屏状态同步补丁是 `48.1` 与 `51.0` 两版，调 `gsd_screen_saver_call_get_active_sync()`；Fedora 51.1 没有这个生成包装，改用 `g_dbus_proxy_call_sync` 读 `GetActive`。本地补了 51.1 适配版 `0002`，按 51.1 + ambient + 键盘背光叠加之后的基线改写，三补丁按 `--fuzz=0` 全部通过，spec 里按 `Patch0/1/2` 顺序应用。GSD、KWin、GTK3 的 `Release` 从 `1.piano1`、`3.piano1`、`6.piano1` 抬到 `2.piano1`、`4.piano1`、`7.piano1`，让设备上 `dnf upgrade` 能收到新包。
+
 首次启动 GPU 未绑定的修复随 `0001` 进 `config/release.json` 的 `command_line`：加正的 `deferred_probe_timeout`，给 `gpucc` 留出延迟探测窗口。`tests/check_boot_cmdline.py` 离线锁这条合同，编译前后按正整数断言，数值只写在补丁里。判据与证据分层见 `docs/known-issues.md`。
 
-已核：干净 HEAD 上 9 组补丁 `CHECKED`/`APPLIED`，`load_series()` 通过，146 条 `git am` 重放逐条对上 `tree`，`make test` 87 OK / 1 SKIP，新 ambient 基线与本地 `51.1` 叠加补丁 `--fuzz=0` 全过。未核：内核与固件编译、发布链、extras 构建、F2FS 归还、充电功率与温控、GPU 绑定、UKI `%posttrans` 升级、冷装。
+已核：干净 HEAD 上 9 组补丁 `CHECKED`/`APPLIED`，`load_series()` 通过，146 条 `git am` 重放逐条对上 `tree`，`make test` 87 OK / 1 SKIP，新 ambient 基线与本地 `51.1` 键盘背光、锁屏状态三补丁 `--fuzz=0` 全过，spec 的 `Patch0/1/2` 顺序正确。未核：内核与固件编译、发布链、extras 编译（本机容器受限，交 CI）、F2FS 归还、充电功率与温控、GPU 绑定、UKI `%posttrans` 升级、冷装、三补丁在设备上的锁屏与亮度行为。
 
 ### 2026-11-13（续）
 

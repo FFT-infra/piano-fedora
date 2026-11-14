@@ -99,7 +99,7 @@ def adapt_gsd(text):
     text = replace_once(text, "Name:           gnome-settings-daemon\n",
                         "Name:           gnome-settings-daemon-piano\n")
     text = replace_once(text, "Release:        %autorelease\n",
-                        "Release:        1.piano1%{?dist}\n")
+                        "Release:        2.piano1%{?dist}\n")
     text = replace_once(
         text,
         "Source0:        https://download.gnome.org/sources/%{name}/"
@@ -128,17 +128,18 @@ def adapt_gsd(text):
                         "%{version}-%{release}\n"
                         "Conflicts:      gnome-settings-daemon-devel%{?_isa}\n")
     return add_patches(text, ["piano-ambient-profile.patch",
-                              "piano-keyboard-backlight.patch"])
+                              "piano-keyboard-backlight.patch",
+                              "piano-screensaver-state.patch"])
 
 
 def adapt_kwin(text):
-    text = replace_once(text, "Release: 3%{?dist}\n", "Release: 3.piano1%{?dist}\n")
+    text = replace_once(text, "Release: 3%{?dist}\n", "Release: 4.piano1%{?dist}\n")
     return add_patches(text, ["piano-kwin-hdr.patch"])
 
 
 def adapt_gtk3(text):
     text = replace_once(text, "Release: %autorelease\n",
-                        "Release: 6.piano1%{?dist}\n")
+                        "Release: 7.piano1%{?dist}\n")
     return add_patches(text, ["piano-gtk3-xi2.patch"])
 
 
@@ -147,7 +148,7 @@ PACKAGES = (
         "source": "gnome-settings-daemon",
         "binary": "gnome-settings-daemon-piano",
         "version": "51.1",
-        "release": "1.piano1",
+        "release": "2.piano1",
         "url": "https://kojipkgs.fedoraproject.org/packages/gnome-settings-daemon/"
                "51.1/1.fc45/src/gnome-settings-daemon-51.1-1.fc45.src.rpm",
         "srpm_sha256": "e528cb1b4e1fc4822ca3b11ab7c2cb28616e3fb92ce4f35a96cc6a2219363f72",
@@ -164,6 +165,13 @@ PACKAGES = (
              "0001-power-refresh-keyboard-backlight-after-hotplug.patch",
              "98cdaf76fbfa28bce72adafbfc38dd5a3f9eaca86e5cf73d157b98e62a89724b",
              "piano-keyboard-backlight.patch"),
+            # 上游 0002 用 gsd_screen_saver_call_get_active_sync()，51.1 没有这个
+            # 生成包装，只留 g_dbus_proxy_call_sync。这份按 51.1 + ambient + 键盘
+            # 背光叠加之后的基线改用通用 D-Bus 调用读 GetActive。
+            ("repo:patches/gnome-settings-daemon/51.1/"
+             "0002-power-restore-screensaver-state-on-startup.patch",
+             "cf484fc1afd5374d23985f3c05d997081293313eb39d71fcbe19654d43aca49d",
+             "piano-screensaver-state.patch"),
         ],
         "runtime": ("gnome-settings-daemon-piano",),
         "required": ("gnome-settings-daemon-piano",),
@@ -175,7 +183,7 @@ PACKAGES = (
         "source": "kwin",
         "binary": "kwin",
         "version": "6.8.2",
-        "release": "3.piano1",
+        "release": "4.piano1",
         "url": "https://kojipkgs.fedoraproject.org/packages/kwin/6.8.2/3.fc45/src/"
                "kwin-6.8.2-3.fc45.src.rpm",
         "srpm_sha256": "45072c4f6c94ec9ff15c18945cdeef23661d3e8a71e7605cf40f307585b3ffbd",
@@ -196,7 +204,7 @@ PACKAGES = (
         "source": "gtk3",
         "binary": "gtk3",
         "version": "3.24.52",
-        "release": "6.piano1",
+        "release": "7.piano1",
         "url": "https://kojipkgs.fedoraproject.org/packages/gtk3/3.24.52/6.fc45/src/"
                "gtk3-3.24.52-6.fc45.src.rpm",
         "srpm_sha256": "0d8bb2424eefb86bf0735dd41f301b3434eab939cfb02f5d0e2f5f17841cc463",

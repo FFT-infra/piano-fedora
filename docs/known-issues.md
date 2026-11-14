@@ -512,7 +512,7 @@ GNOME Snapshot 这类走 portal 与 pipewire 的应用，拿到的是 16x4 而�
 
 面板支持 HDR10。DSI-1 连接器的属性里有 `HDR_OUTPUT_METADATA`、`Colorspace`、`max bpc`，CRTC 上有 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM`，比早先记录的"msm 没挂属性"要多一些。
 
-extras 的 KWin 带退出 HDR 恢复背光的补丁，内核封存序列里也有上游的 HDR identity gamma 补丁。2026-11-12 在冷启动后的补丁版 KWin（`kwin-6.8.2-3.piano1.fc45`）上开关过两轮：`kscreen-doctor` 同一条命令带 `hdr.enable` 与 `wcg.enable` 时驱动接受配置，`/sys/class/backlight/ktz8866-backlight/brightness` 从 1024 升到 2047；同一条命令带两个 `disable` 后回到 1024 并稳定。两轮都是 1024 → 2047 → 1024，关 HDR 后背光没有停在最大值。单独提交 `hdr.enable` 会被驱动拒绝并打印 `applying config failed`，开关要带 `wcg` 一起提交。补丁只管 HDR 切回 SDR 时把硬件背光写回去，不改这条属性提交路径。
+extras 的 KWin 带退出 HDR 恢复背光的补丁，内核封存序列里也有上游的 HDR identity gamma 补丁。2026-11-12 在冷启动后的补丁版 KWin（`kwin-6.8.2-3.piano1.fc45`）上开关过两轮；后来 KWin 的 release 抬到 `4.piano1`，那一版没有重跑这两轮：`kscreen-doctor` 同一条命令带 `hdr.enable` 与 `wcg.enable` 时驱动接受配置，`/sys/class/backlight/ktz8866-backlight/brightness` 从 1024 升到 2047；同一条命令带两个 `disable` 后回到 1024 并稳定。两轮都是 1024 → 2047 → 1024，关 HDR 后背光没有停在最大值。单独提交 `hdr.enable` 会被驱动拒绝并打印 `applying config failed`，开关要带 `wcg` 一起提交。补丁只管 HDR 切回 SDR 时把硬件背光写回去，不改这条属性提交路径。
 
 没量过色深与色调映射，HDR 画面本身不算验证过。默认配置把 HDR 与广色域保持关闭。
 

@@ -383,16 +383,16 @@ def test_graphics_are_in_the_publish_order(module):
 
 
 def make_extras(directory, *, status="PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED",
-                release="3.piano1", source="gnome-settings-daemon",
+                release="4.piano1", source="gnome-settings-daemon",
                 device_tested=False, drop_file=None):
     directory = Path(directory)
     (directory / "rpms").mkdir(parents=True)
     (directory / "srpms").mkdir()
     rows = {
-        "gnome-settings-daemon-piano": ("gnome-settings-daemon", "51.1", "1.piano1",
+        "gnome-settings-daemon-piano": ("gnome-settings-daemon", "51.1", "2.piano1",
                                         ["gnome"]),
         "kwin": ("kwin", "6.8.2", release, ["kde"]),
-        "gtk3": ("gtk3", "3.24.52", "6.piano1", ["gnome", "kde"]),
+        "gtk3": ("gtk3", "3.24.52", "7.piano1", ["gnome", "kde"]),
         "piano-gnome-extras": ("piano-gnome-extras", "0.1.0", "1.fc45", ["gnome"]),
         "piano-kde-extras": ("piano-kde-extras", "0.1.0", "1.fc45", ["kde"]),
     }
@@ -445,7 +445,7 @@ def test_extras_contract(module, tmp):
     rejected(device_tested=True)
     rejected(release="3.fc45")
     rejected(source="gnome-settings-daemon-piano")
-    rejected(drop_file="kwin-6.8.2-3.piano1.fc45.aarch64.rpm")
+    rejected(drop_file="kwin-6.8.2-4.piano1.fc45.aarch64.rpm")
 
 
 def test_extras_order(module):

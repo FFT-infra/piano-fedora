@@ -55,7 +55,7 @@ def test_package_table(module):
     gsd = next(e for e in module.PACKAGES if e["source"] == "gnome-settings-daemon")
     assert gsd["binary"] == "gnome-settings-daemon-piano"
     assert gsd["desktops"] == ("gnome",)
-    assert len(gsd["patches"]) == 2, gsd["patches"]
+    assert len(gsd["patches"]) == 3, gsd["patches"]
     gtk3 = next(e for e in module.PACKAGES if e["source"] == "gtk3")
     assert set(gtk3["desktops"]) == {"gnome", "kde", "niri", "hyprland"}
     kwin = next(e for e in module.PACKAGES if e["source"] == "kwin")
@@ -93,9 +93,10 @@ Requires:       %{name}%{?_isa} = %{version}-%{release}
 def test_gsd_spec_rewrite(module):
     rewritten = module.adapt_gsd(GSD_SPEC)
     assert "Name:           gnome-settings-daemon-piano" in rewritten
-    assert "Release:        1.piano1%{?dist}" in rewritten
+    assert "Release:        2.piano1%{?dist}" in rewritten
     assert "Patch0:        piano-ambient-profile.patch" in rewritten
     assert "Patch1:        piano-keyboard-backlight.patch" in rewritten
+    assert "Patch2:        piano-screensaver-state.patch" in rewritten
     assert rewritten.index("Patch0:") < rewritten.index("%description")
     assert ("%autosetup -p1 -n gnome-settings-daemon-"
             "%{gnome_tarball_version}") in rewritten
@@ -108,8 +109,8 @@ def test_gsd_spec_rewrite(module):
     assert "Conflicts:      gnome-settings-daemon%{?_isa}" in rewritten
     assert "Provides:       gnome-settings-daemon-devel = %{version}-%{release}" in rewritten
     assert "Obsoletes:      gnome-settings-daemon-devel < %{version}-%{release}" in rewritten
-    final = module.add_changelog(rewritten, "51.1", "1.piano1", "note")
-    assert "* Wed Nov 11 2026 FFT-infra <dev@piano.invalid> - 51.1-1.piano1" in final
+    final = module.add_changelog(rewritten, "51.1", "2.piano1", "note")
+    assert "* Wed Nov 11 2026 FFT-infra <dev@piano.invalid> - 51.1-2.piano1" in final
     assert final.count("* Wed Nov 11 2026") == 1
 
 
@@ -117,12 +118,12 @@ def test_same_name_specs(module):
     kwin = module.adapt_kwin(
         "Name:    kwin\nRelease: 3%{?dist}\nPatch0: upstream.patch\n"
         "%prep\n%changelog\n")
-    assert "Release: 3.piano1%{?dist}" in kwin
+    assert "Release: 4.piano1%{?dist}" in kwin
     assert "Patch1:        piano-kwin-hdr.patch" in kwin
     gtk3 = module.adapt_gtk3(
         "Name:    gtk3\nRelease: %autorelease\n"
         "Patch0: first.patch\nPatch1: second.patch\n%prep\n%changelog\n")
-    assert "Release: 6.piano1%{?dist}" in gtk3
+    assert "Release: 7.piano1%{?dist}" in gtk3
     assert "Patch2:        piano-gtk3-xi2.patch" in gtk3
 
 

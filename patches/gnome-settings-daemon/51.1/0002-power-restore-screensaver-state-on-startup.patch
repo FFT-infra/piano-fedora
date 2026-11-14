@@ -1,0 +1,43 @@
+--- a/plugins/power/gsd-power-manager.c
++++ b/plugins/power/gsd-power-manager.c
+@@ -3299,8 +3299,10 @@ gsd_power_manager_startup (GApplication *app)
+ {
+         GsdPowerManager *manager = GSD_POWER_MANAGER (app);
+         g_autoptr(GVariant) variant = NULL;
++        g_autoptr (GVariant) screensaver_result = NULL;
+         g_autoptr (GError) error = NULL;
+         g_autofree char *chassis_type = NULL;
++        gboolean screensaver_state_known;
+         g_debug ("Starting power manager");
+         gnome_settings_profile_start (NULL);
+
+@@ -3439,10 +3441,29 @@ gsd_power_manager_startup (GApplication *app)
+
+         /* coldplug the engine */
+         engine_coldplug (manager);
++
++        /* ActiveChanged is not replayed when the daemon restarts. */
++        screensaver_result = g_dbus_proxy_call_sync (
++                G_DBUS_PROXY (manager->screensaver_proxy),
++                "GetActive", NULL, G_DBUS_CALL_FLAGS_NONE,
++                -1, NULL, &error);
++        screensaver_state_known = screensaver_result != NULL;
++        if (screensaver_state_known) {
++                g_variant_get (screensaver_result, "(b)",
++                               &manager->screensaver_active);
++        } else {
++                g_warning ("Could not read the screensaver state: %s",
++                           error->message);
++                g_clear_error (&error);
++        }
++
+         idle_configure (manager);
+
+         /* ensure the default dpms timeouts are cleared */
+-        enable_monitors (manager);
++        if (manager->screensaver_active)
++                idle_set_mode (manager, GSD_POWER_IDLE_MODE_BLANK);
++        else if (screensaver_state_known)
++                enable_monitors (manager);
+
+         G_APPLICATION_CLASS (gsd_power_manager_parent_class)->startup (app);

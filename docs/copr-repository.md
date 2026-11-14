@@ -77,7 +77,7 @@ sudo dnf upgrade --refresh
 
 | 包 | 内容 |
 | --- | --- |
-| `gnome-settings-daemon-piano` | 官方 GSD 改名重建，带自动亮度设备 profile 与键盘背光热插拔两个补丁 |
+| `gnome-settings-daemon-piano` | 官方 GSD 改名重建，带自动亮度设备 profile、键盘背光热插拔与启动时锁屏状态同步三个补丁 |
 | `kwin` | 同名重建，`Release` 带 `.piano1`，带 HDR 背光恢复补丁 |
 | `gtk3` | 同名重建，`Release` 带 `.piano1`，带 XI2 工具原子补丁 |
 | `piano-gnome-extras` | noarch meta，拉入 GSD 与 GTK3，并写入 `20-piano-ambient` dconf drop-in |
