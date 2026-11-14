@@ -142,7 +142,7 @@ scale 与 `QT_SCALE_FACTOR` 会叠加，界面会放大两次。
 
 | 桌面 | meta 包 | 带进来的组件 | 用途 |
 | --- | --- | --- | --- |
-| GNOME | `piano-gnome-extras` | `gnome-settings-daemon-piano`、`gtk3`、`mutter`，另手动升级 `gdm` | 自动亮度设备 profile、键盘背光热插拔、GTK3 XI2 工具原子、触摸 grab 空指针崩溃修复、登录前等 KMS connector |
+| GNOME | `piano-gnome-extras` | `gnome-settings-daemon-piano`、`gtk3`、`mutter`，另手动升级 `gdm` | 自动亮度设备 profile、键盘背光热插拔、GTK3 XI2 工具原子、空 KMS gamma LUT 与触摸 grab 空指针两个守卫、登录前等 KMS connector |
 | KDE | `piano-kde-extras` | `kwin`、`gtk3` | KDE HDR/广色域关闭后背光恢复、GTK3 XI2 工具原子 |
 
 GNOME meta 写入 `20-piano-ambient`，只把 `org.gnome.settings-daemon.plugins.power` 的 `ambient-enabled` 改成 `true`。默认的 `00-power` 仍是 `false`，卸载 extras 后按文件名顺序回到默认值。不启用 extras 的 GNOME 不读自动亮度，KDE 的 HDR 与广色域保持默认关闭。

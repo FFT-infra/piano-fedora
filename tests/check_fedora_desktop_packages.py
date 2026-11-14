@@ -61,7 +61,7 @@ def test_package_table(module):
     kwin = next(e for e in module.PACKAGES if e["source"] == "kwin")
     assert kwin["desktops"] == ("kde",)
     mutter = next(e for e in module.PACKAGES if e["source"] == "mutter")
-    assert mutter["desktops"] == ("gnome",) and len(mutter["patches"]) == 1
+    assert mutter["desktops"] == ("gnome",) and len(mutter["patches"]) == 2
     assert set(mutter["required"]) == {"mutter", "mutter-common"}
     gdm = next(e for e in module.PACKAGES if e["source"] == "gdm")
     assert gdm["desktops"] == ("gnome",) and len(gdm["patches"]) == 1
@@ -132,8 +132,9 @@ def test_same_name_specs(module):
     assert "Patch2:        piano-gtk3-xi2.patch" in gtk3
     mutter = module.adapt_mutter(
         "Name:    mutter\nRelease:       %autorelease\n%prep\n%changelog\n")
-    assert "Release:       1.piano1%{?dist}" in mutter
-    assert "Patch0:        piano-mutter-touch-cancel.patch" in mutter
+    assert "Release:       2.piano1%{?dist}" in mutter
+    assert "Patch0:        piano-mutter-kms-gamma.patch" in mutter
+    assert "Patch1:        piano-mutter-touch-cancel.patch" in mutter
     gdm = module.adapt_gdm(
         "Name:    gdm\nRelease:        %autorelease\n%prep\n%changelog\n")
     assert "Release:        1.piano1%{?dist}" in gdm

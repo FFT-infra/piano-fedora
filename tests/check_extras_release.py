@@ -37,7 +37,7 @@ PRIMARY = """<metadata>
 <package type="rpm"><name>gtk3</name><arch>aarch64</arch>
 <version epoch="0" ver="3.24.52" rel="7.piano1.fc45"/></package>
 <package type="rpm"><name>mutter</name><arch>aarch64</arch>
-<version epoch="0" ver="51.1" rel="1.piano1.fc45"/></package>
+<version epoch="0" ver="51.1" rel="2.piano1.fc45"/></package>
 <package type="rpm"><name>gdm</name><arch>aarch64</arch>
 <version epoch="0" ver="51.1.1" rel="1.piano1.fc45"/></package>
 <package type="rpm"><name>piano-gnome-extras</name><arch>noarch</arch>

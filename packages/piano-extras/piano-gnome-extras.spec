@@ -20,7 +20,7 @@ Installs the optional GNOME extras for the Xiaomi Pad 8 Pro:
 - gnome-settings-daemon-piano with the piano ambient-light profile and
   keyboard backlight hotplug handling
 - gtk3 with the X11 XI2 tool-atom fix
-- mutter with the cancelled touch-grab crash fix
+- mutter with the empty KMS gamma LUT and cancelled touch-grab guards
 - gdm with the native KMS connector wait (upgrade it separately before
   installing this meta package)
 

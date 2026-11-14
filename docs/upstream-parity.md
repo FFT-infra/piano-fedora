@@ -12,7 +12,7 @@
 | 充电、温控与 FFC | 补丁已收：上游 `0093`、`0094`、`0096`–`0104` 共 11 条进封存序列 | 关机充电、皮肤温控、带认证 FFC 与停充失败退出 | 真机验充电状态、关机再插电、温控与功率；45 W 不作声称 | P1 |
 | 内核手指解码 | 保持用户态 THP 读取加 `nvt_finger_filter.cpp` 的 5 级滤波 | `0095` 把逐帧矩阵解码搬进内核，无时域滤波 | 本轮不收；要换先做同帧对比 | P3 |
 | 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 写 `zh_CN.UTF-8`，输入源默认带 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | — | 完成 |
-| mutter 触摸崩溃 | 库存 `mutter-51.1-1.fc45` | 补丁在 51.1 源码上干净套用 | 崩溃未复现，这版不重编 mutter | P2 |
+| mutter 触摸崩溃 | 库存 `mutter-51.1-1.fc45` | 补丁在 51.1 源码上干净套用 | 崩溃未复现；补丁进 opt-in extras，默认镜像不重编 | P2 |
 | KDE 桌面默认值 | 完成：`kwinoutputconfig.json`、`kcminputrc`、`kscreenlockerrc` 落进 `~/.config`，`/etc/environment.d` 设 `KWIN_DRM_FORCE_SCALING_MODE=FULL` | 同名文件写 scale 2、`InTabletMode`、自然滚动，另设 `QT_SCALE_FACTOR=2` | `QT_SCALE_FACTOR` 没有跟：与输出 scale 叠加会放大两次 | 完成 |
 | 罗盘 | 可用：`/net/hadess/SensorProxy/Compass` 上 `HasCompass=true` | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 之前查的是父对象，接口在子对象上 | 完成 |
 | 构建断言 | 完成：`build-kernel.yml` 断言 20 项，`check_kernel_config_assertions.py` 锁住 | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | — | 完成 |
@@ -106,15 +106,25 @@ Not Authorized: net.reactivated.fprint.device.verify
 
 ## mutter
 
-Fedora 45 是 `mutter-51.1-1.fc45`。上游三个补丁里只有 `0003-wayland-touch-ignore-cancelled-grab` 对得上：它的提交说明写着 "Two Piano crash dumps from Mutter 51.0 show a NULL first member of MetaWaylandTouchInfo ... The same unchecked dereference is present in upstream 51.1"，改的是 `touch_can_grab_surface()` 里 `focus_surface` 为空时的解引用。
+Fedora 45 是 `mutter-51.1-1.fc45`。上游三条补丁里 `0001-kms-empty-gamma-bypass` 与 `0003-wayland-touch-ignore-cancelled-grab` 在 51.1 源码上 `patch --fuzz=0` 都能干净套用，进 opt-in extras 的同一个 mutter 包。
 
-拿 mutter 51.1 官方源码核对过：`src/wayland/meta-wayland-touch.c:662` 就是 `touch_info->focus_surface->surface`，补丁 `patch --fuzz=0 --dry-run` 干净套用。默认镜像仍用 Fedora 原版 mutter；这条补丁作为 opt-in extras 发布，默认关闭、手工 `priority=1` 才生效。设备上没复现过这个崩溃，所以不把它塞进默认镜像，也不默认启用。
+`0001` 改 `meta-kms-update.c`：`SetCrtcGamma` 接受三个空数组，`GetCrtcGamma` 在 KMS LUT 未设置时也返回空数组，CRTC 缓存会把它复制成非 NULL、零长度的 `MetaGammaLut`，重采样到硬件 LUT 大小时除以零。补丁把零长度 LUT 当作 bypass，不做重采样。补丁头写的是 48.7 基线，但 51.1 的代码路径没变，试套只差 32 行偏移。
+
+`0003` 的提交说明写着 "Two Piano crash dumps from Mutter 51.0 show a NULL first member of MetaWaylandTouchInfo ... The same unchecked dereference is present in upstream 51.1"，改的是 `touch_can_grab_surface()` 里 `focus_surface` 为空时的解引用；51.1 的 `src/wayland/meta-wayland-touch.c:662` 就是那行。
+
+`0002-color-no-edid-standard-profile` 在 51.1 上第 4 个 hunk 套不上，而本机 DSI-1 的 EDID 是 384 字节的合法 EDID，不落在补丁覆盖的无 EDID 场景里，不收。
+
+默认镜像仍用 Fedora 原版 mutter；两条补丁作为 opt-in extras 发布，默认关闭、手工 `priority=1` 才生效。设备上没复现过这两个故障，所以不把补丁版塞进默认镜像，也不默认启用。
 
 `0001-kms-empty-gamma-bypass` 针对的是 48.7 的 `SetCrtcGamma` 空数组路径。我们的 CRTC 上 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM` 都在，这条路径会不会踩到还没验。
 
 ## gdm
 
 Fedora 45 是 `gdm-51.1.1-1.fc45`。上游 `0001-local-display-wait-for-kms-connectors` 在 Fedora 自带补丁之后 `--fuzz=0` 通过，改的是 `gdm-local-display-factory.c` 的 `udev_is_settled()`：跳过 firmware framebuffer，按 `card*-*` connector 判断显卡是否可用，等不到 connector 时 `SEAT0_GRAPHICS_CHECK_TIMEOUT` 10 秒后照常继续。默认镜像仍用 Fedora 原版 gdm；这条作为 extras 的可选包发布，只对 GNOME 档有意义。`0002-Xsession-no-ssh-agent` 改的是 ssh-agent 的启动方式，不是设备修复，不取。
+
+## control-center
+
+上游 `0001-about-gunyah-primary-domain` 对 Fedora 51.1 的 `cc-about-page.c` `--fuzz=0` 可套，但它按 `/proc/device-tree/hypervisor/compatible` 与 `/proc/device-tree/hypervisor/qcom,gunyah-vm/qcom,vmid` 判定主域。piano 的 DT 只有 `/hypervisor/qcom,gunyah-vm/compatible`，没有父节点的 `compatible`；设备上 `systemd-detect-virt` 返回 `none`，关于页本来就不显示虚拟化行。这个补丁在本机是空操作，不单独重建同名的 gnome-control-center。
 
 ## 桌面默认值
 

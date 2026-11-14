@@ -150,8 +150,9 @@ def adapt_gtk3(text):
 
 def adapt_mutter(text):
     text = replace_once(text, "Release:       %autorelease\n",
-                        "Release:       1.piano1%{?dist}\n")
-    return add_patches(text, ["piano-mutter-touch-cancel.patch"])
+                        "Release:       2.piano1%{?dist}\n")
+    return add_patches(text, ["piano-mutter-kms-gamma.patch",
+                              "piano-mutter-touch-cancel.patch"])
 
 
 def adapt_gdm(text):
@@ -243,13 +244,17 @@ PACKAGES = (
         "source": "mutter",
         "binary": "mutter",
         "version": "51.1",
-        "release": "1.piano1",
+        "release": "2.piano1",
         "url": "https://kojipkgs.fedoraproject.org/packages/mutter/51.1/1.fc45/src/"
                "mutter-51.1-1.fc45.src.rpm",
         "srpm_sha256": "bc4d1b72b0ae0c0ae8a8c7de4fc648faccc93716fa6deda91237b55062bc8c41",
         "spec_sha256": "3eae50962d75dcf031796ee3d1e7846cd0c8e2ed841e11712a18122d5d612c9a",
         "tarball_sha256": "0d311d87901dbcb94518fb89304febe30852ce5d8a4befa9f87e85c68eceefde",
         "patches": [
+            ("linux/desktops/gnome/patches/mutter/"
+             "0001-kms-empty-gamma-bypass.patch",
+             "c9c3bf53ca666aa85e7208aa59d422ad4ab0543b52c97cb8a46df3a644f4d974",
+             "piano-mutter-kms-gamma.patch"),
             ("linux/desktops/gnome/patches/mutter/"
              "0003-wayland-touch-ignore-cancelled-grab.patch",
              "c4d7b5ad80d120a1e66af9f1c0c72b2e8fb12ea6c5581e3eb5e264907a5b368a",
@@ -259,7 +264,7 @@ PACKAGES = (
         "required": ("mutter", "mutter-common"),
         "desktops": ("gnome",),
         "adapt": adapt_mutter,
-        "changelog": "Ignore cancelled touch grabs instead of dereferencing the cleared focus surface",
+        "changelog": "Treat a zero-sized KMS gamma LUT as bypass, and ignore cancelled touch grabs instead of dereferencing the cleared focus surface",
     },
     {
         "source": "gdm",
