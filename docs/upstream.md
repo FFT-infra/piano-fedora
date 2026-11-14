@@ -51,7 +51,7 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 ### 2026-11-14
 
-16 个锁定源的 pin 都停在各自远端 HEAD，没有新提交要跟。`sunuefi` 从 `018634f1` 推进到 `4d369d37`，`crosvm` 推进到 `1472e011`，其余 14 个源不动。
+16 个锁定源里只有 `sunuefi` 和 `crosvm` 有推进。`sunuefi` 从 `018634f1` 到 `2cc5cd62`，`crosvm` 到 `1472e011`，其余 14 个源停在各自远端 HEAD。
 
 变化集中在充电栈。7 条补丁进入封存序列 `0106`–`0112`，把原厂 4.0.6 循环充电策略、QC/PPS 输入与直充能力选择、电池健康降流和 PPS 调压步长接进 `piano_mca.c` 与 `bq27xxx`。这批代码随封存序列编译，功率、温控与关机充电还没有真机记录，45 W 不作声称。用户态新增按需运行的 `piano-charge-monitor.service`，默认关闭，用法与边界见 `docs/known-issues.md` 充电节。固定源码下载增加同源镜像回退，`config/release.json` 补入 `stable_source_mirrors`，上游 `command_line` 未改。
 
@@ -59,9 +59,11 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 内核封存序列完成全链重放与身份修复。`0095-input-nt36532e-matrix.patch` 把手指矩阵解码搬进内核，与用户态 5 级卡尔曼滤波路径冲突，排除。排除后上游保留 111 条，自有 35 条后移到 `0112`–`0146`，全序列 146 条，末树 `target_tree 507067737e5e`。旧生成脚本把 `original_commit` 写成了 `git am` 新生成的提交哈希，17 条上游行的 `tree` 还带着含 `0095` 的全链结果；现在前者改回补丁 `From` 头里的格式补丁身份，全部 `tree` 按排除 `0095` 后的基线重放重算。7 个 `patches/kernel/000*` 与 `patches/kernel/series.json` 的目标摘要及 creates 清单同步重生成。
 
+`2cc5cd62` 之前的两条提交改 GNOME 桌面电源策略。自动亮度不再按 lux 比例直降，改用原厂 108 点 lux→nits 曲线与 KTZ8866 指数电流映射算相对变化，灭屏时停止调光并保留用户亮度基准；电源管理器启动时读锁屏状态配置显示电源，避免重启后黑画面仍点亮背光。改动落在 `patches/gnome-settings-daemon/48.1`、`51.0` 与 `linux/desktops/gnome/ambient-policy/`，`config/release.json`、7.3 封存序列与 BSP manifest 三个 blob 逐字节未变。`scripts/build-fedora-desktop-patches.py` 固化的 ambient 补丁摘要跟着更新，本地 `51.1` 键盘背光叠加补丁在新基线上按 `--fuzz=0` 17 个 hunk 全过。
+
 首次启动 GPU 未绑定的修复随 `0001` 进 `config/release.json` 的 `command_line`：加正的 `deferred_probe_timeout`，给 `gpucc` 留出延迟探测窗口。`tests/check_boot_cmdline.py` 离线锁这条合同，编译前后按正整数断言，数值只写在补丁里。判据与证据分层见 `docs/known-issues.md`。
 
-已核：干净 HEAD 上 9 组补丁 `CHECKED`/`APPLIED`，`load_series()` 通过，146 条 `git am` 重放逐条对上 `tree`，`make test` 87 OK / 1 SKIP。未核：内核与固件编译、发布链、F2FS 归还、充电功率与温控、GPU 绑定、UKI `%posttrans` 升级、冷装。
+已核：干净 HEAD 上 9 组补丁 `CHECKED`/`APPLIED`，`load_series()` 通过，146 条 `git am` 重放逐条对上 `tree`，`make test` 87 OK / 1 SKIP，新 ambient 基线与本地 `51.1` 叠加补丁 `--fuzz=0` 全过。未核：内核与固件编译、发布链、extras 构建、F2FS 归还、充电功率与温控、GPU 绑定、UKI `%posttrans` 升级、冷装。
 
 ### 2026-11-13（续）
 
