@@ -165,6 +165,13 @@ def check_kde_power_overlay_requires_its_helper():
 
 def stage_packaged_static_files(root):
     """把矩阵包里的静态载荷摆进 fixture，模拟 DNF 安装后的树。"""
+    # git 只记录可执行位，检出后的普通文件是 0644。两个调试文件靠 spec 的
+    # %attr(0600) 收紧，所以 fixture 按 spec 的声明补权限，别让断言随检出
+    # 环境的 umask 变化。
+    private = {
+        "etc/piano/linux-debug.conf": 0o600,
+        "etc/NetworkManager/system-connections/piano-debug-ncm.nmconnection": 0o600,
+    }
     for package in ("piano-fedora-configs", "piano-camera", "xiaomi-piano-thp"):
         source = ROOT / "packages" / package
         for path in sorted(source.rglob("*")):
@@ -174,6 +181,9 @@ def stage_packaged_static_files(root):
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target)
+            mode = private.get(str(relative))
+            if mode is not None:
+                target.chmod(mode)
 
 
 def fixture(root):
@@ -227,6 +237,14 @@ def check_debug_handoff(root, staged):
     getty_link = root / "etc/systemd/system/getty.target.wants/serial-getty@ttyGS0.service"
     assert getty_link.is_symlink()
     assert str(getty_link.readlink()) == "/usr/lib/systemd/system/serial-getty@.service"
+
+    # 0600 来自 spec 的 %attr，不是检出的文件位；fixture 与 spec 两边都要对。
+    spec_text = (ROOT / "packages/piano-fedora-configs"
+                 "/piano-fedora-configs.spec").read_text()
+    for path in ("%{_sysconfdir}/piano/linux-debug.conf",
+                 "%{_sysconfdir}/NetworkManager/system-connections/"
+                 "piano-debug-ncm.nmconnection"):
+        assert f"%attr(0600,root,root) %config(noreplace) {path}" in spec_text, path
 
     # linux-debug.conf：上游 opt-in acm-ncm、shell=0、固定 ipv4、recovery=0、权限 600。
     config = root / "etc/piano/linux-debug.conf"
