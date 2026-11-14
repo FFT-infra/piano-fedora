@@ -277,10 +277,13 @@ def check_power_files_match_the_declared_kind():
 
 
 def check_kde_power_policy_is_safe():
-    """KDE 的 powerdevilrc 三个 profile 段都只关屏，从不自动挂起。
+    """KDE 的 powerdevilrc 三个 profile 段都不自动挂起，合盖只关屏。
 
-    电源键和合盖的动作跟 GNOME 档对齐：关屏并锁屏，机器继续跑。三个 profile
-    的 AutoSuspendAction 必须是 NoAction，任何一段改成 Sleep 都会让平板在没人
+    电源键交给 piano-plasma-power-button 助手，所以 PowerButtonAction 必须是
+    NoAction：留 TurnOffScreen(64) 的话 PowerDevil 在按下那一刻就关屏锁屏，
+    长按到 800 毫秒时对话框已经落在锁屏后面，看不见。合盖仍由 PowerDevil
+    处理，动作跟 GNOME 档对齐：关屏并锁屏，机器继续跑。三个 profile 的
+    AutoSuspendAction 也必须是 NoAction，任何一段改成 Sleep 都会让平板在没人
     碰的时候自己睡下去。
     """
     import configparser
@@ -293,9 +296,10 @@ def check_kde_power_policy_is_safe():
         assert policy.has_section(section), f"missing [{section}]"
         assert policy.get(section, "AutoSuspendAction") == "0", (
             f"{profile_id} AutoSuspendAction is not NoAction")
-        for key in ("PowerButtonAction", "LidAction"):
-            assert policy.get(section, key) == "64", (
-                f"{profile_id} {key} is not TurnOffScreen")
+        assert policy.get(section, "PowerButtonAction") == "0", (
+            f"{profile_id} PowerButtonAction must be NoAction; the helper owns the key")
+        assert policy.get(section, "LidAction") == "64", (
+            f"{profile_id} LidAction is not TurnOffScreen")
     display = "AC][Display"
     assert policy.get(display, "TurnOffDisplayIdleTimeoutSec") == "300"
 

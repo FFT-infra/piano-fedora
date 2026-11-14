@@ -27,6 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "piano-fedora-configs"
 POWER_BUTTON = PACKAGE / "usr" / "lib" / "piano" / "power-button"
+PLASMA_BUTTON = PACKAGE / "usr" / "lib" / "piano" / "plasma-power-button"
 UDEV_RULE = PACKAGE / "etc" / "udev" / "rules.d" / "70-piano-power-button.rules"
 FINALIZE = ROOT / "scripts" / "finalize-fedora-rootfs.py"
 TABLET_MODE = PACKAGE / "usr" / "libexec" / "piano-fake-tablet-mode"
@@ -142,18 +143,75 @@ def check_power_button_is_a_user_service():
         "the helper is enabled per desktop, not by the package")
 
 
+def check_plasma_power_button_uses_powerdevil_actions():
+    """KDE 助手只补手势，关屏仍然走 PowerDevil 自己的动作。
+
+    2026-11-14 在平板上量到两件事：`org.freedesktop.ScreenSaver.SetActive`
+    只锁屏，面板 DPMS 一直是 On；PowerDevil 的 "Turn Off Screen" 快捷动作
+    才真的把 DPMS 关掉。所以短按必须调那个动作，自己不去碰锁屏和 DPMS。
+    长按走 org.kde.LogoutPrompt，不用 org.gnome.SessionManager。
+    """
+    text = PLASMA_BUTTON.read_text(encoding="utf-8")
+    assert "EVIOCGRAB" not in text, "the helper must not grab the power key"
+    assert "/sys/class/backlight" not in text, (
+        "the helper must not write the panel backlight itself")
+    for needle in ("org.kde.kglobalaccel", "invokeShortcut", "Turn Off Screen",
+                   "org.kde.LogoutPrompt", "promptShutDown"):
+        assert needle in text, f"{needle} missing from the KDE power button helper"
+    assert "SetActive" not in text, (
+        "SetActive only locks the session; the panel keeps its DPMS state")
+    assert "org.gnome" not in text, "the KDE helper must not call GNOME interfaces"
+    # 唤醒那一按不能再关一次屏：按下时面板还灭着，说明这一按是来唤醒的。
+    assert "press_wakes" in text, (
+        "the wake press must be told apart from a blank request")
+
+
+def check_power_button_is_a_user_service_plasma():
+    """KDE 助手同样是 user 单元，并且只在 KDE 档挂上。"""
+    unit = PACKAGE / "usr" / "lib" / "systemd" / "user" / "piano-plasma-power-button.service"
+    stale = PACKAGE / "usr" / "lib" / "systemd" / "system" / "piano-plasma-power-button.service"
+    assert unit.is_file(), "the plasma unit must live under systemd/user"
+    assert not stale.exists(), "the plasma unit must not be a system unit"
+    text = unit.read_text(encoding="utf-8")
+    assert "PartOf=graphical-session.target" in text, text
+    assert "WantedBy=graphical-session.target" in text, text
+    assert "ExecStart=/usr/bin/python3 /usr/lib/piano/plasma-power-button" in text, (
+        "the unit must exec the script through python3; a lib_t executable "
+        "cannot open the power key")
+    spec = (PACKAGE / "piano-fedora-configs.spec").read_text(encoding="utf-8")
+    assert "%{_userunitdir}/piano-plasma-power-button.service" in spec
+    assert "%{_unitdir}/piano-plasma-power-button.service" not in spec
+    enable = next(line for line in spec.splitlines()
+                  if line.startswith("systemctl enable piano-clock-restore"))
+    assert "plasma-power-button" not in enable, (
+        "the helper is enabled per desktop, not by the package")
+
+
 def check_power_button_is_enabled_per_desktop():
-    """只有 GNOME 档给它挂 graphical-session.target.wants。"""
+    """GNOME 与 KDE 各挂自己的助手，其余档不挂。"""
     profiles = (ROOT / "scripts" / "profiles" / "fedora-desktops.json").read_text(
         encoding="utf-8")
-    assert profiles.count('"user_unit"') == 1, (
-        "only the GNOME profile may enable the power button helper")
+    assert profiles.count('"user_unit"') == 2, (
+        "only the GNOME and KDE profiles may enable a power button helper")
     assert '"user_unit": "piano-power-button.service"' in profiles
+    assert '"user_unit": "piano-plasma-power-button.service"' in profiles
     desktop = (ROOT / "scripts" / "piano_desktop.py").read_text(encoding="utf-8")
     assert "def power_user_units" in desktop
     finalize = FINALIZE.read_text(encoding="utf-8")
     assert "POWER_HELPER_UNITS" in finalize
     assert "graphical-session.target.wants" in finalize
+    # finalize 里的 system enable 列表不能再点名任何助手：它们是 user 单元。
+    for helper in ("piano-power-button.service", "piano-plasma-power-button.service"):
+        for line in finalize.splitlines():
+            if "systemctl" in line and "enable" in line:
+                assert helper not in line, (
+                    f"{helper} is a user unit and must not be enabled by the system manager")
+    # KDE 的动作设置必须让位：64 会在按下时关屏，长按看不见对话框。
+    powerdevil = (ROOT / "scripts" / "profiles" / "desktops" / "kde"
+                  / "powerdevilrc").read_text(encoding="utf-8")
+    assert "PowerButtonAction=0" in powerdevil
+    assert "PowerButtonAction=64" not in powerdevil
+    assert "LidAction=64" in powerdevil
 
 
 def check_power_button_device_names_match_the_kernel():
@@ -176,6 +234,9 @@ def check_power_button_device_names_match_the_kernel():
     assert f"LID_NAME = '{LID_DEVICE}'" in script, (
         "power-button must open the lid switch by its kernel input name")
     assert f"KEY_NAME = '{KEY_DEVICE}'" in script
+    plasma = PLASMA_BUTTON.read_text(encoding="utf-8")
+    assert f"KEY_NAME = '{KEY_DEVICE}'" in plasma, (
+        "plasma-power-button must open the power key by its kernel input name")
     for path in (UDEV_RULE, FINALIZE):
         text = path.read_text(encoding="utf-8")
         assert f'ATTRS{{name}}=="{LID_DEVICE}"' in text, (
@@ -450,6 +511,8 @@ def check_login_units_match_the_profiles():
 def main():
     check_power_button_uses_standard_gnome_interfaces()
     check_power_button_is_a_user_service()
+    check_plasma_power_button_uses_powerdevil_actions()
+    check_power_button_is_a_user_service_plasma()
     check_power_button_is_enabled_per_desktop()
     check_power_button_device_names_match_the_kernel()
     check_tablet_mode_asks_logind_for_a_user_session()

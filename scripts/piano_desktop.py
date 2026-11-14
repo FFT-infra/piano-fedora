@@ -328,8 +328,9 @@ def power_files(context):
 def power_user_units(context):
     """桌面档要挂进 graphical-session.target 的用户单元。
 
-    电源键助手是 GNOME 专属：它调 Mutter 与 org.gnome.ScreenSaver，在其他
-    桌面起不来。包本身不 enable，由装配脚本按档位建链接，纯 logind 档没有。
+    助手是各桌面自己的：GNOME 那份调 Mutter 与 org.gnome.ScreenSaver，KDE
+    那份调 PowerDevil 与 org.kde.LogoutPrompt，换到别的桌面起不来。包本身
+    不 enable，由装配脚本按档位建链接，纯 logind 档没有。
     """
     unit = context["profile"]["power_policy"].get("user_unit")
     return [unit] if unit else []

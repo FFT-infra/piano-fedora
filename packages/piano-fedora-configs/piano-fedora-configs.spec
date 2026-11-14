@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        15%{?dist}
+Release:        16%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND BSD-2-Clause-Patent AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -35,7 +35,7 @@ for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
 - PMIC RTC software clock floor restore and periodic background save
 - Gunyah hypervisor DT node masking to restore GNOME battery & power panel
 - GNOME auto-rotation fake tablet mode daemon (SW_TABLET_MODE)
-- Power key and hall sensor udev rules plus the GNOME power-button user service
+- Power key and hall sensor udev rules plus the per-desktop power-button user services
 - Interconnect bwmon and RPMh stats module auto-loading
 - Dual-boot SunUEFI / Android return launchers and polkit rules
 - CPU schedutil 2ms rate limit tuning for instantaneous touch response
@@ -99,6 +99,7 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_prefix}/lib/systemd/system-shutdown/f2fs-root-shutdown
 %{_unitdir}/piano-linux-debug.service
 %{_userunitdir}/piano-power-button.service
+%{_userunitdir}/piano-plasma-power-button.service
 
 %{_libexecdir}/piano-clock-restore
 %{_libexecdir}/piano-clock-save
@@ -106,6 +107,7 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_libexecdir}/piano-physical-platform
 %{_libexecdir}/xiaomi-charger-mode
 %{_prefix}/lib/piano/power-button
+%{_prefix}/lib/piano/plasma-power-button
 %{_prefix}/lib/piano/piano-power-mode
 %{_prefix}/lib/piano/first-boot-ssh-key
 %{_prefix}/lib/piano/piano-ram-hardware-prepare
@@ -147,7 +149,9 @@ systemctl enable piano-clock-restore.service piano-clock-save.timer piano-fake-t
 # 旧安装把它当 system 单元 enable 过，rpm 只会删 /usr/lib/systemd/system
 # 下的文件，那条链接会指向一个不存在的单元。这段必须留在 %post，因为升级
 # 时 %preun 跑的是旧包的脚本。
+# 旧进程还占着电源键的独占 grab，必须停掉，否则桌面收不到按键。
 systemctl --no-reload disable piano-power-button.service >/dev/null 2>&1 || :
+systemctl --no-reload stop piano-power-button.service >/dev/null 2>&1 || :
 rm -f /etc/systemd/system/multi-user.target.wants/piano-power-button.service
 if [ -x %{_bindir}/dconf ]; then
     %{_bindir}/dconf update || :
@@ -168,6 +172,12 @@ rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 
 %changelog
+* Sat Nov 14 2026 FFT-infra <dev@piano.invalid> - 0.1.0-16
+- KDE 档加 `piano-plasma-power-button` 用户服务：短按调 PowerDevil 自己的
+  "Turn Off Screen" 动作，长按开关机对话框。PowerDevil 的动作在按下时就
+  触发，长按到 800 毫秒时屏已经黑且锁上，对话框看不见，所以 KDE 的电源键
+  交回助手、`PowerButtonAction` 改成 NoAction；合盖仍由 PowerDevil 负责
+
 * Sat Nov 14 2026 FFT-infra <dev@piano.invalid> - 0.1.0-15
 - 电源键助手换成 SunUEFI 的 GNOME 实现：不再独占电源键，锁屏与熄屏走
   Mutter 的 PowerSaveMode 和 ScreenSaver 异步 D-Bus，随 graphical-session

@@ -23,6 +23,8 @@ spec.loader.exec_module(finalizer)
 POWER_FILES = {
     "usr/lib/piano/power-button",
     "usr/lib/systemd/user/piano-power-button.service",
+    "usr/lib/piano/plasma-power-button",
+    "usr/lib/systemd/user/piano-plasma-power-button.service",
     "etc/udev/rules.d/70-piano-power-button.rules",
     "etc/systemd/logind.conf.d/piano.conf",
     "etc/dconf/db/local.d/00-power",
@@ -30,6 +32,7 @@ POWER_FILES = {
 
 # finalizer 的桌面相关函数都按桌面档分派，GNOME 是默认档。
 GNOME = finalizer.piano_desktop.load("gnome", "44")
+KDE = finalizer.piano_desktop.load("kde", "44")
 
 
 def check_power_overlay_owner():
@@ -107,6 +110,68 @@ def check_power_overlay_owner():
                       "re-review it against the matrix copy before the next pin bump")
     else:
         print("SKIP: SunUEFI checkout unavailable; only the matrix policy was checked")
+
+
+def check_kde_power_overlay_requires_its_helper():
+    """KDE 档挂自己那份助手，电源键动作留给助手，合盖留给 PowerDevil。
+
+    两个助手同名不同桌面：装配后 KDE 的树里只能有 plasma 那条链接，GNOME
+    那条出现就是串档。动作值也要一起核对，`PowerButtonAction=64` 会让
+    PowerDevil 在按下时抢先关屏，长按的关机对话框就看不见了。
+    """
+    package = ROOT / "packages" / "piano-fedora-configs"
+
+    def build(base, unit):
+        for name in POWER_FILES:
+            source = package / name
+            if not source.is_file():
+                continue
+            target = base / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read_bytes())
+        for name, text in finalizer.piano_desktop.power_files(KDE).items():
+            target = base / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text)
+        wants = base / "etc/systemd/user/graphical-session.target.wants"
+        wants.mkdir(parents=True, exist_ok=True)
+        if unit:
+            (wants / unit).symlink_to("/usr/lib/systemd/user/" + unit)
+        return base
+
+    with tempfile.TemporaryDirectory() as temporary:
+        root = build(Path(temporary) / "kde", "piano-plasma-power-button.service")
+        finalizer.verify_power_overlay(root, KDE)
+        link = root / "etc/systemd/user/graphical-session.target.wants" / \
+            "piano-plasma-power-button.service"
+        link.unlink()
+        try:
+            finalizer.verify_power_overlay(root, KDE)
+        except ValueError as error:
+            assert "not enabled for this desktop" in str(error), error
+        else:
+            raise AssertionError("KDE image without the plasma power helper was accepted")
+        link.symlink_to("/usr/lib/systemd/user/piano-plasma-power-button.service")
+        gnome = root / "etc/systemd/user/graphical-session.target.wants" / \
+            "piano-power-button.service"
+        gnome.symlink_to("/usr/lib/systemd/user/piano-power-button.service")
+        try:
+            finalizer.verify_power_overlay(root, KDE)
+        except ValueError as error:
+            assert "leaks into another desktop" in str(error), error
+        else:
+            raise AssertionError("a GNOME power helper was accepted on the KDE image")
+        gnome.unlink()
+        powerdevil = root / "etc/xdg/powerdevilrc"
+        saved = powerdevil.read_text()
+        powerdevil.write_text(saved.replace("PowerButtonAction=0", "PowerButtonAction=64"))
+        try:
+            finalizer.verify_power_overlay(root, KDE)
+        except ValueError as error:
+            assert "PowerButtonAction" in str(error), error
+        else:
+            raise AssertionError("a power key action that blanks before the dialog was accepted")
+        powerdevil.write_text(saved)
 
 
 def fixture(root):
@@ -429,6 +494,7 @@ def check_first_boot_ssh_key(root):
 
 def main():
     check_power_overlay_owner()
+    check_kde_power_overlay_requires_its_helper()
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         alternatives, man = fixture(root)

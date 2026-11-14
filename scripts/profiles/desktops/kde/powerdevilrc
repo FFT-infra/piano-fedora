@@ -1,10 +1,18 @@
 # System-wide PowerDevil defaults for the piano KDE image.
 #
-# Power button and lid turn the screen off and lock the session, the way the
-# stock tablet firmware behaves. Neither suspends: the machine stays running
-# so the next press repaints immediately, and `AutoSuspendAction` stays NoAction
-# in all three profiles. Stock PowerDevil would put the machine to sleep here,
-# which is a laptop policy and not what this device's owner expects.
+# The lid turns the screen off and locks the session, the way the stock tablet
+# firmware behaves, and neither the lid nor the machine idle suspends: the
+# device stays running so the next press repaints immediately.
+# `AutoSuspendAction` stays NoAction in all three profiles. Stock PowerDevil
+# would put the machine to sleep here, which is a laptop policy and not what
+# this device's owner expects.
+#
+# The power key is left at NoAction because PowerDevil acts on the press
+# itself. A long press would blank and lock the screen 800 ms before the
+# shutdown dialog could be seen. The piano-plasma-power-button user service
+# owns both gestures instead: a short press triggers PowerDevil's own
+# "Turn Off Screen" action (so locking and DPMS are unchanged), a long press
+# opens the logout dialog.
 #
 # Group layout and key names come from powerdevil 6.8.1's
 # PowerDevilProfileSettings.kcfg (groups are [$ProfileId][$Group], profile ids
@@ -12,15 +20,12 @@
 # daemon/powerdevilenums.h: NoAction=0, Sleep=1, Hibernate=2, Shutdown=8,
 # PromptLogoutDialog=16, LockScreen=32, TurnOffScreen=64.
 #
-# Power key is handled here, not by a helper: the piano-power-button user
-# service in piano-fedora-configs is GNOME-only and is not enabled on this
-# desktop.
 # Idle: blank and lock after 300 s, matching idle-delay=uint32 300 and
 # lock-enabled=true.
 
 [AC][SuspendAndShutdown]
 AutoSuspendAction=0
-PowerButtonAction=64
+PowerButtonAction=0
 PowerDownAction=0
 LidAction=64
 SleepMode=1
@@ -33,7 +38,7 @@ LockBeforeTurnOffDisplay=true
 
 [Battery][SuspendAndShutdown]
 AutoSuspendAction=0
-PowerButtonAction=64
+PowerButtonAction=0
 PowerDownAction=0
 LidAction=64
 SleepMode=1
@@ -46,7 +51,7 @@ LockBeforeTurnOffDisplay=true
 
 [LowBattery][SuspendAndShutdown]
 AutoSuspendAction=0
-PowerButtonAction=64
+PowerButtonAction=0
 PowerDownAction=0
 LidAction=64
 SleepMode=1

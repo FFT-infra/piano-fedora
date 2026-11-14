@@ -78,7 +78,8 @@
     "power_policy": {
       "kind": "kconfig",
       "source": "scripts/profiles/desktops/kde/powerdevilrc",
-      "target": "etc/xdg/powerdevilrc"
+      "target": "etc/xdg/powerdevilrc",
+      "user_unit": "piano-plasma-power-button.service"
     },
     "environment": {
       "KWIN_DRM_FORCE_SCALING_MODE": "FULL"

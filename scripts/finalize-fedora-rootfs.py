@@ -391,11 +391,13 @@ WantedBy=sysinit.target
 POWER_OVERLAY_FILES = (
     "usr/lib/piano/power-button",
     "usr/lib/systemd/user/piano-power-button.service",
+    "usr/lib/piano/plasma-power-button",
+    "usr/lib/systemd/user/piano-plasma-power-button.service",
     "etc/udev/rules.d/70-piano-power-button.rules",
     "etc/systemd/logind.conf.d/piano.conf",
 )
-# 这些用户单元只服务 GNOME，装配后只允许在声明了它们的桌面档里被挂上。
-POWER_HELPER_UNITS = ("piano-power-button.service",)
+# 这些用户单元只服务自己那一档桌面，装配后只允许在声明了它们的档里被挂上。
+POWER_HELPER_UNITS = ("piano-power-button.service", "piano-plasma-power-button.service")
 LEGACY_POWER_OVERRIDES = {
     "etc/systemd/logind.conf.d/10-piano-powerkey.conf":
         b"[Login]\nHandlePowerKey=ignore\n",
@@ -472,8 +474,8 @@ def stage_piano_hardware_fixes(root, context):
         target.write_text(text)
         if name in scripts:
             target.chmod(0o755)
-    # 电源键助手是 GNOME 专属的 user 单元，包本身不 enable：由这里按档位建
-    # 链接，其他桌面不留链接，免得它在没有 Mutter 与会话总线的环境里反复重启。
+    # 电源键助手是各桌面专属的 user 单元，包本身不 enable：由这里按档位建
+    # 链接，其余档不留链接，免得它在没有对应会话总线的环境里反复重启。
     units = []
     for unit in piano_desktop.power_user_units(context):
         name = f"etc/systemd/user/graphical-session.target.wants/{unit}"
@@ -516,7 +518,7 @@ def verify_power_overlay(root, context):
         if present != (name in wanted):
             raise ValueError(
                 ("installed power helper is not enabled for this desktop: " if not present
-                 else "installed power helper leaks into a non-GNOME desktop: ") + name)
+                 else "installed power helper leaks into another desktop: ") + name)
     if kind == "dconf":
         profile = guest_resolve(root, "/etc/dconf/profile/user")
         if not profile.is_file() or "system-db:local" not in {
@@ -545,10 +547,12 @@ def verify_power_overlay(root, context):
 
     if kind == "kconfig":
         # KDE 的分组写法是 [Profile][Group]，configparser 读进来是一整段
-        # section 名。逐段比对动作值：电源键和合盖只关屏 (64)，自动挂起必须
-        # 是 NoAction (0)。任何一段改成 Sleep(1) 都会把平板睡过去，而这是
-        # 原生平板从不做的动作。读的是镜像里那份文件，不是仓库源文件——两者
-        # 分叉正是要抓的东西。
+        # section 名。逐段比对动作值：合盖只关屏 (64)，电源键交给助手所以是
+        # NoAction (0)，自动挂起也必须是 NoAction。电源键留 64 会和助手抢：
+        # PowerDevil 在按下时就关屏锁屏，长按到 800 毫秒时对话框已经在锁屏
+        # 后面了。任何一段改成 Sleep(1) 都会把平板睡过去，而这是原生平板从
+        # 不做的动作。读的是镜像里那份文件，不是仓库源文件——两者分叉正是
+        # 要抓的东西。
         powerdevil = configparser.ConfigParser(interpolation=None, strict=False)
         for name in piano_desktop.power_required(context):
             try:
@@ -558,7 +562,7 @@ def verify_power_overlay(root, context):
                     f"installed desktop power policy is not valid INI: {name}") from error
         required = {
             "AutoSuspendAction": "0",
-            "PowerButtonAction": "64",
+            "PowerButtonAction": "0",
             "LidAction": "64",
         }
         for profile_id in ("AC", "Battery", "LowBattery"):
@@ -871,7 +875,6 @@ def main():
                 "piano-wait-display.service",
                 "piano-first-boot-ssh-key.service",
                 "piano-pstore-save.service", "qbootctl.service",
-                "piano-power-button.service",
                 *piano_desktop.enable_units(context)]
     chroot(root, "systemctl", "enable", *services)
     # dconf 编译只有 dconf 档需要：KDE 与无桌面档没有这个库，跑它会把一份

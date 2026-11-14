@@ -1,0 +1,202 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-2.0-only
+"""Plasma power key gestures: short press turns the screen off, long press
+asks to shut down.
+
+PowerDevil hands the power key to this helper (PowerButtonAction=NoAction),
+because its own actions fire on the press itself: a long press would blank and
+lock the screen before any dialog could be seen. The helper supplies the two
+gestures and nothing else. Turning the screen off is PowerDevil's own "Turn
+Off Screen" action, triggered over KGlobalAccel, so locking and DPMS stay
+exactly as they are without the helper. It never grabs the input device.
+"""
+import fcntl
+import glob
+import os
+import struct
+import sys
+import time
+
+from gi.repository import Gio, GLib
+
+KEY_NAME = 'pmic_pwrkey'
+KEY_POWER = 116
+EV_KEY, EV_SYN, SYN_DROPPED = 1, 0, 3
+LONG_PRESS_MS = 800
+# 面板亮起来靠的是 KWin 自己的输入唤醒，不经过我们。按下那一刻屏还是灭的，
+# 说明这一按是来唤醒的：松开时不能再关一次。
+WAKE_WINDOW = 0.5
+DPMS_POLL_MS = 150
+DPMS = '/sys/class/drm/card*-DSI-*/dpms'
+EVIOCSCLOCKID = (1 << 30) | (4 << 16) | (ord('E') << 8) | 0xa0
+EVENT = struct.Struct('llHHi')
+
+
+def say(message):
+    print('plasma-power-button: ' + message, file=sys.stderr, flush=True)
+
+
+def proxy(name, path, interface):
+    return Gio.DBusProxy.new_for_bus_sync(
+        Gio.BusType.SESSION, Gio.DBusProxyFlags.NONE, None,
+        name, path, interface, None)
+
+
+def find_device(name):
+    for path in glob.glob('/sys/class/input/event*/device/name'):
+        try:
+            with open(path) as stream:
+                if stream.read().strip() == name:
+                    return '/dev/input/' + path.split('/')[4]
+        except OSError:
+            continue
+    return None
+
+
+def panel_dark():
+    for path in glob.glob(DPMS):
+        try:
+            with open(path) as stream:
+                if stream.read().strip() != 'On':
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+class Plasma:
+    def __init__(self):
+        self.accel = proxy('org.kde.kglobalaccel', '/component/org_kde_powerdevil',
+                           'org.kde.kglobalaccel.Component')
+        self.prompt = proxy('org.kde.LogoutPrompt', '/LogoutPrompt',
+                            'org.kde.LogoutPrompt')
+        self.dark = panel_dark()
+        self.dark_since = time.monotonic()
+        GLib.timeout_add(DPMS_POLL_MS, self.poll)
+
+    def poll(self):
+        dark = panel_dark()
+        if dark and not self.dark:
+            self.dark_since = time.monotonic()
+        self.dark = dark
+        return GLib.SOURCE_CONTINUE
+
+    def call(self, target, method, args, done=None):
+        def finished(source, result):
+            try:
+                reply = source.call_finish(result)
+            except GLib.Error as error:
+                say(f'{method} failed: {error.message}')
+                if done:
+                    done(None)
+            else:
+                if done:
+                    done(reply.unpack())
+
+        target.call(method, args, Gio.DBusCallFlags.NONE, 5000, None, finished)
+
+    def press_wakes(self):
+        return self.dark or time.monotonic() - self.dark_since < WAKE_WINDOW
+
+    def blank(self):
+        self.call(self.accel, 'invokeShortcut',
+                  GLib.Variant('(s)', ('Turn Off Screen',)))
+
+    def power_dialog(self):
+        self.call(self.prompt, 'promptShutDown', None)
+
+
+class Inputs:
+    def __init__(self, plasma):
+        self.plasma = plasma
+        self.devices = {}
+        self.dropped = set()
+        self.long_press = 0
+        self.pressed = False
+        self.press_wake = False
+
+    def cancel_press(self):
+        if self.long_press:
+            GLib.source_remove(self.long_press)
+            self.long_press = 0
+        self.pressed = False
+
+    def held(self):
+        self.long_press = 0
+        self.pressed = False
+        self.plasma.power_dialog()
+        return GLib.SOURCE_REMOVE
+
+    def close(self, fd):
+        if self.devices.pop(fd, None) == KEY_NAME:
+            self.cancel_press()
+        self.dropped.discard(fd)
+        os.close(fd)
+        return GLib.SOURCE_REMOVE
+
+    def read(self, fd, condition):
+        if condition & (GLib.IO_HUP | GLib.IO_ERR | GLib.IO_NVAL):
+            return self.close(fd)
+        try:
+            data = os.read(fd, EVENT.size * 64)
+        except BlockingIOError:
+            return GLib.SOURCE_CONTINUE
+        except OSError:
+            return self.close(fd)
+        if not data:
+            return self.close(fd)
+        for offset in range(0, len(data) - EVENT.size + 1, EVENT.size):
+            _sec, _usec, etype, code, value = EVENT.unpack_from(data, offset)
+            if fd in self.dropped:
+                if etype == EV_SYN and code == 0:
+                    self.dropped.discard(fd)
+                continue
+            if etype == EV_SYN and code == SYN_DROPPED:
+                self.dropped.add(fd)
+                self.cancel_press()
+                continue
+            if etype != EV_KEY or code != KEY_POWER:
+                continue
+            if value == 1:
+                self.cancel_press()
+                self.pressed = True
+                self.press_wake = self.plasma.press_wakes()
+                self.long_press = GLib.timeout_add(LONG_PRESS_MS, self.held)
+            elif value == 0 and self.pressed:
+                self.cancel_press()
+                if not self.press_wake:
+                    self.plasma.blank()
+        return GLib.SOURCE_CONTINUE
+
+    def discover(self):
+        if KEY_NAME in self.devices.values():
+            return GLib.SOURCE_CONTINUE
+        path = find_device(KEY_NAME)
+        if not path:
+            return GLib.SOURCE_CONTINUE
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK)
+        try:
+            fcntl.ioctl(fd, EVIOCSCLOCKID, struct.pack('i', time.CLOCK_MONOTONIC))
+        except OSError:
+            os.close(fd)
+            raise
+        self.devices[fd] = KEY_NAME
+        GLib.io_add_watch(fd, GLib.IO_IN | GLib.IO_HUP | GLib.IO_ERR | GLib.IO_NVAL,
+                          self.read)
+        return GLib.SOURCE_CONTINUE
+
+
+def main():
+    inputs = Inputs(Plasma())
+    inputs.discover()
+    GLib.timeout_add_seconds(2, inputs.discover)
+    try:
+        GLib.MainLoop().run()
+    finally:
+        inputs.cancel_press()
+        for fd in list(inputs.devices):
+            inputs.close(fd)
+
+
+if __name__ == '__main__':
+    main()

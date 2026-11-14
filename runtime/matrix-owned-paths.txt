@@ -114,11 +114,13 @@
 /usr/lib/piano/piano-ram-hardware-prepare
 /usr/lib/piano/piano_dma_contexts.py
 /usr/lib/piano/piano_dma_routes.py
+/usr/lib/piano/plasma-power-button
 /usr/lib/piano/power-button
 /usr/lib/systemd/system/piano-camera.service
 /usr/lib/systemd/system/piano-camerad.service
 /usr/lib/systemd/system/piano-fake-tablet-mode.service
 /usr/lib/systemd/system/piano-first-boot-ssh-key.service
+/usr/lib/systemd/user/piano-plasma-power-button.service
 /usr/lib/systemd/user/piano-power-button.service
 /usr/lib/systemd/system/piano-touch.service
 /usr/lib/systemd/system/uperf-linux.service

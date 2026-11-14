@@ -1,0 +1,15 @@
+[Unit]
+Description=Piano Plasma power key gestures
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+# /usr/lib/piano 下的脚本是 lib_t，直接执行时进程读不到 /dev/input/event*
+# （2026-11-05 在平板上实测 event3 报 PermissionError）。经 bin_t 的 python3
+# 启动才会落到能读输入设备的域，和 piano-power-button 一致。
+ExecStart=/usr/bin/python3 /usr/lib/piano/plasma-power-button
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

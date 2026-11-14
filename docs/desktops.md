@@ -58,9 +58,23 @@ GNOME 档由 `piano-fedora-configs` 的 `piano-power-button` 用户服务补这�
 `org.gnome.SessionManager.Shutdown`。单元随 `graphical-session.target` 启停，
 只在 GNOME 档挂进 `graphical-session.target.wants`。
 
-KDE 档不装这个助手，电源键和合盖交给 PowerDevil。niri、Hyprland 与 server 没有
-桌面侧文件，靠 logind 的 `HandlePowerKey=ignore`、`HandleLidSwitch=ignore`、
-`IdleAction=ignore` 保证它不抢这两个输入。
+GNOME 设置里的「电源按钮」选项没有上锁，用户可以自己改。改成挂起之类的动作
+后，助手和 gnome-shell 会各做各的：助手照旧熄屏锁屏，shell 再执行用户选的
+动作。选回「无操作」（`power-button-action='nothing'`，出厂值）就恢复出厂
+行为，不需要 root。
+
+KDE 档由同一个包的 `piano-plasma-power-button` 用户服务补这段策略。短按调
+PowerDevil 自己的 `Turn Off Screen` 动作，锁屏与 DPMS 还是 PowerDevil 的通路；
+长按走 `org.kde.LogoutPrompt` 的关机对话框。PowerDevil 的动作在按下那一刻就
+触发，长按到 800 毫秒时屏幕已经黑掉、会话也锁上，对话框落在锁屏后面看不见，
+所以 KDE 的 `PowerButtonAction` 是 `0`（NoAction），电源键整条交给助手。合盖
+仍由 PowerDevil 负责。
+
+KDE 系统设置里的「电源按钮」同样可以改。改成具体动作后短按会重复触发一次，
+既关屏又执行用户选的动作。改回「无操作」就恢复。
+
+niri、Hyprland 与 server 没有桌面侧文件，靠 logind 的 `HandlePowerKey=ignore`、
+`HandleLidSwitch=ignore`、`IdleAction=ignore` 保证它不抢这两个输入。
 
 三种电源策略的落点：
 
@@ -68,8 +82,8 @@ KDE 档不装这个助手，电源键和合盖交给 PowerDevil。niri、Hyprlan
   `piano-fedora-configs` 这个 RPM 安装，构建器只核对不重写。两种自动睡眠都是
   `nothing`，空闲 300 秒关屏并锁屏。
 - **kconfig**（KDE）：`etc/xdg/powerdevilrc`，由构建器落盘，没有包拥有它。
-  AC / Battery / LowBattery 三个 profile 的 `AutoSuspendAction` 是 `0`
-  （NoAction），`PowerButtonAction` 与 `LidAction` 是 `64`（TurnOffScreen），
+  AC / Battery / LowBattery 三个 profile 的 `AutoSuspendAction` 与
+  `PowerButtonAction` 是 `0`（NoAction），`LidAction` 是 `64`（TurnOffScreen），
   空闲 300 秒关屏并锁屏。
 - **仅 logind**（niri / Hyprland / server）：没有桌面侧文件，电源键与合盖都不
   触发动作。
