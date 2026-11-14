@@ -1,26 +1,26 @@
 diff --git a/config/release.json b/config/release.json
-index bf8cfd4..a0c3f29 100644
+index a9cf7dd..eb39ed7 100644
 --- a/config/release.json
 +++ b/config/release.json
-@@ -8,7 +8,7 @@
+@@ -11,7 +11,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "ffc0bf5589c227d3280605c9ee8fbbd1bdabafe0",
-+    "target_tree": "4cfa4806fa52b39f0aa06e2534a3db21d22f3e31",
+-    "target_tree": "ab4d74a2bae3439b4456bbd3a440a3d90388d713",
++    "target_tree": "506d65b7465499cd52f15f82ac6f6d6573da05c4",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-@@ -36,7 +36,7 @@
+@@ -39,7 +39,7 @@
        "linux/dts/piano-tsens.dtso"
      ],
      "root_policy": "LABEL=PIANOROOT",
 -    "command_line": "console=tty0 loglevel=4 consoleblank=0 fbcon=font:TER16x32 rdinit=/pianoinit piano.root=LABEL=PIANOROOT rootfstype=ext4 rootwait ro pd_ignore_unused clk_ignore_unused panic=0 iommu.passthrough=1",
-+    "command_line": "console=tty0 loglevel=4 consoleblank=0 fbcon=font:TER16x32 rdinit=/pianoinit piano.root=LABEL=PIANOROOT rootfstype=f2fs rootwait ro pd_ignore_unused clk_ignore_unused panic=0 iommu.passthrough=1",
++    "command_line": "console=tty0 loglevel=4 consoleblank=0 fbcon=font:TER16x32 rdinit=/pianoinit piano.root=LABEL=PIANOROOT rootfstype=f2fs rootwait ro pd_ignore_unused clk_ignore_unused panic=0 iommu.passthrough=1 deferred_probe_timeout=300",
      "preferred_display_mode": {
        "board_compatible": "xiaomi,piano",
        "refresh_hz": 120,
-diff --git a/patches/linux/7.3/0106-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0106-dpu-defer-slave-cleanup.patch
+diff --git a/patches/linux/7.3/0112-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0112-dpu-defer-slave-cleanup.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..3ced082b1f0c352588cfd77ebb7a8ea87c56c1a8
 GIT binary patch
@@ -74,7 +74,7 @@ ONK^nzflLH7*SG-M^>wrW
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0107-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0107-media-iris-decode-order-and-deblocking.patch
+diff --git a/patches/linux/7.3/0113-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0113-media-iris-decode-order-and-deblocking.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..53cb09ca783d72eed5c4a1ddd432894189ed1d4c
 GIT binary patch
@@ -174,7 +174,7 @@ M@rCgqG0?Ou0CZ1{cmMzZ
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0108-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0108-asoc-piano-speaker-gain-limit.patch
+diff --git a/patches/linux/7.3/0114-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0114-asoc-piano-speaker-gain-limit.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..494a46d46902ebc2cec68f7df62d4f1ddc844331
 GIT binary patch
@@ -217,7 +217,7 @@ wiXlB{az-!M6>PERA+#ib&4}E@3I$tGGYsqyP@x2k4-7N&QsSXfI?y5?0DRWp`v3p{
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0109-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0109-input-nt36532e-panel-vendor-misc.patch
+diff --git a/patches/linux/7.3/0115-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0115-input-nt36532e-panel-vendor-misc.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..26ff15244da36746589b6bca3323bc50305cc83a
 GIT binary patch
@@ -279,16 +279,16 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 785b2e0..0daf4fc 100644
+index 7e6b046..8927e1b 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "ffc0bf5589c227d3280605c9ee8fbbd1bdabafe0",
--  "original_target_commit": "80114e79d7a9f563f95064061be9cc6dbc4d1c1f",
-+  "target_tree": "4cfa4806fa52b39f0aa06e2534a3db21d22f3e31",
+-  "target_tree": "ab4d74a2bae3439b4456bbd3a440a3d90388d713",
+-  "original_target_commit": "7679892741f7c03527300a76f2c008eb59bf3891",
++  "target_tree": "506d65b7465499cd52f15f82ac6f6d6573da05c4",
 +  "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
@@ -389,44 +389,107 @@ index 785b2e0..0daf4fc 100644
      },
      {
        "file": "0105-dpu-piano-fractional-sampling.patch",
-@@ -846,7 +838,39 @@
+@@ -846,7 +838,7 @@
        "original_commit": "80114e79d7a9f563f95064061be9cc6dbc4d1c1f",
        "original_parent": "611bb038b07681dae27d6852f4698e4873cbc980",
        "committer_date": "2026-11-12T23:02:24+08:00",
 -      "tree": "ffc0bf5589c227d3280605c9ee8fbbd1bdabafe0"
 +      "tree": "472d11a8e04a9e5cae0e249ce5ac5d4829bc9c12"
+     },
+     {
+       "file": "0106-power-mca-stock-cycle-policy.patch",
+@@ -854,7 +846,7 @@
+       "original_commit": "ee6aa887046afb28b488bd14590ac6a0daeff3e6",
+       "original_parent": "80114e79d7a9f563f95064061be9cc6dbc4d1c1f",
+       "committer_date": "2026-11-14T00:09:57+08:00",
+-      "tree": "5963739de247692494ba26e35fbc8951b089caab"
++      "tree": "6bba5c8dd3a3f0c684998296ef294cf30f212a32"
+     },
+     {
+       "file": "0107-power-mca-qc-direct-charge.patch",
+@@ -862,7 +854,7 @@
+       "original_commit": "028e3daa5e2509148050c82c3599be0a5844dd65",
+       "original_parent": "ee6aa887046afb28b488bd14590ac6a0daeff3e6",
+       "committer_date": "2026-11-14T03:28:55+08:00",
+-      "tree": "2dd997e5109a845b0e47ad11950c6f3e28255e5d"
++      "tree": "0b758a970041d4e63f737e0386df79226ec00dbc"
+     },
+     {
+       "file": "0108-power-mca-third-pps-limits.patch",
+@@ -870,7 +862,7 @@
+       "original_commit": "44f17a42a812287acb2fe19633cbaf1144c6a25a",
+       "original_parent": "028e3daa5e2509148050c82c3599be0a5844dd65",
+       "committer_date": "2026-11-14T03:41:04+08:00",
+-      "tree": "2ac0dba057d2baa4d2d1c718994406ee2ee4bc2c"
++      "tree": "c350e2294051790758a7816bc9f3121e4ec5af60"
+     },
+     {
+       "file": "0109-power-mca-pps-voltage-steps.patch",
+@@ -878,7 +870,7 @@
+       "original_commit": "35c62293a237de7fe38cec56ad720b38e079fe6e",
+       "original_parent": "44f17a42a812287acb2fe19633cbaf1144c6a25a",
+       "committer_date": "2026-11-14T03:47:47+08:00",
+-      "tree": "8074e3908cd024e7250a489072ee874a5b1a2f52"
++      "tree": "a2cc51358508b82f71474c78e238ca9df5acda6e"
+     },
+     {
+       "file": "0110-power-mca-battery-health-current.patch",
+@@ -886,7 +878,7 @@
+       "original_commit": "28d14326ff0da7eba1540f3934d55ec353f06946",
+       "original_parent": "35c62293a237de7fe38cec56ad720b38e079fe6e",
+       "committer_date": "2026-11-14T03:57:05+08:00",
+-      "tree": "3ac4bdb365f051cf1c1283bdefbfadf9f79c9112"
++      "tree": "599ca5aa93e3f14a2cbd4cc145c52383e91ebd5d"
+     },
+     {
+       "file": "0111-power-mca-source-voltage-window.patch",
+@@ -894,7 +886,7 @@
+       "original_commit": "4858338c44393d6c08bbbb7c29ed3dfdef72425e",
+       "original_parent": "28d14326ff0da7eba1540f3934d55ec353f06946",
+       "committer_date": "2026-11-14T04:26:52+08:00",
+-      "tree": "0e3f212b19ecf98c82717eee4509d64cdbdfb8a7"
++      "tree": "9ab6db5b6f344e136fffa43c5a4310fea64cd664"
+     },
+     {
+       "file": "0112-power-direct-charge-conversion-modes.patch",
+@@ -902,7 +894,39 @@
+       "original_commit": "7679892741f7c03527300a76f2c008eb59bf3891",
+       "original_parent": "4858338c44393d6c08bbbb7c29ed3dfdef72425e",
+       "committer_date": "2026-11-14T05:10:30+08:00",
+-      "tree": "ab4d74a2bae3439b4456bbd3a440a3d90388d713"
++      "tree": "983a686a452a8b695f9b862c3de5b5dc5b2bc32a"
 +    },
 +    {
-+      "file": "0106-dpu-defer-slave-cleanup.patch",
++      "file": "0112-dpu-defer-slave-cleanup.patch",
 +      "sha256": "bc4ec8c9803116f39be6a06c6987c21b7f0ae633f413cdb24707b828e15c8fa5",
 +      "original_commit": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
-+      "original_parent": "80114e79d7a9f563f95064061be9cc6dbc4d1c1f",
++      "original_parent": "7679892741f7c03527300a76f2c008eb59bf3891",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "575399e886aae049a54771787764420ad5147b0f"
++      "tree": "c95fa4dbd56d36537304606743cb732809cde291"
 +    },
 +    {
-+      "file": "0107-media-iris-decode-order-and-deblocking.patch",
++      "file": "0113-media-iris-decode-order-and-deblocking.patch",
 +      "sha256": "a5b907999a2313f310a32ac78fc10c25cce57ecd08cc2b3bbdb1441479e97667",
 +      "original_commit": "596c454653862c3007cb16b40b496230b213f6fb",
 +      "original_parent": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "14ddde8266204c231e3f4a2db7204c55045deba0"
++      "tree": "ea7f1fb803689efc3ae34cb80a148c4ac4612a21"
 +    },
 +    {
-+      "file": "0108-asoc-piano-speaker-gain-limit.patch",
++      "file": "0114-asoc-piano-speaker-gain-limit.patch",
 +      "sha256": "0f44f724d277efbb92caf40fdf1f2905cb5158997b44af3c98d113d001c3ac33",
 +      "original_commit": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "original_parent": "596c454653862c3007cb16b40b496230b213f6fb",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "98c1e67c031e43e4c6df7627abcaec1732cd2600"
++      "tree": "7969ac3ae728e2223f50ea4a2cfad2e02ae2b31a"
 +    },
 +    {
-+      "file": "0109-input-nt36532e-panel-vendor-misc.patch",
++      "file": "0115-input-nt36532e-panel-vendor-misc.patch",
 +      "sha256": "a345e5f1227f3ef200d3a7c1d9f152d01bc8d50896ec1b2b5572e5024c8d0bdf",
 +      "original_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
 +      "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "committer_date": "2026-10-24T18:30:00+08:00",
-+      "tree": "4cfa4806fa52b39f0aa06e2534a3db21d22f3e31"
++      "tree": "506d65b7465499cd52f15f82ac6f6d6573da05c4"
      }
    ],
    "provenance": {

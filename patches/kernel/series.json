@@ -2,21 +2,21 @@
   "schema_version": 1,
   "target": "sunuefi",
   "base": {
-    "sunuefi_commit": "018634f18c74704e6668ee5d816d038bc6591849"
+    "sunuefi_commit": "4d369d37dc90e5a0ffef272e6ef3597b802ec2fa"
   },
   "patches": [
     {
       "file": "0001-linux-73-series.patch",
       "summary": "\u5728 7.3 \u7684\u5c01\u5b58 mail \u5e8f\u5217\u91cc\u767b\u8bb0 Iris \u89e3\u7801\u987a\u5e8f\u4e0e\u53bb\u5757\u3001DPU \u4ece\u901a\u9053\u5ef6\u540e\u6e05\u7406\u3001\u529f\u653e\u589e\u76ca\u4e0a\u9650\u3001\u89e6\u5c4f\u5c4f\u578b\u4e0e THP \u5b57\u7b26\u8bbe\u5907\u56db\u6761\u8865\u4e01\uff0c\u5e76\u628a series \u4e0e config \u7684 target_tree \u4e00\u8d77\u63a8\u8fdb",
       "targets": {
-        "config/release.json": "0d1a3e4b05520a5ebd1e5b3e2cbb2a88c4b804ff11a31b51f1c703a4d9f7aacb",
-        "patches/linux/7.3/series.json": "1bfc77f3c28993169c50b75260ba0d1104c4e11d26038a49b23849e51f540ce1"
+        "config/release.json": "22ccd254f14a2a878ae01e5595af2becc7b55a56bef6a31544ffa302a2ce31fe",
+        "patches/linux/7.3/series.json": "3d973f5dafaccdc9311dde9d54e6ab43f54a38a5174afe80988e498a39256ecb"
       },
       "creates": [
-        "patches/linux/7.3/0106-dpu-defer-slave-cleanup.patch",
-        "patches/linux/7.3/0107-media-iris-decode-order-and-deblocking.patch",
-        "patches/linux/7.3/0108-asoc-piano-speaker-gain-limit.patch",
-        "patches/linux/7.3/0109-input-nt36532e-panel-vendor-misc.patch"
+        "patches/linux/7.3/0112-dpu-defer-slave-cleanup.patch",
+        "patches/linux/7.3/0113-media-iris-decode-order-and-deblocking.patch",
+        "patches/linux/7.3/0114-asoc-piano-speaker-gain-limit.patch",
+        "patches/linux/7.3/0115-input-nt36532e-panel-vendor-misc.patch"
       ],
       "dropped": []
     },
@@ -24,11 +24,11 @@
       "file": "0002-linux-73-gpi-dma-deep-idle.patch",
       "summary": "\u628a GPI DMA \u6df1\u5ea6\u7a7a\u95f2\u4fee\u590d\u52a0\u8fdb 7.3 \u5c01\u5b58\u5e8f\u5217\uff0c0092 \u4e4b\u540e target_tree \u63a8\u8fdb\u5230 03617229",
       "targets": {
-        "config/release.json": "5952e5b8a04051fcfe74f79f166817e0e240cdfdd3b37389ffd67e8fd30c36b8",
-        "patches/linux/7.3/series.json": "bcbd8aca8a5e91a8b73c11a6ebabf05860a4c730a3eb776d55cd88a526026b56"
+        "config/release.json": "77ff851d730704f39ccd7d873736c16bddc53956f5f5a19125a85e6be03cf810",
+        "patches/linux/7.3/series.json": "1b99ceff0f7cc641f68c48ffbd5fd314123e0571edcf4d550c5259e29a0caf36"
       },
       "creates": [
-        "patches/linux/7.3/0110-spi-geni-gpi-dma-deep-idle.patch"
+        "patches/linux/7.3/0116-spi-geni-gpi-dma-deep-idle.patch"
       ],
       "dropped": []
     },
@@ -36,16 +36,16 @@
       "file": "0003-linux-73-upstream-2026-10.patch",
       "summary": "\u628a yzddmr6 \u4e0a\u6e38 2026-10 \u7684\u516d\u7ec4\u4fee\u590d\u5e76\u8fdb 7.3 \u5c01\u5b58\u5e8f\u5217\uff08\u7ed1\u5b9a\u4e0e\u8bca\u65ad\u914d\u7f6e\u3001\u5b64\u513f\u65f6\u949f\u63a5\u7ba1\u4e0e SM8750 MDSS \u57df\u3001REGDMA \u62c6\u9664\u4e0e DSI FIFO \u8bca\u65ad\u3001Iris \u65f6\u95f4\u6233\u4e0e ktz8866 HWEN\u3001ath12k/\u7535\u6e90/PMIC GLINK\u3001tx-macro \u901a\u9053\u63a9\u7801\uff09\uff0ctarget_tree \u63a8\u8fdb\u5230 8f01e4e8",
       "targets": {
-        "config/release.json": "bf1ad62826855921c0e63eb9acedf92266ff658c9c713b551ffcb383068d9df9",
-        "patches/linux/7.3/series.json": "26fde6bbde3506f56360a0352022f70ef7a2000a449c1a296b73230313f83c5b"
+        "config/release.json": "f58cf970ea108ca1a0809a2f35fac4b0bb0e09fe3f0b5e3fed40ceb32543f895",
+        "patches/linux/7.3/series.json": "b5e7655e1ec948c9973714cb0f930af2cd4a5363f7c793ff9219048047310a24"
       },
       "creates": [
-        "patches/linux/7.3/0111-bindings-and-diag-configs.patch",
-        "patches/linux/7.3/0112-clk-orphan-and-sm8750-mdss-domain.patch",
-        "patches/linux/7.3/0113-drm-regdma-and-dsi-diagnostics.patch",
-        "patches/linux/7.3/0114-iris-metadata-and-ktz8866-hwen.patch",
-        "patches/linux/7.3/0115-ath12k-power-soc-usb.patch",
-        "patches/linux/7.3/0116-asoc-tx-macro-channel-mask.patch"
+        "patches/linux/7.3/0117-bindings-and-diag-configs.patch",
+        "patches/linux/7.3/0118-clk-orphan-and-sm8750-mdss-domain.patch",
+        "patches/linux/7.3/0119-drm-regdma-and-dsi-diagnostics.patch",
+        "patches/linux/7.3/0120-iris-metadata-and-ktz8866-hwen.patch",
+        "patches/linux/7.3/0121-ath12k-power-soc-usb.patch",
+        "patches/linux/7.3/0122-asoc-tx-macro-channel-mask.patch"
       ],
       "dropped": []
     },
@@ -53,11 +53,11 @@
       "file": "0004-linux-73-rpmsg-glink.patch",
       "summary": "\u628a GLINK \u6682\u5b58\u56de\u8c03\u5c31\u7eea\u524d\u5230\u8fbe\u6d88\u606f\u7684\u4fee\u590d\u52a0\u8fdb 7.3 \u5c01\u5b58\u5e8f\u5217\uff0c\u4fee QRTR \u540d\u5b57\u670d\u52a1 HELLO \u5728\u51b7\u542f\u52a8\u65f6\u88ab\u4e22\u5f03\u5bfc\u81f4\u97f3\u9891/\u5145\u7535/\u4f20\u611f\u5668\u670d\u52a1\u5168\u8fde\u4e0d\u4e0a\uff0ctarget_tree \u63a8\u8fdb\u5230 fd786146",
       "targets": {
-        "config/release.json": "71a84644dfdf69b66a0d6715dd5407bfe6e2d3eca0d33c8f6dccfab93625d498",
-        "patches/linux/7.3/series.json": "e72a3ea4c6a63ccf1768efda956f16440e837975349dcf235bf0f7e1f95dea6f"
+        "config/release.json": "e1fc4df0ee2bce69482677d1e75c47e809a82ab8dce2195bb99618fb54ad5fb8",
+        "patches/linux/7.3/series.json": "69937f30b415bb7efa292aff1fea67ce05f400fb32060c1993799d61090c848c"
       },
       "creates": [
-        "patches/linux/7.3/0117-rpmsg-glink-hold-early-messages.patch"
+        "patches/linux/7.3/0123-rpmsg-glink-hold-early-messages.patch"
       ],
       "dropped": []
     },
@@ -65,28 +65,28 @@
       "file": "0005-linux-73-mainline-cherry-picks.patch",
       "summary": "\u628a\u4e0a\u6e38 piano/dev \u91cc 18 \u6761\u80fd\u5e72\u51c0\u843d\u5730\u7684\u4e3b\u7ebf cherry-pick \u52a0\u8fdb 7.3 \u5c01\u5b58\u5e8f\u5217\uff08APR \u56de\u8c03\u65f6\u5e8f\u3001UFS \u5065\u5eb7\u4e8b\u4ef6 quirk\u3001ath12k \u4e24\u6761\u3001GPU RPMH \u4f9d\u8d56\u6295\u7968\u3001mptcp\u3001DPU \u5e26\u5bbd\u4e0e\u6587\u6863\u3001Iris \u4e09\u5904\u3001UCSI\u3001DP \u4e24\u6761\u3001tzmem\u3001clk \u5b64\u513f\u3001qmp-combo\uff09\uff0ctarget_tree \u63a8\u8fdb\u5230 58d2adb9",
       "targets": {
-        "config/release.json": "5aff248dc5c0c45c7a3b134f92e2d0f6bde32f23d7af3626a3974ff1059b84e1",
-        "patches/linux/7.3/series.json": "7be33e2d6ea34aa85c6c1769c49b58c5d7256168e1595897a8c4d9fb134746d6"
+        "config/release.json": "ef83699f7cc6c070a3477ca2b22c8dd546d28ac7c8f5ada3dc773a8deec93d45",
+        "patches/linux/7.3/series.json": "e5be4ab020bd9036ffc167b4bdcf0e75ae3c601858939aac267f9eb7a30b1571"
       },
       "creates": [
-        "patches/linux/7.3/0118-soc-apr-gpr-callback-before-probe.patch",
-        "patches/linux/7.3/0119-scsi-ufs-skip-refused-health-critical.patch",
-        "patches/linux/7.3/0120-ath12k-wcn7860-disable-qdss-cfg-miss.patch",
-        "patches/linux/7.3/0121-drm-a6xx-rpmh-dependency-votes.patch",
-        "patches/linux/7.3/0122-ath12k-scan-during-recovery.patch",
-        "patches/linux/7.3/0123-mptcp-timer-ival-reset.patch",
-        "patches/linux/7.3/0124-drm-dpu-crtc-bandwidth-from-state.patch",
-        "patches/linux/7.3/0125-iris-guard-null-hfi-sys-ops.patch",
-        "patches/linux/7.3/0126-iris-cancel-sys-error-work.patch",
-        "patches/linux/7.3/0127-iris-disable-irq-nosync.patch",
-        "patches/linux/7.3/0128-drm-dpu-mdss-kernel-doc.patch",
-        "patches/linux/7.3/0129-dt-bindings-regdma-conditional.patch",
-        "patches/linux/7.3/0130-usb-ucsi-connector-before-notify.patch",
-        "patches/linux/7.3/0131-drm-dp-link-training-after-reinit.patch",
-        "patches/linux/7.3/0132-drm-dp-serialize-hpd-state.patch",
-        "patches/linux/7.3/0133-qcom-tzmem-do-once-sleepable.patch",
-        "patches/linux/7.3/0134-clk-rpm-enable-before-orphans.patch",
-        "patches/linux/7.3/0135-phy-qmp-combo-typec-mux-committed.patch"
+        "patches/linux/7.3/0124-soc-apr-gpr-callback-before-probe.patch",
+        "patches/linux/7.3/0125-scsi-ufs-skip-refused-health-critical.patch",
+        "patches/linux/7.3/0126-ath12k-wcn7860-disable-qdss-cfg-miss.patch",
+        "patches/linux/7.3/0127-drm-a6xx-rpmh-dependency-votes.patch",
+        "patches/linux/7.3/0128-ath12k-scan-during-recovery.patch",
+        "patches/linux/7.3/0129-mptcp-timer-ival-reset.patch",
+        "patches/linux/7.3/0130-drm-dpu-crtc-bandwidth-from-state.patch",
+        "patches/linux/7.3/0131-iris-guard-null-hfi-sys-ops.patch",
+        "patches/linux/7.3/0132-iris-cancel-sys-error-work.patch",
+        "patches/linux/7.3/0133-iris-disable-irq-nosync.patch",
+        "patches/linux/7.3/0134-drm-dpu-mdss-kernel-doc.patch",
+        "patches/linux/7.3/0135-dt-bindings-regdma-conditional.patch",
+        "patches/linux/7.3/0136-usb-ucsi-connector-before-notify.patch",
+        "patches/linux/7.3/0137-drm-dp-link-training-after-reinit.patch",
+        "patches/linux/7.3/0138-drm-dp-serialize-hpd-state.patch",
+        "patches/linux/7.3/0139-qcom-tzmem-do-once-sleepable.patch",
+        "patches/linux/7.3/0140-clk-rpm-enable-before-orphans.patch",
+        "patches/linux/7.3/0141-phy-qmp-combo-typec-mux-committed.patch"
       ],
       "dropped": []
     },
@@ -94,11 +94,11 @@
       "file": "0006-linux-73-iris-irq-wait.patch",
       "summary": "\u8865\u4e0a\u4e0a\u6e38 0adb163ceb\uff1airis \u5173\u7535\u524d\u7b49\u7ebf\u7a0b\u5316 IRQ \u9000\u51fa\uff0c\u7528 iris_acquire/release_core_lock \u53d6\u4ee3\u672c\u6811\u5728 iris_core_deinit \u91cc\u7684\u81ea\u5236\u7ed5\u884c\uff0ctarget_tree \u63a8\u8fdb\u5230 58f5ee34",
       "targets": {
-        "config/release.json": "d47888c70b748d71212d6cd68cf6c32da4c1bc88a0a7c82ceb702cf4bba60595",
-        "patches/linux/7.3/series.json": "34ce70f9f7cd7a2f629c886973d9f549648fd04390c1b829946286ff77c58b0b"
+        "config/release.json": "5e1e79ebb6a6a0059bd40f2e9c6f0acb1fad9ef16fc4f4d4e654e30b6b590211",
+        "patches/linux/7.3/series.json": "41a8d722de090b7e878c2f0b64189f6175e54a2346b1411ab9e10e08d3f76137"
       },
       "creates": [
-        "patches/linux/7.3/0136-iris-wait-threaded-irq-on-poweroff.patch"
+        "patches/linux/7.3/0142-iris-wait-threaded-irq-on-poweroff.patch"
       ],
       "dropped": []
     },
@@ -106,14 +106,14 @@
       "file": "0007-linux-73-ufs-mcq-and-board-thermistors.patch",
       "summary": "\u628a UFS MCQ \u591a\u961f\u5217\u4e0e 11 \u8def\u677f\u7ea7\u6d4b\u6e29/PMIC5 Gen4 ADC \u8865\u4e01\u52a0\u8fdb 7.3 \u5c01\u5b58\u5e8f\u5217\uff0ctarget_tree \u63a8\u8fdb\u5230 7a0b0da0",
       "targets": {
-        "config/release.json": "cef2b0e3e114eae152ec7a5a340997391c6eb0a799bd1c25fed205eeb992c99d",
-        "patches/linux/7.3/series.json": "4d34fa458b3a74165eaf007e670bf7ba90c195d8af2840dd7e1affc14b9ae944"
+        "config/release.json": "a0f795d581ed258c50896824f30b0d105bef2468ce4f2fdc28de3b9061551de7",
+        "patches/linux/7.3/series.json": "4e0a2501d33cdff1551c0dcfdff57b3bb3bbed569350f06369e62f9ebf64876a"
       },
       "creates": [
-        "patches/linux/7.3/0137-arm64-dts-sm8750-ufs-mcq-enable.patch",
-        "patches/linux/7.3/0138-arm64-dts-sm8750-ufs-mcq-window-limit.patch",
-        "patches/linux/7.3/0139-arm64-dts-sm8750-pmics-pmk8550-adc.patch",
-        "patches/linux/7.3/0140-arm64-dts-piano-board-thermistors.patch"
+        "patches/linux/7.3/0143-arm64-dts-sm8750-ufs-mcq-enable.patch",
+        "patches/linux/7.3/0144-arm64-dts-sm8750-ufs-mcq-window-limit.patch",
+        "patches/linux/7.3/0145-arm64-dts-sm8750-pmics-pmk8550-adc.patch",
+        "patches/linux/7.3/0146-arm64-dts-piano-board-thermistors.patch"
       ],
       "dropped": []
     }

@@ -1,17 +1,17 @@
 diff --git a/config/release.json b/config/release.json
-index 7f58980..2b693b5 100644
+index e0f9332..a05e7d7 100644
 --- a/config/release.json
 +++ b/config/release.json
-@@ -8,7 +8,7 @@
+@@ -11,7 +11,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "53e4321dd20093cef59e8711166d6ecab4c7f72e",
-+    "target_tree": "4002385a57047357f202017bbc07e449e1c8a184",
+-    "target_tree": "246a0f317a33f395ce559f11ff1d55f4ac3d69f0",
++    "target_tree": "02bffaf559328397ee65d7ea139ca9d7f4b8a07e",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0111-bindings-and-diag-configs.patch b/patches/linux/7.3/0111-bindings-and-diag-configs.patch
+diff --git a/patches/linux/7.3/0117-bindings-and-diag-configs.patch b/patches/linux/7.3/0117-bindings-and-diag-configs.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..9c9d08a73b805459da87e32297aa16ab0694d538
 GIT binary patch
@@ -223,7 +223,7 @@ Oa2e^Dn&=sDaRC4??r44h
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0112-clk-orphan-and-sm8750-mdss-domain.patch b/patches/linux/7.3/0112-clk-orphan-and-sm8750-mdss-domain.patch
+diff --git a/patches/linux/7.3/0118-clk-orphan-and-sm8750-mdss-domain.patch b/patches/linux/7.3/0118-clk-orphan-and-sm8750-mdss-domain.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..9e3ae802cc6d51729feb0c094bc4b3061931667c
 GIT binary patch
@@ -373,7 +373,7 @@ H0T&klzNLHl
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0113-drm-regdma-and-dsi-diagnostics.patch b/patches/linux/7.3/0113-drm-regdma-and-dsi-diagnostics.patch
+diff --git a/patches/linux/7.3/0119-drm-regdma-and-dsi-diagnostics.patch b/patches/linux/7.3/0119-drm-regdma-and-dsi-diagnostics.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..e690ee55377653d88c5f9c96f0e165191f32c68a
 GIT binary patch
@@ -498,7 +498,7 @@ b7fquMtp8?fs>!9RtH5QXXKJEnz{Lds6K?MK
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0114-iris-metadata-and-ktz8866-hwen.patch b/patches/linux/7.3/0114-iris-metadata-and-ktz8866-hwen.patch
+diff --git a/patches/linux/7.3/0120-iris-metadata-and-ktz8866-hwen.patch b/patches/linux/7.3/0120-iris-metadata-and-ktz8866-hwen.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..4e0ca8cefd1feb245c60422b59478e759816ad2b
 GIT binary patch
@@ -669,7 +669,7 @@ mM3Dj~+{}1rTNG5rlomtMF<cUq%DHrP6}XJ_OilC*xVQk&?lBes
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0115-ath12k-power-soc-usb.patch b/patches/linux/7.3/0115-ath12k-power-soc-usb.patch
+diff --git a/patches/linux/7.3/0121-ath12k-power-soc-usb.patch b/patches/linux/7.3/0121-ath12k-power-soc-usb.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..07eb108a28c9c5b36d7d190e94663ccf1a7946c7
 GIT binary patch
@@ -1027,7 +1027,7 @@ Oq2wOmqfll9G8+JxGmS?8
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0116-asoc-tx-macro-channel-mask.patch b/patches/linux/7.3/0116-asoc-tx-macro-channel-mask.patch
+diff --git a/patches/linux/7.3/0122-asoc-tx-macro-channel-mask.patch b/patches/linux/7.3/0122-asoc-tx-macro-channel-mask.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..d772796bd49ca7570027e62f0fd04affdd475d04
 GIT binary patch
@@ -1273,72 +1273,72 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index c0ad5a2..3b23f97 100644
+index 0773eda..1c20831 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "53e4321dd20093cef59e8711166d6ecab4c7f72e",
+-  "target_tree": "246a0f317a33f395ce559f11ff1d55f4ac3d69f0",
 -  "original_target_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
-+  "target_tree": "4002385a57047357f202017bbc07e449e1c8a184",
++  "target_tree": "02bffaf559328397ee65d7ea139ca9d7f4b8a07e",
 +  "original_target_commit": "44e358f4c6c37275dfb1142052981db2ea48fc7f",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -879,6 +879,54 @@
+@@ -935,6 +935,54 @@
        "original_parent": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
        "committer_date": "2026-10-25T03:50:00+08:00",
-       "tree": "53e4321dd20093cef59e8711166d6ecab4c7f72e"
+       "tree": "246a0f317a33f395ce559f11ff1d55f4ac3d69f0"
 +    },
 +    {
-+      "file": "0111-bindings-and-diag-configs.patch",
++      "file": "0117-bindings-and-diag-configs.patch",
 +      "sha256": "cb31f8c3d84998b03ed0d8ecaaa88dd51f1c8660d0d6e3afc383b036832a6d89",
 +      "original_commit": "bdd29feecdba67015a9a36adeb095b95b33c9b82",
 +      "original_parent": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
 +      "committer_date": "2026-10-25T18:50:41+08:00",
-+      "tree": "626f6d0f7ce657c0e64b068a1e7b1d96c936e969"
++      "tree": "d3215a910950fada96ff47d49b921921e2bdc562"
 +    },
 +    {
-+      "file": "0112-clk-orphan-and-sm8750-mdss-domain.patch",
++      "file": "0118-clk-orphan-and-sm8750-mdss-domain.patch",
 +      "sha256": "334c35017b4a432702768b04c743b4a0407be3a39a1de04a65f3a146026b7612",
 +      "original_commit": "d8b4eed59a8bae9d0f1df37603e2f8c95290b715",
 +      "original_parent": "bdd29feecdba67015a9a36adeb095b95b33c9b82",
 +      "committer_date": "2026-10-25T18:50:46+08:00",
-+      "tree": "1e7f80026a44ea5adf2685ceaf6fa5b9c713c93f"
++      "tree": "e88671eaaf990353af74e058596ba93eef3841ff"
 +    },
 +    {
-+      "file": "0113-drm-regdma-and-dsi-diagnostics.patch",
++      "file": "0119-drm-regdma-and-dsi-diagnostics.patch",
 +      "sha256": "262a1550a4c8b450d2da3aa026b4cf3738ab716a76fd095514999c26591239a0",
 +      "original_commit": "10400084eb4867a596697060457c39188ee80a07",
 +      "original_parent": "d8b4eed59a8bae9d0f1df37603e2f8c95290b715",
 +      "committer_date": "2026-10-25T18:50:51+08:00",
-+      "tree": "24378b6fe56f46c07ff7410a8276ae4b29394f51"
++      "tree": "ceb170f173913b500bb1ef2e6ee9af8ed56794d4"
 +    },
 +    {
-+      "file": "0114-iris-metadata-and-ktz8866-hwen.patch",
++      "file": "0120-iris-metadata-and-ktz8866-hwen.patch",
 +      "sha256": "be5d085a9531a80eaa81f4a61fc1d3655f0984da95c09d8669e9763cc4736bea",
 +      "original_commit": "d6b343db26a86c34c316e559862c432a0e569f8a",
 +      "original_parent": "10400084eb4867a596697060457c39188ee80a07",
 +      "committer_date": "2026-10-25T18:50:56+08:00",
-+      "tree": "6703ea648c515dedc6287699adb237f9ec12070b"
++      "tree": "643a7ec368b72ea2a04bd5463a1427e8d1a50c1e"
 +    },
 +    {
-+      "file": "0115-ath12k-power-soc-usb.patch",
++      "file": "0121-ath12k-power-soc-usb.patch",
 +      "sha256": "5262ec306e8170caed9d5f4d07326ce74ec8f2519e75619c7360e4e0db5ce0eb",
 +      "original_commit": "6c8e0c6dff33057fe64f9855d9fcf026abee9dd7",
 +      "original_parent": "d6b343db26a86c34c316e559862c432a0e569f8a",
 +      "committer_date": "2026-10-25T18:51:00+08:00",
-+      "tree": "76f3cfa1a358618e556d57a0a982925ff880eeb8"
++      "tree": "6098896d7fc70cc5402a4fc1a10d5b2a5b635a38"
 +    },
 +    {
-+      "file": "0116-asoc-tx-macro-channel-mask.patch",
++      "file": "0122-asoc-tx-macro-channel-mask.patch",
 +      "sha256": "a03b68d79e33af258e9a9184b2acd965c5d8f670a2738c52fc3edb6aa1130e3e",
 +      "original_commit": "44e358f4c6c37275dfb1142052981db2ea48fc7f",
 +      "original_parent": "6c8e0c6dff33057fe64f9855d9fcf026abee9dd7",
 +      "committer_date": "2026-10-25T18:51:05+08:00",
-+      "tree": "4002385a57047357f202017bbc07e449e1c8a184"
++      "tree": "02bffaf559328397ee65d7ea139ca9d7f4b8a07e"
      }
    ],
    "provenance": {

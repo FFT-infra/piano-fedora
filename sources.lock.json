@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-11-13",
+  "checked_date": "2026-11-14",
   "note": "只列构建链实际读取的上游；研究与后端参考单独记录在 docs/upstreams.json。vendor-kernel 与 vendor-blobs 只被对照任务读取，不进任何出货产物。",
   "sources": {
     "dtc": {
@@ -12,9 +12,9 @@
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "018634f18c74704e6668ee5d816d038bc6591849",
+      "commit": "4d369d37dc90e5a0ffef272e6ef3597b802ec2fa",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
-      "checked_date": "2026-11-13"
+      "checked_date": "2026-11-14"
     },
     "linux-piano": {
       "url": "https://github.com/blu-sharky/linux-piano.git",
@@ -79,7 +79,7 @@
     "crosvm": {
       "url": "https://github.com/google/crosvm.git",
       "ref": "main",
-      "commit": "9b63ea5f62f1493b5d2bb1c0da54f090d5e25ebe",
+      "commit": "1472e011d43008968e6bd02d3977c8b3d2c693bd",
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {

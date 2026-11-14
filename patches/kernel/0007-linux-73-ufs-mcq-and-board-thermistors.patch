@@ -1,17 +1,17 @@
 diff --git a/config/release.json b/config/release.json
-index 68271ad..8e108a1 100644
+index d9faf59..f01ed66 100644
 --- a/config/release.json
 +++ b/config/release.json
-@@ -8,7 +8,7 @@
+@@ -11,7 +11,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "450d68db3af2824514f917c3d2745a640c282f04",
-+    "target_tree": "8848124d1ff10a3c48714c44b73d3fdd1183cb45",
+-    "target_tree": "bba8341012e1f09b9024f59cd9a4b43816126db3",
++    "target_tree": "507067737e5e63d8af1896777fc1dcdc4c41a7c8",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-diff --git a/patches/linux/7.3/0137-arm64-dts-sm8750-ufs-mcq-enable.patch b/patches/linux/7.3/0137-arm64-dts-sm8750-ufs-mcq-enable.patch
+diff --git a/patches/linux/7.3/0143-arm64-dts-sm8750-ufs-mcq-enable.patch b/patches/linux/7.3/0143-arm64-dts-sm8750-ufs-mcq-enable.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..eefd42c2347fd255a93b029622e0875ceabfae4a
 GIT binary patch
@@ -43,7 +43,7 @@ ogR&V&sS!vT?81VKN{F?vv{sN&X=lx)tE<3eq-ScPXTZe;080Y+WB>pF
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0138-arm64-dts-sm8750-ufs-mcq-window-limit.patch b/patches/linux/7.3/0138-arm64-dts-sm8750-ufs-mcq-window-limit.patch
+diff --git a/patches/linux/7.3/0144-arm64-dts-sm8750-ufs-mcq-window-limit.patch b/patches/linux/7.3/0144-arm64-dts-sm8750-ufs-mcq-window-limit.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..1aee92d68500ad4c314ccb3a97b5fc41325e4c16
 GIT binary patch
@@ -79,7 +79,7 @@ bWK=?|g{7K;j7pI6brrab^h{0k47j)efaflh
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0139-arm64-dts-sm8750-pmics-pmk8550-adc.patch b/patches/linux/7.3/0139-arm64-dts-sm8750-pmics-pmk8550-adc.patch
+diff --git a/patches/linux/7.3/0145-arm64-dts-sm8750-pmics-pmk8550-adc.patch b/patches/linux/7.3/0145-arm64-dts-sm8750-pmics-pmk8550-adc.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..285dde92d076589bb29090123adffd0bf32ce4e0
 GIT binary patch
@@ -107,7 +107,7 @@ eS!#TWl>(?Naxhk?=F-(w;4;!PHPJKR;sO9FqNHd5
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0140-arm64-dts-piano-board-thermistors.patch b/patches/linux/7.3/0140-arm64-dts-piano-board-thermistors.patch
+diff --git a/patches/linux/7.3/0146-arm64-dts-piano-board-thermistors.patch b/patches/linux/7.3/0146-arm64-dts-piano-board-thermistors.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..9aa9e9ca3986d819617cdfe46b793d9f007550d6
 GIT binary patch
@@ -163,56 +163,56 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 6e681b8..ef96b34 100644
+index 2b3b644..dd23965 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -4,8 +4,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "450d68db3af2824514f917c3d2745a640c282f04",
+-  "target_tree": "bba8341012e1f09b9024f59cd9a4b43816126db3",
 -  "original_target_commit": "99d7ec96e5360fa7b30e5236bd24e4bb043fe7c3",
-+  "target_tree": "8848124d1ff10a3c48714c44b73d3fdd1183cb45",
++  "target_tree": "507067737e5e63d8af1896777fc1dcdc4c41a7c8",
 +  "original_target_commit": "7c8ebb2458d736c2a17955aa4edf09c6345fc371",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -1087,6 +1087,38 @@
+@@ -1143,6 +1143,38 @@
        "original_parent": "f8f655de8cd43ded8afacb38a04b67bf69595d47",
        "committer_date": "2026-10-25T19:47:28+08:00",
-       "tree": "450d68db3af2824514f917c3d2745a640c282f04"
+       "tree": "bba8341012e1f09b9024f59cd9a4b43816126db3"
 +    },
 +    {
-+      "file": "0137-arm64-dts-sm8750-ufs-mcq-enable.patch",
++      "file": "0143-arm64-dts-sm8750-ufs-mcq-enable.patch",
 +      "sha256": "72816c4c63fb4603961834ca2e2e71f4fed74368624794257c0baf7e26ecb357",
 +      "original_commit": "1c61c0ca27d7022bb3a9686bb9105975860b81aa",
 +      "original_parent": "99d7ec96e5360fa7b30e5236bd24e4bb043fe7c3",
 +      "committer_date": "2026-10-26T23:30:28+08:00",
-+      "tree": "36592b4363c01e6b9b29542a6a581f69ff63ce78"
++      "tree": "09cd0b3192131e639dc79706e271970d6bc121bc"
 +    },
 +    {
-+      "file": "0138-arm64-dts-sm8750-ufs-mcq-window-limit.patch",
++      "file": "0144-arm64-dts-sm8750-ufs-mcq-window-limit.patch",
 +      "sha256": "656262b04ba23825d4acc0fa46686bded04ce4a2ff7c4c003f0c45635d521971",
 +      "original_commit": "c900d44b9dda668fa117d976470ab31373c03274",
 +      "original_parent": "1c61c0ca27d7022bb3a9686bb9105975860b81aa",
 +      "committer_date": "2026-10-26T23:30:28+08:00",
-+      "tree": "8eb6696da01fc441480ac418a4ab132390cb9c50"
++      "tree": "3afb39c43d929b032ff23056e6d0f51cacd09891"
 +    },
 +    {
-+      "file": "0139-arm64-dts-sm8750-pmics-pmk8550-adc.patch",
++      "file": "0145-arm64-dts-sm8750-pmics-pmk8550-adc.patch",
 +      "sha256": "2b7eb404c7a5043cd003fee9ab8334db2b7e44a14c438da7759ef207027ef6ed",
 +      "original_commit": "641b04cab8512d375b6f6f577e8fccc16f7bbc96",
 +      "original_parent": "c900d44b9dda668fa117d976470ab31373c03274",
 +      "committer_date": "2026-10-26T23:30:41+08:00",
-+      "tree": "8663bc2e754ac85834e5600b41d80622eef1f8c7"
++      "tree": "8d47b3394578669a32660e3bf7784432fc45a108"
 +    },
 +    {
-+      "file": "0140-arm64-dts-piano-board-thermistors.patch",
++      "file": "0146-arm64-dts-piano-board-thermistors.patch",
 +      "sha256": "ac18e0811496e877ad47f83d619cea9f27ca048c4e46239ef57bca98d1ca7ea0",
 +      "original_commit": "7c8ebb2458d736c2a17955aa4edf09c6345fc371",
 +      "original_parent": "641b04cab8512d375b6f6f577e8fccc16f7bbc96",
 +      "committer_date": "2026-10-26T23:33:13+08:00",
-+      "tree": "8848124d1ff10a3c48714c44b73d3fdd1183cb45"
++      "tree": "507067737e5e63d8af1896777fc1dcdc4c41a7c8"
      }
    ],
    "provenance": {
