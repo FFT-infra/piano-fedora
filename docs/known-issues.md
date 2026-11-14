@@ -464,7 +464,7 @@ GNOME Snapshot 这类走 portal 与 pipewire 的应用，拿到的是 16x4 而�
 
 侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。内核侧已经通：`uio_piano_fingerprint` 与 `qcomtee` 已加载，`dmesg` 打出 `QTEE version 5.2.0`，`/dev/uio0`、`/dev/tee0` 与 `/proc/device-tree/soc/xiaomi_fingerprint` 都在，DT overlay 也一直在发。
 
-用户态已经接上：`piano-fingerprint` 提供原生客户端，`piano-libfprint` 把 Goodix 静态库链进打过补丁的 libfprint，fprintd 能认到 `Goodix fingerprint sensor`。现在缺的是一次完整录入与认证的真机记录，`fprintd-enroll` 还没跑过。不读取 Android 侧已有的指纹模板。
+用户态已经接上：`piano-fingerprint` 提供原生客户端，`piano-libfprint` 把 Goodix 静态库链进打过补丁的 libfprint，fprintd 能认到 `Goodix fingerprint sensor`。录入、认证与锁屏解锁在 v45.3 之前的镜像上验过：`fprintd-enroll` 走完、`fprintd-verify` 通过、锁屏用指纹解开。v45.3 的镜像没有重测这一项。不读取 Android 侧已有的指纹模板。
 
 ### 红外
 

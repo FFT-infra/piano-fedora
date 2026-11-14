@@ -4,7 +4,7 @@
 
 | 项 | 我们的现状 | 上游 | 要做的 | 优先级 |
 | --- | --- | --- | --- | --- |
-| 指纹用户态 | 完成：`piano-fingerprint` 原生客户端加 `piano-libfprint`，fprintd 认到 `Goodix fingerprint sensor`；录入没测 | `patches/libfprint/1.94.100/` 把 Goodix 接进标准 libfprint | — | 完成 |
+| 指纹用户态 | 完成：`piano-fingerprint` 原生客户端加 `piano-libfprint`，fprintd 认到 `Goodix fingerprint sensor`；录入、认证与锁屏解锁已验（v45.3 之前） | `patches/libfprint/1.94.100/` 把 Goodix 接进标准 libfprint | — | 完成 |
 | 相机闪光灯 | 完成：`capture rear --flash`，有收敛预览时走上游频闪，没有时常亮补光 | 帧同步频闪 | — | 完成 |
 | 相机 JPEG 直出 | 完成：`piano-camera-ctl capture --output FILE` 直出 JPEG | `photo/jpeg.c` | — | 完成 |
 | 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成，实机出帧 | `quad/` 与 v4l2loopback 生产者协商 | — | 完成 |
@@ -20,14 +20,14 @@
 | 自动亮度 | 已验：profile 加载、目标亮度 66.7%、背光 1023 → 1360 | GSD 按原厂 lux 曲线调背光 | 遮住/移开传感器的跟随曲线仍待做 | P2 |
 | 键盘背光热插拔 | extras 的 GSD 带 50.1 补丁，背光设备随键盘盖插拔更新 | 背光走 UPower/GNOME | 同上，接上/取下键盘盖，看 `/sys/class/leds` 与 UPower | P2 |
 | KDE HDR/广色域 | 完成：extras 的 KWin 带退出 HDR 恢复背光补丁，2026-11-12 冷启动真机开关两轮，背光 1024 → 2047 → 1024 | KWin 可切换，退出 HDR 恢复背光 | 色深与色调映射没量，见[已知问题](known-issues.md#hdr) | 完成 |
-| 指纹录入 | 用户态已接，`piano-fingerprint-ctl` 与 fprintd 都可用；录入没测 | libfprint/fprintd 完整录入与认证 | `fprintd-enroll` 走完一次，再 `fprintd-verify` | P2 |
+| 指纹录入 | 完成：`fprintd-enroll` 走完、`fprintd-verify` 通过、锁屏用指纹解开，在 v45.3 之前的镜像上验过 | libfprint/fprintd 完整录入与认证 | — | 完成 |
 | 相机隐私灯 | 完成：前后摄各录 4 秒，`/sys/class/leds/green/brightness` 从 0 到 4，流结束回 0 | 随前后摄视频流启停 | — | 完成 |
 | 相机录像 | 完成：`ffmpeg` 从 `/dev/video40` 与 `/dev/video41` 各录 4 秒，1920x1440@30，各 120 帧 | 预览、录像、AE/AF/AWB | — | 完成 |
 | 手写笔进阶 | 只验了位置、压感、倾斜、proximity | 捏握、震动、磁吸识别、笔电量、充满停电、跨系统重配 | 用 `libinput debug-events` 或 `evtest` 记录实际事件，缺的再开范围 | P3 |
 | exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编成 y，挂载没测 | 读写 | 真机挂载两种 U 盘并读写 | P3 |
 | 10-bit 与 144 Hz | 面板与驱动支持，没量过色深与刷新率 | 面板 10bpc，144 Hz 可选 | 只验，不改默认（KDE 120，GNOME 可到 144） | P3 |
 
-真正缺代码的只有自动亮度与键盘背光，已经放进 extras。HDR 的 KWin 补丁在 2026-11-12 冷启动真机上验过退出后背光恢复。隐私灯与录像已在 2026-11-11 的真机上验过。指纹录入、手写笔进阶与存储挂载仍是验收项，不是新的适配项。测出真实缺口再单独开范围，不在这轮顺手改。
+真正缺代码的只有自动亮度与键盘背光，已经放进 extras。HDR 的 KWin 补丁在 2026-11-12 冷启动真机上验过退出后背光恢复。隐私灯与录像已在 2026-11-11 的真机上验过。手写笔进阶与存储挂载仍是验收项，不是新的适配项。测出真实缺口再单独开范围，不在这轮顺手改。
 
 ## 指纹
 
@@ -64,7 +64,7 @@ ListEnrolledFingers failed: GDBus.Error:net.reactivated.Fprint.Error.PermissionD
 Not Authorized: net.reactivated.fprint.device.verify
 ```
 
-最后一行是 polkit 拒绝未授权会话读模板，不是驱动错误。`/var/lib/piano-goodix` 由 `StateDirectory` 建好，权限 `root:root 0700`。录入要按一次屏下传感器，这一项没测。镜像里带的是发行版的 `fprintd-pam`，没有替用户自动跑 `authselect`。
+最后一行是 polkit 拒绝未授权会话读模板，不是驱动错误。`/var/lib/piano-goodix` 由 `StateDirectory` 建好，权限 `root:root 0700`。录入要按一次侧置传感器；在 v45.3 之前的镜像上录入、认证与锁屏解锁都走通过，v45.3 没重测。镜像里带的是发行版的 `fprintd-pam`，没有替用户自动跑 `authselect`。
 
 ## 相机
 
