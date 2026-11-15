@@ -10,7 +10,9 @@
 
 [![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
 
-在小米平板 8 Pro（代号 `piano`，高通骁龙 8 至尊版 SM8750）上原生运行 Fedora 45，默认桌面是 GNOME。引导链是 [SunUEFI](https://github.com/slwyts/Project-SunUEFI)（EDK2），内核是 Linux 7.3 主线适配，root 文件系统用 F2FS。它与原生 HyperOS 组成双系统，合体 BOOT 里的 3 秒选择器与引导助手负责往返，两个方向都不需要电脑。
+在小米平板 8 Pro（代号 `piano`，高通骁龙 8 至尊版 SM8750）上原生运行 Fedora 45，默认桌面是 GNOME。内核是 Linux 7.3 主线适配，root 文件系统用 F2FS。它与原生 HyperOS 组成双系统，合体 BOOT 里的 3 秒选择器与引导助手负责往返，两个方向都不需要电脑。
+
+[SunUEFI](https://github.com/slwyts/Project-SunUEFI)（EDK2）提供启动链与内核打包。本仓库增加 Fedora 后端、F2FS 全链路、首次分区与 UEFI 启动补丁。分工表见[系统架构](docs/architecture.md)。
 
 ## 硬件支持
 
