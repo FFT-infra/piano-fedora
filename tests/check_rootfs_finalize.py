@@ -83,7 +83,7 @@ def check_power_overlay_owner():
             target = base / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(source.read_bytes())
-        wants = base / "etc/systemd/user/graphical-session.target.wants"
+        wants = base / "usr/lib/systemd/user/graphical-session.target.wants"
         wants.mkdir(parents=True, exist_ok=True)
         for unit in POWER_HELPER_UNITS:
             link = wants / unit
@@ -131,7 +131,7 @@ def check_kde_power_overlay_requires_its_helper():
                 target = base / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(source.read_bytes())
-        wants = base / "etc/systemd/user/graphical-session.target.wants"
+        wants = base / "usr/lib/systemd/user/graphical-session.target.wants"
         wants.mkdir(parents=True, exist_ok=True)
         for unit in POWER_HELPER_UNITS:
             (wants / unit).symlink_to("/usr/lib/systemd/user/" + unit)
@@ -142,7 +142,7 @@ def check_kde_power_overlay_requires_its_helper():
         finalizer.verify_power_overlay(root, KDE)
         # 少任何一条链接都是缺载荷，不再是"另一档串进来"。
         for unit in POWER_HELPER_UNITS:
-            link = root / "etc/systemd/user/graphical-session.target.wants" / unit
+            link = root / "usr/lib/systemd/user/graphical-session.target.wants" / unit
             link.unlink()
             try:
                 finalizer.verify_power_overlay(root, KDE)
@@ -393,7 +393,7 @@ def check_service_staging_order(root):
             target = root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("fixture")
-        wants = root / "etc/systemd/user/graphical-session.target.wants"
+        wants = root / "usr/lib/systemd/user/graphical-session.target.wants"
         wants.mkdir(parents=True, exist_ok=True)
         for unit in POWER_HELPER_UNITS:
             link = wants / unit

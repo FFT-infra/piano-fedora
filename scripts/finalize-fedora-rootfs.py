@@ -268,7 +268,7 @@ def verify_power_overlay(root, context):
     # 两条 vendor wants 链接都由包提供，单元各自的 ConditionEnvironment 决定
     # 当前会话跑哪一个。装配脚本不再按桌面档删另一条链接。
     for unit in POWER_HELPER_UNITS:
-        name = f"etc/systemd/user/graphical-session.target.wants/{unit}"
+        name = f"usr/lib/systemd/user/graphical-session.target.wants/{unit}"
         # 直接看链接本身：guest_resolve 会跟着链接走，看不出它是否存在。
         if not (Path(root).resolve() / name).is_symlink():
             raise ValueError("installed power helper is not enabled: " + name)
