@@ -136,6 +136,7 @@ jobs:
           ## piano Fedora ${release} ${TAG}
 
           - 源码提交: [${GITHUB_SHA}](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})
+          - 启动链: [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)，文件级许可与第三方材料见该仓库的 LICENSE.md 与 THIRD_PARTY.md；本项目的归属说明见 [NOTICE](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/NOTICE)
           - 档位: ${DESKTOPS}
           - 产物状态: Actions 内完整校验通过；真机验证记录见 [docs/known-issues.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/known-issues.md)
 
