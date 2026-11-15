@@ -2,7 +2,7 @@
 
 Name:           libssc
 Version:        0.4.4
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Qualcomm Sensor Core userspace library for Xiaomi Pad 8 Pro (piano)
 License:        GPL-3.0-or-later
 URL:            https://codeberg.org/DylanVanAssche/libssc
@@ -31,7 +31,11 @@ BuildRequires:  python3-devel
 BuildRequires:  vala
 
 Requires:       glib2%{?_isa}
-Requires:       protobuf-c%{?_isa}
+# Fedora 45 renamed protobuf-c to protobuf3-c. The new package obsoletes the
+# old name but only provides the unqualified "protobuf-c", so an explicit
+# arch-qualified Requires (protobuf-c(aarch-64)) no longer resolves and dnf
+# prints a solver problem on every upgrade. The soname require RPM generates
+# from libprotobuf-c.so.1 covers both package names.
 Requires:       libqmi%{?_isa}
 
 %description
@@ -66,6 +70,12 @@ retry support to guarantee sensor enumeration without stalling boot.
 %exclude %{_libdir}/girepository-1.0/SSC-2.typelib
 
 %changelog
+* Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 0.4.4-3
+- Drop the arch-qualified protobuf-c requires. Fedora 45 renamed the package
+  to protobuf3-c, which obsoletes the old name without providing
+  protobuf-c(aarch-64), so dnf reported a solver problem on every upgrade.
+  The generated libprotobuf-c.so.1 soname require keeps both names working.
+
 * Mon Oct 19 2026 FFT-infra <dev@piano.invalid> - 0.4.4-2
 - Ship the property-type, raw-vector and piano vector-client patches so the
   RPM matrix matches the device runtime build
