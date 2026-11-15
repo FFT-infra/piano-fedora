@@ -1,6 +1,6 @@
 # 与上游的功能差距
 
-> **说明**：本文档对照上游 [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)（锁定基线 pin `3a7e5c1b`）及相关生态组件，汇总当前支持矩阵、架构设计分歧与基线复核指引。
+> **说明**：本文档对照上游 [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)（首次核对基线 pin `3a7e5c1b`，当前构建 pin 见 `sources.lock.json`）及相关生态组件，汇总当前支持矩阵、架构设计分歧与基线复核指引。
 
 ---
 

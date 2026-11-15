@@ -156,7 +156,6 @@
 
 - **切槽限制与风险**：严禁使用 `qbootctl -s` 切换活动槽位。
   - **技术根因**：本项目采用合体 BOOT（Hybrid BOOT）机制，原厂 Android、选择器与 Linux 内核统一部署于当前活动槽，不切底层 A/B 槽位。调用 `qbootctl -s` 仅翻转高通活动属性，无法联动变更 ABL 校验所需的槽位 GUID，会导致 ABL 报错拒开机。
-  - **恢复方法**：若误操作切槽，需在 Fastboot 下通过原始 GPT 备份写回槽位属性。
 - **日常切换规范**：
   - Linux 切回 Android：终端执行 `piano-next-boot android --reboot`，或点击应用菜单「返回 Android」；
   - Android 切回 Linux：使用「SunUEFI 引导助手」模块切换并重启；
@@ -198,6 +197,7 @@
 - **控制参数与直充机制**：
   - 内核已包含 MCA 直充驱动与 SC8541 芯片支持，参数 `cp_charge`、`hv_charge`、`charge_policy`、`mipps_auth` 均已启用；
   - 连接支持的 PD/MiPPS 充电器后，系统自动完成适配器认证并进入 FFC 直充模式（总线升至约 8.9V、电池电流约 8.8A）。
+  - 以上数值来自 sysfs 读数，不是外置功率计测量。
 - **已知限制与未验证项**：
   - 满电自动停充、高温降流保护与关机充电尚未取得长期验证数据，原厂 45W 极限快充不作声称；
   - `piano-charge-monitor.service` 监控服务默认处于 disable 状态。
@@ -232,7 +232,8 @@
   - Fedora 官方 Chromium 因依赖系统 `ffmpeg-free`（剥离了 H.264 专利解码器），安装 RPM Fusion 后仅走软件解码。
 - **相机出流首帧与曝光收敛**：
   - `piano-camerad` 在首次拉起或切换分辨率时，首帧为暗场黑帧，自动曝光（AE）算法需数帧完成增益收敛；
-  - GNOME Snapshot 预览崩溃问题已通过 `piano-pipewire-gstreamer` 替换官方子包修复。
+  - GNOME Snapshot 预览崩溃问题已通过 `piano-pipewire-gstreamer` 替换官方子包修复；
+  - 前后摄成像、收敛与预览路径都已单独验证，整机相机验收尚未全部走完。
 - **硬件通信边界**：
   - 触控走高频 SPI 通信，DMA 优化延迟控制在 2.5ms 内；音频子系统连续播放与录音保持稳定无 xrun 欠载。
 
