@@ -2,7 +2,7 @@
 
 > 日常系统与内核升级、双系统往返请参见 [升级与回滚](upgrade.md)。
 
-本指南说明如何在小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）上安装 Fedora 45，以及如何更新、切换系统与排查故障。默认档位是 GNOME。其他档位的差异见[桌面档](desktops.md)。
+本指南说明如何在小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）上安装 Fedora 45、完成首次登录与排查安装故障。默认档位是 GNOME。其他档位的差异见[桌面档](desktops.md)。
 
 安装有两条路。手动路径逐条给出命令，每一步都能单独核对，是主路径。一键脚本把同一条路径包成一次执行，是可选路径。两条路写入的分区和字节数相同。
 
@@ -125,7 +125,7 @@ sha256sum -c SHA256SUMS
 
 第二行在没有分片时换成 `zstd -dc piano-<tag>-<档位>.tar.zst | tar -x`。GNOME 与 KDE 有分片，用上面那条。
 
-解完后，这个目录就是暂存目录。第五节与 [升级与回滚](upgrade.md) 的命令都在这里执行。再校验一次 prepared root：
+解完后，这个目录就是暂存目录。第五节与 [升级与回滚](upgrade.md) 里的命令都在这里执行。再校验一次 prepared root：
 
 ```sh
 (cd root-install && sha256sum -c SHA256SUMS)
@@ -638,7 +638,7 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 ---
 
-## 八、 首次登录与诊断
+## 七、 首次登录与诊断
 
 刷完后平板自动重启，进入 120 Hz 的桌面。四个档位都自动登录到 `piano` 用户：GNOME 走 GDM，KDE 走 plasma-login-manager，niri 与 Hyprland 走 greetd 的 `tuigreet` 兜底。
 
@@ -679,7 +679,7 @@ ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，�
 
 ---
 
-## 十、 真机验收清单
+## 八、 真机验收清单
 
 刷完之后逐项核对，每项留一条命令输出或截图作为证据。任一项失败，按失败记录，不要写成“未验证”。
 
@@ -708,7 +708,7 @@ ls /usr/lib/modules/          # 有与 uname -r 同名的目录
 
 ---
 
-## 十一、 故障排查
+## 九、 故障排查
 
 ### Q1: 开机直接掉进 Fastboot 怎么解决？
 

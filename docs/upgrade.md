@@ -1,6 +1,6 @@
 # Xiaomi Pad 8 Pro (piano) 升级与维护指南
 
-> 本文档适用于已装好系统后的维护。全新安装与首次分区请参见 [安装与分区](installation.md)。
+> 本文档适用于已装好系统后的维护。全新安装与首次分区请参见 [安装与分区](installation.md)；升级所需的材料解压与暂存目录准备参见 [准备安装材料](installation.md#三-准备安装材料)。
 
 ## 一、 更新已有安装
 
@@ -24,7 +24,7 @@ sha256sum stock-recovery/boot.img    # 与上一条相同
 
 原厂 ROM 包里的 `images/boot.img` 也是 96 MiB，但只有设备还跑着那一版固件时才逐字节相同。用前比摘要，不一致以设备读出的为准。
 
-在连接平板的 Linux 主机上执行。以下路径指暂存目录，`--serial` 是 `adb devices` 显示的 Android 序列号：
+在连接平板的 Linux 主机上执行。以下路径指暂存目录（解压步骤见[准备安装材料](installation.md#三-准备安装材料)），`--serial` 是 `adb devices` 显示的 Android 序列号：
 
 ```sh
 python3 boot-tools/installer/scripts/update-f2fs.py plan \

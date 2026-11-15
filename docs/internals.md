@@ -282,7 +282,7 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
 5. Android→Linux、Linux→Android 和原厂 Recovery 都完成，保存屏幕、命令输出、
    `uname -r`、`/usr/lib/modules/`、F2FS 挂载与分区容量证据。
 
-任一项失败都不能写成“设备验收通过”。构建或离线测试通过只记为 CI 证据。证据格式见[安装指南的真机验收](installation.md#十-真机验收清单)。
+任一项失败都不能写成“设备验收通过”。构建或离线测试通过只记为 CI 证据。证据格式见[安装指南的真机验收](installation.md#八-真机验收清单)。
 
 设备热修复替代不了发布资产测试。PR 最终必须从原始 GPT/UFS 布局开始，用流水线重新生成的 root 文件系统与 ESP 完成冷启动、进入所选档位和重启复现。
 
