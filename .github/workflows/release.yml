@@ -387,10 +387,10 @@ jobs:
               --jq "[.assets[] | select(.name | startswith(\"${name}\")) | .size] | add")
             case "$desktop" in
               gnome)
-                desc="GDM 自动登录；Wayland 原生会话，Mutter 自动旋转（已实测），触控手势与屏幕键盘完整"
+                desc="GDM 自动登录；Wayland 原生会话，Mutter 自动旋转，触控手势与屏幕键盘完整"
                 ;;
               kde)
-                desc="plasma-login-manager 自动登录；Wayland 原生会话，KWin 自动旋转（qt6-qtsensors，已实测）"
+                desc="plasma-login-manager 自动登录；Wayland 原生会话，KWin 自动旋转（qt6-qtsensors），桌面自由度高"
                 ;;
               hyprland)
                 desc="greetd [initial_session] 自动登录（tuigreet 兜底）；动态平铺，旋转需通过 hyprctl keyword monitor 调整"

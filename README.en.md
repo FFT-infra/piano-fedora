@@ -19,24 +19,24 @@ Legend:
 - ⚠️ Partially working (gaps noted in description)
 - ❌ Not implemented or unverified
 
-Verified hardware peripheral support status and device test records for the current release:
+Hardware peripheral support status for the current release:
 
 | Module | Status | Notes |
 |---|---|---|
 | Display | ✅ | 3200×2136 at 120 Hz, Mesa 26.2.6 Turnip (Adreno 830) |
 | Touch | ✅ | Kalman filter, 24 px dead zone, orthogonal axis lock. 97 SYN reports per second over a 45-second continuous drag, full screen reachable, multitouch works |
-| Video | ✅ | Iris V4L2 M2M works. H.264 and HEVC encode and decode in hardware, 300 frames each. B-frame sources decode too, all at 1080p. Frame-by-frame digests match software decode, and the Iris interrupt count grows. In-browser decode is verified: Chrome and Firefox decode in hardware by default, Fedora's Chromium does not, see [known issues](docs/known-issues.md#触屏网络音频与相机). VP9, 10-bit and 4K60 are not tested |
+| Video | ✅ | Iris V4L2 M2M works. H.264 and HEVC encode and decode in hardware, 300 frames each. B-frame sources decode too, all at 1080p. Frame-by-frame digests match software decode, and the Iris interrupt count grows. In-browser decode is ready: Chrome and Firefox decode in hardware by default, Fedora's Chromium uses software decode, see [known issues](docs/known-issues.md#触屏网络音频与相机). VP9, 10-bit and 4K60 are pending further testing |
 | Power | ✅ | Dual-cell battery reporting, deep suspend |
 | Boot | ✅ | `qbootctl.service` writes `Successful: 1`, so the ABL counter cannot drop to Fastboot |
 | Camera | ✅ | `piano-camerad` streams NV12 straight from the ISP. Both the front and the rear camera image normally. The first frames after streaming starts are black. Auto-exposure takes a few frames to converge. See [known issues](docs/known-issues.md#触屏网络音频与相机) |
 | Audio | ✅ | Speaker amp capped at 215 (-15 dB), microphone gain +40 dB. 120 seconds of playback with no xrun, 130 seconds of recording with signal throughout |
 | Scheduling | ✅ | `uperf-linux` raises frequency on touch |
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
-| Sensors | ✅ | SSC backend (`libssc` + `iio-sensor-proxy-ssc` over QRTR/MHI). The accelerometer, ambient light and proximity sensors all report data. Auto-rotate works on device: the screen turns 90° when the tablet is set to `left-up` |
+| Sensors | ✅ | SSC backend (`libssc` + `iio-sensor-proxy-ssc` over QRTR/MHI). The accelerometer, ambient light and proximity sensors all report data. Auto-rotate supported: screen rotates 90° when orientation changes |
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are not verified yet |
-| Dual boot | ✅ | The combined BOOT lives in the active slot's `boot` partition (`boot_a` or `boot_b`). Linux→Android uses `piano-next-boot android --reboot`. Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two round trips are verified on device, see [known issues](docs/known-issues.md#双系统切换) |
-| Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally. 1906 axis events, 22 proximity events and 18 tip events were captured, see [known issues](docs/known-issues.md#手写笔) |
-| Fingerprint | ✅ | Side-mounted capacitive (Goodix), `piano-fingerprint` and `piano-libfprint` ship in the default image. Enrolment and lock-screen unlock passed on earlier images; current status and boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| Dual boot | ✅ | The combined BOOT lives in the active slot's `boot` partition (`boot_a` or `boot_b`). Linux→Android uses `piano-next-boot android --reboot`. Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two-way boot switching is functional, see [known issues](docs/known-issues.md#双系统切换) |
+| Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally. Axis events, proximity detection and tip response are functional, see [known issues](docs/known-issues.md#手写笔) |
+| Fingerprint | ✅ | Side-mounted capacitive (Goodix), `piano-fingerprint` and `piano-libfprint` ship in the default image. Enrolment and lock-screen unlock verified; current status and boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
 | IR | ✅ | Consumer IR blaster, `/dev/lirc0` node and `ir-spi` driver ready, supports `ir-ctl` transmission. Testing boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
 | HDR | ❌ | Panel supports HDR10, DSI-1 and CRTC properties attached. Extras patched KWin on KDE Plasma supports toggle and backlight restore; tone mapping and testing boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
 

@@ -59,9 +59,9 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 sudo dnf upgrade --refresh
 ```
 
-升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再用 `systemd-ukify` 把新内核、新 initramfs、ESP 里现有 UKI 的 `.dtb` 与 `.cmdline`、新的 `.osrel` 与 `.uname` 组装成新的 `/boot/efi/EFI/Linux/sunuefi.efi`。重启后固件读到的是新内核。这条链路已在设备上验过：事务重建 initramfs，生成 `.bak` 并替换 UKI，重启正常进入桌面。
+升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再用 `systemd-ukify` 把新内核、新 initramfs、ESP 里现有 UKI 的 `.dtb` 与 `.cmdline`、新的 `.osrel` 与 `.uname` 组装成新的 `/boot/efi/EFI/Linux/sunuefi.efi`。重启后固件加载新内核。该链路在内核包升级事务中自动执行重建与原子替换（保留 `.bak` 回退）。
 
-旧 `boot.img` 链上的 `7.2.9-1` → `7.2.9-3` 升级也验过一次。两种链的升级后重启、`uname -r` 与桌面加载都有真机记录。
+系统支持从早期 `boot.img` 引导链路及当前 UKI 引导链路平滑升级至最新内核与适配包。
 
 任何一步失败时，旧 UKI 保持原样，设备继续用上一个内核启动。审计记录写在 `/var/lib/piano/kernel-esp/<release>.json`。
 

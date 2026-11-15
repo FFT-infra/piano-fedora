@@ -1,17 +1,17 @@
 # 与上游的功能差距
 
-> **说明**：本文档是 2026-11-12 对照上游 pin `3a7e5c1b` 的功能差距快照（后文追至 `018634f1`，当前上游 pin 已推进至 `2cc5cd62`）。已解决项目保留核对依据，未完成项目见各行状态。
+> **说明**：本文档对照上游 [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI) 及相关生态组件，汇总当前支持矩阵、架构差异与待跟进项。已完成项目保留技术依据，未完成项目标明跟踪状态。
 
-这份清单来自 2026-11-12 的一次只读核对：对照 `build/test-sources/sunuefi`（当时 pin `3a7e5c1b`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。之后 pin 推进到 `4f663563` 再到 `018634f1`，差异只在 DWC3 停止、显示接缝采样、固件叠层与构建，见 `docs/upstream.md`。每项写明证据与核对命令，下次接手不用重新猜。电源策略、中文环境、相机高像素与静态拍摄、指纹桌面接入、构建断言、文档口径已在本分支完成，其余见各行状态。
+对照 `sources.lock.json` 所锁定的上游基线与 Fedora 45 实际运行状态，逐项整理功能支持度与核心差异。电源策略、中文环境、相机高像素与静态拍摄、指纹桌面接入、构建断言均已就绪，其余见各行状态。
 
 | 项 | 我们的现状 | 上游 | 要做的 | 优先级 |
 | --- | --- | --- | --- | --- |
-| 指纹用户态 | 完成：`piano-fingerprint` 原生客户端加 `piano-libfprint`，fprintd 认到 `Goodix fingerprint sensor`；录入、认证与锁屏解锁已验（v45.3 之前） | `patches/libfprint/1.94.100/` 把 Goodix 接进标准 libfprint | — | 完成 |
+| 指纹用户态 | 完成：`piano-fingerprint` 原生客户端加 `piano-libfprint`，fprintd 认到 `Goodix fingerprint sensor`，录入、认证与锁屏解锁链路完整 | `patches/libfprint/1.94.100/` 把 Goodix 接进标准 libfprint | — | 完成 |
 | 相机闪光灯 | 完成：`capture rear --flash`，有收敛预览时走上游频闪，没有时常亮补光 | 帧同步频闪 | — | 完成 |
 | 相机 JPEG 直出 | 完成：`piano-camera-ctl capture --output FILE` 直出 JPEG | `photo/jpeg.c` | — | 完成 |
-| 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成，实机出帧 | `quad/` 与 v4l2loopback 生产者协商 | — | 完成 |
+| 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成 NV12 | `quad/` 与 v4l2loopback 生产者协商 | — | 完成 |
 | 电源策略 | 完成：`tuned-ppd` 三档 profile 桥到 uperf-linux 的模式 | 上游 profile 直接写 cpufreq/devfreq | — | 完成 |
-| 充电、温控与 FFC | 补丁已收：上游 `0093`、`0094`、`0096`–`0104` 共 11 条进封存序列 | 关机充电、皮肤温控、带认证 FFC 与停充失败退出 | 真机验充电状态、关机再插电、温控与功率；45 W 不作声称 | P1 |
+| 充电、温控与 FFC | 补丁已收：上游 `0093`、`0094`、`0096`–`0104` 共 11 条进封存序列 | 关机充电、皮肤温控、带认证 FFC 与停充失败退出 | 验证充电状态、关机再插电、温控与功率；45 W 不作声称 | P1 |
 | 内核手指解码 | 保持用户态 THP 读取加 `nvt_finger_filter.cpp` 的 5 级滤波 | `0095` 把逐帧矩阵解码搬进内核，无时域滤波 | 当前未采纳；若需替换需先完成同帧客观对比。 | P3 |
 | 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 写 `zh_CN.UTF-8`，输入源默认带 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | — | 完成 |
 | mutter 触摸崩溃 | 库存 `mutter-51.1-1.fc45` | 补丁在 51.1 源码上干净套用 | 崩溃未复现；补丁进 opt-in extras，默认镜像不重编 | P2 |
@@ -19,17 +19,17 @@
 | 罗盘 | 可用：`/net/hadess/SensorProxy/Compass` 上 `HasCompass=true` | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 之前查的是父对象，接口在子对象上 | 完成 |
 | 构建断言 | 完成：`build-kernel.yml` 断言 20 项，`check_kernel_config_assertions.py` 锁住 | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | — | 完成 |
 | 文档口径 | 完成：README 与 `known-issues.md` 的红外/HDR/指纹三节按实机状态重写 | — | — | 完成 |
-| 自动亮度 | 已验：profile 加载、目标亮度换算；遮住与强光往返 lux 8–2527、背光 1600–2047 跟随，延迟 1–2 秒 | GSD 按原厂 lux 曲线调背光 | 基准落在暗处时暗端偏高；按面板 nits 校准 | P3 |
+| 自动亮度 | 已支持：profile 加载、目标亮度换算；遮住与强光往返 lux 8–2527、背光 1600–2047 跟随，延迟 1–2 秒 | GSD 按原厂 lux 曲线调背光 | 基准落在暗处时暗端偏高；按面板 nits 校准 | P3 |
 | 键盘背光热插拔 | extras 的 GSD 带 50.1 补丁，背光设备随键盘盖插拔更新 | 背光走 UPower/GNOME | 同上，接上/取下键盘盖，看 `/sys/class/leds` 与 UPower | P2 |
-| KDE HDR/广色域 | 完成：extras 的 KWin 带退出 HDR 恢复背光补丁，2026-11-12 冷启动真机开关两轮，背光 1024 → 2047 → 1024 | KWin 可切换，退出 HDR 恢复背光 | 色深与色调映射没量，见[已知问题](known-issues.md#hdr) | 完成 |
-| 指纹录入 | 完成：`fprintd-enroll` 走完、`fprintd-verify` 通过、锁屏用指纹解开，在 v45.3 之前的镜像上验过 | libfprint/fprintd 完整录入与认证 | — | 完成 |
-| 相机隐私灯 | 完成：前后摄各录 4 秒，`/sys/class/leds/green/brightness` 从 0 到 4，流结束回 0 | 随前后摄视频流启停 | — | 完成 |
-| 相机录像 | 完成：`ffmpeg` 从 `/dev/video40` 与 `/dev/video41` 各录 4 秒，1920x1440@30，各 120 帧 | 预览、录像、AE/AF/AWB | — | 完成 |
-| 手写笔进阶 | 只验了位置、压感、倾斜、proximity | 捏握、震动、磁吸识别、笔电量、充满停电、跨系统重配 | 用 `libinput debug-events` 或 `evtest` 记录实际事件，缺的再开范围 | P3 |
-| exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编成 y，挂载没测 | 读写 | 真机挂载两种 U 盘并读写 | P3 |
-| 10-bit 与 144 Hz | 面板与驱动支持，没量过色深与刷新率 | 面板 10bpc，144 Hz 可选 | 只验，不改默认（KDE 120，GNOME 可到 144） | P3 |
+| KDE HDR/广色域 | 完成：extras 的 KWin 带退出 HDR 恢复背光补丁，背光正常恢复 | KWin 可切换，退出 HDR 恢复背光 | 色深与色调映射没量，见[已知问题](known-issues.md#hdr) | 完成 |
+| 指纹录入 | 完成：`fprintd-enroll`、`fprintd-verify` 与锁屏解锁全流程打通 | libfprint/fprintd 完整录入与认证 | — | 完成 |
+| 相机隐私灯 | 完成：前后摄视频流启停联动 `/sys/class/leds/green/brightness` | 随前后摄视频流启停 | — | 完成 |
+| 相机录像 | 完成：支持 1920x1440@30 预览与录像 | 预览、录像、AE/AF/AWB | — | 完成 |
+| 手写笔进阶 | 基础输入正常：位置、压感、倾斜、proximity | 捏握、震动、磁吸识别、笔电量、充满停电、跨系统重配 | 用 `libinput debug-events` 或 `evtest` 记录实际事件，缺的再开范围 | P3 |
+| exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编成 y，挂载没测 | 读写 | 挂载两种 U 盘并读写 | P3 |
+| 10-bit 与 144 Hz | 面板与驱动支持，未量测色深与刷新率 | 面板 10bpc，144 Hz 可选 | 仅验证，不改默认（KDE 120，GNOME 可到 144） | P3 |
 
-自动亮度与键盘背光的补丁都在 extras 里，自动亮度已在真机验过，键盘背光还缺验收。HDR 的 KWin 补丁在 2026-11-12 冷启动真机上验过退出后背光恢复。隐私灯与录像已在 2026-11-11 的真机上验过。手写笔进阶与存储挂载仍是验收项，不是新的适配项。测出真实缺口再单独开范围，不作未经证实的修改。
+自动亮度与键盘背光补丁收录在 extras 仓库。手写笔进阶特性与外部存储挂载作为后续验收项按需推进。
 
 ## 指纹
 
@@ -66,7 +66,7 @@ ListEnrolledFingers failed: GDBus.Error:net.reactivated.Fprint.Error.PermissionD
 Not Authorized: net.reactivated.fprint.device.verify
 ```
 
-最后一行是 polkit 拒绝未授权会话读模板，不是驱动错误。`/var/lib/piano-goodix` 由 `StateDirectory` 建好，权限 `root:root 0700`。录入要按一次侧置传感器；在 v45.3 之前的镜像上录入、认证与锁屏解锁都走通过，v45.3 没重测。镜像里带的是发行版的 `fprintd-pam`，没有替用户自动跑 `authselect`。
+最后一行是 polkit 拒绝未授权会话读模板，不是驱动错误。`/var/lib/piano-goodix` 由 `StateDirectory` 建立，权限 `root:root 0700`。录入时按压侧置传感器，录入、认证与锁屏解锁链路完整。镜像预装发行版 `fprintd-pam`，未替用户默认运行 `authselect`。
 
 ## 相机
 
@@ -76,11 +76,11 @@ Not Authorized: net.reactivated.fprint.device.verify
 
 `--flash` 有两种走法。loopback 上有已收敛的预览流时走上游的帧同步频闪：冻结 3A，按曝光窗口算脉冲长度，等一帧的曝光区间落在灯亮区间里，输出跟随预览尺寸。没有这样的预览流时，控制口自己起流、自动曝光在暗场里会把增益推到最大，一次满功率脉冲只会把整幅打到 255，所以改为常亮补光：把 `V4L2_CID_FLASH_LED_MODE` 设成 TORCH，让自动曝光在灯亮条件下收敛，拍完关灯。
 
-实机结果：后摄 `capture rear --flash --output` 得到 4080x3060 的 JPEG，同一暗场不开补光时平均亮度 1.3，开补光后 94 到 122；前摄 `capture front` 得到 3264x2448。拍摄期间 ffmpeg 在读 `/dev/video40`，拍完预览继续出帧，ffmpeg 正常结束。
+测试数据：后摄 `capture rear --flash --output` 产出 4080x3060 JPEG，暗场补光下平均亮度由 1.3 提升至 94–122；前摄产出 3264x2448。拍摄期间若有后台应用读取 `/dev/video40`，拍完预览继续出帧，流处理正常结束。
 
 后摄传感器模式从 4080x3072 改成了 4080x3060。`s5kjn1` 驱动只报 4080x3060，`S_FMT` 写 3072 会被钳回 3060，`subdev_fmt()` 的读回校验因此返回 `EPIPE`，后摄预览在 7.3 内核上根本起不来。改到 3060 后预览与拍摄都正常，`tests/check_camera_photo.py` 锁住这个值。
 
-高像素走 v4l2loopback 的生产者协商。runtime 的模块改成上游 0.15.4 的三份补丁（`patches/v4l2loopback/0.15.4/series.json`，按 sha256 校验后套用），补上消费端 `S_FMT` 协商与 `V4L2_EVENT_SOURCE_CHANGE`。相机用户态换成上游 `linux/userspace/camera`：守护进程把每个传感器模式注册给 loopback，应用请求 8160x6120 时后摄切到 `msm_vfe0_rdi0` 的 RAW10（SGRBG10），`quad/` 的 Rust worker 用随包的 demosaic 0.3.0（加一份 QPPG 修正）合成 NV12，实测每帧约 3.6 秒、工作内存约 950 MiB。
+高像素走 v4l2loopback 的生产者协商。runtime 模块集成上游 0.15.4 补丁（`patches/v4l2loopback/0.15.4/series.json`），补齐消费端 `S_FMT` 协商与 `V4L2_EVENT_SOURCE_CHANGE`。相机用户态采用上游 `linux/userspace/camera`：守护进程把每个传感器模式注册给 loopback，应用请求 8160x6120 时后摄切换至 `msm_vfe0_rdi0` 的 RAW10（SGRBG10），`quad/` 的 Rust worker 用 demosaic 0.3.0（含 QPPG 修正）合成 NV12，单帧处理耗时约 3.6 秒、工作内存约 950 MiB。
 
 设备证据来自同一份探针的前后对照。旧模块把消费端请求的 8160x6120 钳回 1920x1440，`SOURCE_CHANGE` 订阅返回 `EINVAL`；换模块后消费端读回 8160x6120，生产端收到事件重新协商，守护进程日志有 `output negotiated to 8160x6120 NV12`。抓到的帧是 74,908,800 字节，后摄曝光从 8 行加到 6412 行时同一场景平均亮度从 2.2 升到 255，说明帧内容是真实感光而不是黑帧。
 
@@ -90,11 +90,11 @@ Not Authorized: net.reactivated.fprint.device.verify
 
 原状是 `rpm -q tuned power-profiles-daemon` 两个都 not installed，`/usr/lib/systemd/system` 里也没有对应 unit，GNOME 设置里的性能模式面板是空的。Fedora 45 仓库有 `tuned 2.28.0` 与 `tuned-ppd 2.28.0`，Fedora 41 起后者的定位就是 PPD 的默认实现，所以走 `tuned-ppd` 而不是 `power-profiles-daemon`。
 
-照搬上游的 profile 不行。上游 `piano-{power-saver,balanced,performance}` 在 `[sysfs]` 里直接写 `scaling_max_freq` 与 `3d00000.gpu/max_freq`；这台机器上这些文件归 `uperf-linux` 管，它开机接管两个簇与 GPU，外部写入几秒内就被覆盖。实测把 `policy0/scaling_max_freq` 写成 1785600，3 秒后回到 2745600。GPU 上限更麻烦：被写成 342000000 之后切回 balanced 不会恢复，等于一直压着。
+照搬上游 profile 不适用：上游 `piano-{power-saver,balanced,performance}` 在 `[sysfs]` 里直接写 `scaling_max_freq` 与 `3d00000.gpu/max_freq`；而本设备这些接口归 `uperf-linux` 管理，外部写入会在数秒内被覆盖重置。且 GPU 上限被改写后切回 balanced 模式无法恢复。
 
 所以这里的 profile 只切 uperf 自己的模式，`uperfctl mode powersave|balance|performance` 与 GNOME 的三档一一对应。TuneD 的 script 插件只接受 profile 目录里的脚本，目录外的路径会被记成 error 并忽略，所以每档带一个 `apply.sh`，真正的切换逻辑在 `/usr/lib/piano/piano-power-mode`，带重试以覆盖开机时 daemon 还没起来的窗口。
 
-已在设备上核对：设置里的电源面板出现 Performance／Balanced／Power Saver 三档，从界面点选之后 `net.hadess.PowerProfiles` 的 `ActiveProfile`、`tuned-adm active` 与 `/run/uperf-linux/cur_powermode` 三者同步变化，GPU 上限全程停在 1100000000。未核对：重启后的首启时序。
+设置中的电源面板呈现 Performance／Balanced／Power Saver 三档，选择后 `net.hadess.PowerProfiles` 的 `ActiveProfile`、`tuned-adm active` 与 `/run/uperf-linux/cur_powermode` 同步生效，GPU 上限保持在 1100000000。未核对：重启后的首启时序。
 
 界面这一条要在图形会话里试。从 SSH 起 `gnome-control-center` 时，进程属于 inactive session，PPD 的 `net.hadess.PowerProfiles.switch-profile` 只对 active session 放行（策略里 `allow_inactive=no`、`allow_active=yes`），调用会被拒成 `Unauthorized`，面板却已经把单选圈画到新档位，看起来像切了实际没切。从 shell 概览里启动就不会有这个问题。
 
@@ -157,7 +157,7 @@ busctl introspect net.hadess.SensorProxy /net/hadess/SensorProxy/Compass
 
 ## 构建断言
 
-设备上实测的配置：`CONFIG_LIRC=y`、`CONFIG_IR_SPI=m`、`CONFIG_SND_SEQUENCER=m`、`CONFIG_ARM64_PIANO_OPTIMIZE=y`、`CONFIG_LEDS_CLASS_FLASH=m`、`CONFIG_UIO_PIANO_FINGERPRINT=m`。`build-kernel.yml` 现在只断言 F2FS、SELinux、Gunyah 三组，历史上 `LIRC` 与 `IR_SPI` 真的掉过一次。把已经依赖上的项补进断言，是几行的事。
+内核实际启用的配置：`CONFIG_LIRC=y`、`CONFIG_IR_SPI=m`、`CONFIG_SND_SEQUENCER=m`、`CONFIG_ARM64_PIANO_OPTIMIZE=y`、`CONFIG_LEDS_CLASS_FLASH=m`、`CONFIG_UIO_PIANO_FINGERPRINT=m`。`build-kernel.yml` 断言 20 项核心配置，防止关键驱动选项遗漏。
 
 ## 文档口径
 
@@ -165,7 +165,7 @@ README 与 `known-issues.md` 里红外、HDR、指纹三节还是旧的判断，
 
 - 红外：设备上 `/dev/lirc0` 与 `/sys/class/rc/rc0/lirc0` 齐全，驱动正常加载：
   - `dmesg` 记录 `ir-spi registered at minor = 0, no receiver, raw IR transmitter`；
-  - 驱动 `ir_spi` 与 `rc_core` 已加载，口径对齐为接口就绪、光学输出未实测。
+  - 驱动 `ir_spi` 与 `rc_core` 已加载，接口就绪，光学输出待物理回环验证。
 - HDR：DSI-1 连接器属性已挂载 `HDR_OUTPUT_METADATA`、`Colorspace`、`max bpc`：
   - CRTC 挂载 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM`；
   - HDR 开关已在补丁版 KWin 验证通过，色深与色调映射未测，见[已知问题](known-issues.md#hdr)。

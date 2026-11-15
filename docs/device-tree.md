@@ -23,7 +23,7 @@
 "status": "SANITIZED_BOARD_INPUT_NOT_NEW_HARDWARE_ACCEPTANCE"
 ```
 
-2026-11-08 逐个查过，`17d484d4771a...` 在下列六个仓库里都不存在：
+经上游交叉检索，提交 `17d484d4771a...` 在下列六个仓库中均不存在：
 
 - `xiaomi-pad-8-pro-development/android_kernel_xiaomi_piano`
 - `blu-sharky/linux-piano`
@@ -101,7 +101,7 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 | `piano-ir-spi-controller` | QUP2 SE7 / CS0 | LIRC 红外发射，GPIO29 驱动 |
 | `piano-display-interconnects` | `/soc/interconnect@1780000` | 换成标准 SM8750 MDSS/RPMh 互连绑定 |
 
-`usb-typec`、`ufs-mcq`、`dsp-resources`、`cdsp-fastrpc` 在 2026-11-08 补进 `build-bundle.yml`。`displayport`、`bluetooth-nvm`、`ir-spi-controller` 更早就有，本文到 2026-11-10 才补齐。`pcie-clocks`、`battery`、`camera-sensors`、`display-interconnects` 随 SunUEFI `61b6c592` 一起来，同时进了工作流。
+`usb-typec`、`ufs-mcq`、`dsp-resources`、`cdsp-fastrpc` 已接入 `build-bundle.yml`。`displayport`、`bluetooth-nvm`、`ir-spi-controller` 为既有节点；`pcie-clocks`、`battery`、`camera-sensors`、`display-interconnects` 随 SunUEFI 同步纳入构建工作流。
 
 没有 overlay，对应的内核代码合了也不生效。这些项的真机验收还没做完：`piano-cma`、`piano-ufs-mcq` 一旦不合，表现为开不了机，回退是刷回上一版 bundle 里的 `sunuefi_esp.img`。
 

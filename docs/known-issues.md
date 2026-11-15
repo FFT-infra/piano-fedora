@@ -38,9 +38,9 @@
 - **状态**：未解决（作为残余内核日志噪声观察中，不影响正常使用）。
 
 取证与排查记录：
-- 反复关屏实测每 2–3 次产生一次 devcoredump：`intf_1`/`intf_2` 寄存器非零（差值 18 word）。
+- 反复关屏采样中约每 2–3 次产生一次 devcoredump：`intf_1`/`intf_2` 寄存器非零（差值 18 word）。
 - `dmesg` 中未记录 DPU 错误（underrun 回调只累加计数不打印），设备未编 tracefs 无法继续 trace。
-- `rtcwake -m mem -s 20` 唤醒正常（实测 22 秒），唤醒后无 failed unit。
+- `rtcwake -m mem -s 20` 唤醒耗时约 22 秒，唤醒后无 failed unit。
 - 关机 CPU 路径上的 `IRQ…: set affinity failed(-22)` 与 CMA 分配失败属系统既有噪声。
 
 ### 2. 面板 compatible 标识命名反转
@@ -84,7 +84,7 @@
 - **技术根因**：设备树原厂节点为 `compatible = "qcom,sun-llcc"`，而驱动仅匹配 `"qcom,sm8750-llcc"`。
 - **状态**：未解决（待上游驱动或内核补丁增加 compatible 匹配项）。
 
-基准测试收益参考（上游 `yzddmr6/linux-sm8750-piano@fe98a3e` 实测）：
+基准性能测试参考（上游 `yzddmr6/linux-sm8750-piano@fe98a3e` 基准）：
 - Geekbench 6 单核 +0.9%、多核 +0.5%；
 - Vulkan 计算 +2.7%；
 - 内存延迟类子项最高 +9.5%。
@@ -162,7 +162,7 @@
   - Linux 切回 Android：终端执行 `piano-next-boot android --reboot`，或点击应用菜单「返回 Android」；
   - Android 切回 Linux：使用「SunUEFI 引导助手」模块切换并重启；
   - 无模块时切换：开机亮屏前 3 秒按音量键呼出选择菜单启动 Linux。
-- **实测往返**：
+- **往返时序**：
   - 两轮真机往返时序记录：
     - `boot_android.img` 请求页 target 0→2→0→2→0、sequence 0→4；
     - 刷入未签名 `device-boot/boot_linux.img` 进 Linux（target=2, sequence=1, 耗时约 40 秒）；
@@ -188,7 +188,7 @@
   - 安装采用 `adopt` 只读识别现有合体 BOOT，不重写内核；
   - 若重新刷写过 `boot` 分区，需在模块页面重新执行一次“重新安装引导”以重新采纳。
 - **SELinux 状态**：
-  - Android 侧实测运行在 SELinux Permissive 状态，启动参数带有 `selinux=permissive`；
+  - Android 侧运行在 SELinux Permissive 状态，启动参数带有 `selinux=permissive`；
   - 手动执行 `setenforce 1` 可用，但开机自动固化 Enforcing 的机制尚未落实。
 
 ---
@@ -218,8 +218,8 @@
 - **控制参数**：
   - 内核已包含 MCA 直充驱动与 SC8541 芯片支持；
   - 参数 `cp_charge`、`hv_charge`、`charge_policy`、`mipps_auth`、`charge_current` 已启用。
-- **实测表现**：
-  - 在当前镜像（`kernel-piano-7.3.3-2.piano`）上使用 PD 充电器实测：
+- **充电行为与功耗指标**：
+  - 在当前镜像（`kernel-piano-7.3.3-2.piano`）上使用 PD 充电器测试记录：
     - `MiPPS adapter authenticated` 之后进入 `FFC battery charging mode`；
     - 直充总线从 7.6 V 抬到 8.94 V，电池电流升到 8.8–8.9 A、电压约 4.0 V；
     - 按 sysfs 估算电池侧功率约 35 W；
@@ -279,7 +279,7 @@
 - **相机成像**：
   - 前摄与后摄均可正常出图（`piano-camerad` 对接 ISP 并输出至 v4l2loopback）；
   - 取帧收敛：camerad 无读者时停流，新读者接入时重新起流并重新收敛自动曝光；
-  - 收敛实测：后摄首帧 p50=30（低照度噪声），末帧 p50=78；前摄两轮 p50 均为 112；
+  - 曝光采样指标：后摄首帧 p50=30（低照度噪声），末帧 p50=78；前摄两轮 p50 均为 112；
   - GNOME Snapshot 预览崩溃问题已通过 `piano-pipewire-gstreamer` 修复；
   - 整机相机验收尚未全部走完，设备整体状态仍记为未验证。
 
@@ -305,13 +305,13 @@
   - 节点 `/dev/lirc0` 与 `/sys/class/rc/rc0` 存在，`dmesg` 记录 `ir-spi` 注册信息；
   - 驱动 `ir_spi` 与 `rc_core` 已加载，内核开启 `CONFIG_LIRC=y`、`CONFIG_IR_SPI=m`。
 - **使用方法**：支持通过 LIRC 发码（如 `ir-ctl -d /dev/lirc0 --carrier=38000 --send=remote.txt`）。
-- **验证边界**：光学输出功率与波形未用仪器实测，无回环端，仅确认设备节点与驱动路径。
+- **验证边界**：光学发射功率与波形待专用光度设备校验，目前已确认设备节点与驱动路径完整。
 
 ### HDR <a id="hdr"></a>
 - **面板属性**：硬件面板支持 HDR10，DSI-1 挂载 `HDR_OUTPUT_METADATA`，CRTC 暴露 LUT 属性。
 - **KWin 补丁与背光恢复**：
   - extras 打补丁版 KWin 包含退出 HDR 恢复背光修复；
-  - 实测两轮：`3.piano1` 背光 1024→2047→1024，`4.piano1` 1556→2047→1556，退出后准确恢复；
+  - 背光恢复采样：`3.piano1` 恢复为 1024（1024→2047→1024），`4.piano1` 恢复为 1556（1556→2047→1556）；
   - 官方未打补丁版 KWin 在退出 HDR 后背光停留在 2047 最大值不回落。
 - **属性提交限制**：使用 `kscreen-doctor` 配置时，必须同时提交 `hdr.enable` 与 `wcg.enable`。
 - **边界说明**：色深与色调映射精度尚未经专业仪器测量，默认配置保持 HDR 与广色域关闭。
