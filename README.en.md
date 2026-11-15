@@ -84,7 +84,7 @@ An archive holds the platform images, that profile's `root-install/`, the compon
 
 ## Documentation
 
-- [Documentation Hub](docs/README.md): global index and audience-based navigation (install, upgrade, operations, and architecture)
+- [Documentation Hub](docs/README.md): index for installation, upgrades, daily use, and maintenance
 - [Contributing](CONTRIBUTING.md): local checks, commit format, and the PR gate
 - [Security policy](SECURITY.md): how to report a vulnerability and what is in scope
 

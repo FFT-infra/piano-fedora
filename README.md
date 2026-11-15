@@ -88,7 +88,7 @@ Release 由维护者用 tag 手工 dispatch，tag push 不会触发发布。一�
 
 ## 文档
 
-- [文档中心](docs/README.md)：全局文档导航与受众分流（安装、升级、运维与架构）
+- [文档中心](docs/README.md)：按安装、日常使用与维护分类的文档目录
 - [参与贡献](CONTRIBUTING.md)：本地检查、提交格式与 PR 门槛
 - [安全策略](SECURITY.md)：漏洞报告渠道与处理范围
 
