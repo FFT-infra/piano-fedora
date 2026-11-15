@@ -140,13 +140,16 @@ jobs:
           - 档位: ${DESKTOPS}
           - 产物状态: Actions 内完整校验通过；真机验证记录见 [docs/known-issues.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/known-issues.md)
 
-          ### 怎么装
+          ### 各档文件与选档
 
-          刷写会解锁 Bootloader、改写 GPT、替换 \`boot_a\` 的合体 BOOT，并重写
-          Linux 分区。先备份全部数据。\`current-slot\` 必须是 \`a\`。不要擦除
-          \`dtbo_a\` 或 \`dtbo_b\`。完整前提见 docs/installation.md。
+          <!-- DESKTOP_TABLE_PLACEHOLDER -->
 
-          每个档位一个归档。只下载自己那一档的归档，别的档不用下。以 ${example} 为例：
+          ### 新装与在用升级
+
+          - **已有系统升级**：已安装 piano-fedora 的设备无需重新下载刷机包，在终端运行 \`sudo dnf upgrade --refresh\` 即可通过 COPR 仓库获取最新内核与适配包。完整升级流程见 [docs/upgrade.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/upgrade.md)。
+          - **全新安装**：公共 Release 归档收录 Slot A (\`boot_a\`) 的初装包（Slot B 设备需按文档自建 \`root-install\`）。刷写会解锁 Bootloader、改写 GPT、替换活动槽合体 BOOT 并重写 Linux 分区，务必提前备份全盘数据。**不要擦除 \`dtbo_a\` 或 \`dtbo_b\`**（高通 ABL 校验空 DTBO 会拒启停在 Fastboot）。完整前置条件见 [docs/installation.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/installation.md)。
+
+          每个档位一个自包含归档，只需下载所选档位。以 ${example} 为例：
 
           1. 下载 \`piano-${TAG}-${example}.sha256\`，再下载
              \`piano-${TAG}-${example}.tar.zst\` 的全部分片。有这个档位的
@@ -156,20 +159,17 @@ jobs:
              只有一个分片时改用 \`zstd -dc piano-${TAG}-${example}.tar.zst | tar -x\`。
           4. \`sha256sum -c SHA256SUMS\` 与 \`(cd root-install && sha256sum -c SHA256SUMS)\`
           5. \`./make-device-boot.sh\` 生成这台的 \`device-boot/boot_linux.img\`
-          6. 全新平板先读 docs/installation.md 第四节，再按 \`README-INSTALL.txt\` 刷写。
+          6. 全新平板先读 [docs/installation.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/installation.md) 第四节，再按 \`README-INSTALL.txt\` 刷写。
 
           也可以让仓库里的 \`scripts/unpack-release.sh\` 代做第 1 至 4 步：
           \`bash scripts/unpack-release.sh --tag ${TAG} --desktop ${example}\`。
 
-          归档里有平台镜像（ESP、Linux 载荷、产品固件）、这一档的
-          \`root-install/\`、组件 manifest、一键脚本与 boot-tools。
-          \`SHA256SUMS\` 只列归档里真实存在的文件，所以上面两条校验命令都能直接过。
-          \`device-boot/boot_linux.img\` 不在归档里。这个文件必须用这台平板自己的
-          原厂 BOOT 生成，工具随归档发布。
+          ### 归档内容与安全约束
 
-          Windows 上用 7-Zip 解 \`.tar.zst\`。有分片时先用 \`copy /b\` 合并，再解压。
-
-          校验构建来源: \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`
+          - 归档里有平台镜像（ESP、Linux 载荷、产品固件）、这一档的 \`root-install/\`、组件 manifest、一键脚本与 boot-tools。\`SHA256SUMS\` 只列归档里真实存在的文件，所以上面两条校验命令都能直接过。
+          - \`device-boot/boot_linux.img\` 不在归档里。这个文件必须用这台平板自己的原厂 BOOT 生成，工具随归档发布。
+          - Windows 上用 7-Zip 解 \`.tar.zst\`。有分片时先用 \`copy /b\` 合并，再解压。
+          - 校验构建来源: \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`
           EOF
           # 默认 draft：转公开要显式传 publish=true。
           gh release create "$TAG" --draft --title "piano Fedora ${release} ${TAG}" \
@@ -377,23 +377,45 @@ jobs:
         run: |
           set -euo pipefail
           : > build/stage/notes-table.md
+          echo "| 档位 | 归档 | 分片数 | 下载量 | 特性与场景 |" >> build/stage/notes-table.md
+          echo "| --- | --- | --- | --- | --- |" >> build/stage/notes-table.md
           for desktop in $DESKTOPS; do
             name=$(python3 scripts/release-assets.py archive-name "$TAG" "$desktop")
             sidecar=$(python3 scripts/release-assets.py sidecar-name "$TAG" "$desktop")
             parts=$(wc -l < "$STAGE/$sidecar")
             total=$(gh release view "$TAG" --json assets \
               --jq "[.assets[] | select(.name | startswith(\"${name}\")) | .size] | add")
-            echo "| \`${desktop}\` | \`${name}\` | ${parts} | $((total / 1048576)) MiB |" \
+            case "$desktop" in
+              gnome)
+                desc="GDM 自动登录；Wayland 原生会话，Mutter 自动旋转（已实测），触控手势与屏幕键盘完整"
+                ;;
+              kde)
+                desc="plasma-login-manager 自动登录；Wayland 原生会话，KWin 自动旋转（qt6-qtsensors，已实测）"
+                ;;
+              hyprland)
+                desc="greetd [initial_session] 自动登录（tuigreet 兜底）；动态平铺，旋转需通过 hyprctl keyword monitor 调整"
+                ;;
+              niri)
+                desc="greetd [initial_session] 自动登录（tuigreet 兜底）；无限横向滚动平铺，旋转需在 output 段声明 transform"
+                ;;
+              *)
+                desc="定制桌面环境"
+                ;;
+            esac
+            echo "| \`${desktop}\` | \`${name}\` | ${parts} | $((total / 1048576)) MiB | ${desc} |" \
               >> build/stage/notes-table.md
           done
-          {
-            echo ""
-            echo "### 各档文件"
-            echo ""
-            echo "| 档位 | 归档 | 分片数 | 下载量 |"
-            echo "| --- | --- | --- | --- |"
-            cat build/stage/notes-table.md
-          } >> build/stage/notes.md
+          python3 - <<'PYEOF'
+          import re
+          from pathlib import Path
+          notes_path = Path("build/stage/notes.md")
+          notes = notes_path.read_text()
+          table = Path("build/stage/notes-table.md").read_text().strip()
+          pattern = r"^[ \t]*<!-- DESKTOP_TABLE_PLACEHOLDER -->"
+          new_notes, count = re.subn(pattern, table, notes, flags=re.MULTILINE)
+          assert count == 1, "failed to replace DESKTOP_TABLE_PLACEHOLDER in notes.md"
+          notes_path.write_text(new_notes)
+          PYEOF
           gh release edit "$TAG" --notes-file build/stage/notes.md
 
       - name: Attest the published assets

@@ -335,7 +335,7 @@ def test_workflow_contract():
 
 
 def test_release_notes_teach_both_paths():
-    """说明里的命令必须与归档真实形状一致：分片合并、两条校验、生成 BOOT。"""
+    """说明里的命令必须与归档真实形状一致：分片合并、两条校验、生成 BOOT，并保持安全门禁。"""
     text = WORKFLOW.read_text()
     notes = text[text.index("cat > build/stage/notes.md"):text.index("gh release create")]
     for token in ("sha256sum -c piano-${TAG}-${example}.sha256",
@@ -347,6 +347,30 @@ def test_release_notes_teach_both_paths():
         assert token in notes, f"release notes omit {token!r}"
     # 原厂 ABL 不实现 fetch，说明里不能再教它。
     assert "fastboot fetch boot_a" not in text
+    # 结构与安全门禁契约
+    assert "<!-- DESKTOP_TABLE_PLACEHOLDER -->" in notes
+    assert "DESKTOP_TABLE_PLACEHOLDER" in text[text.index("Fill in the per-desktop table"):]
+    assert "[docs/installation.md](" in notes
+    assert "[docs/upgrade.md](" in notes
+    assert "不要擦除 \\`dtbo_a\\` 或 \\`dtbo_b\\`" in notes
+    assert "device-boot/boot_linux.img" in notes
+    assert "产物状态: Actions 内完整校验通过" in notes
+    assert "current-slot" not in notes  # 避免误导 OTA 到 B 槽的用户
+    # 桌面特性与行为描述契约
+    fill_step = text[text.index("Fill in the per-desktop table"):]
+    assert "plasma-login-manager" in fill_step
+    assert "SDDM" not in fill_step
+    assert "greetd [initial_session]" in fill_step
+    assert "transform" in fill_step
+    assert "hyprctl" in fill_step
+    # 表格插入契约：不能带有 4+ 前导空格，否则 Markdown 会解析为缩进代码块
+    assert "indented_table" not in fill_step
+    import re
+    mock_notes = "          <!-- DESKTOP_TABLE_PLACEHOLDER -->"
+    mock_table = "| 档位 | 归档 |\n| --- | --- |\n| `kde` | arc |"
+    rendered = re.sub(r"^[ \t]*<!-- DESKTOP_TABLE_PLACEHOLDER -->", mock_table, mock_notes, flags=re.MULTILINE)
+    for line in rendered.splitlines():
+        assert not line.startswith("    "), f"table line has code-block indentation: {line!r}"
 
 
 def main():
