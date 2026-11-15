@@ -53,7 +53,7 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 16 个锁定源里只有 `sunuefi` 和 `crosvm` 有推进。`sunuefi` 从 `018634f1` 到 `2cc5cd62`，`crosvm` 到 `1472e011`，其余 14 个源停在各自远端 HEAD。
 
-变化集中在充电栈。7 条补丁进入封存序列 `0106`–`0112`，把原厂 4.0.6 循环充电策略、QC/PPS 输入与直充能力选择、电池健康降流和 PPS 调压步长接进 `piano_mca.c` 与 `bq27xxx`。这批代码随封存序列编译，功率、温控与关机充电还没有真机记录，45 W 不作声称。用户态新增按需运行的 `piano-charge-monitor.service`，默认关闭，用法与边界见 `docs/known-issues.md` 充电节。固定源码下载增加同源镜像回退，`config/release.json` 补入 `stable_source_mirrors`，上游 `command_line` 未改。
+变化集中在充电栈。7 条补丁进入封存序列 `0106`–`0112`，把原厂 4.0.6 循环充电策略、QC/PPS 输入与直充能力选择、电池健康降流和 PPS 调压步长接进 `piano_mca.c` 与 `bq27xxx`。这批代码随封存序列编译，功率、温控与关机充电还没有真机记录，45 W 不作声称，实测表现见 `docs/known-issues.md` 充电节。固定源码下载增加同源镜像回退，`config/release.json` 补入 `stable_source_mirrors`，上游 `command_line` 未改。
 
 删除 Linux 分区、把空间还给 Android 不再需要手工改表。上游引导助手在 WebUI 存储页提供 **删除并归还 Android 空间**。分区目标与 F2FS 元数据能覆盖的容量分开记账，SIT、SSA 与 section 大小决定文件系统能扩到多大，盖不住整块 `userdata` 时只扩到可覆盖范围；重启后由 SukiSU 早期维护用 `resize.f2fs -k -t` 完成。`docs/installation.md` 与 `docs/known-issues.md` 已改成指向这个入口。`install-f2fs.py` 不消费新增的两个目标字段，安装接口没变。
 

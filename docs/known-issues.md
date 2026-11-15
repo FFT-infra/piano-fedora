@@ -2,19 +2,25 @@
 
 本页列出当前版本下尚未完全解决的问题、特定硬件限制、系统运行日志中的已知噪声，以及安装与维护过程中的注意事项。
 
-已在当前版本中修复的问题不再列入本页。
+已在当前版本中通过真机验证修复的问题不再列入本页。未经过真机冷装验证的修复项继续保留。
 
 ---
 
 ## 目录
 
 - [显示与关屏](#显示与关屏)
-- [系统缓存（LLCC）未生效](#系统缓存llcc未生效)
-- [刷写与读回注意事项](#刷写与读回注意事项)
+- [固件拒绝 UKI（uki-identity）](#固件拒绝-ukiuki-identity)
+- [首次启动 GPU 未绑定](#首次启动-gpu-未绑定)
+- [系统缓存（LLCC）没有生效](#系统缓存llcc没有生效)
+- [未开启的内核配置](#未开启的内核配置)
+- [驱动路径未命中（dw9768 与 fsa4480）](#驱动路径未命中dw9768-与-fsa4480)
+- [启动时的间歇 Oops](#启动时的间歇-oops)
+- [刷写与读回](#刷写与读回)
 - [首次安装的 userdata](#首次安装的-userdata)
 - [双系统切换](#双系统切换)
+- [Android 侧](#android-侧)
 - [无损首装](#无损首装)
-- [充电与电源](#充电与电源)
+- [充电](#充电)
 - [传感器与自动旋转](#传感器与自动旋转)
 - [手写笔](#手写笔)
 - [触屏、网络、音频与相机](#触屏网络音频与相机)
@@ -26,9 +32,9 @@
 ## 显示与关屏
 
 ### 1. 关屏 devcoredump 残留日志
-- **现象**：在反复关屏或休眠操作时，内核日志偶发记录 `slave intf... still enabled before cleanup` 并生成 devcoredump 转储。
-- **影响**：属于内核调试信息噪声。屏幕显示正常，背光开闭正常，系统挂起与唤醒（如 `rtcwake`）功能正常，无硬件损坏风险。
-- **技术根因**：MSM DPU 驱动在关闭显示接口时，从接口（slave interface）寄存器在清理窗口期未完全处于零状态，触发了驱动的调试断言转储。
+- **现象**：反复关屏或休眠时，内核日志偶发记录 `slave intf... still enabled before cleanup` 并生成 devcoredump 转储。
+- **影响**：属于内核调试信息噪声。屏幕显示与背光正常，休眠与唤醒（`rtcwake`）功能正常，无硬件损坏风险。
+- **技术根因**：MSM DPU 驱动在关闭显示接口时，从接口（slave interface）寄存器在清理窗口期未完全清零，触发了驱动的调试断言转储。
 - **状态**：作为内核残余日志噪声观察中，不影响正常使用。
 
 ### 2. 面板 compatible 标识命名反转
@@ -38,17 +44,64 @@
 
 ---
 
-## 系统缓存（LLCC）未生效
+## 固件拒绝 UKI（uki-identity）
 
-- **现象**：内核编译开启了 `CONFIG_QCOM_LLCC=y`，但在 `/sys/bus/platform/drivers/qcom-llcc/` 目录下未绑定任何设备，`dmesg` 中无 LLCC 相关日志。
-- **影响**：系统未配置专用的最后一级缓存（Last Level CPU Controller）切片，Adreno GPU 与系统总线在缺 LLCC slice 状态下运行。实测基准性能存在约 1%~3% 的轻微差距，日常桌面交互与渲染无可见异常。
-- **规避方法**：无需用户干预。
-- **技术根因**：板级设备树中原厂节点使用 `compatible = "qcom,sun-llcc"`，而当前 7.3 内核驱动仅匹配 `"qcom,sm8750-llcc"`，导致驱动未能匹配 probe 流程。
-- **状态**：待后续上游内核或设备树补丁更新 compatible 匹配。
+- **现象**：在 SunUEFI 启动菜单中选择 Linux 后立即弹回菜单，提示「Linux 启动镜像格式不受支持，请更新镜像」，日志报 `PIANO_EBS_REFUSE stage=before-exit status=Access Denied`。
+- **影响**：使用 systemd-stub 258+ 生成的 UKI 镜像无法正常被固件引导。
+- **技术根因**：systemd-stub 258 起，在跳转进入内核前会临时将 UKI 自身的 `LoadedImage.ImageBase` / `ImageSize` 改写为内嵌内核的地址与大小。SunUEFI 的 `ValidateInstalledEfiImage()` 拿启动前记录的值进行严格校验，发现改写后返回 `EFI_ACCESS_DENIED`。
+- **状态**：仓库已收录补丁 `patches/uefi-ebs-identity/` 将比较限定在非 UKI 句柄调用，但按 `patches/README.md:138` 约定，在全新冷装进行真机验证前不把本项记为已修复。
 
 ---
 
-## 刷写与读回注意事项
+## 首次启动 GPU 未绑定
+
+- **现象**：全新冷装后的首次开机过程中，内核日志出现 `msm_dpu ae01000.display-controller: no GPU device was found`，整次开机期间无 `[drm] Initialized msm`，Adreno GPU 未能绑定，KWin 退回 llvmpipe 软件渲染；第二次开机恢复正常。
+- **技术根因**：全新首装阶段后台服务并发密集，DPU 控制器比 Adreno GPU 先完成探测，延迟探测等待窗口提前耗尽。
+- **状态**：`patches/kernel/0001-linux-73-series.patch` 中已在默认命令行加入正整数 `deferred_probe_timeout` 放宽探测窗口，但设备当前运行的旧 UKI 的 `/proc/cmdline` 尚未包含该参数（旧 UKI 不会被内核包升级改动），必须待新 bundle 全新冷装后生效并验证消除情况。
+
+---
+
+## 系统缓存（LLCC）没有生效
+
+- **现象**：内核编译开启了 `CONFIG_QCOM_LLCC=y`，但在 `/sys/bus/platform/drivers/qcom-llcc/` 目录下未绑定任何设备，`dmesg` 中无 LLCC 相关日志。
+- **影响**：系统未配置专用的最后一级缓存（Last Level CPU Controller）切片，Adreno GPU 与系统总线在缺 LLCC slice 状态下运行。根据上游 `yzddmr6/linux-sm8750-piano`（`fe98a3e`）实测，正确配置 LLCC 的收益为 Geekbench 6 单核 +0.9%、多核 +0.5%、Vulkan 计算 +2.7%，内存延迟类子项最高 +9.5%。
+- **技术根因**：板级设备树中原厂节点使用 `compatible = "qcom,sun-llcc"`，而当前 7.3 内核驱动仅匹配 `"qcom,sm8750-llcc"`，导致驱动未能匹配 probe 流程。
+- **状态**：待上游驱动或内核补丁增加 compatible 匹配项。
+
+---
+
+## 未开启的内核配置
+
+- **现象**：在当前实机 `/proc/config.gz` 中，以下三项内核配置均未开启（未被设置）：
+  - `CONFIG_PSI`
+  - `CONFIG_WIREGUARD`
+  - `CONFIG_USB_UAS`
+- **影响**：
+  - `CONFIG_PSI` 未开启导致 systemd-oomd 无法获取内存压力指标，PSI 监控失效；
+  - `CONFIG_WIREGUARD` 未开启导致系统无法使用内核级 WireGuard VPN 隧道；
+  - `CONFIG_USB_UAS` 未开启导致支持 UAS 协议的高速 USB 存储设备回退至传统 usb-storage 驱动，限制连续传输吞吐。
+- **状态**：待后续内核配置调整中统一开启并编译验证。
+
+---
+
+## 驱动路径未命中（dw9768 与 fsa4480）
+
+- **现象**：相机音圈马达（VCM）与 Type-C 音频开关芯片驱动未绑定。
+- **技术根因**：设备实机提取的设备树中，`vcm@c` 节点声明为 `giantec,gt9769`，`fsa4480@42` 声明为 `qcom,fsa4480-i2c`。而当前补丁添加的 compatible 匹配项分别为 `giantec,gt9764` 与 `dioo,dio4485`，名称不匹配导致驱动探测跳过。
+- **状态**：待修正设备树或驱动中的 compatible 字符串。
+
+---
+
+## 启动时的间歇 Oops
+
+- **现象**：曾记录过一次启动时内核 Oops 崩溃，日志显示 `Internal error: Oops - Undefined instruction: 0000000020000000`，发生在启动约 9.4 秒的 `udevd-worker` 内存页映射路径（`folio_add_file_rmap_ptes` / `folio_move_anon_rmap`），屏幕停在内核 panic=0 画面。
+- **影响**：偶发性开机失败，未能进入桌面。
+- **应对方法**：长按电源键强制断电后重新开机即可恢复。
+- **状态**：未获稳定复现，目前全仓库无修复提交，作为未定位间歇问题观察中。
+
+---
+
+## 刷写与读回
 
 - **现象**：
   1. 小米原厂 ABL 不支持 `fastboot fetch` 命令，执行时设备返回 `Device does not support fetch command`。
@@ -83,18 +136,29 @@
 
 ---
 
-## 无损首装
+## Android 侧
 
-- **说明**：无损首装（`--lossless`）可在保留既有 Android 数据的前提下，将 `userdata` 分区缩容并建立 Linux 分区。
-- **前置条件**：
-  1. 设备已取得 Android root 权限（KernelSU 或 SukiSU）；
-  2. 已安装匹配的「SunUEFI 引导助手」模块（提供 `piano-resize-f2fs` 工具）；
-  3. Android `userdata` 内部有足够的连续空闲空间。
-- **注意事项**：若缩容成功但分区表写入中断，F2FS 文件系统仍小于分区，属于安全状态，Android 可正常开机（仅显示容量变小）。此时应复核日志和备份，不可盲目执行整盘擦除。
+- **引导助手模块**：已装回与当前 BOOT generation 匹配的「SunUEFI 引导助手」模块，安装采用 `adopt` 只读识别现有合体 BOOT，不重写内核。若重新刷写过 `boot` 分区，需在模块页面重新执行一次“重新安装引导”以重新采纳。
+- **SELinux 状态**：Android 侧实测运行在 SELinux Permissive 状态，启动参数带有 `selinux=permissive`。手动执行 `setenforce 1` 可用，但开机自动固化 Enforcing 的机制尚未落实。
 
 ---
 
-## 充电与电源
+## 无损首装
+
+- **说明**：无损首装（`--lossless`）可在保留既有 Android 数据的前提下，将 `userdata` 分区缩容并建立 Linux 分区。
+- **前置条件与空间归还**：
+  1. 设备已取得 Android root 权限并安装「SunUEFI 引导助手」模块；
+  2. `userdata` 内部有足够的连续空闲空间；
+  3. 若需删除 Linux 分区并将空间完整归还 Android，可在引导助手 WebUI 存储页点击 **删除并归还 Android 空间**，下次重启由 SukiSU 早期维护执行 `resize.f2fs -k -t` 扩大加密分区。
+- **尚未经过真机验证的路径**：
+  - 重复安装路径；
+  - 携带 `--accept-data-loss` 的全盘重建路径；
+  - `userdata` 缩容到空闲余量极小（临界边界）时的稳定性。
+- **注意事项**：若缩容成功但分区表写入中断，F2FS 文件系统仍小于分区，属于安全状态，Android 可正常开机（仅显示容量变小）。此时应复核计划与备份，切勿盲目擦除。
+
+---
+
+## 充电
 
 - **现状**：内核已包含 MCA 直充驱动与 SC8541 芯片支持，设备参数 `cp_charge`、`hv_charge`、`charge_policy` 已启用。
 - **实测表现**：
@@ -132,6 +196,7 @@
   - 前置与后置摄像头均可正常出图（由 `piano-camerad` 服务对接 ISP 并输出至 v4l2loopback）。
   - 相机起流后的前数帧处于自动曝光收敛阶段，画面可能短暂偏暗，收敛后成像正常。
   - GNOME Snapshot 等通过 PipeWire 预览相机画面的应用崩溃问题，已在软件源中提供 `piano-pipewire-gstreamer` 解决。
+  - **整机验收状态**：整机相机验收尚未全部走完，设备整体状态仍记为未验证。
 
 ---
 
@@ -139,10 +204,12 @@
 
 ### 指纹
 - 采用 Goodix 侧置电容式指纹传感器，认证在 TEE 内的安全程序中完成。
-- 系统内置 `piano-fingerprint` 客户端与打过补丁的 `piano-libfprint`，fprintd 可正常识别设备，支持指纹录入、匹配校验以及桌面锁屏解锁（不支持直接读取 Android 既有模板）。
+- 系统内置 `piano-fingerprint` 客户端与打过补丁的 `piano-libfprint`，fprintd 可正常识别设备，支持指纹录入、匹配校验以及桌面锁屏解锁。
+- **边界说明**：录入与解锁在 v45.3 之前的镜像上验证通过，v45.3 及之后的镜像未重新跑全套认证；不支持直接读取 Android 既有模板。
 
 ### 红外
-- 消费级红外发射器（接在 QUPv3 SE15）已绑定至标准 `ir-spi` 驱动与 LIRC 框架，`/dev/lirc0` 设备节点存在，可通过 `ir-ctl` 发送红外码。目前仅支持发射，不支持接收学习。
+- 消费级红外发射器（接在 QUPv3 SE15）已绑定至标准 `ir-spi` 驱动与 LIRC 框架，`/dev/lirc0` 设备节点存在，可通过 `ir-ctl` 发送红外码。
+- **边界说明**：目前仅支持发射，不支持接收学习；光学输出功率与波形未经过专业仪器实测。
 
 ### HDR <a id="hdr"></a>
 - 面板硬件支持 HDR10，DSI-1 输出属性中已挂载 `HDR_OUTPUT_METADATA`。
@@ -160,4 +227,4 @@
 | `60-block-scheduler.rules` | 尝试写入 `bfq` 调度器时报 `Device or resource busy` | udev 规则与内核默认 I/O 调度器的并发时序冲突，各块设备调度器已正常就绪 |
 | `[NVT-ts-spi]` | 触控驱动在状态同步时输出日志 | 驱动使用错误日志级别输出了常规信息，触控功能完全正常 |
 | `Bluetooth: HCI_IBS_WAKE_ACK` | 蓝牙芯片上电序列状态机输出 | 芯片通信状态机的正常交互过程，蓝牙连接正常 |
-| `msm_dpu: no GPU device was found` | DPU 显示控制器比 Adreno GPU 先完成探测 | 属于模块探测顺序的瞬态日志，GPU 探测完成后两者已正常绑定并启用硬件加速 |
+| `msm_dpu: no GPU device was found` | DPU 显示控制器比 Adreno GPU 先完成探测（正常开机） | 属于正常开机时模块探测先后的瞬态日志，Adreno 完成探测后两者正常绑定；全新首装整次未绑定的情况见「首次启动 GPU 未绑定」 |
