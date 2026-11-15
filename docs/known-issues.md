@@ -49,14 +49,14 @@
 - **现象**：在 SunUEFI 启动菜单中选择 Linux 后立即弹回菜单，提示「Linux 启动镜像格式不受支持，请更新镜像」，日志报 `PIANO_EBS_REFUSE stage=before-exit status=Access Denied`。
 - **影响**：使用 systemd-stub 258+ 生成的 UKI 镜像无法正常被固件引导。
 - **技术根因**：systemd-stub 258 起，在跳转进入内核前会临时将 UKI 自身的 `LoadedImage.ImageBase` / `ImageSize` 改写为内嵌内核的地址与大小。SunUEFI 的 `ValidateInstalledEfiImage()` 拿启动前记录的值进行严格校验，发现改写后返回 `EFI_ACCESS_DENIED`。
-- **状态**：仓库已收录补丁 `patches/uefi-ebs-identity/` 将比较限定在非 UKI 句柄调用，但按 `patches/README.md:138` 约定，在全新冷装进行真机验证前不把本项记为已修复。
+- **状态**：仓库已收录补丁 `patches/uefi-ebs-identity/` 将比较限定在非 UKI 句柄调用，但按 `patches/README.md` 的「验证与退役」节约定，在全新冷装进行真机验证前不把本项记为已修复。
 
 ---
 
 ## 首次启动 GPU 未绑定
 
 - **现象**：全新冷装后的首次开机过程中，内核日志出现 `msm_dpu ae01000.display-controller: no GPU device was found`，整次开机期间无 `[drm] Initialized msm`，Adreno GPU 未能绑定，KWin 退回 llvmpipe 软件渲染；第二次开机恢复正常。
-- **技术根因**：全新首装阶段后台服务并发密集，DPU 控制器比 Adreno GPU 先完成探测，延迟探测等待窗口提前耗尽。
+- **技术根因**：根因未逐段定位（慢在哪一段目前无逐段计时证据，延迟探测定时器是“没有驱动注册活动的静默期上限”，候选包括 UEFI 交接、内核解压或 UFS 首次枚举；DPU 比 Adreno 先探测仅为表面症状），现按静默期耗尽假设放宽窗口。
 - **状态**：`patches/kernel/0001-linux-73-series.patch` 中已在默认命令行加入正整数 `deferred_probe_timeout` 放宽探测窗口，但设备当前运行的旧 UKI 的 `/proc/cmdline` 尚未包含该参数（旧 UKI 不会被内核包升级改动），必须待新 bundle 全新冷装后生效并验证消除情况。
 
 ---
@@ -96,7 +96,7 @@
 
 - **现象**：曾记录过一次启动时内核 Oops 崩溃，日志显示 `Internal error: Oops - Undefined instruction: 0000000020000000`，发生在启动约 9.4 秒的 `udevd-worker` 内存页映射路径（`folio_add_file_rmap_ptes` / `folio_move_anon_rmap`），屏幕停在内核 panic=0 画面。
 - **影响**：偶发性开机失败，未能进入桌面。
-- **应对方法**：长按电源键强制断电后重新开机即可恢复。
+- **应对方法**：遇到时先正常重启一次（若屏幕无响应时长按电源键强制断电）；不要据此修改启动链。
 - **状态**：未获稳定复现，目前全仓库无修复提交，作为未定位间歇问题观察中。
 
 ---

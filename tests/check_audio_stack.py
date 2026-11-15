@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""声卡模块链：内核没有 snd-seq，发行版的 modprobe 规则就不能去加载它。"""
+"""声卡模块链：历史兼容覆盖检查。
+
+旧版内核未编 CONFIG_SND_SEQUENCER 时用同名 dist-alsa.conf 屏蔽 snd-seq 报错。
+当前内核已开启 CONFIG_SND_SEQUENCER=m，本测试暂时保持断言，待包升级与断言统一清理。
+"""
 
 from pathlib import Path
 
@@ -16,9 +20,9 @@ def directives(path):
 
 
 def main():
-    # /usr/lib/modprobe.d/dist-alsa.conf 给 snd-pcm 挂了 `modprobe snd-seq`，
-    # 而这个内核没编 CONFIG_SND_SEQUENCER。kmod 按文件名全局排序取先命中的
-    # 那条，换个名字压不住，所以必须用同名文件遮住发行版那份。
+    # /usr/lib/modprobe.d/dist-alsa.conf 给 snd-pcm 挂了 `modprobe snd-seq`。
+    # 历史原因：旧内核未编 CONFIG_SND_SEQUENCER 时，用同名文件遮住发行版配置。
+    # 当前内核已编入 CONFIG_SND_SEQUENCER=m，此处保留断言直到包与配置完成统一清理。
     override = MODPROBE / "dist-alsa.conf"
     assert override.is_file(), "dist-alsa.conf override is missing"
     lines = list(directives(override))
