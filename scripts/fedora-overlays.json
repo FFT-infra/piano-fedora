@@ -22,11 +22,11 @@
       "fedora_packages": [
         {"name": "pipewire", "base_version": "1.6.11"}
       ],
-      "upstream_fix": "1.6 分支 src/gst 的六条提交（首选 caps、加锁顺序等）+ master 97699d70（caps 未变不重连，1.6 未 backport）+ SunUEFI 的 copy-memptr",
-      "drop_when": "Fedora 的 pipewire 同时带上 90ddb7e6 与 97699d70，且 copy-memptr 的问题不再出现，整份包才能删",
+      "upstream_fix": "1.6 分支 src/gst 的六条提交（首选 caps、加锁顺序等）+ 97699d70（caps 未变不重连，pipewire 官方 1.6 未回移；SunUEFI 的 1.6.11 series 已常驻 0004-gst-retain-running-caps）+ SunUEFI 的 copy-memptr",
+      "drop_when": "pipewire 把 97699d70 回移到 1.6 或新版本带上它，Fedora 稳定库随后跟上首选 caps 与不重连两条，且 copy-memptr 不再需要，整份包才删",
       "tracking_issue": 64,
       "rebase_on_fedora_update": true,
-      "rebase_note": "先重基补丁集、去掉已进上游的补丁；97699d70 未进 1.6，按常驻补丁保留。"
+      "rebase_note": "先重基补丁集、去掉已进上游的补丁；97699d70 未进官方 1.6，按常驻补丁保留。"
     },
     {
       "key": "fedora-desktop-patches",
