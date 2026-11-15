@@ -135,7 +135,7 @@ jobs:
           cat > build/stage/notes.md <<EOF
           ## piano Fedora ${release} ${TAG}
 
-          小米平板 8 Pro（25091RP04C）的 Fedora 系统。档位: ${DESKTOPS}。
+          小米平板 8 Pro（25091RP04C）的 Fedora 系统。本次发布档位：${DESKTOPS}。各档共用同一个内核与启动链，只有 root 文件系统不同，下载你选的那一档就够。
 
           - 外设逐项状态见 [README 硬件支持](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/README.md#硬件支持)，已知问题与未验证项见 [docs/known-issues.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/known-issues.md)
           - 产物状态: Actions 内完整校验通过
