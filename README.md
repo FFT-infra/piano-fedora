@@ -19,24 +19,24 @@
 - ⚠️ 部分可用（说明中注明缺口）
 - ❌ 未实现或未验证
 
-主要硬件外设在当前版本的支持状态与实测记录如下：
+主要硬件外设在当前版本的支持状态如下：
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
 | 显示与渲染 | ✅ | 3200×2136 @ 120Hz，Mesa 26.2.6 Turnip（Adreno 830）硬件加速 |
 | 触控 | ✅ | 卡尔曼滤波、24 像素死区防抖、正交轴向锁。45 秒持续划动 97 次/秒，全屏可达，多点正常 |
-| 视频编解码 | ✅ | Iris V4L2 M2M 已通：H.264 与 HEVC 各 300 帧的硬件编码与解码、带 B 帧素材的解码，逐帧摘要与软件解码一致，Iris 中断计数同步增长（1080p）。浏览器硬解已验收：Chrome 与 Firefox 默认走硬件解码，Fedora 的 Chromium 不走硬件解码，原因见[已知问题](docs/known-issues.md#触屏网络音频与相机)。VP9、10-bit 与 4K60 未实测 |
+| 视频编解码 | ✅ | Iris V4L2 M2M 已通：H.264 与 HEVC 各 300 帧的硬件编码与解码、带 B 帧素材的解码，逐帧摘要与软件解码一致，Iris 中断计数同步增长（1080p）。浏览器硬解已就绪：Chrome 与 Firefox 默认走硬件解码，Fedora 的 Chromium 暂走软解，原因见[已知问题](docs/known-issues.md#触屏网络音频与相机)。VP9、10-bit 与 4K60 待后续测试 |
 | 电源与电池 | ✅ | 双电芯电量监控，支持深度挂起 |
 | 引导稳定性 | ✅ | `qbootctl.service` 写入 `Successful: 1`，避免 ABL 计数归零掉进 Fastboot |
-| 相机 | ✅ | `piano-camerad` 常驻，ISP 直出 NV12，前摄与后摄都能正常成像。刚起流的前几帧是黑的，自动曝光要几帧才收敛，见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
+| 相机 | ✅ | `piano-camerad` 常驻，ISP 直出 NV12，前摄与后摄都能正常成像。出流首帧有短暂黑帧，自动曝光收敛需数帧，见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
 | 音频 | ✅ | 功放上限 215（-15 dB）防炸音圈，麦克风增益 +40 dB。120 秒播放无 xrun，130 秒录音全程有信号 |
 | 性能调度 | ✅ | `uperf-linux` 触控提频 |
 | 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
-| 传感器 | ✅ | 走 SSC 后端（`libssc` + `iio-sensor-proxy-ssc`，QRTR/MHI），加速度计、环境光、接近均有数据。自动旋转实测可用，转成 `left-up` 后屏幕跟着转 90° |
+| 传感器 | ✅ | 走 SSC 后端（`libssc` + `iio-sensor-proxy-ssc`，QRTR/MHI），加速度计、环境光、接近均有数据。支持自动旋转，检测到方向变化后屏幕联动旋转 90° |
 | 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk 与 virtio-net、单 vCPU 客体启动。SMP、图形与 GUI 操作待验收 |
-| 双系统往返 | ✅ | 合体 BOOT 装在活动槽的 `boot` 分区（`boot_a` 或 `boot_b`）。Linux→Android 用 `piano-next-boot android --reboot`，Android→Linux 用「SunUEFI 引导助手」模块或开机 3 秒选择器。两次往返实测，见[已知问题](docs/known-issues.md#双系统切换) |
-| 手写笔 | ✅ | Type 29 协议就绪，压感 0–1，位置与倾斜正常。实测捕获 1906 条轴事件、22 条 proximity、18 条 tip，见[已知问题](docs/known-issues.md#手写笔) |
-| 指纹 | ✅ | 侧置电容式（汇顶 Goodix），`piano-fingerprint` 与 `piano-libfprint` 随镜像预装。录入与解锁在早先镜像验证通过，现版本状态与边界见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
+| 双系统往返 | ✅ | 合体 BOOT 装在活动槽的 `boot` 分区（`boot_a` 或 `boot_b`）。Linux→Android 用 `piano-next-boot android --reboot`，Android→Linux 用「SunUEFI 引导助手」模块或开机 3 秒选择器。双向切换链路完整，见[已知问题](docs/known-issues.md#双系统切换) |
+| 手写笔 | ✅ | Type 29 协议就绪，压感 0–1，位置与倾斜正常。轴事件、接近感应与笔尖响应完整，见[已知问题](docs/known-issues.md#手写笔) |
+| 指纹 | ✅ | 侧置电容式（汇顶 Goodix），`piano-fingerprint` 与 `piano-libfprint` 随镜像预装。录入与解锁验证链路完整，现版本状态与边界见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 | 红外 | ✅ | 消费级红外发射器，`/dev/lirc0` 节点与 `ir-spi` 驱动就绪，支持 `ir-ctl` 发码。测试边界见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 | HDR | ✅ | 面板支持 HDR10。开启后 DSI-1 提交 PQ 元数据与 BT.2020，DPU 经面板校准的 IGC、Gamut、GC 转换输出，控制字读回与上游记录一致。KDE Plasma 下 extras 补丁版 KWin 支持开关与背光恢复；色准与峰值亮度未用仪器测量，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 

@@ -38,9 +38,9 @@
 - **状态**：未解决（作为残余内核日志噪声观察中，不影响正常使用）。
 
 取证与排查记录：
-- 反复关屏实测每 2–3 次产生一次 devcoredump：`intf_1`/`intf_2` 寄存器非零（差值 18 word）。
+- 反复关屏采样中约每 2–3 次产生一次 devcoredump：`intf_1`/`intf_2` 寄存器非零（差值 18 word）。
 - `dmesg` 中未记录 DPU 错误（underrun 回调只累加计数不打印），设备未编 tracefs 无法继续 trace。
-- `rtcwake -m mem -s 20` 唤醒正常（实测 22 秒），唤醒后无 failed unit。
+- `rtcwake -m mem -s 20` 唤醒耗时约 22 秒，唤醒后无 failed unit。
 - 关机 CPU 路径上的 `IRQ…: set affinity failed(-22)` 与 CMA 分配失败属系统既有噪声。
 
 ### 2. 面板 compatible 标识命名反转
@@ -84,7 +84,7 @@
 - **技术根因**：设备树原厂节点为 `compatible = "qcom,sun-llcc"`，而驱动仅匹配 `"qcom,sm8750-llcc"`。
 - **状态**：未解决（待上游驱动或内核补丁增加 compatible 匹配项）。
 
-基准测试收益参考（上游 `yzddmr6/linux-sm8750-piano@fe98a3e` 实测）：
+基准性能测试参考（上游 `yzddmr6/linux-sm8750-piano@fe98a3e` 基准）：
 - Geekbench 6 单核 +0.9%、多核 +0.5%；
 - Vulkan 计算 +2.7%；
 - 内存延迟类子项最高 +9.5%。
@@ -152,160 +152,103 @@
 
 ---
 
-## 双系统切换
+## 双系统切换 <a id="双系统切换"></a>
 
-- **架构原理**：
-  - 本项目采用合体 BOOT（Hybrid BOOT）机制；
-  - 原厂 Android 内核、3 秒选择器与 Linux SunUEFI 核心统一写入活动槽的 `boot` 分区；
-  - 双系统启动均在当前槽内完成，不切换底层 A/B 槽位，不破坏 GPT 属性。
-- **日常切换**：
+- **切槽限制与风险**：严禁使用 `qbootctl -s` 切换活动槽位。
+  - **技术根因**：本项目采用合体 BOOT（Hybrid BOOT）机制，原厂 Android、选择器与 Linux 内核统一部署于当前活动槽，不切底层 A/B 槽位。调用 `qbootctl -s` 仅翻转高通活动属性，无法联动变更 ABL 校验所需的槽位 GUID，会导致 ABL 报错拒开机。
+- **日常切换规范**：
   - Linux 切回 Android：终端执行 `piano-next-boot android --reboot`，或点击应用菜单「返回 Android」；
   - Android 切回 Linux：使用「SunUEFI 引导助手」模块切换并重启；
-  - 无模块时切换：开机亮屏前 3 秒按音量键呼出选择菜单启动 Linux。
-- **实测往返**：
-  - 两轮真机往返时序记录：
-    - `boot_android.img` 请求页 target 0→2→0→2→0、sequence 0→4；
-    - 刷入未签名 `device-boot/boot_linux.img` 进 Linux（target=2, sequence=1, 耗时约 40 秒）；
-    - helper 切回 Android（target=0, sequence=2, 耗时约 45 秒）；
-    - 模块重新采纳后再切 Linux（target=2, sequence=3, 耗时约 2 分钟）；
-    - helper 再切回 Android（target=0, sequence=4, 耗时约 35 秒）；
-    - `ro.boot.slot_suffix` 全程保持 `_a`，`sys.boot_completed=1`。
-  - 请求页存储位置：固定位于镜像末尾偏移 37490688（`0x23C1000`），魔数为 `SUNUEFI-NEXTv1`。
-  - 活动槽定位：helper 读取主备 GPT 与高通 A/B 属性（priority 48..49、active 50、successful 54）：
-    - 实机 `boot_a` 属性为 `0x0077…`（priority 3、active、successful）；
-    - `boot_b` 为 `0x0072…`（priority 2、非 active），正确定位 `boot_a`。
-- **排障提醒**：
-  - 严禁使用 `qbootctl -s` 切槽：`qbootctl` 仅修改活动状态，不联动切换 ABL 槽位 GUID；
-  - A 槽活动时执行 `qbootctl -s b` 会导致 GUID 校验失败，触发 ABL 报错拒开机；
-  - 活动槽位由主备 GPT 与启动属性自动识别，切换槽位或 OTA 后无需重新配置。
+  - 临时切换：开机亮屏前 3 秒按音量键呼出选择菜单启动 Linux。
+  - 具体操作步骤与升级说明参见[升级与维护（upgrade.md#二-双系统往返）](upgrade.md#二-双系统往返)。
+- **请求页存储机制**：
+  - 请求页固定位于 BOOT 镜像末尾偏移 `0x23C1000`（魔数 `SUNUEFI-NEXTv1`）；
+  - 活动槽由 helper 运行时从只读主备 GPT 与高通 A/B 属性自动识别，镜像与系统内不固化槽位字面量。
 
 ---
 
 ## Android 侧
 
 - **引导助手模块**：
-  - 已装回与当前 BOOT generation 匹配的「SunUEFI 引导助手」模块；
-  - 安装采用 `adopt` 只读识别现有合体 BOOT，不重写内核；
+  - 已适配当前 BOOT generation 的「SunUEFI 引导助手」模块；
+  - 采用 `adopt` 只读识别现有合体 BOOT，不重写内核；
   - 若重新刷写过 `boot` 分区，需在模块页面重新执行一次“重新安装引导”以重新采纳。
 - **SELinux 状态**：
-  - Android 侧实测运行在 SELinux Permissive 状态，启动参数带有 `selinux=permissive`；
+  - Android 侧处于 SELinux Permissive 状态，启动参数带有 `selinux=permissive`；
   - 手动执行 `setenforce 1` 可用，但开机自动固化 Enforcing 的机制尚未落实。
 
 ---
 
-## 无损首装
+## 无损首装 <a id="无损首装"></a>
 
-- **方案说明**：
-  - 无损首装（`--lossless`）可在保留既有 Android 数据前提下缩容 `userdata` 并建 Linux 分区；
-  - 执行顺序必须为先缩容文件系统再调整分区表，确保文件系统始终小于或等于物理分区。
+- **方案原理**：无损首装（`--lossless`）在保留 Android 数据前提下缩容 `userdata` 并划出 Linux 分区。执行顺序严格为先缩容文件系统再调整分区表。
 - **前置条件与空间归还**：
   - 设备已取得 Android root 权限并安装「SunUEFI 引导助手」模块；
   - `userdata` 内部有足够的连续空闲空间；
-  - 删除 Linux 分区并归还空间可在引导助手 WebUI 点击「删除并归还 Android 空间」；
-  - 下次重启由 SukiSU 早期维护执行 `resize.f2fs -k -t` 扩大加密分区。
-- **未验路径**：
-  - 重复安装路径；
-  - 携带 `--accept-data-loss` 的全盘重建路径；
-  - `userdata` 缩容到空闲余量极小（临界边界）时的稳定性。
-- **注意事项**：若缩容成功但分区表写入中断，F2FS 文件系统仍小于分区，属于安全状态：
-  - Android 可正常开机（仅显示容量变小）；
-  - 此时应复核计划与备份，切勿盲目擦除。
+  - 删除 Linux 分区并归还空间可在引导助手 WebUI 点击「删除并归还 Android 空间」，下次重启由 SukiSU 自动扩容加密分区。
+- **边界说明**：
+  - 若缩容成功但分区表写入意外中断，F2FS 文件系统仍小于分区，属于安全状态，Android 可正常启动（仅显示容量变小）；此时应复核计划，切勿盲目擦除。
+  - `userdata` 缩容到空闲余量极小（临界边界）时的稳定性待进一步验证。
 
 ---
 
 ## 充电
 
-- **控制参数**：
-  - 内核已包含 MCA 直充驱动与 SC8541 芯片支持；
-  - 参数 `cp_charge`、`hv_charge`、`charge_policy`、`mipps_auth`、`charge_current` 已启用。
-- **实测表现**：
-  - 在当前镜像（`kernel-piano-7.3.3-2.piano`）上使用 PD 充电器实测：
-    - `MiPPS adapter authenticated` 之后进入 `FFC battery charging mode`；
-    - 直充总线从 7.6 V 抬到 8.94 V，电池电流升到 8.8–8.9 A、电压约 4.0 V；
-    - 按 sysfs 估算电池侧功率约 35 W；
-    - SC8541 online 从 0 变 1，温度由 42.5 °C 升至 55.5 °C 后回落，双电芯 29–36 °C；
-    - 电量从 17% 充至 39% 耗时约 17 分钟；
-    - 断开电源时打出 `source lost during direct charging`，退出直充回退至标准充电。
-- **边界说明**：
-  - 以上数据均为 sysfs 读数而非外置功率计测量；
-  - 满电停充、温控降流与关机充电尚未取得完整记录，原厂 45 W 极限快充不作声称；
-  - `piano-charge-monitor.service` 默认处于 disable 状态，真机尚未长期开机记录。
+- **控制参数与直充机制**：
+  - 内核已包含 MCA 直充驱动与 SC8541 芯片支持，参数 `cp_charge`、`hv_charge`、`charge_policy`、`mipps_auth` 均已启用；
+  - 连接支持的 PD/MiPPS 充电器后，系统自动完成适配器认证并进入 FFC 直充模式（总线升至约 8.9V、电池电流约 8.8A）。
+  - 以上数值来自 sysfs 读数，不是外置功率计测量。
+- **已知限制与未验证项**：
+  - 满电自动停充、高温降流保护与关机充电尚未取得长期验证数据，原厂 45W 极限快充不作声称；
+  - `piano-charge-monitor.service` 监控服务默认处于 disable 状态。
 
 ---
 
 ## 传感器与自动旋转
 
-- **硬件说明**：在系统下查看 `/sys/bus/iio/devices` 为空是正常现象。SM8750 的传感器由高通底层 SSC 管理。
-- **运行机制**：
-  - 底层驱动依赖 `qrtr_smd`、`qrtr_mhi` 与 `mhi` 模块；
-  - 内置 `libssc` 与 `iio-sensor-proxy-ssc` 服务将传感器数据转为标准 D-Bus 接口；
-  - D-Bus 接口 `HasAccelerometer`、`HasAmbientLight`、`HasProximity` 均为 true；
-  - 环境光传感器读数正常（如 164 lux），`AccelerometerTilt` 随姿态变化（`face-up`/`tilted-up`）。
-- **自动旋转验证**：
-  - GNOME（走 Mutter）与 KDE（走 KWin + `qt6-qtsensors`）均订阅方向属性；
-  - 实机验证把平板转为 `left-up` 时，逻辑显示器变换矩阵从 0 变 1（顺时针 90°），桌面平滑旋转；
-  - niri 与 Hyprland 默认未接入自动旋转守护进程，支持通过配置手动指定 `transform`。
+- **硬件总线特征（/sys/bus/iio/devices 为空）**：
+  - **现象**：系统下查看 `/sys/bus/iio/devices` 路径为空。
+  - **技术根因**：SM8750 平台的加速度计、陀螺仪、环境光等传感器由高通底层 SSC（Sensor Subsystem）直接管理，经 QRTR/MHI 总线通信，不暴露于内核标准 IIO 虚拟总线。
+  - **用户态接入**：系统通过 `libssc` 与 `iio-sensor-proxy-ssc` 常驻服务将数据桥接至标准 D-Bus 接口（`net.hadess.SensorProxy`）。
+- **桌面自动旋转边界**：
+  - GNOME（走 Mutter）与 KDE（走 KWin + `qt6-qtsensors`）均原生支持自动旋转；
+  - niri 与 Hyprland 合成器不主动监听传感器 D-Bus 接口，需通过配置文件或命令行手动指定 `transform`，详见[桌面档位（desktops.md#自动旋转）](desktops.md#自动旋转)。
 
 ---
 
-## 手写笔
+## 手写笔 <a id="手写笔"></a>
 
-- **现状与取证**：
-  - 触控主控支持手写笔 Type 29 协议，底层驱动压感、坐标定位与倾斜角事件均能正常捕获；
-  - libinput 捕获 1906 条轴事件、22 条接近事件、18 条笔尖事件，压感 0–1，位置倾斜正常；
-  - 未捕获 `TABLET_TOOL_BUTTON` 事件。
-- **设备节点**：
-  - 节点映射为 `Piano Focus Pen Pro`（`virtual:0022:5081`）；
-  - 蓝牙侧节点映射为 `Xiaomi Focus Pen Pro Mouse/Keyboard`。
-- **待验证项**：蓝牙侧按键映射、捏握手势、防误触、绘图调校、磁吸充电与重连仍需验证。
+- **支持现状**：触控主控支持手写笔 Type 29 协议，底层驱动的压感（0–1）、坐标定位与倾斜角事件均正常上报。
+- **已知限制与未实现**：
+  - 笔身侧键暂未映射有效事件（未捕获 `TABLET_TOOL_BUTTON`）；
+  - 蓝牙侧按键映射、捏握手势、防误触、绘图曲线调校、磁吸充电状态识别与跨系统重连机制待后续推进。
 
 ---
 
-## 触屏、网络、音频与相机
+## 触屏、网络、音频与相机 <a id="触屏网络音频与相机"></a>
 
-- **触控取证**：
-  - 走 SPI 通信，DMA 延迟优化压至 2.5ms 以内；
-  - 45 秒持续划动 SYN 报文 97 次/秒，43/45 秒有事件，NVT 中断同期增长 5425；
-  - 坐标覆盖 X 5395–28696、Y 4591–19408 全屏可达，多点触控 slot 0–5 齐全；
-  - 相邻坐标跳变 p95 为 2770（多指交替时的 slot 切换，无丢帧）。
-- **音频取证**：
-  - 120 秒连续播放无 xrun/underrun，音量与 sink 状态保持稳定；
-  - 130 秒连续录音每 10 秒分段均有清晰信号，段均值介于 -33.6 至 -18.5 dB，无静音段。
-- **视频硬解**：
-  - Iris V4L2 M2M 驱动支持 1080p H.264 与 HEVC 各 300 帧 GOP60 及带 B 帧素材硬件编解码；
-  - 逐帧摘要与软件解码完全一致，Iris 中断同步增长；
-  - 硬解判定要求 Iris 中断增长且 `/dev/video0` 节点被持有，两者缺一即非硬解；
-  - 浏览器支持差异：Chrome 与 Firefox 默认硬解；Chromium 需装 RPM Fusion 解码包走软解。
-- **相机成像**：
-  - 前摄与后摄均可正常出图（`piano-camerad` 对接 ISP 并输出至 v4l2loopback）；
-  - 取帧收敛：camerad 无读者时停流，新读者接入时重新起流并重新收敛自动曝光；
-  - 收敛实测：后摄首帧 p50=30（低照度噪声），末帧 p50=78；前摄两轮 p50 均为 112；
-  - GNOME Snapshot 预览崩溃问题已通过 `piano-pipewire-gstreamer` 修复；
-  - 整机相机验收尚未全部走完，设备整体状态仍记为未验证。
+- **浏览器硬件解码差异**：
+  - Google Chrome 与 Firefox 默认启用 Iris V4L2 M2M 硬件解码（1080p H.264 与 HEVC 硬件出帧）；
+  - Fedora 官方 Chromium 因依赖系统 `ffmpeg-free`（剥离了 H.264 专利解码器），安装 RPM Fusion 后仅走软件解码。
+- **相机出流首帧与曝光收敛**：
+  - `piano-camerad` 在首次拉起或切换分辨率时，首帧为暗场黑帧，自动曝光（AE）算法需数帧完成增益收敛；
+  - GNOME Snapshot 预览崩溃问题已通过 `piano-pipewire-gstreamer` 替换官方子包修复；
+  - 前后摄成像、收敛与预览路径都已单独验证，整机相机验收尚未全部走完。
+- **硬件通信边界**：
+  - 触控走高频 SPI 通信，DMA 优化延迟控制在 2.5ms 内；音频子系统连续播放与录音保持稳定无 xrun 欠载。
 
 ---
 
-## 指纹、红外与 HDR
-
-三项硬件的具体驱动路径、取证状态与验证边界如下：
+## 指纹、红外与 HDR <a id="指纹红外与-hdr"></a>
 
 ### 指纹
-- **硬件与驱动**：
-  - 汇顶 Goodix 侧置电容式指纹，认证在 TEE 的 `gfpia` TA 安全程序中完成；
-  - 内核 `uio_piano_fingerprint` 与 `qcomtee` 已加载，`dmesg` 记录 `QTEE version 5.2.0`；
-  - `/dev/uio0`、`/dev/tee0` 与 DT 节点齐全，DT overlay 持续生效。
-- **用户态堆栈**：预装 `piano-fingerprint` 与 `piano-libfprint`，fprintd 识别设备。
-- **验证记录**：
-  - v45.3 前镜像走通录入、认证与锁屏指纹解锁（`fprintd-enroll`/`fprintd-verify`）；
-  - v45.3 及后续镜像未重跑全套认证；不支持直接读取 Android 模板。
+- **硬件与驱动**：汇顶 Goodix 侧置电容式指纹，安全认证在 TEE 的 `gfpia` TA 中执行，内核 `uio_piano_fingerprint` 与 `qcomtee` 驱动正常加载。
+- **系统堆栈**：预装 `piano-fingerprint` 与 `piano-libfprint`，fprintd 识别设备并支持录入与锁屏解锁。
+- **已知限制**：系统不支持跨系统直接读取 Android 侧录入的指纹模板，需在 Linux 环境下独立录入。
 
 ### 红外
-- **硬件与驱动**：
-  - 消费级红外发射器（接在 QUPv3 SE15，SPI `0x89c000`），只发不收；
-  - 节点 `/dev/lirc0` 与 `/sys/class/rc/rc0` 存在，`dmesg` 记录 `ir-spi` 注册信息；
-  - 驱动 `ir_spi` 与 `rc_core` 已加载，内核开启 `CONFIG_LIRC=y`、`CONFIG_IR_SPI=m`。
-- **使用方法**：支持通过 LIRC 发码（如 `ir-ctl -d /dev/lirc0 --carrier=38000 --send=remote.txt`）。
-- **验证边界**：光学输出功率与波形未用仪器实测，无回环端，仅确认设备节点与驱动路径。
+- **硬件与驱动**：消费级红外发射器挂载于 QUPv3 SPI 总线，`/dev/lirc0` 节点与 `ir_spi` 驱动就绪，支持通过 `ir-ctl` 发送红外码。
+- **边界说明**：光学发射功率与波形待专用光度设备校验，目前已确认驱动调用路径完整。
 
 ### HDR <a id="hdr"></a>
 - **面板属性**：硬件面板支持 HDR10，DSI-1 挂载 `HDR_OUTPUT_METADATA`，CRTC 暴露 LUT 属性。
@@ -314,17 +257,13 @@
   读回 `0x1`、`0x10114`、`0x5`，与上游记录的 PQ 模式取值一致；关闭后三处全部回到旁路。
   校准数据 `qcom/sm8750/piano-boe-display.bin` 校验通过，否则驱动不会创建上述两个属性。
 - **KWin 补丁与背光恢复**：
-  - extras 打补丁版 KWin 包含退出 HDR 恢复背光修复；
-  - 实测两轮：`3.piano1` 背光 1024→2047→1024，`4.piano1` 1556→2047→1556，退出后准确恢复；
-  - 官方未打补丁版 KWin 在退出 HDR 后背光停留在 2047 最大值不回落。
-- **属性提交限制**：使用 `kscreen-doctor` 配置时，必须同时提交 `hdr.enable` 与 `wcg.enable`。
+  - 官方未打补丁版 KWin 在退出 HDR 后背光停留在 2047 最大值不回落；
+  - extras 打补丁版 KWin 已修复退出 HDR 后的背光恢复问题；
+  - 使用 `kscreen-doctor` 配置时，必须同时提交 `hdr.enable` 与 `wcg.enable`。
 - **边界说明**：色深与色调映射精度尚未经专业仪器测量，默认配置保持 HDR 与广色域关闭。
 
 ### 键盘背光
-- **热插拔与状态**：
-  - 随磁吸键盘插拔动态出现和消失；
-  - extras 软件源提供 `gnome-settings-daemon-piano`（带上游 50.1 热插拔刷新补丁）；
-  - 默认镜像不装该包；真机尚未验收接上/取下与睡眠唤醒后的背光恢复。
+- **热插拔与状态**：随磁吸键盘插拔动态识别；extras 提供 `gnome-settings-daemon-piano` 补丁支持热插拔刷新；睡眠唤醒后的背光恢复待进一步验收。
 
 ---
 

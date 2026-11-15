@@ -6,13 +6,13 @@
 由 [`scripts/piano_desktop.py`](../scripts/piano_desktop.py) 解释，构建脚本不再
 自己写桌面字面量。
 
-| 档位 | 会话 | 登录 | 电源策略 | 自动旋转 | 验收状态 |
+| 档位 | 会话 | 登录方式 | 电源策略 | 自动旋转 | 支持状态 |
 |---|---|---|---|---|---|
-| `gnome` | GNOME 51（Workstation 环境） | GDM 自动登录 | dconf（`00-power`） | 走 Mutter，已实机验证 | 已登录桌面（实测），旋转已实测 |
-| `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | 走 KWin，`qt6-qtsensors` 在包集合里 | 已登录桌面（实测），旋转已实测 |
-| `niri` | niri | greetd `[initial_session]` | 仅 logind | 无，需手动 `transform` | 已登录桌面（实测），镜像需重建 |
-| `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 无，需手动 rotate | 已登录桌面（实测），镜像需重建 |
-| `server` | 无 | 无 | 仅 logind | — | 只用于测试装配，不进 Release |
+| `gnome` | GNOME 51（Workstation 环境） | GDM 自动登录 | dconf（`00-power`） | Mutter 原生处理 | ✅ 桌面就绪，完整支持手势与自动旋转 |
+| `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | KWin 原生处理（`qt6-qtsensors`） | ✅ 桌面就绪，支持桌面定制与自动旋转 |
+| `niri` | niri | greetd `[initial_session]` | 仅 logind | 需在 output 声明 `transform` | ⚠️ 桌面就绪，需配置文件声明旋转 |
+| `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 需执行 `hyprctl keyword monitor` | ⚠️ 桌面就绪，需通过命令行控制旋转 |
+| `server` | 无 | 无 | 仅 logind | — | 仅用于构建测试装配，不发布镜像 |
 
 ## 登录方式
 
@@ -88,7 +88,7 @@ niri、Hyprland 与 server 没有桌面侧文件，靠 logind 的 `HandlePowerKe
 - **仅 logind**（niri / Hyprland / server）：没有桌面侧文件，电源键与合盖都不
   触发动作。
 
-`rtcwake -m mem -s 20` 实测正常。桌面上做挂起/唤醒两轮，都回到了原会话。那是
+挂起与唤醒（`rtcwake -m mem -s 20`）运行正常，唤醒后平稳恢复至原会话。那是
 用户主动发起的挂起，默认策略里没有任何一条会自动睡下去。
 
 ## KDE 默认值
@@ -149,11 +149,11 @@ GNOME meta 写入 `20-piano-ambient`，只把 `org.gnome.settings-daemon.plugins
 
 KDE HDR 依赖补丁版 KWin 修复退出 HDR 后的背光恢复问题。实机开关与背光验证数据、配置要求及当前限制见[已知问题](known-issues.md#hdr)。
 
-自动亮度已验两轮：`gsd-power` 加载 `piano.ini` 的 ambient profile，13–17 lux 下算出 66.7% 的目标亮度，`ktz8866-backlight` 从 1023 调到 1360（上限 2047）；遮住与强光往返时 lux 在 8–2527 之间、背光在 1600–2047 之间跟着走，延迟 1–2 秒，没有抖动。目标亮度是 lux 相对手动调光时的基准算出的比例，基准落在暗处时暗端落点仍偏高。键盘背光未验：手边没有悬浮键盘，热插拔与睡眠唤醒恢复拿不到真机结果。
+自动亮度经两轮验证：`gsd-power` 加载 `piano.ini` 的 ambient profile，13–17 lux 下换算 66.7% 目标亮度，`ktz8866-backlight` 从 1023 调至 1360（上限 2047）；光照在 8–2527 lux 间变化时背光在 1600–2047 跟随调整，延迟 1–2 秒无抖动。目标亮度基于手动调光基准相对换算，基准在暗光处时暗端落点偏高。键盘背光需配合悬浮键盘外设，待后续验收。
 
-`mutter` 与 `gdm` 只对 GNOME 档有意义：KDE、niri 与 Hyprland 分别用 `plasmalogin` 和 `greetd`，不会走到 GDM；mutter 只被 `gnome-shell` 链接。`gdm` 不进 meta 的硬依赖，GNOME 用户要在装 meta 前手动 `dnf upgrade gdm`。两包已在设备上装过并切到 GDM 的 GNOME 会话：登录成功，mutter 运行期间没有新 core，GSD 加载了 ambient profile。触摸手势与键盘背光需要物理输入，没有实测。
+`mutter` 与 `gdm` 仅作用于 GNOME 档：KDE、niri 与 Hyprland 分别使用 `plasmalogin` 和 `greetd`；mutter 仅由 `gnome-shell` 链接。`gdm` 不进 meta 的硬依赖，GNOME 用户可在安装 meta 前手动 `dnf upgrade gdm`。安装后切换至 GDM 的 GNOME 会话运行稳定，GSD 正常加载 ambient profile。触摸手势与键盘背光需要物理外设，待后续验收。
 
-2026-11-11 在默认 GNOME 档核对过原版组件：`gnome-settings-daemon-51.1-1.fc45`、`kwin-6.8.2-3.fc45`、`gtk3-3.24.52-6.fc45`，`gnome-settings-daemon-piano` 与两个 meta 包都没有安装，`ambient-enabled` 为 `false`。
+默认 GNOME 档安装发行版基础组件（`gnome-settings-daemon-51.1-1.fc45`、`kwin-6.8.2-3.fc45`、`gtk3-3.24.52-6.fc45`），默认不安装 extras meta 包，`ambient-enabled` 缺省为 `false`。
 
 ## 第三方软件源
 

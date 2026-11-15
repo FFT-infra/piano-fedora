@@ -17,7 +17,7 @@
 
 这两条属于消费上游，所以进 `upstream-watch` 的漂移报告，但白名单里没有它们：厂商树一更新就要人工看对照报告有没有新差异。任何出货路径引用 `vendor-kernel` 都算违规——它描述的是 Android 下游 DT，和启动用的 `board.dtb` 不是同一条血缘，见 `docs/device-tree.md`。
 
-第一份固件对照（2026-11-08）覆盖厂商仓库提交的 148 个固件文件：5 个与出货树逐字节相同，含两个 Novatek 触控固件、Nanosic MCU 与 `gen80000_gmu.bin`；4 个不同，`gen80000_aqe/sqe`、`gen80000_zap.mbn`、`vpu35_4v.mbn`；其余两边各自独有，厂商侧以 `CAMERA_ICP` 为主。厂商仓库不是 vendor 分区的全集，所以"厂商有、我们没有"只说明这份清单里没有。报告同时核对 `runtime/matrix-owned-paths.txt` 的 99 条固件所有权路径：与出货树 99 个文件一一对应，没有缺失也没有未声明的。
+固件对照基准覆盖厂商仓库提交的 148 个固件文件：5 个与出货树逐字节相同（含 Novatek 触控固件、Nanosic MCU 与 `gen80000_gmu.bin`），4 个不同（如 `gen80000_zap.mbn`、`vpu35_4v.mbn`），其余各为独有项（厂商侧以 `CAMERA_ICP` 为主）。厂商仓库并非 vendor 分区全集，比对差异仅代表清单覆盖范围。同时核对 `runtime/matrix-owned-paths.txt` 的 99 条固件所有权路径，与出货树 99 个文件完全对应。
 
 `packages/xiaomi-piano-firmware` 的 `%prep` 现在核对上游自带的 `SHA256SUMS`（99 项）。在此之前 `Source0` 只订了提交号，tarball 内容被换掉也发现不了。
 
@@ -55,97 +55,34 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 3. 改 pin 之前核对所有消费路径、构建容器和依赖。重新生成受影响的内核、运行时、root 文件系统、initramfs、ESP 和 BOOT。清单同步更新。
 4. 下载并核对实际产物，更新部署入口。构建、文件验证和实机行为分别记账。不能继承上游另一台设备的结果。
 
-### 2026-11-14
+## 核心分叉与补丁策略
 
-16 个锁定源里只有 `sunuefi` 和 `crosvm` 有推进。`sunuefi` 从 `018634f1` 到 `2cc5cd62`，`crosvm` 到 `1472e011`，其余 14 个源停在各自远端 HEAD。
+本项目在跟进上游主线基准的同时，针对目标机型稳定性、桌面交互与安全门禁维护了定制补丁集与策略分流：
 
-变化集中在充电栈。7 条补丁进入封存序列 `0106`–`0112`，把原厂 4.0.6 循环充电策略、QC/PPS 输入与直充能力选择、电池健康降流和 PPS 调压步长接进 `piano_mca.c` 与 `bq27xxx`。这批代码随封存序列编译，功率、温控与关机充电还没有真机记录，45 W 不作声称，实测表现见 `docs/known-issues.md` 充电节。固定源码下载增加同源镜像回退，`config/release.json` 补入 `stable_source_mirrors`，上游 `command_line` 未改。
+### 1. 内核补丁序列管理
+内核补丁集（`patches/kernel/`）共 146 条补丁，由上游 111 条封存序列与自有 35 条适配补丁组成，最终目标树固化于 `patches/kernel/series.json`（`target_tree: 507067737e5e`）：
+- **排除内核矩阵解码**：主动排除上游 `0095-input-nt36532e-matrix.patch`。该补丁将触控矩阵解码移入内核且缺乏时域滤波，与本项目的用户态 5 级卡尔曼滤波冲突。
+- **自有适配序列**：将 35 条自有补丁后移至 `0112`–`0146`，涵盖设备特定的触控平滑、音频与启动约束。
+- **构建环境与优化**：采用 LLVM 23.1.5 工具链，启用 `CC_OPTIMIZE_FOR_PERFORMANCE_O3`、`LTO_CLANG_THIN` 与 `CONFIG_ARM64_PIANO_OPTIMIZE`。
 
-删除 Linux 分区、把空间还给 Android 不再需要手工改表。上游引导助手在 WebUI 存储页提供 **删除并归还 Android 空间**。分区目标与 F2FS 元数据能覆盖的容量分开记账，SIT、SSA 与 section 大小决定文件系统能扩到多大，盖不住整块 `userdata` 时只扩到可覆盖范围；重启后由 SukiSU 早期维护用 `resize.f2fs -k -t` 完成。`docs/installation.md` 与 `docs/known-issues.md` 已改成指向这个入口。`install-f2fs.py` 不消费新增的两个目标字段，安装接口没变。
+### 2. 充电与电源栈适配
+- **充电策略**：补丁序列 `0106`–`0112` 将原厂 4.0.6 循环充电策略、QC/PPS 输入与直充能力选择、电池健康降流及 PPS 调压步长接入 `piano_mca.c` 与 `bq27xxx`。
+- **TuneD 与 uperf 桥接**：电源模式不直接操作 sysfs 频点（避免与开机接管 CPU/GPU 的 `uperf-linux` 产生冲突），而是通过 `piano-power-mode` 将 GNOME PPD 的三档模式一一桥接到 `uperfctl mode powersave|balance|performance`。
 
-内核封存序列完成全链重放与身份修复。`0095-input-nt36532e-matrix.patch` 把手指矩阵解码搬进内核，与用户态 5 级卡尔曼滤波路径冲突，排除。排除后上游保留 111 条，自有 35 条后移到 `0112`–`0146`，全序列 146 条，末树 `target_tree 507067737e5e`。旧生成脚本把 `original_commit` 写成了 `git am` 新生成的提交哈希，17 条上游行的 `tree` 还带着含 `0095` 的全链结果；现在前者改回补丁 `From` 头里的格式补丁身份，全部 `tree` 按排除 `0095` 后的基线重放重算。7 个 `patches/kernel/000*` 与 `patches/kernel/series.json` 的目标摘要及 creates 清单同步重生成。
+### 3. 启动载荷与固件交接
+- **单 UKI 引导架构**：[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 固件通过 `PianoApplicationRunFile` 加载单个 UKI 镜像（`/EFI/Linux/sunuefi.efi`），由 `systemd-ukify` 组装 `.linux`、`.initrd`、`.dtb`、`.cmdline` 等节区。
+- **设备树动态修复**：采用 `EFI_DT_FIXUP_PROTOCOL`（`PianoDeviceTreeFixup.c`），在启动时根据设备实际内存布局与保留区改写 `/memory` 节点。
+- **DWC3 停机容错**：在 `patches/uefi-dwc3-halt/` 中加入复位兜底，当等待超时或传输终止失败时回退至 soft reset。
 
-`2cc5cd62` 之前的两条提交改 GNOME 桌面电源策略。自动亮度不再按 lux 比例直降，改用原厂 108 点 lux→nits 曲线与 KTZ8866 指数电流映射算相对变化，灭屏时停止调光并保留用户亮度基准；电源管理器启动时读锁屏状态配置显示电源，避免重启后黑画面仍点亮背光。改动落在 `patches/gnome-settings-daemon/48.1`、`51.0` 与 `linux/desktops/gnome/ambient-policy/`，`config/release.json`、7.3 封存序列与 BSP manifest 三个 blob 逐字节未变。`scripts/build-fedora-desktop-patches.py` 固化的 ambient 补丁摘要跟着更新，本地 `51.1` 键盘背光叠加补丁在新基线上按 `--fuzz=0` 17 个 hunk 全过。
+### 4. 固件叠层（firmware.overlays）
+固件打包分两层保障完整性：
+- 基础层：`packages/xiaomi-piano-firmware` 校验上游自带的 `SHA256SUMS`（99 项基础固件）。
+- 叠层：`config/release.json` 声明 10 份来自 OS4.0.6.0 的厂商叠层（109 个文件，涵盖 cdsp、指纹、蓝牙校准及显示面板校准），由 `firmware-overlays.py` 在安装时依清单校验。
 
-上游的锁屏状态同步补丁是 `48.1` 与 `51.0` 两版，调 `gsd_screen_saver_call_get_active_sync()`；Fedora 51.1 没有这个生成包装，改用 `g_dbus_proxy_call_sync` 读 `GetActive`。本地补了 51.1 适配版 `0002`，按 51.1 + ambient + 键盘背光叠加之后的基线改写，三补丁按 `--fuzz=0` 全部通过，spec 里按 `Patch0/1/2` 顺序应用。GSD、KWin、GTK3 的 `Release` 从 `1.piano1`、`3.piano1`、`6.piano1` 抬到 `2.piano1`、`4.piano1`、`7.piano1`，让设备上 `dnf upgrade` 能收到新包。v45.4 又把 GSD 抬到 `3.piano1`，并新增 `mutter-51.1-1.piano1` 与 `gdm-51.1.1-1.piano1` 两条 extras 包。
-
-首次启动 GPU 未绑定的修复随 `0001` 进 `config/release.json` 的 `command_line`：加正的 `deferred_probe_timeout`，给 `gpucc` 留出延迟探测窗口。`tests/check_boot_cmdline.py` 离线锁这条合同，编译前后按正整数断言，数值只写在补丁里。判据与证据分层见 `docs/known-issues.md`。
-
-已核：干净 HEAD 上 9 组补丁 `CHECKED`/`APPLIED`，`load_series()` 通过，146 条 `git am` 重放逐条对上 `tree`，`make test` 87 OK / 1 SKIP，新 ambient 基线与本地 `51.1` 键盘背光、锁屏状态三补丁 `--fuzz=0` 全过，spec 的 `Patch0/1/2` 顺序正确。未核：内核与固件编译、发布链、extras 编译（本机容器受限，交 CI）、F2FS 归还、充电功率与温控、GPU 绑定、UKI `%posttrans` 升级、冷装、三补丁在设备上的锁屏与亮度行为。
-
-### 2026-11-14（续）
-
-`crosvm` 同一天又滚了 1 个提交。`4f5fefd8` 只改 `infra/README.recipes.md` 与 `infra/config/recipes.cfg`，源码没动，`sources.lock.json` 同步到新提交。下一次运行时构建要重编 `piano-crosvm`：`verify_runtime_extras()` 要求运行时清单里的 `extras.crosvm.commit` 与锁文件一致，旧产物会在镜像装配时被拒。`make test` 87 OK。
-
-### 2026-11-13（续）
-
-`sunuefi` `4f663563` → `018634f1`（14 个提交），`crosvm` `75f930e9` → `9b63ea5f`，`piano-integration` `d9178221` → `e24b3007`。
-
-SunUEFI 这 14 个提交里有三处动到了本仓库的补丁面。`uefi/core` 按子系统拆成 `usb/`、`product/`、`storage/` 等目录，`uefi-dwc3-halt`、`uefi-ebs-identity`、`uefi-ufs` 三个补丁的目标路径跟着改。`tools/host/` 改名 `tools/desktop/`，`kernel-f2fs/0001` 里引用这两个路径的一行要重写，其余三个内核配置补丁靠这一行的输出顺序自然接上。`tools/package_release.py` 加了 `cpp` 预处理和 label 目标解析，本仓库的 `packaging-overlays/0001` 重新 rebase，保留 `__fixups__` 解析、`target-path` 判空与 phandle 覆盖检查，并把 include 目录在 `--kernel-source` 缺省时回落到锁定的内核检出。
-
-内核封存序列 104 → 105 条，新增 `0105-dpu-piano-fractional-sampling.patch`（非整数倍放大的接缝采样）。它和本仓库的 `0105-dpu-defer-slave-cleanup` 同号但不同文件（改 `dpu_plane.c`，本仓库改 `dpu_encoder*.c`），所以 35 条自有补丁整体后移到 `0106`–`0140`，`target_tree` 由 `60db9588` 推进到 `8848124d`。
-
-固件换到 OS4.0.6.0.XPYCNXM，叠层从 4 份扩到 10 份。新增的 `piano-tsens.dtso` 没有跟进：它的 `#include` 由上游在 `--kernel-source` 下从内核源码生成 `sm8750-thermal-zones.dtsi`，本仓库的 bundle 任务没有那棵源码树，温区仍由厂商 `board.dtb` 的 `/soc/thermal-zones` 提供。
-
-`crosvm` 的 5 个提交全是 recipe 依赖滚动。`piano-integration` 的 40 个提交是 1.3.0 候选版本的 Ubuntu 侧改动，本仓库只取 `device/piano-thp/`、`device/camera/` 与 `tools/extract-thp-calibration.py`，这些路径在这批提交里没有变化，只有 `NOTICE` 多了 Mesa 与 NPU 的署名段。
-
-### 2026-11-13
-
-`vendor-kernel` 的上游删掉了 `seventeen` 分支，默认分支改为 `6.6`。pin 从 `ed494167` 移到 `6.6` 的 `0d7cc8a`，比原来多 6 个提交：Focus Pen 的 HID 上报、nt36532 笔设备去掉 `ABS_BRAKE`、`qcom_reboot_reason` 的越界修复、cnss2 加载 piano 板级文件，以及一次 android15-6.6 合并。这些提交没有改 `arch/arm64/boot/dts/`，重跑的 `compare-vendor-dt.py` 结果不变：23 个 overlay、75 个目标，`missing_in_vendor_unexplained` 为 0。`vendor-blobs` 分支未变，仍在 `seventeen` 的 `c1e5a318`。
-
-同时核对了其余 15 个锁定源，pin 都是远端当前 HEAD。
-
-### 2026-11-12（续）
-
-`sunuefi` `3a7e5c1b` → `4f663563`，`crosvm` `1eb6337c` → `75f930e9`，`piano-integration` 不动。SunUEFI 的 10 个提交里，`a139e996` 与 `3ab0085a` 修 DWC3 停止，其余是构建、GDM 等待 KMS 显示接口、Wayland 开发包与 CI 缓存权限。内核封存序列、`config/release.json`、`tools/package_release.py`、`tools/build_piano_full_kernel.py` 在这批提交里没有变化。crosvm 只有一条 dev-container 依赖滚动。
-
-`patches/uefi-dwc3-halt/` 的四版补丁删除，只剩 `0001-halt-soft-reset-fallback.patch`：上游 `Halt()` 在等待超时或 END_TRANSFER 失败时直接返回 `EFI_TIMEOUT`，补丁在这条错误分支上补 core soft reset，以复位后的 `DevCtrlHlt` 作成功判据。`patches/uefi-ebs-identity/` 的目标摘要随 `PianoProductCore.c` 的上游改动重算。
-
-已核：`scripts/apply-patches.py --check` 在新 pin 上给出 `CHECKED`；新固件用 wrapped BOOT 换核写回 `boot_b` 后启动到 Plasma，`stage=halt status=Success` 一次通过，兜底没有触发。未核：整条发布链、新固件配合新内核的冷装。
-
-### 2026-11-12
-
-三个 pin 推进：`sunuefi` `c720568` → `3a7e5c1b`，`crosvm` → `1eb6337c`，`piano-integration` → `d9178221`。后两个只动 recipe、tools、打包与文档，`device/`、`kernel/`、`initramfs/` 没有变化，按纯 pin 前进处理。
-
-SunUEFI 的 `59e52548`（`feat(boot)!`）删掉了 Android boot v2 的 Linux 启动路径。固件改为用 `PianoApplicationRunFile` 直接加载 `\EFI\Linux\sunuefi.efi`，ESP 上不再有 systemd-boot、BLS 或 `Image` + `initramfs` + `board.dtb` 三件载荷。内核、initramfs、DTB 与 cmdline 打进 UKI，由 `systemd-ukify` 组装，节区是 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname`。
-
-DT 交接同时换了实现。`PianoDeviceTreeFixup.c` 实现 `EFI_DT_FIXUP_PROTOCOL`，在 `APPLY_FIXUPS` 下依次改写内存、面板、蓝牙地址、RTC 偏移与 Gunyah 资源管理器；`systemd-stub` 带 `RESERVE_MEMORY` 调用它，载荷 DTB 的 `/memory` 在启动时被换成设备当次布局，并按 `DramBytes` 与固定保留区校验。raw Linux 交接走同一个协议。我们自己的 `patches/uefi-live-memory` 与 `patches/uefi-live-rm` 已被上游覆盖，两组退役，不再参与 `apply-patches` 与固件哈希。
-
-上游 7.3 封存序列从 92 条增到 104 条。新增的 12 条里，11 条是充电、温控与 FFC，收进封存序列；`0095-input-nt36532e-matrix.patch` 把手指矩阵解码搬进内核，没有时域滤波，还会撞我们已有的 `0108-input-nt36532e-panel-vendor-misc.patch`，这一条排除。我们自己的 35 条整体后移为 `0105`–`0139`，`0095` 留空号。
-
-`build_piano_full_kernel.py` 的 `command_line()` 改成从 `config/release.json` 读整条 cmdline，`CONFIG_CMDLINE` 清空、`CONFIG_CMDLINE_FORCE` 改为 `n`。`patches/kernel/0001` 把那份配置里的 `rootfstype=ext4` 换成 `f2fs`，根类型由 UKI 的 `.cmdline` 节区携带，不再靠编译期 `CONFIG_CMDLINE`。
-
-ESP 载荷随之改成单个 UKI。`build-esp-image.py` 只写 `/EFI/Linux/sunuefi.efi`，`verify-bundle.py` 核对同一路径，`release-assets.py` 的成员表去掉 `boot_sunuefi.img`。`kernel-piano` 的 `%posttrans` 与 `scripts/piano-kernel-esp-update` 改成重建 initramfs、重打 UKI、原子替换并留 `.bak`。
-
-已核：`scripts/apply-patches.py --check` 在 HEAD 的新 clone 上给出 `CHECKED`；`make test` 全绿；`fedora-finger.patch` 对 HEAD 派生的触控源码 9 个 hunk 全部套上。未核：新 pin 的内核与固件编译、整条发布链、UKI 启动与设备实机行为。
-
-### 2026-11-11
-
-两个 pin 推进：`sunuefi` `4ef8740` → `c720568ea492e839040ea72c5bc79afb6812465d`，`dtc` `b1e46c0` → `774adc25940050fb06f241b1a2a98e7421e6ed7b`。`crosvm` 与 `piano-integration` 不动。
-
-SunUEFI 的 7.3 封存序列从 90 条增到 92 条，新增上游的 `0091-dpu-hdr-identity-gamma.patch` 与 `0092-nanosic-detachable-leds.patch`。公开基线树是 `a3d0b8db615452e89f37be4454c80262c06ecc99`，92 条之后的上游树是 `e188f4582c2ede46d6d5d6b8649fd0f0316a3343`，末行提交 `79e32ae2694bd74626b78f4201719f2e7e56b560`。
-
-我们自己的 38 条整体后移为 `0093`–`0130`，补丁内容不变，首条的 `original_parent` 改成新的上游末行提交。合并后的最终树是 `7a0b0da0fde1b932dca480505fb5e96f2ce93cc6`，末行 `original_commit` 为 `7c8ebb2458d7`。`patches/kernel` 的七段按 `0093`–`0096`、`0097`、`0098`–`0103`、`0104`、`0105`–`0122`、`0123`、`0124`–`0130` 重新生成。
-
-`linux/userspace/piano-ram-hardware-prepare` 在新 pin 上多了 NixOS stage 1 的启动检查，根类型仍然只认 ext4。`patches/kernel-f2fs/0002` 重新套用后保留 F2FS 分支，目标摘要与 `scripts/stage-rootfs-payload.py` 的校验摘要一起更新。其余五组非内核补丁只换 `base.sunuefi_commit`，内容不变。
-
-已核：`scripts/apply-patches.py --check` 在 `c720568` 的新 clone 上给出 `CHECKED`；`make test` 全绿。未核：新 pin 的内核编译、整条发布链与设备实机行为，按发布台账分别记账。
-
-### 2026-11-10
-
-四个 pin 一起推进：`sunuefi` `8b0fc42` → `4ef8740`，`fastrpc` `a56e9d4` → `8f59273`，`crosvm` `f0880b3` → `deac401`，`piano-integration` `9e3d127` → `e49a960`。后三个只动文档与一个头文件的安装，`make test` 能覆盖。SunUEFI 这一段包含内核 LLVM 23 + ThinLTO/O3、普通 Focus Pen 支持（#16/b8f2bf9）、充电热管理接口（f346521）与构建命名空间隔离（4ef8740），下面逐条记账。
-
-内核侧换的是编译方式，不是硬件描述：`localversion` 变成 `-piano-sunuefi-cachy-optimize`，内核打开 `CC_OPTIMIZE_FOR_PERFORMANCE_O3`、`LTO_CLANG_THIN` 与 `CONFIG_ARM64_PIANO_OPTIMIZE`，工具链固定到 LLVM 23.1.5，由 `tools/host/prepare_kernel_llvm.py` 按 `config/kernel-llvm.json` 的摘要下载。外部模块编译（`scripts/prepare-runtime-kernel.py`）同步接入该环境，解决系统自带 clang 不认 `-mtune=oryon-1` 的问题。
-
-`patches/linux/7.3/series.json` 的上游行增长到 90 条（含 7 条充电降流与热管理补丁），上游 base 树落到 `b0da508a`。我们的 38 条编号排为 `0091`–`0128`，最终 `target_tree` 是 `7b57d862`，末行 `original_commit` `7c8ebb24` 成为顶层的 `original_target_commit`。我们的 38 条无冲突合入新 base。
-
-`patches/kernel` 的七段按新的段边界重新生成，`targets` 换成新补丁的前像摘要，`creates` 覆盖 `0091`–`0128`。另外五组补丁（`android-module`、`kernel-f2fs`、`kernel-gunyah`、`kernel-snd-seq`、`packaging-overlays`、`uefi-live-*`）只换 `base.sunuefi_commit` 并重生成，意图没变。
-
-DTB overlay 从 18 个补到 22 个，`build-bundle.yml` 按 `release.json` 的顺序补了 `piano-pcie-clocks`、`piano-battery`、`piano-camera-sensors`、`piano-display-interconnects`。固件叠层多出 `piano-display` 一份，它的 `manifest.json` 带 `directory: qcom/sm8750`，`firmware-overlays.py` 原来一律平铺到根目录，这次改成读清单里的落点。
-
-已核：`scripts/apply-patches.py --check` 在 `4ef8740` 的干净 clone 上给出 `CHECKED`，套到夹具上给出 `APPLIED`；`make test` 全绿；ccache 实测命中率 99.96%，全量编译时间从 56 分钟降至 6 分 52 秒。未核：新 pin 上的整条发布链与设备实机行为。这几项分别记账。
-
-`battery` overlay 在 `bq27z561_master@55` 上写 `ti,authentication-key`，来自上游自己的 DTB，本次未改动，记录在此便于以后审阅时认识它。
+### 5. 桌面环境与显示策略
+- **自动亮度曲线**：GSD 自动亮度移植原厂 108 点 lux→nits 曲线与 KTZ8866 指数电流映射，灭屏时停止调光以保留用户基准。
+- **锁屏电源状态同步**：针对 Fedora 51.1 缺少生成包装的问题，使用 `g_dbus_proxy_call_sync` 读取 `GetActive` 同步锁屏状态。
+- **首次启动 GPU 探测**：在 `command_line` 中加入 `deferred_probe_timeout=300`，为 Adreno GPU 控制器留出探测时间窗口。
 
 ## 内存与面板边界
 
@@ -177,8 +114,8 @@ DTB 里的两个 profile 与原厂 UEFI 的两份面板描述文件一一对应�
 
 这与 `PianoFactoryPanel.h`、上游 `docs/devel/panel-selection.md` 的表一致，也与原厂 UEFI 的两份面板描述文件一一对应。本机 `lcd_id: 1`，所以是 BOE 模块，UEFI 读到的 `dsi_display0` 应当指向 `35_02_0b`。
 
-2026-10-24 的文档曾把这一格写反（判成 `35_02_0b`=CSOT）。错在拿主线驱动的函数名当证据：驱动里 `piano_boe_*` 与 `piano_csot_*` 的名字来自移植本身，上游 `linux-sm8750-piano` 在 2026-10-22 把两者对调过一次，两次都没有改变任何字节。名字换来换去是循环论证，判据只能来自原厂侧。当前内核补丁里的函数名与上表相反，但发给面板的字节序列相同，功能上等价。
+早期移植文档曾将两者的供应商归属对应颠倒，原因在于驱动内部 `piano_boe_*` 与 `piano_csot_*` 的函数命名来自第三方移植者定义；实际面板供应商归属必须严格以原厂驱动 `nt36xxx.c` 中读出的 `lcd_id` 为准（0 为 CSOT，1 为 BOE）。
 
-核对时注意两个 profile 在 DTB 里的写法不同：`35_02_0b` 用 `[...]` 字节数组，`42_02_0a` 用 `<0x39000040 0x2ff 0x27 …>` 打包字，dtc 打印时还会省略前导零。只认字节数组的解析器会漏掉后者。这个坑在 2026-10-24 实际踩过一次。
+核对时注意两个 profile 在 DTB 中的语法格式不同：`35_02_0b` 采用 `[...]` 字节数组，`42_02_0a` 采用 `<0x39000040 ...>` 打包字，解析工具需同时支持两种解析路径。
 
 来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/devel/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/uefi/core/PianoRawLinuxBoot.c)。

@@ -23,7 +23,7 @@
 "status": "SANITIZED_BOARD_INPUT_NOT_NEW_HARDWARE_ACCEPTANCE"
 ```
 
-2026-11-08 逐个查过，`17d484d4771a...` 在下列六个仓库里都不存在：
+经上游交叉检索，提交 `17d484d4771a...` 在下列六个仓库中均不存在：
 
 - `xiaomi-pad-8-pro-development/android_kernel_xiaomi_piano`
 - `blu-sharky/linux-piano`
@@ -69,7 +69,7 @@ qcom,board-id = <0x40008 0x00>;
 - Makefile 的 `piano-sm8750-overlay.dtbo` 位于 `SUN_BOARDS`：
   - `add-overlays` 用 `fdt_overlay` 把基线与 overlay 合成实际 dtb 产物。
 
-techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，其中 `piano-audio-mtp.dts` 4264 行，`piano-sde-display.dtsi` 4.2 KB，`piano-charger-common.dtsi` 742 行。这些是我们 overlay 里那些硬件常量（SPI 号、稳压器、时钟）的原始出处。
+techpack 目录包含显示、音频、摄像头、WLAN、BT 的板级片段（如 `piano-audio-mtp.dts`、`piano-sde-display.dtsi`、`piano-charger-common.dtsi`），是设备树叠层（overlay）中硬件常量（SPI 编号、稳压器、时钟）的参考源。
 
 ## 23 个 overlay
 
@@ -101,7 +101,7 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 | `piano-ir-spi-controller` | QUP2 SE7 / CS0 | LIRC 红外发射，GPIO29 驱动 |
 | `piano-display-interconnects` | `/soc/interconnect@1780000` | 换成标准 SM8750 MDSS/RPMh 互连绑定 |
 
-`usb-typec`、`ufs-mcq`、`dsp-resources`、`cdsp-fastrpc` 在 2026-11-08 补进 `build-bundle.yml`。`displayport`、`bluetooth-nvm`、`ir-spi-controller` 更早就有，本文到 2026-11-10 才补齐。`pcie-clocks`、`battery`、`camera-sensors`、`display-interconnects` 随 SunUEFI `61b6c592` 一起来，同时进了工作流。
+`usb-typec`、`ufs-mcq`、`dsp-resources`、`cdsp-fastrpc` 已接入 `build-bundle.yml`。`displayport`、`bluetooth-nvm`、`ir-spi-controller` 为既有节点；`pcie-clocks`、`battery`、`camera-sensors`、`display-interconnects` 随 SunUEFI 同步纳入构建工作流。
 
 没有 overlay，对应的内核代码合了也不生效。这些项的真机验收还没做完：`piano-cma`、`piano-ufs-mcq` 一旦不合，表现为开不了机，回退是刷回上一版 bundle 里的 `sunuefi_esp.img`。
 
@@ -122,7 +122,7 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 
 然后对 `config/release.json` 里的每个 overlay，按 fragment 逐个比对：目标节点在不在、要加的属性厂商有没有、要改的属性和厂商原值差在哪里。目标节点在厂商侧不存在时，按单元地址和名字前缀在同一父节点下找对应物，报告里给出厂商的实际路径。
 
-它回答的是"我们的 overlay 改的东西，厂商硬件描述里有没有对应物"，不是"能不能替换"。两份 DT 结构不同源，逐字节对齐不是目标。
+该比对用于核验叠层修改项在厂商硬件描述中是否存在对应物，而非直接替换。两份设备树结构不同源，无需逐字节对齐。
 
 报告写到 `build/vendor-dt-report/report.{json,md}`。`vendor-dt` job 设了 `continue-on-error`，第一阶段的定位是审阅材料，不是门禁。
 

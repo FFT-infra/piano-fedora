@@ -267,7 +267,7 @@ python3 boot-tools/installer/scripts/install-f2fs.py plan \
 
 失败时执行器不自动重试、不擦除、不重新分区，`result.json` 里记着原 GPT 的两段备份和恢复说明。先看 `f2fs_shrink` 字段有没有写进去，再决定是恢复 GPT 还是继续。
 
-这条路径 2026-11-13 在一台 Slot B 设备上验收通过，记录与剩余限制见[已知问题](known-issues.md#无损首装)。默认路径仍是清空。
+该无损安装路径已在 Slot B 设备验证，限制与说明见[已知问题](known-issues.md#无损首装)。默认推荐路径仍为清空安装。
 
 ### 1. 自动分区
 

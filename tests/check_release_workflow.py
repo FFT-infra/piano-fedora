@@ -363,8 +363,10 @@ def test_release_notes_teach_both_paths():
     assert "greetd [initial_session]" in fill_step
     assert "transform" in fill_step
     assert "hyprctl" in fill_step
-    # 表格插入契约：不能带有 4+ 前导空格，否则 Markdown 会解析为缩进代码块
+    # 表格插入契约：不能带有 4+ 前导空格，否则 Markdown 会解析为缩进代码块；去除自证性 AI 口癖
     assert "indented_table" not in fill_step
+    assert "已实测" not in fill_step
+    assert "（实测）" not in fill_step
     import re
     mock_notes = "          <!-- DESKTOP_TABLE_PLACEHOLDER -->"
     mock_table = "| 档位 | 归档 |\n| --- | --- |\n| `kde` | arc |"

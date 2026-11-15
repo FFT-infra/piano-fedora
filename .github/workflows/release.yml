@@ -135,10 +135,12 @@ jobs:
           cat > build/stage/notes.md <<EOF
           ## piano Fedora ${release} ${TAG}
 
+          小米平板 8 Pro（25091RP04C）的 Fedora 系统。档位: ${DESKTOPS}。
+
+          - 外设逐项状态见 [README 硬件支持](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/README.md#硬件支持)，已知问题与未验证项见 [docs/known-issues.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/known-issues.md)
+          - 产物状态: Actions 内完整校验通过
           - 源码提交: [${GITHUB_SHA}](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})
           - 启动链: [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)，文件级许可与第三方材料见该仓库的 LICENSE.md 与 THIRD_PARTY.md；本项目的归属说明见 [NOTICE](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/NOTICE)
-          - 档位: ${DESKTOPS}
-          - 产物状态: Actions 内完整校验通过；真机验证记录见 [docs/known-issues.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/known-issues.md)
 
           ### 各档文件与选档
 
@@ -146,8 +148,10 @@ jobs:
 
           ### 新装与在用升级
 
-          - **已有系统升级**：已安装 piano-fedora 的设备无需重新下载刷机包，在终端运行 \`sudo dnf upgrade --refresh\` 即可通过 COPR 仓库获取最新内核与适配包。完整升级流程见 [docs/upgrade.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/upgrade.md)。
-          - **全新安装**：公共 Release 归档收录 Slot A (\`boot_a\`) 的初装包（Slot B 设备需按文档自建 \`root-install\`）。刷写会解锁 Bootloader、改写 GPT、替换活动槽合体 BOOT 并重写 Linux 分区，务必提前备份全盘数据。**不要擦除 \`dtbo_a\` 或 \`dtbo_b\`**（高通 ABL 校验空 DTBO 会拒启停在 Fastboot）。完整前置条件见 [docs/installation.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/installation.md)。
+          - **已有系统升级**：不用重新下载刷机包。终端运行 \`sudo dnf upgrade --refresh\`，内核与适配包从 COPR 更新。步骤见 [docs/upgrade.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/upgrade.md)。
+          - **全新安装**：按下面的步骤下载校验，再按 [docs/installation.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/installation.md) 刷写。装完开机直接进桌面，用户名 \`piano\`，默认密码 \`piano123456\`，登录后用 \`passwd\` 改掉。
+
+          刷写会解锁 Bootloader、改写 GPT、替换活动槽合体 BOOT 并重写 Linux 分区，动手前备份全盘数据。**不要擦除 \`dtbo_a\` 或 \`dtbo_b\`**：高通 ABL 校验空 DTBO 会拒绝启动，机器停在 Fastboot。
 
           每个档位一个自包含归档，只需下载所选档位。以 ${example} 为例：
 
@@ -387,10 +391,10 @@ jobs:
               --jq "[.assets[] | select(.name | startswith(\"${name}\")) | .size] | add")
             case "$desktop" in
               gnome)
-                desc="GDM 自动登录；Wayland 原生会话，Mutter 自动旋转（已实测），触控手势与屏幕键盘完整"
+                desc="GDM 自动登录；Wayland 原生会话，Mutter 自动旋转"
                 ;;
               kde)
-                desc="plasma-login-manager 自动登录；Wayland 原生会话，KWin 自动旋转（qt6-qtsensors，已实测）"
+                desc="plasma-login-manager 自动登录；Wayland 原生会话，KWin 自动旋转（qt6-qtsensors）"
                 ;;
               hyprland)
                 desc="greetd [initial_session] 自动登录（tuigreet 兜底）；动态平铺，旋转需通过 hyprctl keyword monitor 调整"
