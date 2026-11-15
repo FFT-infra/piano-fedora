@@ -17,7 +17,6 @@ REFERRERS = [
     ROOT / "README.en.md",
     ROOT / "SECURITY.md",
     ROOT / "docs/installation.md",
-    ROOT / "docs/public-release-gaps.md",
     ROOT / "scripts/build-clean-rootfs.py",
     ROOT / "scripts/installer/flash-linux.sh",
     ROOT / "scripts/installer/flash-linux.bat",

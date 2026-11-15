@@ -25,7 +25,6 @@
 - [维护与验收](internals.md)：CI 流水线、产物绑定与 PR 验收项
 - [上游跟踪](upstream.md)：SunUEFI 与内核当前 pin、差异看板与跟进规则
 - [与上游的功能差距](upstream-parity.md)：对照上游基线 pin `3a7e5c1b` 的功能差距与跟进状态，当前构建 pin 见 `sources.lock.json`
-- [公开分发前的缺口](public-release-gaps.md)：构建期仍依赖特定机器与个人配置的输入项
 
 ---
 
