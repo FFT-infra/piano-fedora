@@ -1,5 +1,7 @@
 # Xiaomi Pad 8 Pro (piano) 安装指南
 
+> 日常系统与内核升级、双系统往返请参见 [升级与回滚](upgrade.md)。
+
 本指南说明如何在小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）上安装 Fedora 45，以及如何更新、切换系统与排查故障。默认档位是 GNOME。其他档位的差异见[桌面档](desktops.md)。
 
 安装有两条路。手动路径逐条给出命令，每一步都能单独核对，是主路径。一键脚本把同一条路径包成一次执行，是可选路径。两条路写入的分区和字节数相同。
@@ -123,7 +125,7 @@ sha256sum -c SHA256SUMS
 
 第二行在没有分片时换成 `zstd -dc piano-<tag>-<档位>.tar.zst | tar -x`。GNOME 与 KDE 有分片，用上面那条。
 
-解完后，这个目录就是暂存目录。第五节与第七节的命令都在这里执行。再校验一次 prepared root：
+解完后，这个目录就是暂存目录。第五节与 [升级与回滚](upgrade.md) 的命令都在这里执行。再校验一次 prepared root：
 
 ```sh
 (cd root-install && sha256sum -c SHA256SUMS)
@@ -234,9 +236,11 @@ sha256sum -c SHA256SUMS
 
 一键脚本还会核对 root-install manifest 里的 `source_bundle_manifest_sha256` 与 `source_root_manifest_sha256` 是否指向归档里的 `bundle-manifest.json` 与 `root-image-manifest.json`。三者对不上，说明 root 来自别的构建。
 
+> **完成判据**：两份 `sha256sum -c` 校验全部通过（输出均为 `OK`），`root-install/` 与 `boot-tools/` 已就位。
+
 ## 四、 从原始 GPT/UFS 开始的首次安装
 
-本节面向还没有 `sunuefi_esp` 与 `sunuefi_root` 的设备。设备已经有这两个分区时，跳过本节，直接看第七节的更新入口。
+本节面向还没有 `sunuefi_esp` 与 `sunuefi_root` 的设备。设备已经有这两个分区时，跳过本节，直接看 [升级与回滚](upgrade.md) 的更新入口。
 
 `install-f2fs.py apply` 会清空 `userdata`，不能用它做更新。
 
@@ -423,6 +427,8 @@ fastboot reboot
 实机上擦除不一定能让 Android 自动格式化。两次安装都停在 Recovery，屏幕底部显示 `Couldn't initialize user 0`。看到这一行，按 Recovery 的提示选“清除数据”，Android 才会重建加密分区并完成首次开机。不要反复切槽或重写分区表。
 
 等 Android 首次开机完成，`adb shell getprop sys.boot_completed` 返回 `1`。这一步不能跳过，否则 Android 会反复重启或加密失败。
+
+> **完成判据**：回读输出的扇区起止与上表计算值一致无重叠，Android 顺利重建 userdata 并开机，`sys.boot_completed` 确认为 `1`。
 
 ### 3. 请求页
 
@@ -632,79 +638,6 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 ---
 
-## 七、 更新已有安装
-
-### 1. 更新 ESP 与 root
-
-`update-f2fs.py` 复用锁定上游的只读设备/GPT 解析、工厂 Fastboot 身份检查和本仓库的材料校验。`update-f2fs.py` 只传输 ESP 与 F2FS root 文件系统，不写 GPT、userdata 与持久 BOOT。完整 root 文件系统会替换 Linux 文件，个人文件先备份。
-
-先确认原 Android 能从当前活动槽完整启动并提供 root ADB。历史的 init_boot/DTBO 试验不算恢复完成的证据。计划阶段会核对主备 GPT/CRC、分区类型、当前槽、原 BOOT、源码清单、管理配置与实际 sparse 容量，并以只读方式取得 Android 的 `/sys/firmware/fdt`，记录设备当前的 RAM 区间与固定保留区。安装侧不拿交付件的 DTB 去比这份地图：固件在每次启动时用 `EFI_DT_FIXUP_PROTOCOL` 把 `/memory` 换成设备当次布局，并按容量与固定保留区校验。记录只用于计划与审计。含义见[上游跟踪](upstream.md)。
-
-缺 FDT 或解析失败就停下，不要跳过检查。
-
-`stock-recovery/boot.img` 是设备当前槽的原厂 BOOT。执行器要求它 96 MiB 且摘要与设备一致。原厂 ABL 不实现 `fastboot fetch`，从 Android 侧读；槽位从 `ro.boot.slot_suffix` 取，出厂设备是 `boot_a`，OTA 到 HyperOS 4 的设备是 `boot_b`：
-
-```sh
-SLOT=$(adb -s <serial> shell getprop ro.boot.slot_suffix | tr -d '\r')
-adb -s <serial> shell su -c "sha256sum /dev/block/by-name/boot${SLOT}"
-adb -s <serial> exec-out su -c "dd if=/dev/block/by-name/boot${SLOT} bs=1048576" \
-  > stock-recovery/boot.img
-sha256sum stock-recovery/boot.img    # 与上一条相同
-```
-
-原厂 ROM 包里的 `images/boot.img` 也是 96 MiB，但只有设备还跑着那一版固件时才逐字节相同。用前比摘要，不一致以设备读出的为准。
-
-在连接平板的 Linux 主机上执行。以下路径指暂存目录，`--serial` 是 `adb devices` 显示的 Android 序列号：
-
-```sh
-python3 boot-tools/installer/scripts/update-f2fs.py plan \
-  --sunuefi boot-tools/installer/sunuefi --serial <serial> \
-  --bundle . --root-install root-install \
-  --device-boot device-boot --stock-boot stock-recovery/boot.img \
-  --plan update-plan.json
-```
-
-复核计划并备份 Linux 文件后，使用同一组输入：
-
-```sh
-python3 boot-tools/installer/scripts/update-f2fs.py apply \
-  --sunuefi boot-tools/installer/sunuefi --serial <serial> \
-  --bundle . --root-install root-install \
-  --device-boot device-boot --stock-boot stock-recovery/boot.img \
-  --plan update-plan.json --session update-session \
-  --execute --accept-root-replacement
-```
-
-执行前重新比较设备、完整 GPT 基线、内存描述、槽位与材料，保存 GPT 双副本和原 BOOT。进入原厂 bootloader 后，第一笔传输之前核对两个目标的实时容量。fastbootd、序列号不对或槽位不对都拒绝。只传输 `sunuefi_esp` 与 `sunuefi_root`，完成后停在 Fastboot，状态是 `UPDATE_TRANSFERRED_FIRST_BOOT_AND_READBACK_PENDING`。
-
-传输成功不等于读回或启动通过。下一步依次执行：临时 `boot_linux.img` 启动与设备读回、桌面与硬件验收、临时 Android 旁路。全部通过后才单独安装持久 BOOT。
-
-中途中断时先读 session 的 result.json 和实际设备状态。不要自动重试或回滚 GPT。
-
-### 2. 只升级内核
-
-装好之后，内核跟着 `dnf upgrade` 走，不需要重跑刷写，也不需要 bundle。`kernel-piano` 按普通包升级，新包替换旧包；回滚要先 `dnf downgrade kernel-piano`，再恢复 UKI 的 `.bak`。
-
-```sh
-sudo dnf upgrade --refresh
-```
-
-升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再用 `systemd-ukify` 把新内核、新 initramfs、ESP 里现有 UKI 的 `.dtb` 与 `.cmdline`、新的 `.osrel` 与 `.uname` 组装成新的 `/boot/efi/EFI/Linux/sunuefi.efi`。重启后固件读到的是新内核。这条链路已在设备上验过：事务重建 initramfs，生成 `.bak` 并替换 UKI，重启正常进入桌面。
-
-旧 `boot.img` 链上的 `7.2.9-1` → `7.2.9-3` 升级也验过一次。两种链的升级后重启、`uname -r` 与桌面加载都有真机记录。
-
-任何一步失败时，旧 UKI 保持原样，设备继续用上一个内核启动。审计记录写在 `/var/lib/piano/kernel-esp/<release>.json`。
-
-已经装好但起不来的内核没有自动回滚。回滚靠 `sunuefi.efi.bak`：
-
-```sh
-sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi
-```
-
-`dnf history undo` 只回滚 RPM，不动 ESP。完整语义见 [COPR 软件源](copr-repository.md)。
-
----
-
 ## 八、 首次登录与诊断
 
 刷完后平板自动重启，进入 120 Hz 的桌面。四个档位都自动登录到 `piano` 用户：GNOME 走 GDM，KDE 走 plasma-login-manager，niri 与 Hyprland 走 greetd 的 `tuigreet` 兜底。
@@ -720,6 +653,8 @@ sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi
 | `authorized_keys` | 镜像里没有，刷写时用 `--ssh-key` 注入 |
 
 首次使用后执行 `passwd` 改密。
+
+> **完成判据**：系统成功进入桌面；若刷写时通过 `--ssh-key` 注入了公钥且 USB 网络已就绪，可通过 `piano` 用户成功建立 SSH 连接。
 
 ### 2. 桌面默认配置
 
@@ -741,14 +676,6 @@ NCM 用上游固定设备 MAC。NetworkManager 静态配置 `192.168.77.1/30`，
 摘要一致不代表标签正确。离线 staging 的标签由 build-image 里的目标策略标记步骤处理。
 
 ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，进串口救援后读取。取证文件不写 Linux root 文件系统。这条链的刷写件（`boot-abl-storage.img`、`init_boot-abl-storage.img`、`dtbo-abl-storage.img`）不随 Release 发布：它是调试材料，manifest 自标未做真机验证。需要时从 `build-image` 的 `diagnostic-abl-storage.tar.zst` workflow artifact 取。原生 BOOT 文件检查用 `verify-native-boot.py`。七项文件 guard 的报告与真实设备的槽位、当前来源、块设备写读回分开保存。未完成的引导助手模块不标为 ready。
-
----
-
-## 九、 双系统往返
-
-1. 从 Linux 切换回 Android：点击应用抽屉里的“返回 Android”图标，或在终端执行 `piano-next-boot android --reboot`。helper 把持久请求写成 Android 后正常重启，3 秒选择器在下次开机时进入 Android。已在真机验收。
-2. 从 Android 切换回 Linux：安装 Android 的「SunUEFI 引导助手」模块，在模块页面选择 Linux 并重启。没有引导助手时，开机前 3 秒按音量键，在 SunUEFI 菜单里选 Linux，选择会被保存。两条路径都不需要电脑，也不切活动槽。
-3. 3 秒选择器：每次开机亮屏后的前 3 秒内按音量上/下键呼出。不按则按请求页里的持久选择启动。
 
 ---
 
@@ -775,7 +702,7 @@ ls /usr/lib/modules/          # 有与 uname -r 同名的目录
 
 浏览器放 H.264 视频另算一项，且三家结果不同：Google Chrome 与 Firefox 默认走硬件解码。Fedora 的 Chromium 连 MP4 都打不开，因为它链接系统 `libavcodec`，而 `ffmpeg-free` 去掉了软件 H.264 解码器。装 RPM Fusion 的 `libavcodec-freeworld` 后能播，但仍然软解。细节见[已知问题](known-issues.md#触屏网络音频与相机)。
 
-再完整重启一次，确认仍进所选档位的桌面。双系统往返按第九节执行，往返后核对 `fastboot getvar current-slot`。
+再完整重启一次，确认仍进所选档位的桌面。双系统往返参见 [升级与回滚](upgrade.md)，往返后核对 `fastboot getvar current-slot`。
 
 发布验收的标准比这里更严：必须从原始 GPT/UFS 重新分区，并使用同一条流水线新产出的 bundle 与 root-install。门槛见[维护与验收](internals.md#pr-验收门槛)。
 
