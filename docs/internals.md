@@ -294,20 +294,8 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
 
 会话的 `result.json` 记录每个完成的阶段和错误。GPT 写入或擦除之后中断时，先看记录和实际设备状态。不要自动重试、恢复旧 GPT 或启动 Android。恢复 GPT 也找不回已擦除的 Android 文件。
 
-## 里程碑
+## 一键脚本当前边界
 
-1. **PR 与骨架**：建立 PR 分支与 `packages/` 结构，先落没有硬件争议的基础包
-   （`piano-fedora-configs`、`sm8750-video-accel`、`alsa-xiaomi-piano`）。
-2. **守护进程规范化**：`xiaomi-piano-thp`、`piano-camera`、`uperf-linux`、`libssc`
-   的打包定义入库，`scripts/build-rpms.sh` 能在本机或容器里跑完整的 rpmbuild。
-3. **纯净 DNF 装配链**：`scripts/build-clean-rootfs.py` 从本地 RPM 源直接装配 F2FS
-   镜像，替掉旧的 finalize 注入路径。`tests/check_clean_rootfs.py` 与 `make plan`
-   校验镜像里的文件全部归属 RPM 数据库。`make plan-desktop DESKTOP=kde` 打印
-   另一个档位的装配计划。
-4. **安装链**：一键脚本 `flash-linux.sh` 与 `flash-linux.bat` 带设备身份、分区容量、
-   摘要校验。安装文档同时保留不用脚本的手动路径。以下能力尚未具备：
-   - 一键脚本只接受 Android 当前槽为 `a`，不能装到任意槽。
-   - 只检查 `boot_a`、`sunuefi_esp`、`sunuefi_root` 是否存在及容量下限，不核对
-     GPT 的 CRC、类型 GUID 或整表布局。
-   - 分区不存在时直接拒绝。首次分区仍走 `install-f2fs.py`。
-5. **真机终验**：九类 RPM 均已上机验证，触控滤波、音频、编解码、传感器与自动旋转已进入稳定工作状态。冷启动、五门硬件验收与双系统往返继续跟踪记录。
+- 只接受 Android 当前槽为 `a`，不能装到任意槽。
+- 只检查 `boot_a`、`sunuefi_esp`、`sunuefi_root` 是否存在及容量下限，不核对 GPT 的 CRC、类型 GUID 或整表布局。
+- 分区不存在时直接拒绝。首次分区仍走 `install-f2fs.py`。
