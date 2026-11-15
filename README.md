@@ -88,18 +88,7 @@ Release 由维护者用 tag 手工 dispatch，tag push 不会触发发布。一�
 
 ## 文档
 
-- [系统架构](docs/architecture.md)：Fedora、SunUEFI 与 Android 的边界
-- [桌面档](docs/desktops.md)：四档的登录、电源、旋转与验收状态
-- [安装与分区](docs/installation.md)：分区计算、GPT 检查、一键与手动刷写、首次登录
-- [交付物与流水线](docs/artifacts.md)：内核、RPM、initramfs 与 bundle 的组装标准
-- [本地构建与验证](docs/build.md)：工具清单、取源、离线门槛、出货顺序与换 pin 的步骤
-- [维护与验收](docs/internals.md)：流水线入口、产物绑定、各步的 run id、PR 门槛
-- [COPR 软件源](docs/copr-repository.md)：全部 18 个包的在线升级，包括内核。回滚边界与失败模式
-- [上游跟踪](docs/upstream.md)：当前 pin、漂移看板、跟进规则
-- [设备树](docs/device-tree.md)：三条 DT 血缘、出货基线的谱系、23 个 overlay 的作用
-- [已知问题](docs/known-issues.md)：未解决与观察中的问题
-- [Gunyah 虚拟化](docs/virtualization.md)：SM8750 上的虚拟机生命周期与网络
-- [公开分发前的缺口](docs/public-release-gaps.md)：构建期仍绑着这一台设备、这一个人的输入
+- [文档中心](docs/README.md)：全局文档导航与受众分流（安装、升级、运维与架构）
 - [参与贡献](CONTRIBUTING.md)：本地检查、提交格式与 PR 门槛
 - [安全策略](SECURITY.md)：漏洞报告渠道与处理范围
 

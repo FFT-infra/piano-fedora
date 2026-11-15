@@ -84,18 +84,7 @@ An archive holds the platform images, that profile's `root-install/`, the compon
 
 ## Documentation
 
-- [Architecture](docs/architecture.md): the boundary between Fedora, SunUEFI, and Android
-- [Desktops](docs/desktops.md): login, power, rotation, and acceptance for each profile
-- [Installation and partitioning](docs/installation.md): partition sizing, GPT checks, one-step and manual flashing, first login
-- [Artifacts and pipeline](docs/artifacts.md): how the kernel, RPMs, initramfs, and bundle are assembled
-- [Local build and verification](docs/build.md): tool list, source checkout, offline gates, build order, and the steps for a pin bump
-- [Maintenance and acceptance](docs/internals.md): pipeline entry points, artifact binding, run id plumbing, PR gate
-- [COPR repository](docs/copr-repository.md): online upgrades for all eighteen packages, kernel included, plus the rollback boundary and failure modes
-- [Upstream tracking](docs/upstream.md): current pin, drift dashboard, follow-up rules
-- [Device tree](docs/device-tree.md): the three DT lineages, provenance of the shipped baseline, and what each of the 23 overlays does
-- [Known issues](docs/known-issues.md): open problems and items under observation
-- [Gunyah virtualization](docs/virtualization.md): VM lifecycle and networking on SM8750
-- [Gaps before public distribution](docs/public-release-gaps.md): build inputs still tied to this one device and this one person
+- [Documentation Hub](docs/README.md): global index and audience-based navigation (install, upgrade, operations, and architecture)
 - [Contributing](CONTRIBUTING.md): local checks, commit format, and the PR gate
 - [Security policy](SECURITY.md): how to report a vulnerability and what is in scope
 
