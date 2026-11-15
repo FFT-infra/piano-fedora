@@ -6,30 +6,30 @@
 
 ## 一、 功能对齐状态总表
 
-| 项 | 当前实现 | 上游基线 | 待跟进 / 说明 | 优先级 |
-| --- | --- | --- | --- | --- |
-| 指纹用户态 | 完成：`piano-fingerprint` 与 `piano-libfprint` 预装，fprintd 识别设备并打通录入与解锁 | 补丁集把 Goodix 接进标准 libfprint | 认证链路打通，模板与 Android 隔离 | 完成 |
-| 相机闪光灯 | 完成：`capture rear --flash`，预览流同步频闪，无流时常亮补光 | 帧同步频闪 | 补光与出流正常 | 完成 |
-| 相机 JPEG 直出 | 完成：`piano-camera-ctl capture --output FILE` 直出 JPEG | `photo/jpeg.c` | 工具链完整 | 完成 |
-| 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成 NV12 | `quad/` 与 v4l2loopback 生产者协商 | 格式协商完整，支持 8160x6120 输出 | 完成 |
-| 电源策略 | 完成：`tuned-ppd` 三档 profile 桥接到 uperf-linux 模式 | 上游 profile 直接写 cpufreq/devfreq | 避免频点冲突，受 uperf 保护 | 完成 |
-| 充电、温控与 FFC | 补丁已收：上游 `0093`、`0094`、`0096`–`0104` 共 11 条进封存序列 | 关机充电、皮肤温控、带认证 FFC 与停充退出 | 满电停充、温控降流与关机充电实机记录 | P1 |
-| 内核手指解码 | 保持用户态 THP 读取加 5 级卡尔曼滤波与正交锁 | `0095` 把逐帧矩阵解码移入内核，无时域滤波 | 架构分歧：保持当前用户态滤波方案 | P3 |
-| 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 设 `zh_CN.UTF-8`，默认输入法 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | 桌面预置中文与拼音输入 | 完成 |
-| mutter 触摸崩溃 | 默认采用发行版 `mutter-51.1-1.fc45`，补丁入 extras 扩展仓 | 补丁在 51.1 源码上可干净套用 | 默认镜像不合入，作为 opt-in 选项 | P2 |
-| KDE 桌面默认值 | 完成：KWin 默认值与环境变量落盘，支持缩放与自然滚动 | 类似配置，另设 `QT_SCALE_FACTOR=2` | 架构分歧：避免二次放大，不设 QT 变量 | 完成 |
-| 罗盘 | 可用：`/net/hadess/SensorProxy/Compass` 上 `HasCompass=true` | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 接口位于 Compass 子对象 | 完成 |
-| 构建断言 | 完成：`build-kernel.yml` 断言 20 项，`check_kernel_config_assertions.py` 锁定 | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | 契约自动化守卫 | 完成 |
-| 硬件状态对齐 | 完成：红外发射、HDR 属性与指纹链路均已核对并对齐实现 | 各项组件零散支持 | 详见[已知问题](known-issues.md) | 完成 |
-| 自动亮度 | 已支持：profile 加载与背光换算，支持随环境光动态调光 | GSD 按原厂 lux 曲线调背光 | 纳入 extras 扩展仓 | P3 |
-| 键盘背光热插拔 | extras 的 GSD 带 50.1 补丁，背光设备随键盘盖插拔更新 | 背光走 UPower/GNOME | 待外接键盘外设深度验收 | P2 |
-| KDE HDR/广色域 | 完成：extras 的 KWin 带退出 HDR 恢复背光补丁，支持正常开关 | KWin 可切换，退出 HDR 恢复背光 | 色深与色调映射精度待测，见[已知问题](known-issues.md#hdr) | 完成 |
-| 指纹录入 | 完成：`fprintd-enroll`、`fprintd-verify` 与锁屏解锁全流程打通 | libfprint/fprintd 录入与认证 | 详见[桌面档位](desktops.md)与[已知问题](known-issues.md#指纹红外与-hdr) | 完成 |
-| 相机隐私灯 | 完成：前后摄视频流启停联动 `/sys/class/leds/green/brightness` | 随前后摄视频流启停 | 驱动控制链路完整 | 完成 |
-| 相机录像 | 完成：支持 1920x1440@30 预览与录像 | 预览、录像、AE/AF/AWB | 直连与 loopback 均正常 | 完成 |
-| 手写笔进阶 | 基础输入正常：位置、压感、倾斜、proximity | 捏握、震动、磁吸识别、电量、跨系统重配 | 进阶手势与按键映射待后续推进 | P3 |
-| exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编入内核 | 文件系统读写 | 实际外置存储挂载待后续推进 | P3 |
-| 10-bit 与 144 Hz | 面板与驱动支持，未量测色深与刷新率 | 面板 10bpc，144 Hz 可选 | 保持默认稳定档（KDE 120Hz，GNOME 可选 144Hz） | P3 |
+| 项 | 当前实现 | 上游基线 | 说明 |
+| --- | --- | --- | --- |
+| 指纹用户态 | 完成：`piano-fingerprint` 与 `piano-libfprint` 预装，fprintd 识别设备并打通录入与解锁 | 补丁集把 Goodix 接进标准 libfprint | 认证链路打通，模板与 Android 隔离 |
+| 相机闪光灯 | 完成：`capture rear --flash`，预览流同步频闪，无流时常亮补光 | 帧同步频闪 | 补光与出流正常 |
+| 相机 JPEG 直出 | 完成：`piano-camera-ctl capture --output FILE` 直出 JPEG | `photo/jpeg.c` | 工具链完整 |
+| 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成 NV12 | `quad/` 与 v4l2loopback 生产者协商 | 格式协商完整，支持 8160x6120 输出 |
+| 电源策略 | 完成：`tuned-ppd` 三档 profile 桥接到 uperf-linux 模式 | 上游 profile 直接写 cpufreq/devfreq | 避免频点冲突，受 uperf 保护 |
+| 充电、温控与 FFC | 补丁已收：上游 `0093`、`0094`、`0096`–`0104` 共 11 条进封存序列 | 关机充电、皮肤温控、带认证 FFC 与停充退出 | 满电停充、温控降流与关机充电尚无实机记录 |
+| 内核手指解码 | 保持用户态 THP 读取加 5 级卡尔曼滤波与正交锁 | `0095` 把逐帧矩阵解码移入内核，无时域滤波 | 架构分歧：保持当前用户态滤波方案 |
+| 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 设 `zh_CN.UTF-8`，默认输入法 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | 桌面预置中文与拼音输入 |
+| mutter 触摸崩溃 | 默认采用发行版 `mutter-51.1-1.fc45`，补丁入 extras 扩展仓 | 补丁在 51.1 源码上可干净套用 | 默认镜像不合入，作为 opt-in 选项 |
+| KDE 桌面默认值 | 完成：KWin 默认值与环境变量落盘，支持缩放与自然滚动 | 类似配置，另设 `QT_SCALE_FACTOR=2` | 架构分歧：避免二次放大，不设 QT 变量 |
+| 罗盘 | 可用：`/net/hadess/SensorProxy/Compass` 上 `HasCompass=true` | `ssc-compass` 驱动已编入 `iio-sensor-proxy-ssc` | 接口位于 Compass 子对象 |
+| 构建断言 | 完成：`build-kernel.yml` 断言 20 项，`check_kernel_config_assertions.py` 锁定 | 平台片段默认打开 IR、LIRC、SND_SEQUENCER 等 | 契约自动化守卫 |
+| 硬件状态对齐 | 完成：红外发射、HDR 属性与指纹链路均已核对并对齐实现 | 各项组件零散支持 | 详见[已知问题](known-issues.md) |
+| 自动亮度 | 已支持：profile 加载与背光换算，支持随环境光动态调光 | GSD 按原厂 lux 曲线调背光 | 纳入 extras 扩展仓 |
+| 键盘背光热插拔 | extras 的 GSD 带 50.1 补丁，背光设备随键盘盖插拔更新 | 背光走 UPower/GNOME | 外接键盘深度验收未做 |
+| KDE HDR/广色域 | 完成：extras 的 KWin 带退出 HDR 恢复背光补丁，支持正常开关 | KWin 可切换，退出 HDR 恢复背光 | 色深与色调映射精度未测，见[已知问题](known-issues.md#hdr) |
+| 指纹录入 | 完成：`fprintd-enroll`、`fprintd-verify` 与锁屏解锁全流程打通 | libfprint/fprintd 录入与认证 | 详见[桌面档位](desktops.md)与[已知问题](known-issues.md#指纹红外与-hdr) |
+| 相机隐私灯 | 完成：前后摄视频流启停联动 `/sys/class/leds/green/brightness` | 随前后摄视频流启停 | 驱动控制链路完整 |
+| 相机录像 | 完成：支持 1920x1440@30 预览与录像 | 预览、录像、AE/AF/AWB | 直连与 loopback 均正常 |
+| 手写笔进阶 | 基础输入正常：位置、压感、倾斜、proximity | 捏握、震动、磁吸识别、电量、跨系统重配 | 进阶手势与按键映射未实现 |
+| exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编入内核 | 文件系统读写 | 外置存储挂载未验证 |
+| 10-bit 与 144 Hz | 面板与驱动支持，未量测色深与刷新率 | 面板 10bpc，144 Hz 可选 | 保持默认稳定档（KDE 120Hz，GNOME 可选 144Hz） |
 
 ---
 
