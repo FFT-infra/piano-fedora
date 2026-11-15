@@ -198,9 +198,8 @@ make plan-desktop DESKTOP=niri RELEASEVER=45
   文件在树里，证明不了这些文件在设备上真的生效。
 - **niri / Hyprland 没有自动旋转**，见上一节。
 - **KDE 的自动旋转依赖 `qt6-qtsensors`**，这一条来自 Plasma 6 的已知行为，
-  本轮没有在设备上验证。
-- **Hyprland 依赖第三方 COPR。** 仓库消失或公钥更换时，构建硬失败。升级路径
-  是自己打包，本轮评估后没有采用。
+  未在真机设备上实际验证。
+- **Hyprland 依赖第三方 COPR。** 仓库消失或公钥更换时，构建硬失败。替代方案是自己打包，评估后未采用。
 - **`denial` 是占位档位**，`buildable: false`。`build-clean-rootfs.py --plan`
   对它返回 `INPUTS_REQUIRED` 并以非零退出，不会产出镜像。
 - **内核在 COPR 里，四档共用。** 装机用归档里的 `kernel-piano`。

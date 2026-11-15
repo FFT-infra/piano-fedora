@@ -137,7 +137,7 @@ SunUEFI 的 7.3 封存序列从 90 条增到 92 条，新增上游的 `0091-dpu-
 
 DTB overlay 从 18 个补到 22 个，`build-bundle.yml` 按 `release.json` 的顺序补了 `piano-pcie-clocks`、`piano-battery`、`piano-camera-sensors`、`piano-display-interconnects`。固件叠层多出 `piano-display` 一份，它的 `manifest.json` 带 `directory: qcom/sm8750`，`firmware-overlays.py` 原来一律平铺到根目录，这次改成读清单里的落点。
 
-已核：`scripts/apply-patches.py --check` 在 `4ef8740` 的干净 clone 上给出 `CHECKED`，套到夹具上给出 `APPLIED`；`make test` 全绿；ccache 实测命中率 99.96%，全量编译时间从 56 分钟降至 6 分 52 秒。未核：新 pin 上的整条发布链与设备实机行为。这几项分别记账，在这轮验收完成前不发 v45.2。
+已核：`scripts/apply-patches.py --check` 在 `4ef8740` 的干净 clone 上给出 `CHECKED`，套到夹具上给出 `APPLIED`；`make test` 全绿；ccache 实测命中率 99.96%，全量编译时间从 56 分钟降至 6 分 52 秒。未核：新 pin 上的整条发布链与设备实机行为。这几项分别记账。
 
 `battery` overlay 在 `bq27z561_master@55` 上写 `ti,authentication-key`，来自上游自己的 DTB，本次未改动，记录在此便于以后审阅时认识它。
 

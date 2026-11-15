@@ -382,7 +382,7 @@ libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压�
 
 还有三件事没验：重复安装、`--accept-data-loss` 路径、缩到余量很小的容量。
 
-尺寸只在首装这一次定。`userdata` 起点不动、root 从它后面接，所以只能缩不能长，上限就是当前的盘尾。装完再改没有入口：`install-f2fs.py` 的 `--android-data-mib` 与 `--lossless` 在已有分区时直接拒绝，`update-f2fs.py` 只替换文件。要改容量就先把 `sunuefi_root`、`sunuefi_esp` 从 GPT 删掉、把 `userdata` 拉回盘尾，再跑一遍，Linux 数据会丢，Android 保留。删分区不用手工改表：Android 的「SunUEFI 引导助手」WebUI 存储页有 **删除并归还 Android 空间**，它检查扩容条件、写新 GPT 并留备份，下次启动由 SukiSU 早期维护用 `resize.f2fs -k -t` 扩大加密 F2FS；分区目标与文件系统目标分别核对，原有元数据盖不住整块 `userdata` 时只扩到元数据可覆盖范围。这步需要支持早期 init 配置的 SukiSU，本轮未真机验证。
+尺寸只在首装这一次定。`userdata` 起点不动、root 从它后面接，所以只能缩不能长，上限就是当前的盘尾。装完再改没有入口：`install-f2fs.py` 的 `--android-data-mib` 与 `--lossless` 在已有分区时直接拒绝，`update-f2fs.py` 只替换文件。要改容量就先把 `sunuefi_root`、`sunuefi_esp` 从 GPT 删掉、把 `userdata` 拉回盘尾，再跑一遍，Linux 数据会丢，Android 保留。删分区不用手工改表：Android 的「SunUEFI 引导助手」WebUI 存储页有 **删除并归还 Android 空间**，它检查扩容条件、写新 GPT 并留备份，下次启动由 SukiSU 早期维护用 `resize.f2fs -k -t` 扩大加密 F2FS；分区目标与文件系统目标分别核对，原有元数据盖不住整块 `userdata` 时只扩到元数据可覆盖范围。这步需要支持早期 init 配置的 SukiSU，未做真机验证。
 
 发布归档里的 `root-install` 按 `_a` 构建，Slot B 设备要用同一次 bundle run 跑 `prepare-install.yml` 并传 `android_slot=_b`。一键脚本与手动章节已跟随活动槽，槽位与 root-install 不一致时在写入前退出。
 
@@ -514,7 +514,7 @@ GNOME Snapshot 这类走 portal 与 pipewire 的应用，拿到的是 16x4 而�
 
 extras 的 KWin 带退出 HDR 恢复背光的补丁，内核封存序列里也有上游的 HDR identity gamma 补丁。`kscreen-doctor` 同一条命令带 `hdr.enable` 与 `wcg.enable` 时驱动接受配置，单独提交 `hdr.enable` 会被拒绝并打印 `applying config failed`。补丁只管 HDR 切回 SDR 时把硬件背光写回去，不改这条属性提交路径。
 
-2026-11-12 在冷启动后的补丁版 KWin（`kwin-6.8.2-3.piano1.fc45`）上开关过两轮，`/sys/class/backlight/ktz8866-backlight/brightness` 都是 1024 → 2047 → 1024，关 HDR 后背光没有停在最大值。2026-11-14 在 `kwin-6.8.2-4.piano1.fc45` 上重跑两轮，先装本地 RPM 再重建 Plasma 会话让新 KWin 生效，两轮都是 1556 → 2047 → 1556，再等 5 秒稳态仍是 1556。同一台设备装 Fedora 官方 `kwin-6.8.2-3.fc45` 时，关 HDR 后背光停在 2047 不回落，退出恢复背光靠 extras 的 KWin 补丁。这轮 KWin 只把 release 从 `3.piano1` 抬到 `4.piano1`，补丁内容未变。
+2026-11-12 在冷启动后的补丁版 KWin（`kwin-6.8.2-3.piano1.fc45`）上开关过两轮，`/sys/class/backlight/ktz8866-backlight/brightness` 都是 1024 → 2047 → 1024，关 HDR 后背光没有停在最大值。2026-11-14 在 `kwin-6.8.2-4.piano1.fc45` 上重跑两轮，先装本地 RPM 再重建 Plasma 会话让新 KWin 生效，两轮都是 1556 → 2047 → 1556，再等 5 秒稳态仍是 1556。同一台设备装 Fedora 官方 `kwin-6.8.2-3.fc45` 时，关 HDR 后背光停在 2047 不回落，退出恢复背光靠 extras 的 KWin 补丁。3.piano1 与 4.piano1 的补丁内容相同，只有 release 号变化。
 
 没量过色深与色调映射，HDR 画面本身不算验证过。默认配置把 HDR 与广色域保持关闭。
 
@@ -612,7 +612,7 @@ cherry-pick）。有六处没有照抄上游：
 
 - `ktz8866` 的 `DEFAULT_BRIGHTNESS` 保持 1500。上游那条会把开机亮度一起改掉，
   不在这次范围里。同一文件的可读寄存器表、`FLAG` 读后清零、HWEN 上电时序和
-  错误上报是本轮自己写的，不是上游原文。
+  错误上报是本地补丁的输出，不是上游原文。
 - 功放增益上限保持 215。上游 `ac637afc63` 把它放宽到 231，同时自己注明那不是
   验证过的安全上限。
 - `7cfa3bd691` 会删掉我们移植的 A830 支持，整条不要。
@@ -655,8 +655,8 @@ exFAT 与 NTFS 的 U 盘读写属于待验收项。
 - 三个 UEFI 补丁的 `series.json` 里 `note` 引用的文档分两类。`docs/status.md`、
   `docs/ufs-dedicated-area-audit.md` 与 `docs/piano-full-ddr-producer-gaps.md`
   在上游 SunUEFI 仓库，按 `sources.lock.json` 的 pin 取。还有一份设备验收记录
-  已移到不入库的本地笔记，这条引用是历史记录。改 `series.json` 会改变
-  `project_source_sha256`，现有 bundle 的 UEFI 来源校验会失效，因此本轮不改它。
+  已移到不入库的本地笔记，这条引用是历史记录。改它会改变
+  `project_source_sha256`，已发布 bundle 的 UEFI 来源校验会失效，所以保持原值。
 
 ## 启动时的间歇 Oops
 
