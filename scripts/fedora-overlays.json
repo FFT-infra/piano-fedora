@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "note": "Fedora 临时重编包的删除条件与基准版本。sha256 仍由各构建脚本与 spec 单独拥有，tests/check_fedora_overlays.py 保证台账与真相源一致。",
+  "overlays": [
+    {
+      "key": "mesa-piano",
+      "truth": "scripts/build-fedora-mesa.py",
+      "provides": ["mesa-piano"],
+      "fedora_packages": [
+        {"name": "mesa", "base_version": "26.2.6", "pkgs_slug": "mesa-dri-drivers"}
+      ],
+      "upstream_fix": "freedreno: Add chip-id support for A830v1（Mesa !43878），已随 26.3.0 进入上游",
+      "drop_when": "Fedora 45 稳定库提供含 A830v1 chip-id 的 Mesa 26.3+，且 dnf upgrade 不再需要 mesa-piano 顶替官方包",
+      "tracking_issue": 53,
+      "rebase_on_fedora_update": true,
+      "rebase_note": "按新 SRPM 重基本包，核对 adapt_spec 锚点。"
+    },
+    {
+      "key": "piano-pipewire-gstreamer",
+      "truth": "packages/piano-pipewire-gstreamer/piano-pipewire-gstreamer.spec",
+      "provides": ["piano-pipewire-gstreamer"],
+      "fedora_packages": [
+        {"name": "pipewire", "base_version": "1.6.11"}
+      ],
+      "upstream_fix": "1.6 分支 src/gst 的六条提交（首选 caps、加锁顺序等）+ master 97699d70（caps 未变不重连，1.6 未 backport）+ SunUEFI 的 copy-memptr",
+      "drop_when": "Fedora 的 pipewire 同时带上 90ddb7e6 与 97699d70，且 copy-memptr 的问题不再出现，整份包才能删",
+      "tracking_issue": 64,
+      "rebase_on_fedora_update": true,
+      "rebase_note": "先重基补丁集、去掉已进上游的补丁；97699d70 未进 1.6，按常驻补丁保留。"
+    },
+    {
+      "key": "fedora-desktop-patches",
+      "truth": "scripts/build-fedora-desktop-patches.py",
+      "provides": [
+        "gnome-settings-daemon-piano",
+        "kwin",
+        "gtk3",
+        "mutter",
+        "gdm"
+      ],
+      "fedora_packages": [
+        {"name": "gnome-settings-daemon", "base_version": "51.1"},
+        {"name": "kwin", "base_version": "6.8.2"},
+        {"name": "gtk3", "base_version": "3.24.52"},
+        {"name": "mutter", "base_version": "51.1"},
+        {"name": "gdm", "base_version": "51.1.1"}
+      ],
+      "upstream_fix": "可选桌面补丁，来自 SunUEFI 的 patches/（gsd 自动亮度/键盘背光、kwin HDR 恢复、gtk3 XI2、mutter 触摸、gdm KMS 等待），按 Fedora 51.1 源码重基",
+      "drop_when": "对应补丁进入 Fedora 官方包，或不再需要该桌面档；五个包各自独立判断",
+      "tracking_issue": null,
+      "rebase_on_fedora_update": true,
+      "rebase_note": "按新 SRPM 核对 PACKAGES 的三个 sha256，补丁需仍能 --fuzz=0 套上。"
+    }
+  ]
+}
