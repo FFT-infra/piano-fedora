@@ -660,7 +660,7 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 首次使用后执行 `passwd` 改密。
 
-> **完成判据**：系统成功进入桌面；若刷写时通过 `--ssh-key` 注入了公钥且 USB 网络已就绪，可通过 `piano` 用户成功建立 SSH 连接。
+> **完成判据**：系统成功进入桌面。
 
 ### 2. 桌面默认配置
 
@@ -672,11 +672,9 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
   * `logind.conf.d/piano.conf` 由 `piano-fedora-configs` 包提供。
 * 触控提频：`uperf-linux` 监听触控输入，触点按下后 1 ms 内拉高全大核频率。
 
-### 3. 串口与网络
+### 3. 串口
 
 正常 Fedora 用需要账户认证的 `serial-getty@ttyGS0.service`。initramfs 救援的串口 shell 另走一条。
-
-NCM 用上游固定设备 MAC。NetworkManager 静态配置 `192.168.77.1/30`，不加默认路由。主机侧可用 `192.168.77.2/30`。以上配置已写入镜像，实际 USB 枚举和登录还要在设备上验证。
 
 ### 4. 维护者用的诊断
 
@@ -730,7 +728,3 @@ ls /usr/lib/modules/          # 有与 uname -r 同名的目录
 活动槽保留着完整的原厂 Android 分区（`super`、`userdata` 等）。合体 BOOT 只替换 `boot<槽>`，备份的原厂镜像可以随时刷回。
 
 在 Fastboot 里执行 `fastboot erase userdata && fastboot reboot`，Android 会重建加密分区并走首次开机引导。重启后若停在 Recovery 并显示 `Couldn't initialize user 0`，在 Recovery 里选一次“清除数据”再继续。
-
-### Q3: Type-C 有线网络 SSH 无法连接？
-
-系统把 USB NCM 接口静态配置为 `192.168.77.1/30`。把电脑端对应网卡配到同一子网（例如 IP `192.168.77.2`，掩码 `255.255.255.252`），然后 `ssh piano@192.168.77.1`。

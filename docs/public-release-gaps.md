@@ -13,7 +13,7 @@
 | 已知默认密码与自动登录 | `scripts/finalize-fedora-rootfs.py:21`（口令常量）、`:743`（自动登录由档位落盘）、`:845`（manifest 里的登录证明） | `piano` 用户使用文档化默认密码 `piano123456`，自动登录，root 锁定 | 拿到同一镜像的任何人都能直接进桌面 | 已决定：默认密码作为产品默认值保留，文档继续写明。不强制改密，不生成随机密码，自动登录保持现状 |
 | 真机序列号 | `docs/installation.md`、`tests/check_manual_flash_flow.py` | 已改为 `<serial>` 与 `SN-TEST-1` | 已解决，历史提交里仍有 | 完成（历史未重写） |
 | 个人绝对路径 | `scripts/verify-new-image.sh` | 默认镜像路径从脚本位置推导，内核 release 读 `root-image-manifest.json` | 已解决 | 完成 |
-| 内网拓扑 | `docs/architecture.md`、`docs/virtualization.md`、`scripts/probe-device.sh` | 公开文档用“桥接机”这类角色名，`probe-device.sh` 的示例地址用 `192.0.2.10`。`192.168.77.0/30` 是设备固定网段，保留 | 已解决 | 完成 |
+| 内网拓扑 | `docs/architecture.md`、`docs/virtualization.md`、`scripts/probe-device.sh` | 公开文档用“桥接机”这类角色名，`probe-device.sh` 的示例地址用 `192.0.2.10`。USB 调试网段属维护者工具，不写进公开文档 | 已解决 | 完成 |
 | 旧的公钥历史 | 切换前的 dispatch 事件里带的 `ssh_public_key` 输入 | 旧公钥仍然留在历史事件里 | 公钥不是秘密，但它把一个人的身份和这台设备的管理权限挂在公开记录上 | 已换用安装期注入，旧公钥在设备侧作废 |
 
 COPR 的 owner/project 写死在四个地方：`packages/piano-fedora-configs/etc/yum.repos.d/piano-fedora-copr.repo`、`scripts/publish-copr.py` 的 `--project` 默认值、`scripts/verify-copr-device.py` 的两个默认常量，以及 `publish-copr.yml` 的输入默认值。要换成别人的 COPR 项目，改这四处即可。设备上已经装好的 `.repo` 会在下次升级 `piano-fedora-configs` 时被覆盖，这份文件不带 `noreplace`。镜像里没有 Wi-Fi 凭据，上游地址都是公开仓库。
