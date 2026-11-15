@@ -40,7 +40,7 @@
       "category": "virtualization",
       "role": "同 SoC 的 Android Gunyah 客体运行记录",
       "decision": "reference",
-      "reason": "作者设备运行记录；不能证明 piano Fedora 宿主已具备 VM 接口",
+      "reason": "作者设备运行记录，不能作为本项目宿主具备 VM 接口的证据",
       "reference_commit": "5c2143106735b34ddc8892121a6b00aa4f178cc9",
       "reference_date": "2026-09-01"
     },
@@ -925,7 +925,7 @@
       "category": "内核",
       "role": "piano 主线内核树，独立于 blu-sharky/linux-piano 的另一条开发线",
       "decision": "reference",
-      "reason": "面板模块 ID 选择、触控固件选择、geni-qcom 空闲、LLCC 驱动、CPU 热区等改动与本机正在处理的项重合；只作对照，不替换锁定的内核基线",
+      "reason": "面板模块 ID 选择、触控固件选择、geni-qcom 空闲、LLCC 驱动、CPU 热区等改动与当前适配范围重合；只作对照，不替换锁定的内核基线",
       "reference_commit": "bf42598aceec58fd7392314de233e5fab3835938",
       "reference_date": "2026-11-03"
     },
@@ -955,7 +955,7 @@
       "category": "虚拟化",
       "role": "在 Qualcomm Gunyah 里运行 UEFI 固件的 EDK2 构建",
       "decision": "reference",
-      "reason": "与 librevm 虚拟机管理器配套；Gunyah 路线可行性判断的参考，不参与本机启动链",
+      "reason": "与 librevm 虚拟机管理器配套；Gunyah 路线可行性判断的参考，不参与本项目启动链",
       "reference_commit": "90c4d52c7d11485318bbb4fb9291a15ea1550ab2",
       "reference_date": "2026-10-10"
     },
@@ -1005,7 +1005,7 @@
       "category": "同 SoC 参考",
       "role": "OnePlus Pad 3（erhai，SM8750）的充电测试台",
       "decision": "reference",
-      "reason": "tests/ci/tablet/TODOS 的组织方式可借来测 piano 充电",
+      "reason": "其测试组织方式可参考",
       "reference_commit": null,
       "reference_date": "2026-11-08"
     }

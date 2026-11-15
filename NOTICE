@@ -48,7 +48,7 @@ SunUEFI 的来源、文件级许可与第三方材料见
 
 | 位置 | 来源 | 许可 |
 | --- | --- | --- |
-| `packages/xiaomi-piano-thp/usr/share/piano/touch/piano-{csot,boe}.json` | 从本机原厂固件 `/odm/firmware/piano_nova_{csot,boe}_thp_config.ini`（ROM `OS3.0.309.0.WPYCNXM`）提取的电极校准数值，`source_sha256` 指回原文件 | 未确认；见下 |
+| `packages/xiaomi-piano-thp/usr/share/piano/touch/piano-{csot,boe}.json` | 从原厂固件 `/odm/firmware/piano_nova_{csot,boe}_thp_config.ini`（ROM `OS3.0.309.0.WPYCNXM`）提取的电极校准数值，`source_sha256` 指回原文件 | 未确认；见下 |
 | `packages/xiaomi-piano-thp/usr/share/piano/pen/calibration/piano-{csot,boe}.ini` | 同一份原厂 INI 里的笔校准数值，只保留数值项 | 未确认；见下 |
 
 这两组文件只包含校准数值本身，不含原厂 INI 的其余配置。原厂 INI 不入库。

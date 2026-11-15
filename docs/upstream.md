@@ -112,7 +112,7 @@ DTB 里的两个 profile 与原厂 UEFI 的两份面板描述文件一一对应�
 | 0 | CSOT | `qcom,mdss_dsi_p81_42_02_0a_dualdsi_dsc_vid` | `c4 82 … c4 06` |
 | 1 | BOE | `qcom,mdss_dsi_p81_35_02_0b_dualdsi_dsc_vid` | `bc 77 07` |
 
-这与 `PianoFactoryPanel.h`、上游 `docs/devel/panel-selection.md` 的表一致，也与原厂 UEFI 的两份面板描述文件一一对应。本机 `lcd_id: 1`，所以是 BOE 模块，UEFI 读到的 `dsi_display0` 应当指向 `35_02_0b`。
+这与 `PianoFactoryPanel.h`、上游 `docs/devel/panel-selection.md` 的表一致，也与原厂 UEFI 的两份面板描述文件一一对应。参考设备的 `lcd_id: 1` 对应 BOE 模块，UEFI 读到的 `dsi_display0` 应当指向 `35_02_0b`。
 
 早期移植文档曾将两者的供应商归属对应颠倒，原因在于驱动内部 `piano_boe_*` 与 `piano_csot_*` 的函数命名来自第三方移植者定义；实际面板供应商归属必须严格以原厂驱动 `nt36xxx.c` 中读出的 `lcd_id` 为准（0 为 CSOT，1 为 BOE）。
 
