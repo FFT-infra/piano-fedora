@@ -2,7 +2,7 @@
 
 ## 想装机的人
 
-- [系统架构](architecture.md)：Fedora、SunUEFI 与 Android 的边界和分区布局
+- [系统架构](architecture.md)：Fedora、[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 与 Android 的边界和分区布局
 - [安装与分区](installation.md)：首装准备、分区计算、一键与手动刷写、首次登录
 - [交付物与流水线](artifacts.md)：发布归档结构、分卷解压与文件校验
 
@@ -26,3 +26,10 @@
 - [上游跟踪](upstream.md)：SunUEFI 与内核当前 pin、差异看板与跟进规则
 - [与上游的功能差距](upstream-parity.md)：截至 2026-11-12 对照 pin `3a7e5c1b` 的功能差距快照
 - [公开分发前的缺口](public-release-gaps.md)：构建期仍依赖特定机器与个人配置的输入项
+
+---
+
+## 上游与署名
+
+本项目的启动链、内核编排、rootfs 组装与打包来自 [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)。
+引用其代码、数据与结论的页面在首次提及处链接回上游。许可与第三方材料见 [NOTICE](../NOTICE) 与上游仓库的 `LICENSE.md`、`THIRD_PARTY.md`。

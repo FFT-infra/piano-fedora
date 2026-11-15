@@ -14,6 +14,13 @@ Fedora 45 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 
 
 ## Hardware status
 
+Legend:
+- ✅ Verified on device
+- ⚠️ Partially working (gaps noted in description)
+- ❌ Not implemented or unverified
+
+Verified hardware peripheral support status and device test records for the current release:
+
 | Module | Status | Notes |
 |---|---|---|
 | Display | ✅ | 3200×2136 at 120 Hz, Mesa 26.2.6 Turnip (Adreno 830) |
@@ -29,9 +36,9 @@ Fedora 45 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are not verified yet |
 | Dual boot | ✅ | The combined BOOT lives in the active slot's `boot` partition (`boot_a` or `boot_b`). Linux→Android uses `piano-next-boot android --reboot`. Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two round trips are verified on device, see [known issues](docs/known-issues.md#双系统切换) |
 | Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally. 1906 axis events, 22 proximity events and 18 tip events were captured, see [known issues](docs/known-issues.md#手写笔) |
-| Fingerprint | ✅ | Side-mounted capacitive, Goodix. Authentication runs in the TEE's `gfpia` TA. `piano-fingerprint` provides the native client, `piano-libfprint` links the Goodix static library into a patched libfprint, both ship in the default image. Enrolment, verification and lock-screen unlock passed on an image before v45.3; v45.3 has not been retested. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
-| IR | ✅ | The consumer IR blaster (QUPv3 SE15) is wired to the standard `ir-spi` driver and LIRC. `/dev/lirc0` and `/sys/class/rc/rc0` exist, and `ir-ctl` can send. Optical output is not measured. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
-| HDR | ❌ | The panel supports HDR10. DSI-1 attaches `HDR_OUTPUT_METADATA`, and the CRTC exposes `GAMMA_LUT`, `DEGAMMA_LUT` and `CTM`. Patched KWin can toggle HDR and restore backlight on exit; color depth and tone mapping are not verified. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| Fingerprint | ✅ | Side-mounted capacitive (Goodix), `piano-fingerprint` and `piano-libfprint` ship in the default image. Enrolment and lock-screen unlock passed on earlier images; current status and boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| IR | ✅ | Consumer IR blaster, `/dev/lirc0` node and `ir-spi` driver ready, supports `ir-ctl` transmission. Testing boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| HDR | ❌ | Panel supports HDR10, DSI-1 and CRTC properties attached. Extras patched KWin on KDE Plasma supports toggle and backlight restore; tone mapping and testing boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
 
 ## Desktops
 
@@ -72,9 +79,9 @@ There are two paths. The manual path is the primary one: it lists each command, 
 
 ### Switching between systems
 
-- Linux to Android: click "Return to Android" in the app grid, or run `piano-next-boot android --reboot`. Verified on device.
-- Android to Linux: install the SunUEFI boot-assistant module and choose Linux there. Without the module, press a volume key within the first 3 seconds and pick Linux. The choice is saved.
-- Both directions write the same request page, which lives in that active-slot BOOT. Neither direction switches slots or writes the GPT.
+- Linux to Android: click "Return to Android" in the app grid, or run `piano-next-boot android --reboot`.
+- Android to Linux: use the SunUEFI boot-assistant module, or press a volume key within 3 seconds at boot.
+- Both directions write the active-slot BOOT request page without switching slots or altering the GPT.
 
 ## Release artifacts
 

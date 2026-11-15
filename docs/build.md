@@ -28,7 +28,7 @@ python3 scripts/checkout-sources.py --output build/test-sources --mode boot
 
 | `--mode` | 取什么 |
 | --- | --- |
-| `check` | 只取 SunUEFI |
+| `check` | 只取 [SunUEFI](https://github.com/slwyts/Project-SunUEFI) |
 | `boot` | SunUEFI、内核稀疏检出（`include/dt-bindings/`）、dtc |
 | `device` | 上面之外加运行时源码、crosvm、LibreVM、VA-API、piano-integration 的稀疏路径 |
 | `graphics` | Mesa 源码 |

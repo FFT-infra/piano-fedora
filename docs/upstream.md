@@ -10,8 +10,10 @@
 
 `sources.lock.json` 里有两条 pin 只进对照任务、不进产物：
 
-- `vendor-kernel`：`android_kernel_xiaomi_piano` 的 DTS 源码，被 `scripts/compare-vendor-dt.py` 读取，用来核对 SunUEFI overlay 的目标节点在厂商硬件描述里是否存在。
-- `vendor-blobs`：`android_vendor_xiaomi_piano` 的固件与传感器配置，被 `scripts/compare-vendor-blobs.py` 按 git blob 摘要比对。只读文件清单，不下载内容，不进镜像。
+- `vendor-kernel`：
+  - `android_kernel_xiaomi_piano` DTS 源码，用于核对 SunUEFI overlay 目标节点是否存在。
+- `vendor-blobs`：
+  - `android_vendor_xiaomi_piano` 固件与传感器配置，用于比对 git blob 摘要，不进镜像。
 
 这两条属于消费上游，所以进 `upstream-watch` 的漂移报告，但白名单里没有它们：厂商树一更新就要人工看对照报告有没有新差异。任何出货路径引用 `vendor-kernel` 都算违规——它描述的是 Android 下游 DT，和启动用的 `board.dtb` 不是同一条血缘，见 `docs/device-tree.md`。
 
@@ -25,9 +27,13 @@
 
 `.github/workflows/upstream-watch.yml` 每周一 03:23 UTC 运行一次 `scripts/audit-upstreams.py --execute`。`scripts/upstream-watch.py` 处理执行结果，按以下规则分流：
 
-- 锁定 ref 指向的提交与 `sources.lock.json` 的 pin 不同时，算作漂移。漂移汇总进一个 `upstream-drift` issue。下次运行若没有漂移，`scripts/upstream-watch.py` 关闭这个 issue。
-- 白名单（`crosvm`、`librevm`、`uperf`、`piano-mesa`、`piano-sensors`、`piano-mipps-auth`）里的漂移在 issue 里附带一条改 pin 命令。workflow 本身不碰锁文件，也不开 PR：仓库设置不允许 Actions 创建 PR。人跑 `scripts/upstream-watch.py bump` 改 `sources.lock.json` 的 `commit`，`ref` 保持不动。这些项目属于纯用户态上游，`make test` 与 CI 能够覆盖检查；受影响产物仍要按本页末节重编。
-- 内核、UEFI、相机/触控、固件和 debian-piano 只作报告。离线 CI 代替不了这些组件的真机验收。维护者按后文「每次跟进上游」的规则评审 pin。
+- 锁定 ref 提交与 `sources.lock.json` 的 pin 不同时记为漂移：
+  - 漂移汇总进 `upstream-drift` issue；下次无漂移时自动关闭 issue。
+- 白名单漂移在 issue 中附带改 pin 命令：
+  - 白名单包括 `crosvm`、`librevm`、`uperf`、`piano-mesa`、`piano-sensors`、`piano-mipps-auth`；
+  - 纯用户态上游由人执行 `upstream-watch.py bump`，Actions 不直接修改锁文件。
+- 内核、UEFI、相机/触控、固件与 debian-piano 仅作报告：
+  - 离线 CI 无法代替真机验收，维护者按后文规则评审更新。
 
 漂移判断只看 pin，不看 `docs/upstreams.json` 的 `reference_commit`。`reference_commit` 是人工基线，只在 `--record-baseline` 时推进。拿 `reference_commit` 判断，会把没有位移的上游报成更新。
 

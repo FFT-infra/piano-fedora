@@ -78,5 +78,5 @@ sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi
 ## 二、 双系统往返
 
 1. 从 Linux 切换回 Android：点击应用抽屉里的“返回 Android”图标，或在终端执行 `piano-next-boot android --reboot`。helper 把持久请求写成 Android 后正常重启，3 秒选择器在下次开机时进入 Android。已在真机验收。
-2. 从 Android 切换回 Linux：安装 Android 的「SunUEFI 引导助手」模块，在模块页面选择 Linux 并重启。没有引导助手时，开机前 3 秒按音量键，在 SunUEFI 菜单里选 Linux，选择会被保存。两条路径都不需要电脑，也不切活动槽。
+2. 从 Android 切换回 Linux：安装 Android 的「[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 引导助手」模块，在模块页面选择 Linux 并重启。没有引导助手时，开机前 3 秒按音量键，在 SunUEFI 菜单里选 Linux，选择会被保存。两条路径都不需要电脑，也不切活动槽。
 3. 3 秒选择器：每次开机亮屏后的前 3 秒内按音量上/下键呼出。不按则按请求页里的持久选择启动。

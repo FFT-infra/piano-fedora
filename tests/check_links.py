@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""校验仓库内 Markdown 的相对链接可解析，锚点能在目标标题里找到。
+"""校验仓库内 Markdown 的相对链接可解析，锚点能在目标标题或锚点标签里找到。
 
-包含：
-1. 标准 Markdown 相对链接与锚点解析。
-2. 反引号内文档与脚本路径校验（白名单跳过已知上游路径，按 '#' 剥离锚点）。
-3. docs/*.md 孤儿文档检查（仅计 Markdown 链接）。
-4. 从根 README 出发 BFS 遍历，断言到达所有 docs/*.md 深度 <= 2（两击可达）。
+检查范围与规则：
+1. 标准 Markdown 相对链接与锚点解析：覆盖仓库内所有 git 跟踪的 *.md 文件，支持标准标题 slug 及显式 <a id="..."> 锚点。
+2. 反引号路径引用校验：仅校验 Markdown 中形如 `docs/*.md` 与 `scripts/*.py` 的路径引用
+   （按 '#' 剥离锚点，白名单跳过已知上游文档路径；不覆盖 config/*.json、packages/*、tests/*.py 等）。
+3. 孤儿文档检查：仅断言 docs/*.md 目录下的文档均有入向 Markdown 链接（README 与 docs/README.md 豁免）。
+4. 两击可达检查：从根 README.md / README.en.md 出发进行 BFS 遍历，断言所有 docs/*.md 的深度 <= 2
+   （根目录的 CONTRIBUTING.md、SECURITY.md 等非 docs/*.md 文件不在两击可达约束目标集内）。
 """
 
 import re
@@ -19,6 +21,7 @@ LINK = re.compile(r"\]\(([^)]+)\)")
 BACKTICK = re.compile(r"`((?:docs|scripts)/[^`\s]+\.(?:md|py))(?:#[^`]+)?`")
 SKIP = ("http://", "https://", "mailto:", "#")
 HEADING = re.compile(r"^#{1,6}\s+(.*)$")
+HTML_ANCHOR = re.compile(r'<a\s+(?:id|name)=["\']([^"\']+)["\']', re.IGNORECASE)
 
 UPSTREAM_DOC_WHITELIST = {
     ("docs/known-issues.md", "docs/status.md"),
@@ -53,6 +56,8 @@ def headings(path):
             continue
         if fenced:
             continue
+        for match in HTML_ANCHOR.finditer(line):
+            found.add(match.group(1).lower())
         match = HEADING.match(line)
         if match:
             found.add(anchor(match.group(1)))

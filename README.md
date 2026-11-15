@@ -14,6 +14,13 @@
 
 ## 硬件支持
 
+状态图例：
+- ✅ 真机验证通过
+- ⚠️ 部分可用（说明中注明缺口）
+- ❌ 未实现或未验证
+
+主要硬件外设在当前版本的支持状态与实测记录如下：
+
 | 模块 | 状态 | 说明 |
 |---|---|---|
 | 显示与渲染 | ✅ | 3200×2136 @ 120Hz，Mesa 26.2.6 Turnip（Adreno 830）硬件加速 |
@@ -29,9 +36,9 @@
 | 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk 与 virtio-net、单 vCPU 客体启动。SMP、图形与 GUI 操作待验收 |
 | 双系统往返 | ✅ | 合体 BOOT 装在活动槽的 `boot` 分区（`boot_a` 或 `boot_b`）。Linux→Android 用 `piano-next-boot android --reboot`，Android→Linux 用「SunUEFI 引导助手」模块或开机 3 秒选择器。两次往返实测，见[已知问题](docs/known-issues.md#双系统切换) |
 | 手写笔 | ✅ | Type 29 协议就绪，压感 0–1，位置与倾斜正常。实测捕获 1906 条轴事件、22 条 proximity、18 条 tip，见[已知问题](docs/known-issues.md#手写笔) |
-| 指纹 | ✅ | 侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。`piano-fingerprint` 提供原生客户端，`piano-libfprint` 把 Goodix 静态库链进打过补丁的 libfprint，两个包默认随镜像安装。录入、认证与锁屏解锁在 v45.3 之前的镜像上验过，v45.3 没有重测，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
-| 红外 | ✅ | 消费级红外发射器（QUPv3 SE15）已接到标准 `ir-spi` 与 LIRC，`/dev/lirc0`、`/sys/class/rc/rc0` 均存在，可用 `ir-ctl` 发码。光学输出未实测，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
-| HDR | ❌ | 面板支持 HDR10。DSI-1 上已挂 `HDR_OUTPUT_METADATA`，CRTC 上 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM` 齐全。补丁版 KWin 能开关 HDR 并在退出时恢复背光；色深与色调映射没有验证，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
+| 指纹 | ✅ | 侧置电容式（汇顶 Goodix），`piano-fingerprint` 与 `piano-libfprint` 随镜像预装。录入与解锁在早先镜像验证通过，现版本状态与边界见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
+| 红外 | ✅ | 消费级红外发射器，`/dev/lirc0` 节点与 `ir-spi` 驱动就绪，支持 `ir-ctl` 发码。测试边界见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
+| HDR | ❌ | 面板支持 HDR10，DSI-1 与 CRTC 属性齐全。KDE Plasma 下 extras 补丁版 KWin 支持开关与背光恢复；色调映射与实机验证限制见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 
 ## 桌面
 
@@ -77,8 +84,8 @@
 ### 双系统切换
 
 - Linux → Android：应用抽屉点「返回 Android」，或执行 `piano-next-boot android --reboot`。已真机验收。
-- Android → Linux：安装「SunUEFI 引导助手」模块，在模块页面选 Linux。没有引导助手时，开机 3 秒内按音量键在 3 秒选择器里选，选择会保存。
-- 两个方向都写同一份请求页，它在那份活动槽 BOOT 里；不切槽，也不改 GPT。
+- Android → Linux：使用「SunUEFI 引导助手」模块切换；若未安装，开机 3 秒内按音量键呼出选择器。
+- 两个方向均写入同一份活动槽 BOOT 请求页；不切活动槽，不改 GPT。
 
 ## 发布产物
 

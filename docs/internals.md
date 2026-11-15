@@ -2,7 +2,7 @@
 
 面向维护者：流水线从哪进入，产物之间怎么绑定，run id 怎么传，PR 什么时候算设备验收通过。只装系统的读者看[安装指南](installation.md)。
 
-上游 pin 与跟进规则见[上游跟踪](upstream.md)，产物定义见[部署产物](artifacts.md)。
+[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 上游 pin 与跟进规则见[上游跟踪](upstream.md)，产物定义见[部署产物](artifacts.md)。
 
 ## 流水线入口
 

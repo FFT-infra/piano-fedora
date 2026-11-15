@@ -18,6 +18,8 @@
 
 ### 电脑端工具
 
+电脑端需要以下命令行工具完成校验、解压、BOOT 打包与镜像写入：
+
 | 工具 | 用途 | 缺少时的后果 |
 | --- | --- | --- |
 | `sha256sum`、`tar` | 校验与解开归档 | 无法开始 |
@@ -43,7 +45,7 @@ brew install zstd android-platform-tools mtools   # python3 随 Command Line Too
 
 平板用 UFS 4.0 闪存，配合高通 A/B 槽位（Slot A / Slot B）：
 
-```
+```text
                     ┌────────────────────────────────────────┐
                     │       UFS 4.0 物理闪存 (LUN 0-5)        │
                     └───────────────────┬────────────────────┘
@@ -142,6 +144,8 @@ bash scripts/unpack-release.sh --tag <tag> --desktop <档位> --dir piano-instal
 Windows 上用 7-Zip 打开 `.tar.zst`。分片先合并：`copy /b piano-<tag>-<档位>.tar.zst.part-00+piano-<tag>-<档位>.tar.zst.part-01 piano-<tag>-<档位>.tar.zst`。
 
 ### 3. 归档内容
+
+归档解压后包含以下文件，对应刷写目标与用途划分如下：
 
 | 文件 | 用途 | 刷到哪 |
 | --- | --- | --- |
@@ -644,6 +648,8 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 ### 1. 默认状态
 
+镜像预设的系统账户与凭据如下：
+
 | 项 | 值 |
 | --- | --- |
 | 用户 | `piano` |
@@ -660,7 +666,10 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 * 120 Hz 与触控：Mesa 硬件加速默认开启。触控服务加载 5 阶自适应卡尔曼滤波与 24 像素死区防抖。
 * 声学保护：内核与 ALSA UCM2 把 FS19xx 四功放截断在 -15 dB。麦克风有 +40 dB 硬件增益。
-* 电池与电源：`/hypervisor` 节点已软隔离，桌面显示原生双电芯电量，支持合盖与深度挂起。休眠（hibernate）与混合睡眠默认关闭。`sleep.conf.d/piano.conf` 由 `scripts/finalize-fedora-rootfs.py` 写入，`logind.conf.d/piano.conf` 由 `piano-fedora-configs` 包提供。
+* 电池与电源：`/hypervisor` 节点已软隔离，桌面显示原生双电芯电量，支持合盖与深度挂起：
+  * 休眠与混合睡眠默认关闭；
+  * `sleep.conf.d/piano.conf` 由 `scripts/finalize-fedora-rootfs.py` 写入；
+  * `logind.conf.d/piano.conf` 由 `piano-fedora-configs` 包提供。
 * 触控提频：`uperf-linux` 监听触控输入，触点按下后 1 ms 内拉高全大核频率。
 
 ### 3. 串口与网络

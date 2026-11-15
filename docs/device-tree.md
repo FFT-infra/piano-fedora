@@ -40,7 +40,7 @@
 
 出货基线 `vendor/piano-linux/board.dtb` 的根节点是：
 
-```
+```dts
 model = "Qualcomm Technologies, Inc. Piano based on SM8750";
 compatible = "qcom,sun-mtp", "qcom,sun", "qcom,sunp-mtp", "qcom,sunp", "qcom,mtp";
 qcom,board-id = <0x40008 0x00>;
@@ -60,10 +60,14 @@ qcom,board-id = <0x40008 0x00>;
 厂商的 DT 不是单文件：
 
 - `arch/arm64/boot/dts/vendor/qcom/sun.dts` 是基线，只有 262 字节，`model = "Qualcomm Technologies, Inc. Sun SoC"`。
-- `piano-sm8750-overlay.dts` 是 `/plugin/` overlay，`#include "piano-sm8750.dtsi"`，靠 `qcom,msm-id`、`qcom,board-id`、`xiaomi,miboard-id` 选择。
-- `piano-sm8750.dtsi` 789 行，串起 `piano-pinctrl.dtsi`、`sm8750-xiaomi-common.dtsi`、`sm8750-ir-sensor-common.dtsi`、`piano-charger-common.dtsi`、`piano-xiaomi-touch-pinctrl.dtsi`。
-- `arch/arm64/boot/dts/vendor/qcom/Makefile:18-19` 定基线集：`sun.dtb sun-v2.dtb sun-tp.dtb sun-tp-v2.dtb`，以及对应的 `sunp*`。
-- 同一份 Makefile 的 `piano-sm8750-overlay.dtbo` 在 `SUN_BOARDS` 里，`add-overlays` 会用 `fdt_overlay` 把基线与 overlay 合成 `sun-piano-sm8750-overlay.dtb` 这类产物。
+- `piano-sm8750-overlay.dts` 是 `/plugin/` overlay：
+  - `#include "piano-sm8750.dtsi"`，靠 `qcom,msm-id`、`qcom,board-id` 等属性匹配。
+- `piano-sm8750.dtsi` 共 789 行：
+  - 串起 pinctrl、xiaomi-common、ir-sensor、charger、touch 等板级 dtsi。
+- `arch/arm64/boot/dts/vendor/qcom/Makefile:18-19` 定义基线集：
+  - 包括 `sun.dtb`、`sun-v2.dtb`、`sun-tp.dtb`、`sun-tp-v2.dtb` 及 `sunp*`。
+- Makefile 的 `piano-sm8750-overlay.dtbo` 位于 `SUN_BOARDS`：
+  - `add-overlays` 用 `fdt_overlay` 把基线与 overlay 合成实际 dtb 产物。
 
 techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，其中 `piano-audio-mtp.dts` 4264 行，`piano-sde-display.dtsi` 4.2 KB，`piano-charger-common.dtsi` 742 行。这些是我们 overlay 里那些硬件常量（SPI 号、稳压器、时钟）的原始出处。
 
@@ -106,7 +110,9 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 板级 DTB 由厂商 `board.dtb` 与 `config/release.json` 里的 overlay 合成，打进 `/EFI/Linux/sunuefi.efi` 的 `.dtb` 节区。`/EFI/Piano/stable/` 与单独的 `board.dtb` 不再是启动输入。
 
 - 固件只打开 `\EFI\Linux\sunuefi.efi`，按 PE 节区取内核、initramfs、DTB 与 cmdline。
-- 内置的 `EFI_DT_FIXUP_PROTOCOL` 在每次启动时改写这份 DTB。`/memory` 换成设备本次的 RAM 布局，面板 `compatible`、蓝牙地址、RTC 偏移与 Gunyah 资源管理器的 `reg`、`interrupts` 也在这里更新。载荷里的这些值只是构建时的占位，不是设备实际值。
+- 内置 `EFI_DT_FIXUP_PROTOCOL` 每次启动时动态改写这份 DTB：
+  - 将 `/memory` 替换为实际 RAM 布局；
+  - 动态更新面板 `compatible`、蓝牙地址、RTC 偏移与 Gunyah RM 属性。
 
 改 DT 要重打 UKI。只换 ESP 上某一个文件不会生效。`kernel-piano` 的 `%posttrans` 用 ESP 里现有 UKI 的 `.dtb` 重新组装，板级 overlay 保持不变；换 overlay 要重新构建 bundle 或手工重打 UKI。
 
