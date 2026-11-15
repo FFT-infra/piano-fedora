@@ -31,7 +31,7 @@ Fedora 45 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 
 | Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally. 1906 axis events, 22 proximity events and 18 tip events were captured, see [known issues](docs/known-issues.md#手写笔) |
 | Fingerprint | ✅ | Side-mounted capacitive, Goodix. Authentication runs in the TEE's `gfpia` TA. `piano-fingerprint` provides the native client, `piano-libfprint` links the Goodix static library into a patched libfprint, both ship in the default image. Enrolment, verification and lock-screen unlock passed on an image before v45.3; v45.3 has not been retested. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
 | IR | ✅ | The consumer IR blaster (QUPv3 SE15) is wired to the standard `ir-spi` driver and LIRC. `/dev/lirc0` and `/sys/class/rc/rc0` exist, and `ir-ctl` can send. Optical output is not measured. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
-| HDR | ❌ | The panel supports HDR10. DSI-1 attaches `HDR_OUTPUT_METADATA`, and the CRTC exposes `GAMMA_LUT`, `DEGAMMA_LUT` and `CTM`. The full HDR output path is not verified. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| HDR | ❌ | The panel supports HDR10. DSI-1 attaches `HDR_OUTPUT_METADATA`, and the CRTC exposes `GAMMA_LUT`, `DEGAMMA_LUT` and `CTM`. Patched KWin can toggle HDR and restore backlight on exit; color depth and tone mapping are not verified. See [known issues](docs/known-issues.md#指纹红外与-hdr) |
 
 ## Desktops
 
