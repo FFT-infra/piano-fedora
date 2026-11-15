@@ -4,7 +4,7 @@
 
 | 产物 | 生产入口 | 集成关系 |
 | --- | --- | --- |
-| UEFI 产品 | build-uefi.yml | 使用固定 SunUEFI 配方。保留原始 manifest |
+| UEFI 产品 | build-uefi.yml | 使用固定 [SunUEFI](https://github.com/slwyts/Project-SunUEFI) 配方。保留原始 manifest |
 | Image、完整模块、SDK | build-kernel.yml | 内建 F2FS/SELinux/Gunyah，强制 rootfstype=f2fs。SDK 绑定同一配置和 Module.symvers |
 | Fedora 矩阵 RPM | host-check 调用的 build-piano-rpms.yml | 构建九类硬件/运行时 RPM 和匹配内核的 kernel-piano。同一 job 产出对应 SRPM，供 COPR 从源码重建。workflow_call 复用件由已注册的 host-check 启动，artifact 仍由 piano-rpms job 产出 |
 | Fedora 基础树 | build-rootfs.yml | 原生 DNF installroot，记录容器 ID 和实际 RPM，排除发行版 kernel |
@@ -94,7 +94,7 @@ build-bundle 与 prepare-install 的 artifact 都带档位：`deploy-bundle-<档
 
 每档打成一个归档。解到空目录就是安装指南的暂存目录，不需要再从别处拼第二个。
 
-```
+```text
 piano-<tag>-<档位>.tar.zst            单文件，小于 2 GiB 时
 piano-<tag>-<档位>.tar.zst.part-NN    超过 2 GiB 时按 1900 MiB 切片
 piano-<tag>-<档位>.sha256             这一档已上传文件的摘要
@@ -119,7 +119,8 @@ piano-<tag>-<档位>.sha256             这一档已上传文件的摘要
 
 deploy-bundle 里有三类文件不进归档。
 
-- 完整镜像 `pianoroot.f2fs.img.zst` 与封存镜像 `pianoroot.f2fs.sparse.img` 的 root 内容与 `root-install` 里的相同，不能直接刷。同一份 root 发三种形态，用户分不清该下哪个，还把每档归档撑大。
+- 完整镜像 `pianoroot.f2fs.img.zst` 与封存镜像 `pianoroot.f2fs.sparse.img`：
+  - 内容与 `root-install` 相同且无法直接刷写，避免混淆并缩减发布包体积。
 - `initramfs.tar.zst` 是 `build-bundle` 解包用的中间产物，内容与 UKI `.initrd` 节区里那份逐字节相同。
 - `diagnostic-abl-storage.tar.zst` 是 ABL 只读探针的调试件，manifest 自标 `device_tested: false`，装机脚本不读它的内容。
 

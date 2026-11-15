@@ -12,7 +12,7 @@
 
 核对方法见下面的[启用仓库](#启用仓库)一节，或在设备上跑 `python3 scripts/verify-copr-device.py`。
 
-**内核怎么升级。** 固件从 ESP 的 `/EFI/Linux/sunuefi.efi` 加载 Linux，`PianoProductCore.c` 用 `PianoApplicationRunFile` 直接打开这个文件，没有编译期哈希或 Android boot v2 解析。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，两者本来脱钩。`kernel-piano` 的 `%posttrans` 把这条链接上。事务收尾时，`%posttrans` 先跑 `depmod -a <release>`，再用刚装上的内核重建 initramfs。最后用 `systemd-ukify` 把新内核、新 initramfs、ESP 里现有 UKI 的 `.dtb` 与 `.cmdline`、新的 `.osrel` 与 `.uname` 组装成新的 `/EFI/Linux/sunuefi.efi`。重启之后固件读到的是新内核。
+**内核怎么升级。** [SunUEFI](https://github.com/slwyts/Project-SunUEFI) 固件从 ESP 的 `/EFI/Linux/sunuefi.efi` 加载 Linux，`PianoProductCore.c` 用 `PianoApplicationRunFile` 直接打开这个文件，没有编译期哈希或 Android boot v2 解析。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，两者本来脱钩。`kernel-piano` 的 `%posttrans` 把这条链接上。事务收尾时，`%posttrans` 先跑 `depmod -a <release>`，再用刚装上的内核重建 initramfs。最后用 `systemd-ukify` 把新内核、新 initramfs、ESP 里现有 UKI 的 `.dtb` 与 `.cmdline`、新的 `.osrel` 与 `.uname` 组装成新的 `/EFI/Linux/sunuefi.efi`。重启之后固件读到的是新内核。
 
 不需要重编固件。固件只按固定路径加载一个 PE 文件，开机校验交给 `systemd-stub` 与内核。换内核不改固件，也不改 ESP 上的路径名。
 
@@ -62,7 +62,7 @@ CI 的 RPM 矩阵、COPR 的重建产物与 bundle 里的 RPM 版本号相同，
 
 `piano-fedora-configs` 已经带上 `/etc/yum.repos.d/piano-fedora-copr.repo`：
 
-```
+```ini
 [copr:copr.fedorainfracloud.org:xinyang26:piano-fedora]
 gpgcheck=1
 repo_gpgcheck=0
@@ -172,12 +172,15 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 
 ## 边界
 
-- COPR 覆盖全部 18 个包，包括内核。ESP 上的 `/EFI/Linux/sunuefi.efi` 由 `kernel-piano` 的 `%posttrans` 维护，`.dtb` 节区沿用现有 UKI。板级 overlay 不在这条升级路径上更新。
+- COPR 覆盖全部 18 个包（包括内核）：
+  - ESP 上的 `/EFI/Linux/sunuefi.efi` 由 `%posttrans` 维护，`.dtb` 节区沿用现有 UKI；
+  - 板级 overlay 不在这条升级路径上更新。
 - 设备的 `.repo` 只指向项目自己的 COPR。Hyprland 档位在构建期另加第三方源
   `lionheartp/Hyprland`（Fedora 44 官方仓库没有 Hyprland 及其配套组件）。仓库以
   `--repofrompath` 临时加入并校验公钥，不写进镜像的持久配置。四档里只有
   Hyprland 用这个源，其余三档只连官方仓库。细节见[桌面档](desktops.md)。
-- 重建产物和 CI 矩阵产物不是逐字节同一份。版本号相同，构建环境不同。要完全一致的二进制就用 bundle 里的 RPM，不要用 COPR。
+- 重建产物和 CI 矩阵产物环境不同，版本号相同但非逐字节一致：
+  - 需要完全一致二进制时直接使用 bundle 内的 RPM，不使用 COPR。
 
 ## 设备侧验证
 

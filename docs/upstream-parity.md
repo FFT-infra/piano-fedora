@@ -1,5 +1,7 @@
 # 与上游的功能差距
 
+> **说明**：本文档是 2026-11-12 对照上游 pin `3a7e5c1b` 的功能差距快照（后文追至 `018634f1`，当前上游 pin 已推进至 `2cc5cd62`）。已解决项目保留核对依据，未完成项目见各行状态。
+
 这份清单来自 2026-11-12 的一次只读核对：对照 `build/test-sources/sunuefi`（当时 pin `3a7e5c1b`）的源码，和一台 Fedora 45 GNOME 镜像的实机状态，逐项看哪些上游已经支持、我们这边还没跟上。之后 pin 推进到 `4f663563` 再到 `018634f1`，差异只在 DWC3 停止、显示接缝采样、固件叠层与构建，见 `docs/upstream.md`。每项写明证据与核对命令，下次接手不用重新猜。电源策略、中文环境、相机高像素与静态拍摄、指纹桌面接入、构建断言、文档口径已在本分支完成，其余见各行状态。
 
 | 项 | 我们的现状 | 上游 | 要做的 | 优先级 |
@@ -10,7 +12,7 @@
 | 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成，实机出帧 | `quad/` 与 v4l2loopback 生产者协商 | — | 完成 |
 | 电源策略 | 完成：`tuned-ppd` 三档 profile 桥到 uperf-linux 的模式 | 上游 profile 直接写 cpufreq/devfreq | — | 完成 |
 | 充电、温控与 FFC | 补丁已收：上游 `0093`、`0094`、`0096`–`0104` 共 11 条进封存序列 | 关机充电、皮肤温控、带认证 FFC 与停充失败退出 | 真机验充电状态、关机再插电、温控与功率；45 W 不作声称 | P1 |
-| 内核手指解码 | 保持用户态 THP 读取加 `nvt_finger_filter.cpp` 的 5 级滤波 | `0095` 把逐帧矩阵解码搬进内核，无时域滤波 | 本轮不收；要换先做同帧对比 | P3 |
+| 内核手指解码 | 保持用户态 THP 读取加 `nvt_finger_filter.cpp` 的 5 级滤波 | `0095` 把逐帧矩阵解码搬进内核，无时域滤波 | 当前未采纳；若需替换需先完成同帧客观对比。 | P3 |
 | 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 写 `zh_CN.UTF-8`，输入源默认带 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | — | 完成 |
 | mutter 触摸崩溃 | 库存 `mutter-51.1-1.fc45` | 补丁在 51.1 源码上干净套用 | 崩溃未复现；补丁进 opt-in extras，默认镜像不重编 | P2 |
 | KDE 桌面默认值 | 完成：`kwinoutputconfig.json`、`kcminputrc`、`kscreenlockerrc` 落进 `~/.config`，`/etc/environment.d` 设 `KWIN_DRM_FORCE_SCALING_MODE=FULL` | 同名文件写 scale 2、`InTabletMode`、自然滚动，另设 `QT_SCALE_FACTOR=2` | `QT_SCALE_FACTOR` 没有跟：与输出 scale 叠加会放大两次 | 完成 |
@@ -27,15 +29,15 @@
 | exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编成 y，挂载没测 | 读写 | 真机挂载两种 U 盘并读写 | P3 |
 | 10-bit 与 144 Hz | 面板与驱动支持，没量过色深与刷新率 | 面板 10bpc，144 Hz 可选 | 只验，不改默认（KDE 120，GNOME 可到 144） | P3 |
 
-自动亮度与键盘背光的补丁都在 extras 里，自动亮度已在真机验过，键盘背光还缺验收。HDR 的 KWin 补丁在 2026-11-12 冷启动真机上验过退出后背光恢复。隐私灯与录像已在 2026-11-11 的真机上验过。手写笔进阶与存储挂载仍是验收项，不是新的适配项。测出真实缺口再单独开范围，不在这轮顺手改。
+自动亮度与键盘背光的补丁都在 extras 里，自动亮度已在真机验过，键盘背光还缺验收。HDR 的 KWin 补丁在 2026-11-12 冷启动真机上验过退出后背光恢复。隐私灯与录像已在 2026-11-11 的真机上验过。手写笔进阶与存储挂载仍是验收项，不是新的适配项。测出真实缺口再单独开范围，不作未经证实的修改。
 
 ## 指纹
 
 内核侧齐了：`/dev/uio0` 存在，`lsmod` 有 `uio_piano_fingerprint` 与 `qcomtee`，`dmesg` 打出 `QTEE version 5.2.0`，`/dev/tee0` 可读，`/proc/device-tree/soc/xiaomi_fingerprint` 有节点。DT overlay 一直在发，`tests/check_bundle_overlays.py` 也在断言 `xiaomi,piano-goodix-control`。
 
-这一版把原生客户端做成了 `piano-fingerprint` 包：`src/` 是 SunUEFI `linux/userspace/fingerprint` 的副本，依赖 `quic-teec`、`minkipc`、`QCBOR` 三个固定提交，产出静态的 `piano-fingerprint-ctl`，外加给 libfprint 链接的 `libpiano-goodix.a` 与 `piano-goodix.pc`。实机装包后三条命令都过：
+这一版把原生客户端做成了 `piano-fingerprint` 包：`src/` 是 [SunUEFI](https://github.com/slwyts/Project-SunUEFI) `linux/userspace/fingerprint` 的副本，依赖 `quic-teec`、`minkipc`、`QCBOR` 三个固定提交，产出静态的 `piano-fingerprint-ctl`，外加给 libfprint 链接的 `libpiano-goodix.a` 与 `piano-goodix.pc`。实机装包后三条命令都过：
 
-```
+```console
 sudo piano-fingerprint-ctl info
 {"sensor":"Goodix","sensor_type":5,"command_address_bits":64,"device_info_ok":true}
 sudo piano-fingerprint-ctl initialize
@@ -46,7 +48,7 @@ sudo piano-fingerprint-ctl list 0
 
 桌面接入做成了 `piano-libfprint` 包。Fedora 45 的 `libfprint-1.94.100-1.fc45` 与上游 pin 是同一份源码：`v1.94.100` 解引用后就是 `80a4b5ec`。包拿官方 tarball 套 `0001-piano-goodix-uio.patch`，静态链 `libpiano-goodix.a`，再加一条 meson 1.12 的 `foreach` 兼容补丁（关掉 introspection 时上游的 else 分支一定会被求值）。用 `Provides`/`Obsoletes` 顶掉发行版 `libfprint`，附一份 fprintd drop-in：
 
-```
+```ini
 DeviceAllow=char-uio rw
 DeviceAllow=char-tee rw
 DeviceAllow=char-bsg rw
@@ -55,7 +57,7 @@ StateDirectory=piano-goodix
 
 实机装上后 fprintd 认到一颗设备：
 
-```
+```console
 $ fprintd-list piano
 found 1 devices
 Device at /net/reactivated/Fprint/Device/0
@@ -146,7 +148,7 @@ KDE 侧的默认值补上了。KWin 的输出、输入与锁屏设置只在 `~/.
 
 可用。Compass 接口不在 `/net/hadess/SensorProxy` 上，而在子对象 `/net/hadess/SensorProxy/Compass`：
 
-```
+```console
 busctl introspect net.hadess.SensorProxy /net/hadess/SensorProxy/Compass
 .HasCompass  property  b  true
 ```
@@ -161,15 +163,19 @@ busctl introspect net.hadess.SensorProxy /net/hadess/SensorProxy/Compass
 
 README 与 `known-issues.md` 里红外、HDR、指纹三节还是旧的判断，和上面核对的设备状态对不上：
 
-- 红外：设备上 `/dev/lirc0`、`/sys/class/rc/rc0/lirc0` 都在，`dmesg` 有 `rc rc0: lirc_dev: driver ir-spi registered at minor = 0, no receiver, raw IR transmitter`，`ir_spi` 与 `rc_core` 已加载。文档写的"DT 缺 IR 节点、内核没编 LIRC"不成立。上游自己的说法是接口就绪、光学输出未实测，照这个口径写。
-- HDR：DSI-1 连接器属性里有 `HDR_OUTPUT_METADATA`，同时有 `Colorspace`、`max bpc`，CRTC 上有 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM`。文档写的"msm 没有挂 HDR_OUTPUT_METADATA"不成立。HDR 开关 2026-11-12 已在 KDE 里跑过，色深与色调映射没量，见[已知问题](known-issues.md#hdr)。
+- 红外：设备上 `/dev/lirc0` 与 `/sys/class/rc/rc0/lirc0` 齐全，驱动正常加载：
+  - `dmesg` 记录 `ir-spi registered at minor = 0, no receiver, raw IR transmitter`；
+  - 驱动 `ir_spi` 与 `rc_core` 已加载，口径对齐为接口就绪、光学输出未实测。
+- HDR：DSI-1 连接器属性已挂载 `HDR_OUTPUT_METADATA`、`Colorspace`、`max bpc`：
+  - CRTC 挂载 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM`；
+  - HDR 开关已在补丁版 KWin 验证通过，色深与色调映射未测，见[已知问题](known-issues.md#hdr)。
 - 指纹：控制驱动与 DT 都在，"主线没有对应的控制驱动"这句话要改；正确的说法是内核与 DT 就绪、用户态还没接。
 
 ## 核对方法
 
 设备侧只读，没改任何配置：
 
-```
+```sh
 sudo python3 ~/Lab/Bridge/tmp/drm-props.py /dev/dri/card2 /dev/dri/card2   # 连接器与 CRTC 属性
 busctl introspect net.hadess.SensorProxy /net/hadess/SensorProxy
 busctl get-property net.hadess.PowerProfiles /net/hadess/PowerProfiles net.hadess.PowerProfiles Profiles
@@ -183,6 +189,7 @@ zcat /proc/config.gz | grep -E 'CONFIG_LIRC|CONFIG_IR_SPI|CONFIG_UIO_PIANO|CONFI
 
 ## 核对过但不需要做的
 
-- mutter `0002-color-no-edid-standard-profile`：DSI-1 的 EDID 是 384 字节、头 `00 ff ff ff ff ff ff 00` 的合法 EDID，不落在这个补丁覆盖的场景里。
+- mutter `0002-color-no-edid-standard-profile`：
+  - DSI-1 的 EDID 是 384 字节合法 EDID（头为 `00 ff ff ff ff ff ff 00`），不属于补丁覆盖场景。
 - 中文字体：CJK 字体已随 `google-noto-*-cjk-vf-fonts` 和 `default-fonts-cjk-*` 装上。
 - GNOME 缩放默认值：自动分数缩放在这台面板上给出 2.67，可用，不需要写死。

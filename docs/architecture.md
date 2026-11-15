@@ -1,8 +1,10 @@
 # 架构
 
-SunUEFI 提供启动链。本仓库增加四项：Fedora 后端、F2FS 全链路、首次分区、UEFI UFS 唤醒补丁。
+[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 提供启动链。本仓库增加四项：Fedora 后端、F2FS 全链路、首次分区、UEFI UFS 唤醒补丁。
 
 ## 分工
+
+系统各层按维护职责划分为上游锁定组件与本仓库扩展组件：
 
 | 层 | 归属 |
 | --- | --- |
@@ -31,6 +33,8 @@ SunUEFI 提供启动链。本仓库增加四项：Fedora 后端、F2FS 全链路
 F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用实测的 root 文件系统容量定分区方案。镜像容量与设备容量已经脱钩。封存镜像的容量由 `product.json` 的 `root_size_mib` 定义，首次启动时由 initramfs 长满分区。
 
 ## CI 分工
+
+持续集成工作流按触发条件与构建产物划分：
 
 | workflow | 触发 | 产出 |
 | --- | --- | --- |
@@ -76,15 +80,20 @@ F2FS 排在分区之前：先跑通 F2FS 镜像的挂载式往返验证，再用
 
 取：
 
-- matrix job 扫配方文件展开，而不是扫脚本文件名。这里的配方是 `scripts/profiles/fedora-desktops.json`，workflow 不手写档位列表。
-- 每个档位一个资产名，一个 Release 带齐全部档位，下载页按档位分组。这里是每档一个归档，ESP、内核与 initramfs 在四档里各存一份，用户只下自己那一档。
+- matrix job 扫配方文件展开，不手写档位：
+  - 配方由 `scripts/profiles/fedora-desktops.json` 提供，workflow 自动展开。
+- 每个档位独立归档，一个 Release 带齐全部档位：
+  - ESP、内核与 initramfs 在四档各存一份，用户仅下载所选档位。
 - 一个产品 README 加一张变体对照表。表格与入口结构已经落地。四档真机验收之后再补截图。
 
 不取：
 
-- 构建器镜像（Dockerfile → GHCR）。多一个镜像与一层缓存失效面。现有 podman 容器按 `releasever` 锁定，可复现性由 manifest 兜底。
-- base root 文件系统 `cp -a` 再增量 dnf 的变体模型。这种模型会打断"一次审计事务、RPM 归属、SELinux 单次 relabel"这条链。四档在 arm runner 上并行，总耗时不会因此拉长。
-- 每个变体一份独立脚本加全局 `--nogpgcheck`。这里是一份配方加一个解释器，四档共用一次有签名的安装事务。这一侧也有测试：每档的派生名、登录文件与运行时脚本都在 `make test` 里。
+- 构建器镜像（Dockerfile → GHCR）：
+  - 避免增加镜像维护与缓存失效面；podman 容器按 `releasever` 锁定并由 manifest 兜底。
+- base root 文件系统 `cp -a` 增量变体模型：
+  - 避免打断单次审计事务与 SELinux relabel；四档在 arm runner 并行构建不增加总耗时。
+- 独立变体脚本与全局 `--nogpgcheck`：
+  - 采用一份配方加解释器，四档共用签名安装事务；派生名与登录配置由 `make test` 覆盖。
 
 各档的登录、电源与旋转差异见[桌面档](desktops.md)。
 

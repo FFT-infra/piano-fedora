@@ -1,707 +1,337 @@
-# 已知问题
+# 已知问题与硬件现状
 
-本页只列仍未解决的问题，以及已定位、仍在观察的噪声。已修复的缺陷不在本页，修复过程留在本地验收记录。每项写明当前证据与复现条件。
+本页列出当前版本下尚未完全解决的问题、特定硬件限制、系统运行日志中的已知噪声，以及安装与维护过程中的注意事项。每项均保留技术根因、复现条件与真机排障取证数据。
+
+已在当前版本中通过真机验证修复的问题不再列入本页；未经过真机冷装验证的修复项继续保留。
+
+---
+
+## 目录
+
+- [显示与关屏](#显示与关屏)
+- [固件拒绝 UKI（uki-identity）](#固件拒绝-uki)
+- [首次启动 GPU 未绑定](#首次启动-gpu-未绑定)
+- [系统缓存（LLCC）没有生效](#系统缓存llcc没有生效)
+- [未开启的内核配置](#未开启的内核配置)
+- [驱动路径未命中（dw9768 与 fsa4480）](#驱动路径未命中)
+- [启动时的间歇 Oops](#启动时的间歇-oops)
+- [刷写与读回](#刷写与读回)
+- [首次安装的 userdata](#首次安装的-userdata)
+- [双系统切换](#双系统切换)
+- [Android 侧](#android-侧)
+- [无损首装](#无损首装)
+- [充电](#充电)
+- [传感器与自动旋转](#传感器与自动旋转)
+- [手写笔](#手写笔)
+- [触屏、网络、音频与相机](#触屏网络音频与相机)
+- [指纹、红外与 HDR](#指纹红外与-hdr)
+- [开机日志里的红色报错](#开机日志里的红色报错)
+
+---
 
 ## 显示与关屏
 
-0038 补丁已合入当前内核。模块字符串里能找到 `slave intf:%d still enabled before cleanup`。反复关屏时，每 2–3 次仍产生
-一次 devcoredump：`intf_1`/`intf_2` 的 `is_en` 与配置寄存器非零，而现状应为
-全零，差值 18 word。`dmesg` 里 0 条 dpu 错误（underrun 回调只累加计数不打印），
-设备未编 tracefs（`/sys/kernel/debug/tracing` 不存在），无法用 tracepoint 继续
-定位。屏幕显示正常。这是残余噪声，不是可见故障。
+### 1. 关屏 devcoredump 残留日志
+- **现象**：反复关屏或休眠时，内核日志偶发记录 `slave intf... still enabled before cleanup` 并生成转储。
+- **影响**：属于内核调试信息噪声。屏幕显示与背光正常，休眠与唤醒功能正常，无硬件损坏风险。
+- **技术根因**：MSM DPU 驱动在关闭显示接口时，从接口寄存器在清理窗口期未完全清零，触发驱动断言。
+- **状态**：未解决（作为残余内核日志噪声观察中，不影响正常使用）。
 
-`rtcwake -m mem -s 20` 唤醒正常（实际 22 s），唤醒后无 failed unit。dmesg 中
-`IRQ…: set affinity failed(-22)` 与 CMA 分配失败出现在关机 CPU 路径上，属既有
-噪声，未发现新增故障。
+取证与排查记录：
+- 反复关屏实测每 2–3 次产生一次 devcoredump：`intf_1`/`intf_2` 寄存器非零（差值 18 word）。
+- `dmesg` 中未记录 DPU 错误（underrun 回调只累加计数不打印），设备未编 tracefs 无法继续 trace。
+- `rtcwake -m mem -s 20` 唤醒正常（实测 22 秒），唤醒后无 failed unit。
+- 关机 CPU 路径上的 `IRQ…: set affinity failed(-22)` 与 CMA 分配失败属系统既有噪声。
 
-旋转屏幕时画面会短暂花掉一下，随后自行恢复。任何一次方向切换都能复现。
-`dmesg` 在同一秒内留下两条：
+### 2. 面板 compatible 标识命名反转
+- **现象**：在设备内查看 `/proc/device-tree`，面板 compatible 为 CSOT，而物理绑带识别为 BOE。
+- **影响**：无功能影响。屏幕显示与色彩输出正常。
+- **技术根因**：上游驱动函数名与 compatible 规则命名对调，实际加载的是 BOE 初始化序列与命令流。
+- **状态**：无需更改（属于驱动内部符号命名差异）。
 
-```
-[drm:dpu_encoder_phys_vid_wait_for_commit_done:550] [dpu error]vblank timeout: 400000
-[drm:dpu_kms_wait_for_commit_done:529] [dpu error]wait for commit done returned -110
-```
+---
 
-`400000` 是 `CTL_FLUSH` 寄存器读回的值，`0x400000` 即 `BIT(22)`。`dpu_hw_ctl.c`
-里 `DSC_IDX` 是 22，这一位代表 DSC 的 flush 请求，硬件没有在等待窗口内清掉它。
-等待超时在 `dpu_encoder_phys_vid.c` 的 `wait_for_commit_done` 里，
-`msecs_to_jiffies(50)`，即 50 ms。当前模式 144 Hz，相当于 7 帧。
+## 固件拒绝 UKI（uki-identity） <a id="固件拒绝-uki"></a>
 
-内屏是双 DSI 加 DSC 的面板，3200x2136，两路各 4 lane，链路固定 1197.5 Mbps，
-刷新率靠改水平前肩切换，DSC 为 8 bpp。旋转只改 DPU 图层的 transform，但合成
-器会重新提交整条管线（几何从 3200x2136 变成 971x1455、缩放 2.2），DPU 要重算
-图层划分和 DSC slice 边界。flush 位靠 vblank 中断清除，50 ms 内两次提交都没等
-到，第三次成功。
+- **现象**：在 [SunUEFI](https://github.com/slwyts/Project-SunUEFI) 启动菜单选择 Linux 后弹回，提示镜像格式不支持：
+  - 日志记录 `PIANO_EBS_REFUSE stage=before-exit status=Access Denied`。
+- **影响**：使用 systemd-stub 258+ 生成的 UKI 镜像无法被固件引导。
+- **技术根因**：systemd-stub 258 起跳转前将 UKI 的 `LoadedImage` 属性改写为内嵌内核地址与大小：
+  - SunUEFI 校验启动前记录值发现改写，返回 `EFI_ACCESS_DENIED`。
+- **应对方法**：使用打入补丁的 SunUEFI 固件，或暂时使用未改写句柄属性的早期 stub。
+- **状态**：已修复待真机验证（补丁 `patches/uefi-ebs-identity/` 已收录，待冷装验证）。
 
-启动日志里同一条 DSI/DPU 链上还有 `arm-smmu 3da0000.iommu … -110` 与
-`msm-mdss ae00000.display-subsystem … -110`，两者都是电源域依赖导致的 deferred
-probe。旋转时的 DSC flush 超时属于同一类时序余量不足，重试即恢复，之后不再
-累积（两次之后计数保持不变）。
-
-调大这个超时没有用。一次 vblank 在 144 Hz 下约 7 ms，50 ms 已经留了 7 帧余量，
-改大只会延长花屏持续时间。要真正消除得动 msm 驱动：在 transform-only 的提交里
-跳过 DSC flush，或在提交前显式等 DPU idle。这属于上游驱动的范围。
-
-这台设备的面板身份是 BOE。原厂触控驱动把 `lcd_id_value` 定义为 0=CSOT、1=BOE
-（`nt36xxx.c`），本机 `/proc/nvt_thp_status` 的 `lcd_id: 1`，内核因此加载
-`novatek_nt36532_piano_fw_boe.bin`，`panel_vendor` 为 `boe`。这条判据与原厂
-UEFI 的两份面板描述文件、`PianoFactoryPanel.h` 的选择表一致。
-
-UEFI 按原厂 ABL 的 `msm_drm.dsi_display0` 改写面板 `compatible`，实机
-`/proc/device-tree` 读回是 `xiaomi,piano-csot-nt36532`。板级 DTB 的基准只有
-`xiaomi,piano-boe-nt36532`，整份文件没有 `piano-csot` 字样，所以这个值是 UEFI
-写进去的。
-
-看似矛盾，实际不矛盾：内核面板驱动内部的两个函数名与 `of_match` 的对应关系是反的。
-`piano_csot_init_sequence` 发的是 `bc 77 07`、ESD `0x00`、先 `B2` 后 `B3`，按原厂
-命令特征那是 `35_02_0b`（BOE）的序列；`piano_boe_init_sequence` 发的才是
-`c4 82 …`、ESD `0x20`（`42_02_0a`）。上游 `linux-sm8750-piano` 的命名正好相反。
-所以 `xiaomi,piano-csot-nt36532` 实际加载的是 BOE 的命令流，与绑带读数一致，屏幕
-显示正常。
-
-这是命名缺陷，不是行为缺陷，目前不改：改 `of_match` 会让 compatible 与序列对调，
-而 UEFI 按 ABL 标识写的值已经是正确的供应商名。要统一命名得连 UEFI 的
-`PianoFactoryPanel.h` 一起动，属于跨仓库改动。
-
-原厂触控驱动只把 `lcd_id_value` 用来选
-`piano_nova_{csot,boe}_thp_config.ini`，从不据此翻转坐标。`panel_vendor` 因此不能
-当作触控坐标的判据，触控方向由实测决定，判据见
-`tests/check_finger_orientation.py`。
-
-两个标识分别对应哪块屏、归属哪个供应商，见[上游跟踪的面板标识](upstream.md#两个原厂面板标识)。
-
-## GPI DMA 深度空闲
-
-触控中断挂在 `ac0000.qupv3_1_geni_se` 上，走 GPI DMA。SM8750 在 DMA 运行期间
-进入 system low power domain（PSCI `0x0200c354`，DT 里 4400 us 退出延迟），
-传输被卡住直到退出：5450 字节的读本该 2.0–2.7 ms，实测 2.46 ms 或恰好 4.85 ms。
-上游 `yzddmr6/linux-sm8750-piano` 的 `322fd1bfbda9` 用 ftrace 量过，2945 次慢读
-里有 2678 次正好落在 system domain 内；把 CPU 延迟上限压到 2000 us（高于
-cluster 状态的 1983 us）之后，每次读都在 2.0–2.7 ms。
-
-补丁作为 0029 进了 7.3 封存序列，`target_tree` 为 `81983254f51a`。
-2026-10-26 `kernel-piano-7.3.0-4` 装进真机后量过，两件事都成立：
-
-```
-$ grep pm_qos_update_request /sys/kernel/tracing/trace | head -2
- irq/215-NVT-ts--1100  pm_qos_update_request: CPU_DMA_LATENCY value=2000
- irq/215-NVT-ts--1100  pm_qos_update_request: CPU_DMA_LATENCY value=-1
-```
-
-每次 SPI 消息都把 CPU 延迟上限压到 2000 us、用完恢复。配对这两条事件得到
-4799 次传输的耗时：p50 231 us、p95 2424 us、p99 2452 us、max 2513 us，
-**没有一次超过 3.5 ms**，4.85 ms 那簇不再出现。上游记的修复后区间是
-2.0–2.7 ms，量到的尾部与之吻合。
-
-这条不能靠「没看到整屏泛白」判定：没有对照内核时，泛白本身也不是每次都会
-出现。耗时分布才是判据。
-
-## 系统缓存（LLCC）没有生效
-
-内核编了 `CONFIG_QCOM_LLCC=y`，但驱动从未绑定任何设备，系统缓存因此没有配置，
-Adreno 在缺 LLCC slice 的状态下运行。设备上的证据：
-
-```
-$ ls /sys/bus/platform/drivers/qcom-llcc/
-bind  module  uevent  unbind      # 没有任何设备
-$ dmesg | grep -i llcc            # 空
-$ ls /sys/bus/platform/devices/ | grep llcc
-24095000.llcc-pmu                 # 只有 PMU 和两个 bwmon 子节点
-240b3400.qcom,bwmon-llcc-gold
-240b7400.qcom,bwmon-llcc-prime
-```
-
-原因是 compatible 与 `reg-names` 都对不上。设备树里是 SunUEFI 的
-`vendor/piano-linux/board.dtb` 提供的原厂节点：
-
-```
-compatible = "qcom,sun-llcc";
-reg-names  = "llcc0_base", "llcc1_base", "llcc2_base", "llcc3_base",
-             "llcc_broadcast_or_base", "llcc_broadcast_and_base";
-```
-
-而 7.3 的 `drivers/soc/qcom/llcc-qcom.c` 只认 `qcom,sm8750-llcc`，并且按名字取
-`llcc_broadcast_base`。`qcom_llcc_init_mmio()` 只按序号 ioremap、名字仅用于给
-regmap 命名，所以 `reg-names` 的差异本身不致命，致命的是 compatible 不匹配，
-probe 根本不会发生。
-
-上游 `yzddmr6/linux-sm8750-piano` 的 `fe98a3e` 记录了同一问题的另一半：它把
-`CONFIG_QCOM_LLCC` 从 `=m` 改成 `=y`，理由是内置的 `DRM_MSM=y` 无法满足
-`QCOM_LLCC` 的依赖。我们这边已经是 `=y`，但 `DRM_MSM=m`，依赖方向不同。它测到的
-收益是 Geekbench 6 单核 +0.9%、多核 +0.5%、Vulkan 计算 +2.7%，内存延迟类子项最高
-+9.5%。
-
-2026-10-25 又核了一遍寄存器布局，两边的差别只剩 compatible 一个字符串：
-
-```
-本机 cache-controller@24800000        上游 sm8750.dtsi
-0x24800000 2 MiB                      0x24800000 2 MiB   llcc0_base
-0x25800000 2 MiB                      0x25800000 2 MiB   llcc1_base
-0x24c00000 2 MiB                      0x24c00000 2 MiB   llcc2_base
-0x25c00000 2 MiB                      0x25c00000 2 MiB   llcc3_base
-0x26800000 2 MiB                      0x26800000 2 MiB   broadcast
-0x26c00000 2 MiB                      0x26c00000 2 MiB   broadcast_and
-```
-
-顺序也一致。`num_banks` 由驱动从 `LLCC_COMMON_STATUS0` 读，不依赖 DTB 声明。所以
-给 `qcom_llcc_of_match` 加一条 `{ "qcom,sun-llcc", &sm8750_cfgs }` 就够，cfg 数据
-可以照用——`sun` 本来就是 SM8750 的代号。
-
-修复要么改 DTB 的 compatible，要么在内核补丁里加这条 match 项。前者动 ESP 上的
-板级输入，后者动 7.3 的封存序列。两者都还没做，因为验证需要刷内核，而收益只有
-Geekbench 个位数百分点。
-
-## 刷写与读回
-
-写 `sunuefi_root`（6.1 GB sparse）之后，设备侧的 ABL 会挂死。`lsusb` 仍能
-看到 `18d1:d00d`，但 bulk 端点上任何传输都超时，`fastboot getvar` 不回包。
-主机侧无法恢复：`USBDEVFS_RESET`、hub 端口 `disable` 重新枚举、`authorized` 翻转都已试过，设备重新枚举后仍然不回包。只能长按电源键断电重来。断电回来后再
-写 `boot_a` 只要 2.4 秒，说明挂死只跟大分区写入有关。
-
-一次完整安装按这个顺序执行：先写 `boot_a`，再写 `sunuefi_esp`，最后写 `sunuefi_root`。`sunuefi_root` 写完后直接断电；重新进 Fastboot 时只重启，不再写大分区。
-一键脚本已按这个顺序实现。
-
-原厂 ABL 不实现 `fastboot fetch`。主机 fastboot 37.0.0 认得这个子命令，设备
-回 `Device does not support fetch command`，宿主上留下一个 0 字节读回文件。
-`sunuefi_esp` 分区也比 512 MiB 的镜像大，即使换了支持
-`fetch` 的引导器，整份哈希也不会等于镜像摘要。读回只能作辅助证据，刷写正确与否以启动后的 `uname -r`、`findmnt /` 和进入所选档位为准。
-
-`boot_a` 的读回可以直接读分区前 4 KiB 与镜像内的 `SUNUEFI-NEXTv1` 请求页判断：
-首块是 `ANDROID!` 包装头，请求页的目标与 generation 和 `device-boot` 清单一致。
-
-## 首次安装的 userdata
-
-`fastboot erase userdata` 只清分区，不写 BCB 的 `wiped` 标志。在
-OS3.0.309.0 上两次安装，重启后 Android 都停在 Recovery，底部显示
-`Couldn't initialize user 0`。在 Recovery 里选一次“清除数据”才重建加密
-userdata。安装脚本目前只做擦除，操作者要在现场执行这一步，步骤见
-[安装指南](installation.md#24-让-android-重建-userdata)。
-
-## 首次启动扩容
-
-封存镜像的容量由 `product.json` 的 `root_size_mib` 固定。文件系统在首次启动时
-由 initramfs 里的 `resize.f2fs` 扩到 `sunuefi_root` 的实际大小。这条路径的离线部分有测试覆盖：归档里有
-`fsck.f2fs` 与 `resize.f2fs` 的符号链接，`blkid -p -o export` 能读出
-`FSSIZE`，`resize.f2fs` 对已满的镜像是 no-op。真机扩容验证通过：首启后
-`FSSIZE` 与 `blockdev --getsize64` 都等于分区大小，`findmnt /` 看到的是
-扩容后的容量。
-
-扩容失败时引导停在 initramfs。查 `ROOT_GROW_STARTED` 之后的日志，能看出是
-`fsck`、`resize` 还是复核那一步失败。系统不会带着旧容量启动。
-
-分区被收缩到小于文件系统时，报 `The F2FS root is larger than its partition`。
-`resize.f2fs` 不支持缩小，此时只能重刷 `sunuefi_root`。
-
-用 `blkid -p /dev/<分区> -o export` 的 `FSSIZE` 或 `blockdev --getsize64` 核对
-容量。两者都应该等于 `fastboot getvar partition-size:sunuefi_root` 的字节数。
-`findmnt -bno SIZE /` 报的是 statfs 数据块，比分区小约 2 MiB，那是 F2FS 扣掉保留块后的结果，不能拿它和分区
-字节数直接比。
+---
 
 ## 首次启动 GPU 未绑定
 
-已定位，修复待真机验证。全新安装后的第一次开机，`msm_dpu ae01000.display-controller: no GPU device was found`，KWin 退回软件渲染，第二次开机恢复正常。这跟「开机日志里的红色报错」表里那条同名输出不同：那条之后 adreno 会绑上，这条不会，整次启动都没有 `[drm] Initialized msm`。
-
-确证的部分：运行内核有 `CONFIG_DRIVER_DEFERRED_PROBE_TIMEOUT=10`，命令行里没有覆盖它的参数。失败那次日志里 `arm-smmu 3da0000.iommu`、`adreno 3d00000.gpu`、`qcom-camss ad27000.isp-ml` 与辅助桥都报 `deferred probe timeout, ignoring dependency`，正常那次是 0 条。这条消息只从 `driver_deferred_probe_check_state()` 的 `driver_deferred_probe_timeout == 0` 分支出来，清零只发生在延迟探测定时器到期时，所以定时器确实到期了。到期后依赖被放弃，`arm-smmu 3da0000.iommu` 以 `-110` 永久失败，adreno 依赖它一起失败。
-
-推断的部分：慢在哪一段没有逐段计时证据。失败那次 systemd 报内核阶段 114.8 秒，但该次 boot 的 printk 单调时间戳被 clocksource 切换压缩，且 systemd 有 `System time advanced` 与 `rtc-pm8xxx setting system clock` 两次 realtime 跳变，不能拿这个数字反推各阶段耗时。定时器的实际语义是没有驱动注册活动的静默期上限：`driver_register()` 成功会经 `deferred_probe_extend_timeout()` 续命。冷装首次启动时 UEFI 交接、内核解压或 UFS 首次枚举偏长，使 `late_initcall` 到 initramfs 首个 `insmod` 之间没有注册活动；第二次启动这些路径变热，正好在窗口内。
-
-实测排除的怀疑：首启扩容 `ROOT_GROW_STARTED` 到 `ROOT_GROW_DONE` 相差 9.967 ms；设备上 6 GiB 扩到 738 GiB，`resize.f2fs` 1.36 秒、两次 `fsck.f2fs -f` 合计约 0.8 秒。分区发现循环也没空转，`DISK_INIT_BEGIN` 到 `DISK_ROOT_INSPECTED` 是 9.5 ms。日志里 `ROOT_GROW_STARTED` 与超时消息只差 92 µs 是时间戳相邻，扩容不是主因，也不能据此推出因果。
-
-处理方向是放宽延迟探测窗口，让待探测设备继续等模块，不假设慢在哪一段。取值只放在 `patches/kernel/0001-linux-73-series.patch` 对 `config/release.json` 的 `command_line` 里，随 UKI 的 `.cmdline` 进内核。取正整数而非 0 或负值：0 会在 initcalls 结束时就放弃依赖，负值永不收尾，正值到期后仍按原逻辑结束 `fw_devlink` 等待。`tests/check_boot_cmdline.py` 离线锁住这条合同。
-
-待验证：重编内核与 UKI、全新冷装，确认首启日志没有 `deferred probe timeout`，出现 `[drm] Initialized msm`，camss 与辅助桥不再被误伤，KWin 走硬件渲染。
-
-## 双系统切换
-
-双系统切换按上游 SunUEFI 的合体 BOOT 模型工作。活动槽的 BOOT 里是原厂 Android 内核、3 秒选择器与 UEFI 核心，请求页在这份镜像末尾。Android 与 Linux 都从同一个活动槽启动，不切活动槽，也不改 GPT。出厂设备的活动槽是 `_a`，OTA 到 HyperOS 4 的设备是 `_b`。
-
-- Linux → Android：`piano-next-boot android --reboot` 把持久请求写成 target=0，
-  正常重启后选择器进入 Android。
-- Android → Linux：安装「SunUEFI 引导助手」模块（KernelSU/SukiSU），在模块页面
-  选 Linux。没有引导助手时，开机前 3 秒按音量键在 3 秒选择器里选 Linux，选择会被保存。
-- 两轮真机往返：`boot_android.img` 从请求页 target 0→2→0→2→0、
-  sequence 0→4。随后 `flash boot_a device-boot/boot_linux.img`（未签名）
-  直接进 Linux（target=2、sequence=1，约 40 秒），helper 回
-  Android（target=0、sequence=2，约 45 秒），模块重新采纳后再切 Linux
-  （target=2、sequence=3，约 2 分钟），helper 再回 Android（target=0、
-  sequence=4，约 35 秒）。`ro.boot.slot_suffix` 始终是 `_a`，`sys.boot_completed=1`。
-- 请求页偏移 37490688（0x23C1000），magic `SUNUEFI-NEXTv1`，两页相隔 4096
-  字节滚动写入。
-
-helper 不再读任何槽位配置文件。上游 7dbabdc 之后它只读主备 GPT（两份头与条目 CRC
-都校验）和高通 A/B 属性（priority48..49、active50、retries51..53、successful54、
-unbootable55）定位活动槽，再读那份 BOOT 的实际 generation。本机实测
-`boot_a` 属性 `0x0077…`（priority 3、active、successful）、`boot_b` `0x0072…`
-（priority 2、非 active），helper 选出的就是 `boot_a`，与旧配置一致。
-换槽或 OTA 之后不需要重新配置。
-
-旧的 B 槽布局（Linux 写进 `boot_b`、`set_active b`）不再使用。以下是一条历史排障记录：qbootctl 的 `set_active` 只改活动标志，不交换槽位 type GUID。A 活动
-时执行 `qbootctl -s b` 会留下“B 活动 + generic GUID”的表，ABL 的
-`ValidateSlotGuids` 会拒绝启动，报 `BootableSlot _b does not have valid guids`。
-`fastboot set_active` 走 ABL 的 `SetActiveSlot → SwitchPtnSlots`，会交换 GUID
-并切 UFS boot LUN。UFS boot LUN 必须与活动槽一致（1 = A，2 = B）。手工重建 GPT
-时主表和备份表要一起写，两份 CRC 都要重算。
-
-仍停在旧 B 槽布局的设备按这条路径迁移：把 `device-boot/boot_android.img` 写进
-`boot_a`，再用 `fastboot set_active a` 切回 A（B→A 方向 qbootctl 也安全）。
-旧安装上的 `/etc/piano/boot-request.json` 可以直接删掉，新 helper 不读它。
-
-## 固件拒绝 UKI（uki-identity）
-
-菜单选 Linux 后立刻回到菜单，提示「Linux 启动镜像格式不受支持，请更新镜像」。
-日志里是这一组：
-
-```
-PIANO_EBS_CALL image=... tpl=4 ... before=0
-PIANO_EBS_REFUSE stage=before-exit status=Access Denied
-PIANO_UKI_RETURN status=Load Error
-```
-
-systemd-stub 258 起，没有 shim 时直接跳进 UKI 内嵌的内核，跳转前临时把 UKI
-自己的 `LoadedImage.ImageBase`/`ImageSize` 改成内核的地址和大小，返回后恢复。
-`ExitBootServices` 发生在跳转内部，SunUEFI 的 `ValidateInstalledEfiImage()`
-拿 `StartImage` 前记下的值去比，看到被改写的字段就返回 `EFI_ACCESS_DENIED`，
-内核 stub 再把它变成 `EFI_LOAD_ERROR`。Debian trixie 的 systemd 257 仍然把
-内核算成子镜像，所以上游自测碰不到，stub 到 258 以上才会触发。
-
-`patches/uefi-ebs-identity/` 把这处比较限定在 EBS 调用者不是 UKI 句柄的情况，
-handle、父链、设备句柄与镜像状态检查都保留。固件重编刷机后看 `uki-identity`
-是否消失、DT 与内存校验走到哪一步；写这一节时还没有真机验证。
-
-## 交接系统时 USB 停止超时
-
-菜单选 Linux 后曾停在「未能启动系统 / 系统交接失败」，状态
-`0x8000000000000012`，即 `EFI_TIMEOUT`。日志里 `PIANO_EBS_CALL` 之后 NV 保存与
-文件系统关闭都成功，失败落在 USB 服务停止：
-
-```
-SUNUEFI_USB_SERVICE_CLEANUP stage=begin start_status=Success allocated=9 programmed=1 dctl=80F00000 dsts=0000C858
-SUNUEFI_USB_SERVICE_CLEANUP stage=halt status=Time out dctl=00F00000 dsts=...
-PIANO_START_FAILED stage=MENU handoff=linux-uki status=Time out
-```
-
-停 USB 在 `ExitBootServices` 的固件钩子里执行，主机这时已经在重新枚举设备，
-链路停在 Address。清 RunStop 后 `DevCtrlHlt` 与 `CoreIdle` 都不置位。本仓库的
-四版补丁分别试过结束挂起传输、确认 event ring、END_TRANSFER 带 CMDIOC、等
-Rx FIFO 空，都没有让 core 停下来。
-
-上游 `a139e996` 与 `3ab0085a` 修好了同一处，跟进 `4f663563` 时四版退役。
-`patches/uefi-dwc3-halt/` 只剩一条兜底：上游等待超时或 END_TRANSFER 失败时，
-唤醒两路 PHY 后做 core soft reset，以复位后的 `DevCtrlHlt` 为成功判据。
-
-2026-11-12 实机（旧 pin 上的第四版）：等待结束时 `hlt=0 idle=0`、`link=4`、
-`rxf=0`，soft reset 后转为 `hlt=1 idle=1 rxf=1`，接着
-`stage=halt status=Success`、`allocated=9 freed=9 retained=0`，没有
-`PIANO_START_FAILED`，随后进入 Plasma。
-
-2026-11-13 刷上新 pin 的固件后一次通过：`stage=halt status=Success`，`dctl` 从
-`80F00000` 变成 `00F00000`，`stage=done` 是 `allocated=9 freed=9 retained=0`，
-没有 `PIANO_START_FAILED`，也没有 `SUNUEFI_USB_HALT_RESULT`，上游的序列自己
-停住了 core。固件用 wrapped BOOT 换核的方式写回 `boot_b`（app generation
-`43bedc58` → `c0768ed7`），启动后进入 Plasma。这次启动的 UEFI 日志被
-`systemd-pstore` 归档在 `/var/lib/systemd/pstore/console-ramoops-0`。
-
-## Android 侧
-
-已装回与当前 BOOT generation 匹配的「SunUEFI 引导助手」模块
-（`/data/adb/modules/piano_sunuefi`）。安装走 `adopt` 只读识别现有合体
-BOOT，不重写内核。模块页面用它写请求页与重装引导。SukiSU root 仍在
-`init_boot_a`：`su -c id` 返回 uid=0、context `u:r:ksu:s0`。
-
-更早的 `piano_sunuefi_module.zip` 只包含模块结构与根目录 request 程序，缺少 manager 要求的 bin/ 原生工具和策略/状态。这个版本不能安装，也不要和已匹配的那份模块混用。
-
-`boot_a` 被重刷成另一份镜像（例如重新跑 `fastboot flash boot_a device-boot/boot_linux.img`）
-后，模块的 `install-state.json` 仍指向旧镜像，`switch linux` 会报
-`current BOOT header is not the owned wrapper header`。在模块页面执行一次
-“重新安装引导”（`sh /data/adb/modules/piano_sunuefi/manager.sh reinstall`），
-让只读 `adopt` 重新采纳当前 BOOT 即可，不需要重写内核。
-
-Android 实测运行在 SELinux Permissive，启动参数带 `selinux=permissive`。
-手动 `setenforce 1` 可用，但不能当持久策略，固化方式还没落实。
-
-## 充电
-
-固定源码已包含 SC8541/MCA 直充支持，设备参数 cp_charge、hv_charge、
-charge_current、mipps_auth、charge_policy 都开启。参数开启不等于实际达到
-45 W。
-
-上游 A16 这一轮的充电、温控与 FFC 补丁收在封存序列的 `0093`、`0094`、`0096`–`0104`，覆盖停充保留温控、关机充电、MCA 会话恢复、bq27xxx 挂起恢复、Gen4 测温、满电重充、原厂温度、皮肤温控策略、PMIC GLINK 注册时序、带认证的 FFC 与 FFC 停充失败退出。2026-11-14 的 pin 又补进 7 条（`0106`–`0112`），接原厂 4.0.6 循环充电策略、QC/PPS 输入与直充能力选择、电池健康降流和 PPS 调压步长。补丁 0036 是这条驱动的历史参考，对应实现已经在固定内核里，不要重复套用。新 7 条的功率、温控与关机充电表现没有真机记录。
-
-当前镜像（`kernel-piano-7.3.3-2.piano`）上用 PD 充电器实测：`MiPPS adapter authenticated` 之后进入 `FFC battery charging mode`，直充总线从 7.6 V 抬到 8.94 V，电池电流升到 8.8–8.9 A、电压约 4.0 V，按 sysfs 估算电池侧约 35 W。SC8541 online 从旧记录的 0 变成 1，自身温度 42.5 → 55.5 °C 后回落，双电芯 29–36 °C，电量 17% → 39% 约 17 分钟。中途断开电源时打出 `source lost during direct charging`，直充退出并回到标准充电，没有停在直充状态。
-
-这些是 sysfs 读数，不是外置功率计。满电停充、温控降流与关机充电还没有记录，45 W 依旧不作声称。
-
-### 充电记录
-
-`piano-charge-monitor.service` 默认关闭。脚本 `/usr/lib/piano/charge-monitor` 随运行时 RPM 落地，unit 与 preset 在 `/usr/lib/systemd/`，preset 写的是 `disable piano-charge-monitor.service`，`python3` 由基础包提供。程序只读 power-supply、IIO、hwmon、thermal、Type-C 与 CPU/GPU 频率，不改充电设置，不阻止系统睡眠。接电时每 2 秒采样，离线时每 60 秒采样，插拔会立即重新采样。记录写入 `/var/log/piano-charge-monitor/` 的 `samples.jsonl`，旧段压缩成 `samples-*.jsonl.gz`，总量不超过 20 MiB，满后删最早段。
-
-临时观察就启动服务，要每次开机都记录再设成开机自启，取消用 `disable --now`：
-
-```sh
-sudo systemctl start piano-charge-monitor.service
-sudo systemctl enable --now piano-charge-monitor.service
-sudo systemctl disable --now piano-charge-monitor.service
-```
-
-导出记录：
-
-```sh
-sudo tar -C /var/log -czf "$HOME/charging-logs.tar.gz" piano-charge-monitor
-```
-
-这一轮没有在设备上跑过这个服务，状态记为未真机验证，不作可用声称。
-
-## 传感器与自动旋转
-
-传感器走 SSC，不走 IIO。`libssc` 与 `iio-sensor-proxy-ssc` 都已装好，
-`qrtr_smd`、`qrtr_mhi` 与 `mhi` 三个模块加载后，代理能拿到设备：
-`HasAccelerometer`、`HasAmbientLight`、`HasProximity` 全为 true，
-环境光有实际读数（例如 164 lux），`AccelerometerTilt` 随摆放姿态变化
-（平放 `face-up`，举起 `tilted-up`）。`/sys/bus/iio/devices` 为空是正常的，
-SSC 后端不经过 IIO 子系统。
-
-Mutter 订阅 `AccelerometerOrientation`，自动旋转已实测：把平板从平放转成
-`left-up`，`GetCurrentState` 的逻辑显示器变换从 0 变成 1（顺时针 90°），
-屏幕跟着转。旋转锁为 false。罗盘没有对应属性，不参与这一链。
-
-## 手写笔
-
-libinput 捕获 1906 条轴事件、22 条 proximity、18 条 tip 事件，压感 0–1，
-位置及倾斜变化正常，未捕获 TABLET_TOOL_BUTTON。设备节点是
-`Piano Focus Pen Pro`（`virtual:0022:5081`）与蓝牙侧的
-`Xiaomi Focus Pen Pro Mouse/Keyboard`。蓝牙键盘/鼠标节点上的按键、捏握、
-防误触、绘图应用效果、充电与重连仍需分别验证。
-
-## 无损首装
-
-`install-f2fs.py` 加了 `--lossless`：先在 Android 上把解密后的 F2FS 缩到新容量，再写分区表，不擦 `userdata`。顺序不能反过来——文件系统比分区小是安全的，反过来会读出越界。
-
-工具链是上游现成的两步：`piano-resize-f2fs shrink --target-bytes N --execute` 走 `F2FS_IOC_RESIZE_FS`，`piano-storage apply` 写 GPT 并留备份。宿主机只负责计划、推送和核对，因为加密 `/data` 的明文超级块只有在设备上经 vold 解密映射才读得到，section 大小也从那里取。
-
-2026-11-13 在一台 OTA 到 HyperOS 4（活动槽 `_b`）的 1 TB 设备上跑完一次：`userdata` 从 938 GiB 缩到 200 GiB，`sunuefi_root` 737.5 GiB，`sunuefi_esp` 512 MiB。Android 里的测试文件 sha256 前后一致，Linux 首启自动登录，触控与笔正常，两系统往返各一次。
-
-还有三件事没验：重复安装、`--accept-data-loss` 路径、缩到余量很小的容量。
-
-尺寸只在首装这一次定。`userdata` 起点不动、root 从它后面接，所以只能缩不能长，上限就是当前的盘尾。装完再改没有入口：`install-f2fs.py` 的 `--android-data-mib` 与 `--lossless` 在已有分区时直接拒绝，`update-f2fs.py` 只替换文件。要改容量就先把 `sunuefi_root`、`sunuefi_esp` 从 GPT 删掉、把 `userdata` 拉回盘尾，再跑一遍，Linux 数据会丢，Android 保留。删分区不用手工改表：Android 的「SunUEFI 引导助手」WebUI 存储页有 **删除并归还 Android 空间**，它检查扩容条件、写新 GPT 并留备份，下次启动由 SukiSU 早期维护用 `resize.f2fs -k -t` 扩大加密 F2FS；分区目标与文件系统目标分别核对，原有元数据盖不住整块 `userdata` 时只扩到元数据可覆盖范围。这步需要支持早期 init 配置的 SukiSU，本轮未真机验证。
-
-发布归档里的 `root-install` 按 `_a` 构建，Slot B 设备要用同一次 bundle run 跑 `prepare-install.yml` 并传 `android_slot=_b`。一键脚本与手动章节已跟随活动槽，槽位与 root-install 不一致时在写入前退出。
-
-设备侧的前置条件是已装与当前 BOOT 匹配的「SunUEFI 引导助手」模块，`piano-resize-f2fs` 由它提供。缺这个模块时 `plan --lossless` 直接报错，不会退化成清空路径。
-
-## 触屏、网络、音频与相机
-
-内核手指矩阵解码（上游 `0095`）这一轮没有收。触控仍走用户态 THP 读取加 `nvt_finger_filter.cpp` 的 5 级滤波，`/proc/nvt_thp_status` 保持 `kernel_input: disabled`，不会出现第二个输入设备。
-
-### piano-usb.service 每次开机失败
-
-`piano-usb.service` 每次启动都落到 failed，`journalctl -u piano-usb` 只有一行
-`/usr/lib/piano/usb-network: line 46: /sys/kernel/config/usb_gadget/piano/idVendor: Permission denied`。
-
-原因是两个单元抢同一个 UDC。`piano-linux-debug.service` 先绑定
-`a600000.ssusb`，建的是 acm+ncm gadget，`usb0` 的 MAC
-`02:87:50:00:00:01` 与 `192.168.77.1/30` 都归它，NetworkManager 的
-`piano-debug-ncm` profile 也按这个 MAC 匹配。SunUEFI BSP 里的
-`piano-usb.service` 随后再往自己的 gadget 写描述符，configfs 在 gadget
-已绑定后拒绝修改，脚本拿到 `Permission denied`。
-
-排除了 SELinux：`/usr/lib/piano/usb-network` 是 `lib_t`，systemd 直接执行
-时停在 `init_t`，但把同样的写入放进 `bin_t` 的脚本里、或用 `sh` 显式启动，
-写 `idVendor` 都成功。失败的只有那个已绑定 gadget 的路径。
-
-这条不影响功能：`usb0` 正常起来，USB 网络与串口都在，只是每次开机留一个
-failed unit。改法是在装 BSP 树时跳过 `piano-usb.service`、`79-piano-usb.rules`
-与 `usb-network`。`piano-linux-debug.service` 自带的 acm+ncm 就是同一条链路，
-BSP 那份是重复实现，一个 owner 就够。
-
-冷启动验证已在 2026-11-08 通过：这三个文件不在系统里，`usb0` 起来是
-`192.168.77.1/30`，`systemctl --failed` 为空，`udevadm trigger
---subsystem-match=typec` 之后仍然为空，UDC 状态 `configured`。先前那次
-"删掉之后重启，平板从 USB 总线上消失"与删文件没有因果：同样删掉的这一次
-断电重开，USB 网络正常上线。
-
-判断平板是否还在 USB 上，只看 `lsusb` 里有没有 `idVendor=1209`、主机侧
-`usb1-port12/state`、以及 `dmesg` 里 `usb 1-12` 的事件。不要用
-`/dev/tcp/192.168.77.1/22` 判断：构建机上 clash 的 TUN 会接管这条路径，
-不存在的地址也返回 CONNECTED。
-
-- 触控：45 秒持续单指划动，SYN 报文 97 次/秒，43/45 秒有事件（两个空秒
-  是换手间隙），NVT 中断同期增长 5425。X 覆盖 5395–28696、Y 覆盖
-  4591–19408，全屏可达。多点 slot 0–5 都出现过。相邻坐标跳变的 p95 为 2770，
-  来自多指交替时的 slot 切换，不是丢帧。
-- 音频：120 秒播放无 xrun/underrun，音量与 sink 状态全程不变。130 秒录音
-  每 10 秒分段都有信号，段均值在 -33.6 到 -18.5 dB 之间，没有静音段。
-
-- 相机：前摄与后摄都能正常成像，详见下方"取帧"两段。整机验收还没走完，
-  设备整体状态记为未验证。验收项见
-  [安装指南的真机验收](installation.md#十-真机验收清单)。
-
-编解码已复验通过。H.264 与 HEVC 各 300 帧的 GOP60 硬件编码与解码，
-以及各 300 帧带 B 帧的硬件解码，逐帧摘要与软件解码一致，Iris 中断在每段都有
-增长。验收脚本在维护者机器上驱动平板运行，命令见[维护与验收](internals.md#真机取证脚本)。
-目标镜像没有 `make` 和 `libx264`/`libx265`，素材在主机上准备。
-
-浏览器硬解已单独取证，三家结果不同：
-
-| 浏览器 | 能否播 H.264 | 是否硬解 |
-|---|---|---|
-| Fedora Chromium 155 | 装上 `libavcodec-freeworld` 后能 | 否 |
-| Google Chrome 156（aarch64） | 能 | 是，默认开启 |
-| Firefox 158 | 能 | 是，默认开启 |
-
-Chromium 不走硬解有两个叠加原因。Fedora 的 Chromium 链接系统 `libavcodec`，
-而 `ffmpeg-free` 在构建时用 `--disable-decoder` 去掉了软件 H.264，所以原样连 MP4 都打不开，报 `FFmpegDemuxer: open context failed`。补上 RPM Fusion 的
-`libavcodec-freeworld` 才能播放。播放之后 Chromium 仍然交给软件解码：GPU 进程没有打开
-`/dev/video0`，Iris 中断在整个播放窗口内不增长。Chrome 自带 FFmpeg 与 V4L2
-解码路径，Firefox 走自己的 VA-API 路径，两者都直接把 `msm_drv_video.so` 用起来。
-
-验收判定不能只看浏览器自己报的状态：软件解码同样拉高 GPU 中断。脚本同时要求
-Iris 中断增长和 `/dev/video0` 有持有者，两者缺一即判为非硬解。
-
-相机另有一条容易误判的路径：`piano-camerad` 在没有上游产帧方时会给
-v4l2loopback 写黑帧，所以“节点能取到帧”不等于传感器在出图。判定时查 camerad 日志，确认有对应相机的 CAMSS 媒体设备，并确认帧内容不是全黑。设备上取的两张
-样张就分属两种情况：前摄那张是正常灰阶画面，另一张只有
-一小块亮区、其余全黑。只统计“两个节点各取到 3 帧”会把后者算成通过。
-
-复测时两颗传感器都走上了 CAMSS 产帧路径。用 `gst-launch` 从两个
-loopback 节点各取 30 帧，前摄末帧灰度均值 117（满量程 255），画面是正常
-室内成像。后摄末帧均值 24、最大值 113，是低照度噪声，当时设备平放在桌面上。
-
-后来把两颗放在同一时段一起取，前摄末帧 p50=94、p90=180、p99=255，四乘六
-分块均值从 20 到 216，空间结构清楚。后摄 p50=30、p90=46，分块均值在 23 到 37
-之间，平坦且暗。后者能出图但对着暗处，仍按低照度记录，不算画面失败。
-
-在采光正常的同一时段连取两轮后，两颗都给出了稳定且可重复的空间结构：
-后摄 p50 为 78 与 65、p90 为 209 与 180，四乘六分块均值 16.9 到 197.9。
-前摄两轮 p50 都是 112、p90 为 193 与 194，分块均值 20.2 到 200.7。
-两颗都能正常成像，之前后摄那张暗帧是取帧时对着暗处，不是相机本身的问题。
-
-取帧有个时序问题容易误判：`piano-camerad` 在 loopback 没有读者时会停流，
-来一个读者就重新起流，而自动曝光每轮都要重新收敛。刚起流的前几帧是黑的，
-灰度会从 1 单调爬到稳定值。用第一帧判断画面会把正常出图判成黑屏，判定时必须用收敛之后的帧。上面前摄与后摄两组数据的第一帧与末帧差距明显：
-后摄第一帧 p50=30、同一轮末帧 p50=78，只取开头就会把它误判成暗场。
-
-### 经 pipewire 的客户端拿不到原生尺寸
-
-GNOME Snapshot 这类走 portal 与 pipewire 的应用，拿到的是 16x4 而不是默认的 1920x1440，GTK4 的 Vulkan 渲染器给这个尺寸建 offscreen image 时段错误。直连 `/dev/video40` 的 `ffmpeg` 与 `gst-launch v4l2src` 不受影响，两种方式都正常拿到 1920x1440。
-
-第二层在流的重连上：尺寸正确时 Snapshot 仍会在 `queue0:src` 的 `gst_base_sink_drain` 深拷贝里段错误。`pipewiresrc` 判定「caps 没变就不重连」时拿固定 caps 跟带区间的 caps 比，永远不相等，每次 reconfigure 都断开重连；池子被拆掉时 sink 里排队的缓冲已经解映射。
-
-三处都在 pipewire：`90ddb7e6` 保留 SPA choice 的首选值，`4d3a3fc8` 修 `buffer_recycle` 的加锁顺序，`97699d70` 让运行中的 caps 仍被下游接受时不重连。Fedora 45 的 `pipewire-1.6.11-1` 一条都没有，最后一条目前只在 master。临时用 `piano-pipewire-gstreamer` 替换 `pipewire-gstreamer` 子包，它带 1.6 分支 tip 在 `src/gst/` 下的全部提交加这一条 backport，细节与移除条件见 #64。
-
-同一份 Snapshot 在修复前数秒内重连十余次、约一秒后段错误；修复后连续预览四分钟以上，一次重连，无新 core，预览正常出图。
-
-判定用 `GstDeviceMonitor` 取设备 caps，看 `fixate` 后的宽高，不要用 `gst-launch` 直连——它不查设备枚举，看不出差别。
-
-## 指纹、红外与 HDR
-
-三项分开记，结论不一样。
-
-### 指纹
-
-侧置电容式，汇顶 Goodix，认证在 TEE 的 `gfpia` TA 里完成。内核侧已经通：`uio_piano_fingerprint` 与 `qcomtee` 已加载，`dmesg` 打出 `QTEE version 5.2.0`，`/dev/uio0`、`/dev/tee0` 与 `/proc/device-tree/soc/xiaomi_fingerprint` 都在，DT overlay 也一直在发。
-
-用户态已经接上：`piano-fingerprint` 提供原生客户端，`piano-libfprint` 把 Goodix 静态库链进打过补丁的 libfprint，fprintd 能认到 `Goodix fingerprint sensor`。录入、认证与锁屏解锁在 v45.3 之前的镜像上验过：`fprintd-enroll` 走完、`fprintd-verify` 通过、锁屏用指纹解开。v45.3 的镜像没有重测这一项。不读取 Android 侧已有的指纹模板。
-
-### 红外
-
-消费级红外发射器，接在 QUPv3 SE15（SPI `0x89c000`），只发不收。设备上 `/dev/lirc0` 与 `/sys/class/rc/rc0` 存在，`dmesg` 记录 `rc rc0: lirc_dev: driver ir-spi registered at minor = 0, no receiver, raw IR transmitter`，`ir_spi` 与 `rc_core` 已加载，内核里 `CONFIG_LIRC=y`、`CONFIG_IR_SPI=m`。
-
-发码用 `ir-ctl -d /dev/lirc0 --carrier=38000 --send=remote.txt`。光学输出没有实测，手边也没有接收端可以做回环，所以能确认的是设备节点与驱动路径，不是"能当遥控器用"。
-
-### HDR
-
-面板支持 HDR10。DSI-1 连接器的属性里有 `HDR_OUTPUT_METADATA`、`Colorspace`、`max bpc`，CRTC 上有 `GAMMA_LUT`、`DEGAMMA_LUT`、`CTM`，比早先记录的"msm 没挂属性"要多一些。
-
-extras 的 KWin 带退出 HDR 恢复背光的补丁，内核封存序列里也有上游的 HDR identity gamma 补丁。`kscreen-doctor` 同一条命令带 `hdr.enable` 与 `wcg.enable` 时驱动接受配置，单独提交 `hdr.enable` 会被拒绝并打印 `applying config failed`。补丁只管 HDR 切回 SDR 时把硬件背光写回去，不改这条属性提交路径。
-
-2026-11-12 在冷启动后的补丁版 KWin（`kwin-6.8.2-3.piano1.fc45`）上开关过两轮，`/sys/class/backlight/ktz8866-backlight/brightness` 都是 1024 → 2047 → 1024，关 HDR 后背光没有停在最大值。2026-11-14 在 `kwin-6.8.2-4.piano1.fc45` 上重跑两轮，先装本地 RPM 再重建 Plasma 会话让新 KWin 生效，两轮都是 1556 → 2047 → 1556，再等 5 秒稳态仍是 1556。同一台设备装 Fedora 官方 `kwin-6.8.2-3.fc45` 时，关 HDR 后背光停在 2047 不回落，退出恢复背光靠 extras 的 KWin 补丁。这轮 KWin 只把 release 从 `3.piano1` 抬到 `4.piano1`，补丁内容未变。
-
-没量过色深与色调映射，HDR 画面本身不算验证过。默认配置把 HDR 与广色域保持关闭。
-
-### 键盘背光
-
-键盘盖的背光设备随磁吸键盘插拔出现和消失。extras 的 `gnome-settings-daemon-piano` 带上游 50.1 的热插拔刷新补丁，让 GNOME 在接上键盘后重新发现背光设备。默认镜像不装这个包，键盘背光不会被 GNOME 接管。真机还没验收接上/取下与睡眠唤醒后的恢复。
-
-## 内核在线升级
-
-`dnf upgrade` 现在会带上 `kernel-piano`。事务收尾时，`%posttrans` 重建 initramfs，再用 `systemd-ukify` 重打 ESP 上的 `/EFI/Linux/sunuefi.efi`。旧的 `boot.img` 链在平板上跑过一次真实升级（`7.2.9-1` → `7.2.9-3`）：`%posttrans` 重建了 initramfs，ESP 上的 `Image`、`initramfs` 与 `boot.img` 都换了，`.bak` 三份都在，重启后 `uname -r` 是新的内核，`graphical.target` 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载。
-
-UKI 链的自动重打也验过：`%posttrans` 重建 initramfs，写 `sunuefi.efi.bak` 并替换 `sunuefi.efi`；重启后 `uname -r` 与 UKI 的 `.uname` 一致，`systemctl --failed` 只剩既有的 `lm_sensors`。`7.3.3-4` 与 `-2` 是同一份内核载荷，验的是重打与替换链路，不是换内核版本。
-
-写盘失败时，旧 UKI 保持不动，设备继续用旧内核启动。装好但起不来的内核没有自动回滚，回滚方式见 `docs/copr-repository.md`。
-
-挂起路径上每次会打 4 条 `qdss already disabled` / `qdss already unprepared`
-（`drivers/clk/clk.c` 的 `clk_core_disable` / `clk_core_unprepare`，从
-`amba_pm_runtime_suspend` 进来）。两轮挂起都复现，唤醒正常、桌面恢复、
-`systemctl --failed` 为空，目前只有日志噪声。来源是 coresight qdss 的时钟在
-runtime PM 里被重复关闭，属于上游驱动的问题，不是本仓库的补丁。
-
-`kernel-piano` 按普通包升级，新的 RPM Release 替换旧包，模块树目录也跟着替换。
-`depmod` 之后生成的文件不归 rpm 所有，替换后可能留下少量旧文件；它们不影响启动，
-`dnf` 也不会再引用。回滚要先 `dnf downgrade kernel-piano` 把旧模块树装回来，再恢复
-UKI 的 `.bak`。只恢复 `.bak` 会启动一个模块树已经不在了的内核。
-
-manifest 按 NVRA 命名（`/usr/share/piano/kernel-manifest-<version>-<release>.json`）。
-盘上可能留下多份，`piano-kernel-esp-update` 要求 `%posttrans` 点名要用哪一份。固定
-名字还会让两个包争同一个路径，rpm 直接中止事务——这条在设备上撞过一次，症状是
-`file ... conflicts with file from package`。
-
-## 上游修复的可移植边界
-
-2026-10-25 把 `yzddmr6/linux-sm8750-piano` 的 `piano/dev`（`235ab34e2`）逐条对照了
-一遍。基线取 `v7.2.6`（`500df175a`），到分支末端共 1011 个非合并提交，按当前 7.3 树
-分类：643 条已在本树、29 条可直接应用、339 条被挡。
-
-上一轮只按 `--author=yzddmr6` 过滤，漏掉了上游从主线 cherry-pick 进来的整批提交
-（带 `(cherry picked from commit ...)` 的行），那批有 18 条真修复。按作者过滤不能
-当判据。
-
-29 条可直接应用的里 18 条已收成封存序列 `0037`–`0054`，另有 `0055`（iris 关电等
-线程化 IRQ 退出）来自 339 条里的 `0adb163ceb`——它和已取的 `041e33ce19` 是同一组
-修复的两步，只取前一步会留下 `disable_irq_nosync` 后线程化 handler 访问已断电硬件
-的窗口。
-
-2026-10-26 上游 `piano/dev` 推进到 `9321086f2e2`（共 10 条新提交，2 条 merge + 8 条主题）：
-- UFS MCQ 多队列支持（`c155f0cfe97`、`d21a171ee48`，对应本序列 `0056`、`0057`）
-- PMIC5 Gen4 ADC、PMK8550 ADC 与 11 路板级测温传感器（`ff6018d383a`、`5812ec75bb0`、`fa38723bd8c`、`43dd63f2f45`、`898cec7421c`，对应本序列 `0058`–`0062`）
-已并入封存序列并重放，`target_tree` 推进到 `783e27278886`。唯一未取的是上游自己的 `bd273459857`（改 `piano-persistent.config`）：本树内核编译由 SunUEFI 的 `piano_defconfig` 与 `piano-platform.config` 管控，其中 `CONFIG_GENERIC_ADC_THERMAL=m` 已内建，ADC 驱动配置由平台层接管。
-
-挡住的 339 条按原因分：
-
-| 条数 | 原因 |
-| --- | --- |
-| 178 | 上下文冲突。绝大多数是 7.2.10 的 stable 回填，7.3 里已有更新版本；少数是上游自己的改动与 7.3 基线不同 |
-| 77 | 改 `arch/arm64/boot/dts/qcom/` 下的内核 DTS。本机 DTB 不来自内核 DTS，见下 |
-| 28 | 只改上游自己的 config 片段（`piano-persistent`/`piano-release` 等），我们不消费 |
-| 20 | `nt36532e-thp` 重写版驱动。本机用原厂 `nt36xxx.c` 移植，见下 |
-| 15 | `xiaomi_mca`/`sc8541` 驱动，本树没有这两个文件 |
-| 11 | `Revert "..."`，被 revert 的提交从来不在本树 |
-| 9 | `hid-nanosic` 重写版 |
-| 1 | 目标文件在本树不存在 |
-
-另外 11 条能干净应用但没取，各有具体原因：
-
-| 提交 | 不取的原因 |
-| --- | --- |
-| `1e23b49b80`、`48879e6e07`、`1d02527d1d`、`f35c680290` | 上游自己 revert 了；GPU 那两条由 `cbb3f4900b`（已取，`0040`）替代 |
-| `ecb9d2588b`、`c78194b27b`、`ec181b09d9` | 改 `sm8750.dtsi`，本机 DTB 不来自内核 DTS |
-| `7cfa3bd691` | revert Adreno 830 支持，会删掉我们移植的 288 行 catalog |
-| `ac637afc63` | 把功放上限放宽到 231，我们保留 215 |
-| `925bbbba6e` | 7.3 的 `rpmhpd_update_level_mapping()` 已全局跳过 retention，无 per-PD 字段 |
-| `8c4edb0399` | revert DPU 清理顺序，与我们自己的 `0025` 冲突；上游随后用 `c55958fa0` 重落了同一件事 |
-
-两类结构性原因值得单独记：
-
-**本机设备树不是内核 DTS。** `build.sh` 打包时用
-`--dtb vendor/piano-linux/board.dtb`，再加 `config/release.json` 的 15 个
-`.dtso`。内核 `arch/arm64/boot/dts/qcom/sm8750-xiaomi-piano.dts` 不参与设备启动。
-所以上游所有 `arm64: dts: qcom: sm8750-xiaomi-piano: ...` 提交都搬不过来；要搬
-得先换 DTB 来源，那是另一件事。LLCC 的 compatible 不匹配也出自同一处。
-
-**触控是两套驱动。** 上游把触控重写成 `drivers/input/touchscreen/nt36532e-thp/`
-（`core.c` 等），本机是原厂 `nt36xxx.c` 的 2696 行移植。逐条核过三条修正在本驱动
-里不成立：`11b207f747`（不要求 `actual_length`）——本驱动的 `spi_read_write()`
-不读这个字段；`e6c332c614`（容忍一次帧读失败）——本驱动帧读失败只记一条
-`CTP_SPI_READ failed` 就返回 `IRQ_HANDLED`，不会停流；`ba725ea02c`（每流只选一次
-event buffer 页）——本驱动的页选择在 `nvt_set_page()` 里按需做。要拿这些收益得先
-把驱动换成上游那套。
-
-搬进来的部分按子系统收成 6 个 commit，追加在封存序列 `0029` 之后
-（`0030`–`0035`），另有 `0036`（GLINK 暂存早期消息）和 `0037`–`0054`（18 条主线
-cherry-pick）。有六处没有照抄上游：
-
-- `ktz8866` 的 `DEFAULT_BRIGHTNESS` 保持 1500。上游那条会把开机亮度一起改掉，
-  不在这次范围里。同一文件的可读寄存器表、`FLAG` 读后清零、HWEN 上电时序和
-  错误上报是本轮自己写的，不是上游原文。
-- 功放增益上限保持 215。上游 `ac637afc63` 把它放宽到 231，同时自己注明那不是
-  验证过的安全上限。
-- `7cfa3bd691` 会删掉我们移植的 A830 支持，整条不要。
-- `69421e5de9` 把 fs19xx 的真 bug 修和默认音量改动混在一起，只取前者。
-- `925bbbba6e` 在 7.3 是空操作：7.3 的 `rpmhpd_update_level_mapping()` 已经全局
-  跳过 `RPMH_REGULATOR_LEVEL_RETENTION`，没有 per-PD 的 `skip_retention_level` 字段。
-- `clk_test.c` 保留本树的 `HZ_PER_MHZ` 写法，只取上游新增的孤儿时钟接管测试。
-- `8c4edb0399` 与我们的 `0025` 冲突：上游先 revert 了「清理放在停时序之前」，
-  又用 `c55958fa0` 重新落地 slave 清理。我们 `0025` 的写法与 `c55958fa0` 等价，
-  所以不跟这条 revert。
-
-上游 `piano-persistent.config` 里有一批本机没开的选项，属于真实缺口但都不影响
-当前可用性：`CONFIG_PSI`（systemd-oomd 依赖）、`FW_LOADER_COMPRESS_{XZ,ZSTD}`、
-`USB_UAS`、`WIREGUARD`、`SECURITY_YAMA`、`BPF_LSM`。我们的配置来自
-`piano_defconfig` + `linux/configs/*.config`，没有消费上游的片段，所以这些要单独
-决定加不加。
-
-`EXFAT_FS` 与 `NTFS3_FS` 不在这批缺口里：`patches/kernel-f2fs` 已把它们编成
-`y`，`NLS_UTF8` 与 `NTFS3_LZX_XPRESS` 也一起开。真机挂载还没做过，格式化成
-exFAT 与 NTFS 的 U 盘读写属于待验收项。
-
-搬进来的驱动改动里有两条在本机是**未生效路径**，不能算成修复：
-
-- `media: i2c: dw9768` 的 GT9764 序列按 `giantec,gt9764` 选择。本机 `board.dtb`
-  的对焦执行器是 `giantec,gt9769`，上游自己的
-  `sm8750-xiaomi-piano-camera.dtsi` 里那个节点也是 `status = "disabled"`。代码编进
-  去了，但没有设备会匹配它。
-- `usb: typec: mux: fsa4480` 的 DIO4485 支持按 `dioo,dio4485` 选择。本机
-  `board.dtb` 的 `fsa4480@42` 是原厂 compatible `qcom,fsa4480-i2c`，驱动的
-  `of_match` 不认，所以这个节点根本没绑定过。
-
-要让这两条真正生效，得先改板级 DTB 的 compatible，属于设备树来源的问题，和上面
-那 63 条 DTS 提交是同一个前提。
-
-## 仓库整理
-
-- `README.md` 与 `README.en.md` 的骨架由 `tests/check_readme_parity.py` 锁定：
-  标题层级数量、语言切换行、指向的文档列表必须一致。改其中一版时，同步改另一版。
-- `docs/public-release-gaps.md` 的电极校准一项已决定：数据早已在公开仓库与公开 COPR 里，`NOTICE` 写明来源，发布不再因此阻挡。`release.yml` 仍默认只建 draft，转公开要显式传 `publish=true`。
-- 三个 UEFI 补丁的 `series.json` 里 `note` 引用的文档分两类。`docs/status.md`、
-  `docs/ufs-dedicated-area-audit.md` 与 `docs/piano-full-ddr-producer-gaps.md`
-  在上游 SunUEFI 仓库，按 `sources.lock.json` 的 pin 取。还有一份设备验收记录
-  已移到不入库的本地笔记，这条引用是历史记录。改 `series.json` 会改变
-  `project_source_sha256`，现有 bundle 的 UEFI 来源校验会失效，因此本轮不改它。
+- **现象**：全新冷装首次开机日志记录 `msm_dpu ae01000.display-controller: no GPU device was found`：
+  - 整次开机未完成 Adreno GPU 绑定，KWin 退回 llvmpipe 渲染；
+  - 第二次开机恢复正常。
+- **影响**：首次冷装启动进入桌面时缺乏硬件图形加速，界面响应缓慢。
+- **技术根因**：根因未逐段定位，现按延迟探测定时器静默期耗尽假设放宽窗口：
+  - 候选段包括 UEFI 交接、内核解压或 UFS 枚举；
+  - DPU 先于 Adreno 探测属表面症状。
+- **应对方法**：首次冷装若遇到无硬件加速，正常重启一次设备即可恢复。
+- **状态**：已缓解待真机验证（补丁已在默认命令行加入正整数 `deferred_probe_timeout`，待冷装验证）。
+
+---
+
+## 系统缓存（LLCC）没有生效
+
+- **现象**：内核编译开启 `CONFIG_QCOM_LLCC=y`，但 `/sys/bus/platform/drivers/qcom-llcc/` 下未绑定设备。
+- **影响**：系统未配置专用的最后一级缓存切片，Adreno GPU 与系统总线缺 LLCC slice 运行。
+- **技术根因**：设备树原厂节点为 `compatible = "qcom,sun-llcc"`，而驱动仅匹配 `"qcom,sm8750-llcc"`。
+- **状态**：未解决（待上游驱动或内核补丁增加 compatible 匹配项）。
+
+基准测试收益参考（上游 `yzddmr6/linux-sm8750-piano@fe98a3e` 实测）：
+- Geekbench 6 单核 +0.9%、多核 +0.5%；
+- Vulkan 计算 +2.7%；
+- 内存延迟类子项最高 +9.5%。
+
+---
+
+## 未开启的内核配置
+
+- **现象**：当前实机 `/proc/config.gz` 中未开启以下配置：`CONFIG_PSI`、`CONFIG_WIREGUARD`、`CONFIG_USB_UAS`。
+- **影响**：
+  - `CONFIG_PSI` 缺失导致 systemd-oomd 无法获取内存压力指标；
+  - `CONFIG_WIREGUARD` 缺失导致无法建立内核级 WireGuard VPN 隧道；
+  - `CONFIG_USB_UAS` 缺失导致高速 USB 存储回退至传统 usb-storage 驱动，限制连续吞吐。
+- **技术根因**：当前内核构建配置中未将上述三项符号置为开启状态。
+- **状态**：未解决（待后续内核构建更新中统一开启并编译验证）。
+
+---
+
+## 驱动路径未命中（dw9768 与 fsa4480） <a id="驱动路径未命中"></a>
+
+- **现象**：相机音圈马达（VCM）与 Type-C 音频开关芯片驱动未绑定。
+- **影响**：相机马达无法通过 dw9768 控制对焦，音频切换芯片无法通过 fsa4480 驱动受控。
+- **技术根因**：实机设备树声明与补丁匹配项不一致导致探测跳过：
+  - 声明为 `giantec,gt9769` 与 `qcom,fsa4480-i2c`；
+  - 补丁添加项为 `giantec,gt9764` 与 `dioo,dio4485`。
+- **状态**：未解决（待修正设备树或驱动中的 compatible 声明）。
+
+---
 
 ## 启动时的间歇 Oops
 
-2026-11-13 有一次启动停在内核 Oops 的 trace 上，看起来像卡死。内核命令行
-带 `panic=0`，Oops 之后不会自动重启，屏幕就留在那里。
+- **现象**：偶发启动时内核崩溃，报 `Internal error: Oops - Undefined instruction: 0000000020000000`：
+  - 发生在启动约 9.4 秒 `udevd-worker` 内存页映射路径，停在 panic 画面。
+- **影响**：偶发开机失败，未能正常进入桌面。
+- **技术根因**：尚未逐段定位，未获稳定复现。
+- **应对方法**：遇到时先正常重启一次（若屏幕无响应时长按电源键强制断电）；不要据此修改启动链。
+- **状态**：未解决（全仓库暂无修复提交，作为未定位间歇问题观察中）。
 
-trace 里是 `Internal error: Oops - Undefined instruction: 0000000020000000`，
-两次都在启动约 9.4 s 的 `udevd-worker`（PID 532）里，走
-`handle_mm_fault` → `do_page_fault` → `do_mem_abort` 的页错误路径；前一次在
-`folio_add_file_rmap_ptes`，后一次在 `folio_move_anon_rmap`。崩溃时
-NetworkManager-wait-online 已经在跑，说明内核已完成启动交接、systemd 起来了，
-不是固件或 UKI 的问题。
+---
 
-同一个 UKI、同一个内核 `7.3.3-piano-sunuefi-cachy-optimize` 在这次之前和之后
-都能正常进桌面，从原厂 fastboot `continue` 之后的那次启动 `dmesg` 里也没有
-Oops 或 panic。没有稳定复现，没有抓到完整串口日志，也没有定位到具体触发的
-模块。遇到时先正常重启一次；不要据此改启动链。
+## 刷写与读回
+
+- **现象**：原厂 Fastboot 通信存在以下限制：
+  - ABL 不支持 `fastboot fetch`（报错 `Device does not support fetch command`）；
+  - 刷写 6.1 GB 稀疏根镜像后，USB bulk 端点可能超时，后续 `fastboot getvar` 无响应。
+- **影响**：无法通过 fastboot 读回镜像比对哈希；大分区刷写后继续执行命令可能挂死。
+- **技术根因**：原厂 Bootloader 的 Fastboot USB 通信实现与传输缓冲区限制。
+- **应对方法**：
+  - 完整安装刷写顺序严格按 `boot` → `sunuefi_esp` → `sunuefi_root` 执行；
+  - 刷写完根分区后，直接长按电源键断电或重启设备，避免在同一会话中继续写入大文件；
+  - 安装校验以开机进入桌面后的实际挂载状态（`findmnt /`、`uname -r`）为准。
+- **状态**：已缓解（通过规范一键脚本刷写顺序与重启流程规避）。
+
+---
+
+## 首次安装的 userdata
+
+- **现象**：全新安装执行 `fastboot erase userdata` 后，重启平板停在官方 Recovery 界面：
+  - 屏幕底部提示 `Couldn't initialize user 0`。
+- **影响**：平板无法直接启动进入 Android 系统。
+- **技术根因**：`fastboot erase` 仅擦除块设备，未写入 Android 启动所需的 BCB 重建标志。
+- **应对方法**：在 Recovery 菜单中使用音量键和电源键手动执行一次「清除数据」（Wipe Data）：
+  - 重启后 Android 会自动重建加密 userdata，详见[安装指南](installation.md#24-让-android-重建-userdata)。
+- **状态**：已缓解（需在现场手动执行一次 Recovery 清除数据）。
+
+---
+
+## 双系统切换
+
+- **架构原理**：
+  - 本项目采用合体 BOOT（Hybrid BOOT）机制；
+  - 原厂 Android 内核、3 秒选择器与 Linux SunUEFI 核心统一写入活动槽的 `boot` 分区；
+  - 双系统启动均在当前槽内完成，不切换底层 A/B 槽位，不破坏 GPT 属性。
+- **日常切换**：
+  - Linux 切回 Android：终端执行 `piano-next-boot android --reboot`，或点击应用菜单「返回 Android」；
+  - Android 切回 Linux：使用「SunUEFI 引导助手」模块切换并重启；
+  - 无模块时切换：开机亮屏前 3 秒按音量键呼出选择菜单启动 Linux。
+- **实测往返**：
+  - 两轮真机往返时序记录：
+    - `boot_android.img` 请求页 target 0→2→0→2→0、sequence 0→4；
+    - 刷入未签名 `device-boot/boot_linux.img` 进 Linux（target=2, sequence=1, 耗时约 40 秒）；
+    - helper 切回 Android（target=0, sequence=2, 耗时约 45 秒）；
+    - 模块重新采纳后再切 Linux（target=2, sequence=3, 耗时约 2 分钟）；
+    - helper 再切回 Android（target=0, sequence=4, 耗时约 35 秒）；
+    - `ro.boot.slot_suffix` 全程保持 `_a`，`sys.boot_completed=1`。
+  - 请求页存储位置：固定位于镜像末尾偏移 37490688（`0x23C1000`），魔数为 `SUNUEFI-NEXTv1`。
+  - 活动槽定位：helper 读取主备 GPT 与高通 A/B 属性（priority 48..49、active 50、successful 54）：
+    - 实机 `boot_a` 属性为 `0x0077…`（priority 3、active、successful）；
+    - `boot_b` 为 `0x0072…`（priority 2、非 active），正确定位 `boot_a`。
+- **排障提醒**：
+  - 严禁使用 `qbootctl -s` 切槽：`qbootctl` 仅修改活动状态，不联动切换 ABL 槽位 GUID；
+  - A 槽活动时执行 `qbootctl -s b` 会导致 GUID 校验失败，触发 ABL 报错拒开机；
+  - 活动槽位由主备 GPT 与启动属性自动识别，切换槽位或 OTA 后无需重新配置。
+
+---
+
+## Android 侧
+
+- **引导助手模块**：
+  - 已装回与当前 BOOT generation 匹配的「SunUEFI 引导助手」模块；
+  - 安装采用 `adopt` 只读识别现有合体 BOOT，不重写内核；
+  - 若重新刷写过 `boot` 分区，需在模块页面重新执行一次“重新安装引导”以重新采纳。
+- **SELinux 状态**：
+  - Android 侧实测运行在 SELinux Permissive 状态，启动参数带有 `selinux=permissive`；
+  - 手动执行 `setenforce 1` 可用，但开机自动固化 Enforcing 的机制尚未落实。
+
+---
+
+## 无损首装
+
+- **方案说明**：
+  - 无损首装（`--lossless`）可在保留既有 Android 数据前提下缩容 `userdata` 并建 Linux 分区；
+  - 执行顺序必须为先缩容文件系统再调整分区表，确保文件系统始终小于或等于物理分区。
+- **前置条件与空间归还**：
+  - 设备已取得 Android root 权限并安装「SunUEFI 引导助手」模块；
+  - `userdata` 内部有足够的连续空闲空间；
+  - 删除 Linux 分区并归还空间可在引导助手 WebUI 点击「删除并归还 Android 空间」；
+  - 下次重启由 SukiSU 早期维护执行 `resize.f2fs -k -t` 扩大加密分区。
+- **未验路径**：
+  - 重复安装路径；
+  - 携带 `--accept-data-loss` 的全盘重建路径；
+  - `userdata` 缩容到空闲余量极小（临界边界）时的稳定性。
+- **注意事项**：若缩容成功但分区表写入中断，F2FS 文件系统仍小于分区，属于安全状态：
+  - Android 可正常开机（仅显示容量变小）；
+  - 此时应复核计划与备份，切勿盲目擦除。
+
+---
+
+## 充电
+
+- **控制参数**：
+  - 内核已包含 MCA 直充驱动与 SC8541 芯片支持；
+  - 参数 `cp_charge`、`hv_charge`、`charge_policy`、`mipps_auth`、`charge_current` 已启用。
+- **实测表现**：
+  - 在当前镜像（`kernel-piano-7.3.3-2.piano`）上使用 PD 充电器实测：
+    - `MiPPS adapter authenticated` 之后进入 `FFC battery charging mode`；
+    - 直充总线从 7.6 V 抬到 8.94 V，电池电流升到 8.8–8.9 A、电压约 4.0 V；
+    - 按 sysfs 估算电池侧功率约 35 W；
+    - SC8541 online 从 0 变 1，温度由 42.5 °C 升至 55.5 °C 后回落，双电芯 29–36 °C；
+    - 电量从 17% 充至 39% 耗时约 17 分钟；
+    - 断开电源时打出 `source lost during direct charging`，退出直充回退至标准充电。
+- **边界说明**：
+  - 以上数据均为 sysfs 读数而非外置功率计测量；
+  - 满电停充、温控降流与关机充电尚未取得完整记录，原厂 45 W 极限快充不作声称；
+  - `piano-charge-monitor.service` 默认处于 disable 状态，真机尚未长期开机记录。
+
+---
+
+## 传感器与自动旋转
+
+- **硬件说明**：在系统下查看 `/sys/bus/iio/devices` 为空是正常现象。SM8750 的传感器由高通底层 SSC 管理。
+- **运行机制**：
+  - 底层驱动依赖 `qrtr_smd`、`qrtr_mhi` 与 `mhi` 模块；
+  - 内置 `libssc` 与 `iio-sensor-proxy-ssc` 服务将传感器数据转为标准 D-Bus 接口；
+  - D-Bus 接口 `HasAccelerometer`、`HasAmbientLight`、`HasProximity` 均为 true；
+  - 环境光传感器读数正常（如 164 lux），`AccelerometerTilt` 随姿态变化（`face-up`/`tilted-up`）。
+- **自动旋转验证**：
+  - GNOME（走 Mutter）与 KDE（走 KWin + `qt6-qtsensors`）均订阅方向属性；
+  - 实机验证把平板转为 `left-up` 时，逻辑显示器变换矩阵从 0 变 1（顺时针 90°），桌面平滑旋转；
+  - niri 与 Hyprland 默认未接入自动旋转守护进程，支持通过配置手动指定 `transform`。
+
+---
+
+## 手写笔
+
+- **现状与取证**：
+  - 触控主控支持手写笔 Type 29 协议，底层驱动压感、坐标定位与倾斜角事件均能正常捕获；
+  - libinput 捕获 1906 条轴事件、22 条接近事件、18 条笔尖事件，压感 0–1，位置倾斜正常；
+  - 未捕获 `TABLET_TOOL_BUTTON` 事件。
+- **设备节点**：
+  - 节点映射为 `Piano Focus Pen Pro`（`virtual:0022:5081`）；
+  - 蓝牙侧节点映射为 `Xiaomi Focus Pen Pro Mouse/Keyboard`。
+- **待验证项**：蓝牙侧按键映射、捏握手势、防误触、绘图调校、磁吸充电与重连仍需验证。
+
+---
+
+## 触屏、网络、音频与相机
+
+- **触控取证**：
+  - 走 SPI 通信，DMA 延迟优化压至 2.5ms 以内；
+  - 45 秒持续划动 SYN 报文 97 次/秒，43/45 秒有事件，NVT 中断同期增长 5425；
+  - 坐标覆盖 X 5395–28696、Y 4591–19408 全屏可达，多点触控 slot 0–5 齐全；
+  - 相邻坐标跳变 p95 为 2770（多指交替时的 slot 切换，无丢帧）。
+- **音频取证**：
+  - 120 秒连续播放无 xrun/underrun，音量与 sink 状态保持稳定；
+  - 130 秒连续录音每 10 秒分段均有清晰信号，段均值介于 -33.6 至 -18.5 dB，无静音段。
+- **视频硬解**：
+  - Iris V4L2 M2M 驱动支持 1080p H.264 与 HEVC 各 300 帧 GOP60 及带 B 帧素材硬件编解码；
+  - 逐帧摘要与软件解码完全一致，Iris 中断同步增长；
+  - 硬解判定要求 Iris 中断增长且 `/dev/video0` 节点被持有，两者缺一即非硬解；
+  - 浏览器支持差异：Chrome 与 Firefox 默认硬解；Chromium 需装 RPM Fusion 解码包走软解。
+- **相机成像**：
+  - 前摄与后摄均可正常出图（`piano-camerad` 对接 ISP 并输出至 v4l2loopback）；
+  - 取帧收敛：camerad 无读者时停流，新读者接入时重新起流并重新收敛自动曝光；
+  - 收敛实测：后摄首帧 p50=30（低照度噪声），末帧 p50=78；前摄两轮 p50 均为 112；
+  - GNOME Snapshot 预览崩溃问题已通过 `piano-pipewire-gstreamer` 修复；
+  - 整机相机验收尚未全部走完，设备整体状态仍记为未验证。
+
+---
+
+## 指纹、红外与 HDR
+
+三项硬件的具体驱动路径、取证状态与验证边界如下：
+
+### 指纹
+- **硬件与驱动**：
+  - 汇顶 Goodix 侧置电容式指纹，认证在 TEE 的 `gfpia` TA 安全程序中完成；
+  - 内核 `uio_piano_fingerprint` 与 `qcomtee` 已加载，`dmesg` 记录 `QTEE version 5.2.0`；
+  - `/dev/uio0`、`/dev/tee0` 与 DT 节点齐全，DT overlay 持续生效。
+- **用户态堆栈**：预装 `piano-fingerprint` 与 `piano-libfprint`，fprintd 识别设备。
+- **验证记录**：
+  - v45.3 前镜像走通录入、认证与锁屏指纹解锁（`fprintd-enroll`/`fprintd-verify`）；
+  - v45.3 及后续镜像未重跑全套认证；不支持直接读取 Android 模板。
+
+### 红外
+- **硬件与驱动**：
+  - 消费级红外发射器（接在 QUPv3 SE15，SPI `0x89c000`），只发不收；
+  - 节点 `/dev/lirc0` 与 `/sys/class/rc/rc0` 存在，`dmesg` 记录 `ir-spi` 注册信息；
+  - 驱动 `ir_spi` 与 `rc_core` 已加载，内核开启 `CONFIG_LIRC=y`、`CONFIG_IR_SPI=m`。
+- **使用方法**：支持通过 LIRC 发码（如 `ir-ctl -d /dev/lirc0 --carrier=38000 --send=remote.txt`）。
+- **验证边界**：光学输出功率与波形未用仪器实测，无回环端，仅确认设备节点与驱动路径。
+
+### HDR <a id="hdr"></a>
+- **面板属性**：硬件面板支持 HDR10，DSI-1 挂载 `HDR_OUTPUT_METADATA`，CRTC 暴露 LUT 属性。
+- **KWin 补丁与背光恢复**：
+  - extras 打补丁版 KWin 包含退出 HDR 恢复背光修复；
+  - 实测两轮：`3.piano1` 背光 1024→2047→1024，`4.piano1` 1556→2047→1556，退出后准确恢复；
+  - 官方未打补丁版 KWin 在退出 HDR 后背光停留在 2047 最大值不回落。
+- **属性提交限制**：使用 `kscreen-doctor` 配置时，必须同时提交 `hdr.enable` 与 `wcg.enable`。
+- **边界说明**：色深与色调映射精度尚未经专业仪器测量，默认配置保持 HDR 与广色域关闭。
+
+### 键盘背光
+- **热插拔与状态**：
+  - 随磁吸键盘插拔动态出现和消失；
+  - extras 软件源提供 `gnome-settings-daemon-piano`（带上游 50.1 热插拔刷新补丁）；
+  - 默认镜像不装该包；真机尚未验收接上/取下与睡眠唤醒后的背光恢复。
+
+---
 
 ## 开机日志里的红色报错
 
-一次冷启动后 `journalctl -b -p err` 是 97 行，分六类。装入 `piano-cma`、
-`piano-pcie-interrupt-map`、`dsp-resources` 与 `cdsp-fastrpc` 之后，PCIe 的六条
-`probe failed -22`、CMA 的四条 `alloc failed` 与 cdsp 的 `-61` 都不再出现
-（`dmesg | grep -cE "pcie_pme|trigger mode 5"` 为 0，`CmaTotal` 937984 kB，
-`remoteproc` 里 adsp 与 cdsp 都是 running）。
+冷启动后查看 `journalctl -b -p err` 可能会记录若干红色错误条目。这些属于已定位且无害的底层时序或兼容性噪声，无需排查：
 
-| 来源 | 行数 | 归因 | 处理 |
-| --- | --- | --- | --- |
-| `adsprpcd` | 86 | 厂商 SEE daemon 按固定清单找 `/odm/etc/sensors/config/sns_*.json` 与 `./sns_tppe.so`、`./libeai_service.so`。ROM 的 ODM 只有 60 个配置，它要的那些本机没有 | 不补。要补只能伪造厂商配置，传感器本身可用，见「传感器与自动旋转」 |
-| `60-block-scheduler.rules` | 5 | 五个盘各报一次 `Failed to write "bfq" ... Device or resource busy`。手工写 `bfq` 返回 0，是 udev 与内核默认值的时序冲突 | 不改。这是发行版规则，不是本仓库的文件 |
-| `[NVT-ts-spi]` | 2 | `nvt_thp_stylus_write` 与 `nvt_thp_raw_write` 用 `pr_err` 打 info 级内容 | 攒着。改 linux-piano 的驱动要动 7.3 补丁序列、重算 `target_tree`，和下一轮内核重编一起做 |
-| `Bluetooth: HCI_IBS_WAKE_ACK in tx state 0` | 2 | wcn7850 上电序列里 hci_qca 的状态机输出 | 不改 |
-| `bluetoothd` | 1 | `No matching connection for device` | 不改 |
-| `msm_dpu` | 1 | `no GPU device was found`。`separate_gpu_kms=1` 下 DPU 比 adreno 先探测，之后两块卡都绑上 | 不改。GNOME 跑在 adreno 上；首启那次一直不绑，见「首次启动 GPU 未绑定」 |
-
-还有一条已经消掉：`snd-seq`。`CONFIG_SND_SEQUENCER` 在内核里没开，Fedora 的
-alsa-lib 仍然在 `dist-alsa.conf` 里给 `snd-pcm` 挂 `modprobe snd-seq`，每次加载
-声卡报一次 not found。`piano-fedora-configs` 用同名的 `/etc/modprobe.d/dist-alsa.conf`
-遮住发行版那份，只保留加载 `snd-pcm` 的那一半。kmod 按文件名全局排序取先命中的
-一条，换个名字压不住，所以必须同名。
-
-根因在内核里：`CONFIG_SND_SEQUENCER` 没开，`/dev/snd/seq` 不存在，`aconnect`、
-`aplaymidi` 这类依赖音序器路由的应用用不了。`patches/kernel-snd-seq/` 往 SunUEFI
-的 `tools/build_piano_full_kernel.py` 配置白名单里加了一项
-`CONFIG_SND_SEQUENCER=m`，新内核一起床 `snd-seq.ko` 就会出现在 `/usr/lib/modules`。
-那时候这份 modprobe 覆盖就该删掉：它遮掉的正是加载 `snd-seq` 的那一半，留着
-反而不会自动加载。删它要连带删 `tests/check_audio_stack.py` 的对应断言，并升一次
-`piano-fedora-configs` 的 Release。
+| 来源 / 关键词 | 现象归因 | 说明 |
+|---|---|---|
+| `adsprpcd` | SEE daemon 尝试在 `/odm/etc/sensors/config/` 下查找额外的厂商专有配置 | 本机为 Fedora 运行环境，未携带额外的 Android 专有 json 配置，不影响传感器正常工作 |
+| `60-block-scheduler.rules` | 尝试写入 `bfq` 调度器时报 `Device or resource busy` | udev 规则与内核默认 I/O 调度器的并发时序冲突，各块设备调度器已正常就绪 |
+| `[NVT-ts-spi]` | 触控驱动在状态同步时输出日志 | 驱动使用错误日志级别输出了常规信息，触控功能完全正常 |
+| `Bluetooth: HCI_IBS_WAKE_ACK` | 蓝牙芯片上电序列状态机输出 | 芯片通信状态机的正常交互过程，蓝牙连接正常 |
+| `msm_dpu: no GPU device was found` | DPU 显示控制器比 Adreno GPU 先完成探测（正常开机） | 属于正常开机时模块探测先后的瞬态日志，Adreno 完成探测后两者正常绑定；全新首装整次未绑定的情况见「首次启动 GPU 未绑定」 |

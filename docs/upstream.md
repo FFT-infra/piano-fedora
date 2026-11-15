@@ -10,8 +10,10 @@
 
 `sources.lock.json` 里有两条 pin 只进对照任务、不进产物：
 
-- `vendor-kernel`：`android_kernel_xiaomi_piano` 的 DTS 源码，被 `scripts/compare-vendor-dt.py` 读取，用来核对 SunUEFI overlay 的目标节点在厂商硬件描述里是否存在。
-- `vendor-blobs`：`android_vendor_xiaomi_piano` 的固件与传感器配置，被 `scripts/compare-vendor-blobs.py` 按 git blob 摘要比对。只读文件清单，不下载内容，不进镜像。
+- `vendor-kernel`：
+  - `android_kernel_xiaomi_piano` DTS 源码，用于核对 SunUEFI overlay 目标节点是否存在。
+- `vendor-blobs`：
+  - `android_vendor_xiaomi_piano` 固件与传感器配置，用于比对 git blob 摘要，不进镜像。
 
 这两条属于消费上游，所以进 `upstream-watch` 的漂移报告，但白名单里没有它们：厂商树一更新就要人工看对照报告有没有新差异。任何出货路径引用 `vendor-kernel` 都算违规——它描述的是 Android 下游 DT，和启动用的 `board.dtb` 不是同一条血缘，见 `docs/device-tree.md`。
 
@@ -25,9 +27,13 @@
 
 `.github/workflows/upstream-watch.yml` 每周一 03:23 UTC 运行一次 `scripts/audit-upstreams.py --execute`。`scripts/upstream-watch.py` 处理执行结果，按以下规则分流：
 
-- 锁定 ref 指向的提交与 `sources.lock.json` 的 pin 不同时，算作漂移。漂移汇总进一个 `upstream-drift` issue。下次运行若没有漂移，`scripts/upstream-watch.py` 关闭这个 issue。
-- 白名单（`crosvm`、`librevm`、`uperf`、`piano-mesa`、`piano-sensors`、`piano-mipps-auth`）里的漂移在 issue 里附带一条改 pin 命令。workflow 本身不碰锁文件，也不开 PR：仓库设置不允许 Actions 创建 PR。人跑 `scripts/upstream-watch.py bump` 改 `sources.lock.json` 的 `commit`，`ref` 保持不动。这些项目属于纯用户态上游，`make test` 与 CI 能够覆盖检查；受影响产物仍要按本页末节重编。
-- 内核、UEFI、相机/触控、固件和 debian-piano 只作报告。离线 CI 代替不了这些组件的真机验收。维护者按后文「每次跟进上游」的规则评审 pin。
+- 锁定 ref 提交与 `sources.lock.json` 的 pin 不同时记为漂移：
+  - 漂移汇总进 `upstream-drift` issue；下次无漂移时自动关闭 issue。
+- 白名单漂移在 issue 中附带改 pin 命令：
+  - 白名单包括 `crosvm`、`librevm`、`uperf`、`piano-mesa`、`piano-sensors`、`piano-mipps-auth`；
+  - 纯用户态上游由人执行 `upstream-watch.py bump`，Actions 不直接修改锁文件。
+- 内核、UEFI、相机/触控、固件与 debian-piano 仅作报告：
+  - 离线 CI 无法代替真机验收，维护者按后文规则评审更新。
 
 漂移判断只看 pin，不看 `docs/upstreams.json` 的 `reference_commit`。`reference_commit` 是人工基线，只在 `--record-baseline` 时推进。拿 `reference_commit` 判断，会把没有位移的上游报成更新。
 
@@ -53,7 +59,7 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 16 个锁定源里只有 `sunuefi` 和 `crosvm` 有推进。`sunuefi` 从 `018634f1` 到 `2cc5cd62`，`crosvm` 到 `1472e011`，其余 14 个源停在各自远端 HEAD。
 
-变化集中在充电栈。7 条补丁进入封存序列 `0106`–`0112`，把原厂 4.0.6 循环充电策略、QC/PPS 输入与直充能力选择、电池健康降流和 PPS 调压步长接进 `piano_mca.c` 与 `bq27xxx`。这批代码随封存序列编译，功率、温控与关机充电还没有真机记录，45 W 不作声称。用户态新增按需运行的 `piano-charge-monitor.service`，默认关闭，用法与边界见 `docs/known-issues.md` 充电节。固定源码下载增加同源镜像回退，`config/release.json` 补入 `stable_source_mirrors`，上游 `command_line` 未改。
+变化集中在充电栈。7 条补丁进入封存序列 `0106`–`0112`，把原厂 4.0.6 循环充电策略、QC/PPS 输入与直充能力选择、电池健康降流和 PPS 调压步长接进 `piano_mca.c` 与 `bq27xxx`。这批代码随封存序列编译，功率、温控与关机充电还没有真机记录，45 W 不作声称，实测表现见 `docs/known-issues.md` 充电节。固定源码下载增加同源镜像回退，`config/release.json` 补入 `stable_source_mirrors`，上游 `command_line` 未改。
 
 删除 Linux 分区、把空间还给 Android 不再需要手工改表。上游引导助手在 WebUI 存储页提供 **删除并归还 Android 空间**。分区目标与 F2FS 元数据能覆盖的容量分开记账，SIT、SSA 与 section 大小决定文件系统能扩到多大，盖不住整块 `userdata` 时只扩到可覆盖范围；重启后由 SukiSU 早期维护用 `resize.f2fs -k -t` 完成。`docs/installation.md` 与 `docs/known-issues.md` 已改成指向这个入口。`install-f2fs.py` 不消费新增的两个目标字段，安装接口没变。
 
@@ -137,7 +143,7 @@ SunUEFI 的 7.3 封存序列从 90 条增到 92 条，新增上游的 `0091-dpu-
 
 DTB overlay 从 18 个补到 22 个，`build-bundle.yml` 按 `release.json` 的顺序补了 `piano-pcie-clocks`、`piano-battery`、`piano-camera-sensors`、`piano-display-interconnects`。固件叠层多出 `piano-display` 一份，它的 `manifest.json` 带 `directory: qcom/sm8750`，`firmware-overlays.py` 原来一律平铺到根目录，这次改成读清单里的落点。
 
-已核：`scripts/apply-patches.py --check` 在 `4ef8740` 的干净 clone 上给出 `CHECKED`，套到夹具上给出 `APPLIED`；`make test` 全绿；ccache 实测命中率 99.96%，全量编译时间从 56 分钟降至 6 分 52 秒。未核：新 pin 上的整条发布链与设备实机行为。这几项分别记账，在这轮验收完成前不发 v45.2。
+已核：`scripts/apply-patches.py --check` 在 `4ef8740` 的干净 clone 上给出 `CHECKED`，套到夹具上给出 `APPLIED`；`make test` 全绿；ccache 实测命中率 99.96%，全量编译时间从 56 分钟降至 6 分 52 秒。未核：新 pin 上的整条发布链与设备实机行为。这几项分别记账。
 
 `battery` overlay 在 `bq27z561_master@55` 上写 `ti,authentication-key`，来自上游自己的 DTB，本次未改动，记录在此便于以后审阅时认识它。
 

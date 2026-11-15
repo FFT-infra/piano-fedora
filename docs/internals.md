@@ -2,7 +2,7 @@
 
 面向维护者：流水线从哪进入，产物之间怎么绑定，run id 怎么传，PR 什么时候算设备验收通过。只装系统的读者看[安装指南](installation.md)。
 
-上游 pin 与跟进规则见[上游跟踪](upstream.md)，产物定义见[部署产物](artifacts.md)。
+[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 上游 pin 与跟进规则见[上游跟踪](upstream.md)，产物定义见[部署产物](artifacts.md)。
 
 ## 流水线入口
 
@@ -282,7 +282,7 @@ semodule_package -o piano_hardware.pp -m piano_hardware.mod
 5. Android→Linux、Linux→Android 和原厂 Recovery 都完成，保存屏幕、命令输出、
    `uname -r`、`/usr/lib/modules/`、F2FS 挂载与分区容量证据。
 
-任一项失败都不能写成“设备验收通过”。构建或离线测试通过只记为 CI 证据。证据格式见[安装指南的真机验收](installation.md#十-真机验收清单)。
+任一项失败都不能写成“设备验收通过”。构建或离线测试通过只记为 CI 证据。证据格式见[安装指南的真机验收](installation.md#八-真机验收清单)。
 
 设备热修复替代不了发布资产测试。PR 最终必须从原始 GPT/UFS 布局开始，用流水线重新生成的 root 文件系统与 ESP 完成冷启动、进入所选档位和重启复现。
 

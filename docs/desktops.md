@@ -44,7 +44,7 @@
   日志里出现 `configured default session user 'greeter' not found` 即是这个问题。
 
 四个显示管理器都直接随开机启动，不挂 `piano-display.service` 依赖。驱动按
-标准 modalias 加载，旧的分子系统手动 bring-up 单元已随上游删除；给显示管理器
+标准 modalias 加载，旧的分子系统手动 bring-up 单元已随 [SunUEFI](https://github.com/slwyts/Project-SunUEFI) 上游删除；给显示管理器
 挂 `Requires=` 只会在依赖永远不满足时把桌面一起拖死。
 
 ## 电源行为
@@ -147,7 +147,7 @@ scale 与 `QT_SCALE_FACTOR` 会叠加，界面会放大两次。
 
 GNOME meta 写入 `20-piano-ambient`，只把 `org.gnome.settings-daemon.plugins.power` 的 `ambient-enabled` 改成 `true`。默认的 `00-power` 仍是 `false`，卸载 extras 后按文件名顺序回到默认值。不启用 extras 的 GNOME 不读自动亮度，KDE 的 HDR 与广色域保持默认关闭。
 
-KDE HDR 的补丁版 KWin 已在真机验过两轮：`3.piano1` 上背光 1024 → 2047 → 1024，`4.piano1` 上 1556 → 2047 → 1556，关 HDR 后都回到开启前的值，5 秒稳态不变。细节见[已知问题](known-issues.md#hdr)。
+KDE HDR 依赖补丁版 KWin 修复退出 HDR 后的背光恢复问题。实机开关与背光验证数据、配置要求及当前限制见[已知问题](known-issues.md#hdr)。
 
 自动亮度已验两轮：`gsd-power` 加载 `piano.ini` 的 ambient profile，13–17 lux 下算出 66.7% 的目标亮度，`ktz8866-backlight` 从 1023 调到 1360（上限 2047）；遮住与强光往返时 lux 在 8–2527 之间、背光在 1600–2047 之间跟着走，延迟 1–2 秒，没有抖动。目标亮度是 lux 相对手动调光时的基准算出的比例，基准落在暗处时暗端落点仍偏高。键盘背光未验：手边没有悬浮键盘，热插拔与睡眠唤醒恢复拿不到真机结果。
 
@@ -198,9 +198,8 @@ make plan-desktop DESKTOP=niri RELEASEVER=45
   文件在树里，证明不了这些文件在设备上真的生效。
 - **niri / Hyprland 没有自动旋转**，见上一节。
 - **KDE 的自动旋转依赖 `qt6-qtsensors`**，这一条来自 Plasma 6 的已知行为，
-  本轮没有在设备上验证。
-- **Hyprland 依赖第三方 COPR。** 仓库消失或公钥更换时，构建硬失败。升级路径
-  是自己打包，本轮评估后没有采用。
+  未在真机设备上实际验证。
+- **Hyprland 依赖第三方 COPR。** 仓库消失或公钥更换时，构建硬失败。替代方案是自己打包，评估后未采用。
 - **`denial` 是占位档位**，`buildable: false`。`build-clean-rootfs.py --plan`
   对它返回 `INPUTS_REQUIRED` 并以非零退出，不会产出镜像。
 - **内核在 COPR 里，四档共用。** 装机用归档里的 `kernel-piano`。
