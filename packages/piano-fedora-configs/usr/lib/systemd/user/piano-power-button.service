@@ -3,10 +3,10 @@ Description=Piano power key and cover screen locking
 PartOf=graphical-session.target
 After=graphical-session.target
 # 两个助手的 vendor wants 链接都由包提供，条件决定当前会话跑哪一个。
-# GNOME 的 gnome-session 预计把 XDG_CURRENT_DESKTOP 写进用户管理器，经典会话
-# 的值带 :GNOME 后缀，所以这里用 glob。真机若读不到这个变量，退回在 %post 里
-# 按 display-manager 的真实路径只建对应链接。
-ConditionEnvironment=XDG_CURRENT_DESKTOP=GNOME*
+# systemd 按字面比较这个值，不支持 glob；GNOME 会话（gnome.desktop）在用户
+# 管理器里写的正是 GNOME。真机若读不到这个变量，退回在 %post 里按
+# display-manager 的真实路径只建对应链接。
+ConditionEnvironment=XDG_CURRENT_DESKTOP=GNOME
 
 [Service]
 # /usr/lib/piano 下的脚本是 lib_t，直接执行时进程读不到 /dev/input/event*

@@ -201,7 +201,7 @@ def check_power_button_is_enabled_per_desktop():
     for helper in ("piano-power-button.service", "piano-plasma-power-button.service"):
         assert wants + helper in spec, f"{helper} has no packaged vendor wants link"
     for helper, condition in (("piano-power-button.service",
-                               "ConditionEnvironment=XDG_CURRENT_DESKTOP=GNOME*"),
+                               "ConditionEnvironment=XDG_CURRENT_DESKTOP=GNOME"),
                               ("piano-plasma-power-button.service",
                                "ConditionEnvironment=XDG_CURRENT_DESKTOP=KDE")):
         unit = (PACKAGE / "usr/lib/systemd/user" / helper).read_text(encoding="utf-8")

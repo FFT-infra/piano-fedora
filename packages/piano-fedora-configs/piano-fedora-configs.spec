@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        17%{?dist}
+Release:        18%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND BSD-2-Clause-Patent AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -184,13 +184,18 @@ rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 
 %changelog
+* Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 0.1.0-18
+- GNOME 电源键单元的条件改成精确匹配 XDG_CURRENT_DESKTOP=GNOME。systemd 按
+  字面比较，-17 里的 GNOME* 永远不成立，GNOME 会话两个助手都不启动；真机上
+  已确认用户管理器里的值就是 GNOME
+
 * Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 0.1.0-17
 - 构建器直接写的静态文件收回 RPM：KDE 的 powerdevilrc 与 60-piano-display.conf、
   三份只差注释的 %config、相机与调试的 drop-in、等待显示的单元与脚本、
   SELinux 策略安装单元、日志轮转之外的调试落点都改由包提供，装配脚本不再
   覆盖 RPM 拥有的路径，rpm -V 不再把包内文件报成改过
 - 两个电源键助手的 vendor wants 链接改由包提供，单元用
-  ConditionEnvironment=XDG_CURRENT_DESKTOP 互斥：GNOME 那份用 GNOME* 匹配
+  ConditionEnvironment=XDG_CURRENT_DESKTOP 互斥：GNOME 那份精确匹配 GNOME
   经典会话，KDE 那份匹配 KDE。旧镜像按桌面档建的链接在升级后仍由 %post 清掉
 - powerdevilrc 不带 noreplace：LidAction 从 0 改到 64 必须到达已装设备，
   用户改过的旧文件留成 .rpmsave
