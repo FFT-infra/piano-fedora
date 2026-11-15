@@ -58,7 +58,7 @@ def require_mount_privilege():
             "mounting the image needs root; run this tool under sudo "
             f"(current euid {os.geteuid()})"
         )
-    # root 也可能没有 loop 权限：容器（orbstack、docker --privileged=false）
+    # root 也可能没有 loop 权限：未加 --privileged 的容器
     # 和受限的 user namespace 都允许 mkfs.f2fs 成功，却在 losetup 时返回
     # EPERM，最终只看到 "failed to setup loop device"。
     # `losetup -f` 只打印一个空闲名字，不碰设备，容器里照样返回 0；

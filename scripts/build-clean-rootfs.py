@@ -525,7 +525,7 @@ def require_local_installroot(out):
     """确认输出目录所在文件系统允许 root 在里面建目录。
 
     dnf --installroot 以 root 身份解包，filesystem 包会创建 /afs、/var/tmp
-    这类顶层目录。如果输出目录落在 virtiofs（macOS 共享）或 9p 上，
+    这类顶层目录。如果输出目录落在网络或共享文件系统上，
     这些 mkdir 会返回 EACCES/EBUSY，filesystem 包整体安装失败，
     它拥有的 /var/tmp 也就不存在，随后几十个 scriptlet 连锁报
     "error creating temporary file /var/tmp/rpm-tmp.XXXX"。
@@ -539,8 +539,8 @@ def require_local_installroot(out):
     except OSError as exc:
         raise RootfsError(
             f"output directory {out} cannot host an installroot: {exc}. "
-            "dnf --installroot must run on a local filesystem; virtiofs and "
-            "9p shares reject the directory creation that the filesystem "
+            "dnf --installroot must run on a local filesystem; network and "
+            "shared mounts reject the directory creation that the filesystem "
             "package performs. Pass --output with a path on local disk."
         ) from exc
 

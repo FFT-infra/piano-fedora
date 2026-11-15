@@ -37,9 +37,7 @@ ROOT_BYTES = 8192
 
 
 def scratch_root():
-    return Path(os.environ.get("TMPDIR")
-                or os.environ.get("PIANO_TMPDIR")
-                or (Path.home() / "Lab/Bridge/tmp/trash"))
+    return Path(os.environ.get("PIANO_TMPDIR") or tempfile.gettempdir())
 
 
 def sha256_file(path):

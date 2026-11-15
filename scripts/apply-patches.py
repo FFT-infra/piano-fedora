@@ -174,7 +174,7 @@ def main(argv=None):
         if args.check:
             # 后续补丁以先前补丁的输出摘要为输入，逐个 git apply --check
             # 无法验证这种系列。在隔离副本中真实重放，原 checkout 不变。
-            scratch = Path(os.environ.get("PIANO_TMPDIR", str(Path.home() / "Lab/Bridge/tmp/trash")))
+            scratch = Path(os.environ.get("PIANO_TMPDIR") or tempfile.gettempdir())
             scratch.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix="patch-check-", dir=scratch) as directory:
                 copy = Path(directory)

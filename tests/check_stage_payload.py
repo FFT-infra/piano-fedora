@@ -278,7 +278,7 @@ def main():
         # 校验器摘要漂移：拒绝。
         tampered = tmp / "sunuefi"
         # staging 只读本仓库 tools/linux，不消费 upstream 子模块。不要把第三方
-        # rootfs 的 systemd 链接复制进这个摘要拒绝 fixture；virtiofs 对尚未有
+        # rootfs 的 systemd 链接复制进这个摘要拒绝 fixture；共享文件系统对尚未有
         # 目标的链接执行 listxattr 会返回 ENOENT，先于被测断言失败。
         shutil.copytree(SUNUEFI, tampered, symlinks=True,
                         ignore=shutil.ignore_patterns(".git", "build", "artifacts", "upstream"))

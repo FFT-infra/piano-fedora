@@ -82,7 +82,6 @@ resolve_board_dtb() {
     fi
     local candidate
     for candidate in \
-        "$REPO_ROOT/out/esp-files-a485-20261015/board.dtb" \
         "$REPO_ROOT/build/test-sources/sunuefi/vendor/piano-linux/board.dtb" \
         "$REPO_ROOT/build/test-sunuefi/vendor/piano-linux/board.dtb" \
         "$REPO_ROOT/build/sources/sunuefi/vendor/piano-linux/board.dtb"; do

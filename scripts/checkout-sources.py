@@ -17,7 +17,7 @@ def git(path, *args):
 def case_collisions(destination):
     """列出因文件系统大小写不敏感而检不出的路径。
 
-    virtiofs 与 APFS 这类挂载点上，`xt_CONNMARK.h` 与 `xt_connmark.h` 只能存在
+    大小写不敏感的挂载点上，`xt_CONNMARK.h` 与 `xt_connmark.h` 只能存在
     一个，git 会把另一个报成删除。只接受这一类差异：其余任何不干净都照旧失败。
     """
     # 不能走 git()：它的 strip() 会吃掉首行开头的状态位空格。
