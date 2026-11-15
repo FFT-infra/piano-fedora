@@ -24,7 +24,7 @@
 - [设备树与 23 个 Overlay](device-tree.md)：三条 DT 来源、出货基线谱系与各 overlay 说明
 - [维护与验收](internals.md)：CI 流水线、产物绑定与 PR 验收项
 - [上游跟踪](upstream.md)：SunUEFI 与内核当前 pin、差异看板与跟进规则
-- [与上游的功能差距](upstream-parity.md)：截至 2026-11-12 对照 pin `3a7e5c1b` 的功能差距快照
+- [与上游的功能差距](upstream-parity.md)：对照上游基线 pin `3a7e5c1b` 的功能差距与跟进状态
 - [公开分发前的缺口](public-release-gaps.md)：构建期仍依赖特定机器与个人配置的输入项
 
 ---

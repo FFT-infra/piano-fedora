@@ -69,7 +69,7 @@ qcom,board-id = <0x40008 0x00>;
 - Makefile 的 `piano-sm8750-overlay.dtbo` 位于 `SUN_BOARDS`：
   - `add-overlays` 用 `fdt_overlay` 把基线与 overlay 合成实际 dtb 产物。
 
-techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，其中 `piano-audio-mtp.dts` 4264 行，`piano-sde-display.dtsi` 4.2 KB，`piano-charger-common.dtsi` 742 行。这些是我们 overlay 里那些硬件常量（SPI 号、稳压器、时钟）的原始出处。
+techpack 目录包含显示、音频、摄像头、WLAN、BT 的板级片段（如 `piano-audio-mtp.dts`、`piano-sde-display.dtsi`、`piano-charger-common.dtsi`），是设备树叠层（overlay）中硬件常量（SPI 编号、稳压器、时钟）的参考源。
 
 ## 23 个 overlay
 
@@ -122,7 +122,7 @@ techpack 目录里有显示、音频、摄像头、WLAN、BT 的板级片段，�
 
 然后对 `config/release.json` 里的每个 overlay，按 fragment 逐个比对：目标节点在不在、要加的属性厂商有没有、要改的属性和厂商原值差在哪里。目标节点在厂商侧不存在时，按单元地址和名字前缀在同一父节点下找对应物，报告里给出厂商的实际路径。
 
-它回答的是"我们的 overlay 改的东西，厂商硬件描述里有没有对应物"，不是"能不能替换"。两份 DT 结构不同源，逐字节对齐不是目标。
+该比对用于核验叠层修改项在厂商硬件描述中是否存在对应物，而非直接替换。两份设备树结构不同源，无需逐字节对齐。
 
 报告写到 `build/vendor-dt-report/report.{json,md}`。`vendor-dt` job 设了 `continue-on-error`，第一阶段的定位是审阅材料，不是门禁。
 

@@ -192,7 +192,7 @@ ESP 默认 512 MiB。ESP 分区必须和 `sunuefi_esp.img` 等大：镜像按 `p
 
 3 秒选择器读请求页的位置是“正在引导的那份镜像”末尾：ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装在活动槽，Android 与 Linux 都从同一份 `boot<槽>` 启动，请求页因此指向它。系统不切槽，也不存在第二份需要同步的页。
 
-合体 BOOT 方案不切槽，因此不触发 GPT 的槽位约束。槽位 type GUID 与 `qbootctl -s` 的坑见[已知问题](known-issues.md#双系统切换)。手工重建 GPT 时，主表和备份表要一起写。两份 CRC 都要重算。
+合体 BOOT 方案不切槽，因此不触发 GPT 的槽位约束。槽位 type GUID 与 `qbootctl -s` 的约束与异常行为见[已知问题](known-issues.md#双系统切换)。手工重建 GPT 时，主表和备份表需同步写入，并重新计算两份 CRC。
 
 `plan` 把这次判定的依据写进 `boot_request.source`，值是 `read-only Qualcomm GPT A/B attributes`：活动槽在每次请求时由只读 GPT 现算，镜像里不再存槽位记录，所以不存在“配置与设备对不上”这条失败路径。`root-install` 只核对 `app_generation` 与 `android_slot`，不再往里写配置文件。
 
