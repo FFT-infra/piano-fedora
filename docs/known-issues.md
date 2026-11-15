@@ -251,6 +251,10 @@
 
 ### HDR <a id="hdr"></a>
 - **面板属性**：硬件面板支持 HDR10，DSI-1 挂载 `HDR_OUTPUT_METADATA`，CRTC 暴露 LUT 属性。
+  开启 HDR 后 `Colorspace` 为 `BT2020_RGB`，元数据 blob 解出 `eotf = 2`（PQ）与 BT.2020 原色，
+  CRTC 的 SDR `GAMMA_LUT` 被撤掉，扫描输出保持 `AR30` 十位。DPU 的 Gamut、IGC、GC 控制字
+  读回 `0x1`、`0x10114`、`0x5`，与上游记录的 PQ 模式取值一致；关闭后三处全部回到旁路。
+  校准数据 `qcom/sm8750/piano-boe-display.bin` 校验通过，否则驱动不会创建上述两个属性。
 - **KWin 补丁与背光恢复**：
   - 官方未打补丁版 KWin 在退出 HDR 后背光停留在 2047 最大值不回落；
   - extras 打补丁版 KWin 已修复退出 HDR 后的背光恢复问题；

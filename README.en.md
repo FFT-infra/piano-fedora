@@ -38,7 +38,7 @@ Hardware peripheral support status for the current release:
 | Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally. Axis events, proximity detection and tip response are functional, see [known issues](docs/known-issues.md#手写笔) |
 | Fingerprint | ✅ | Side-mounted capacitive (Goodix), `piano-fingerprint` and `piano-libfprint` ship in the default image. Enrolment and lock-screen unlock verified; current status and boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
 | IR | ✅ | Consumer IR blaster, `/dev/lirc0` node and `ir-spi` driver ready, supports `ir-ctl` transmission. Testing boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
-| HDR | ❌ | Panel supports HDR10, DSI-1 and CRTC properties attached. Extras patched KWin on KDE Plasma supports toggle and backlight restore; tone mapping and testing boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| HDR | ✅ | Panel supports HDR10. When enabled, DSI-1 submits PQ metadata and BT.2020, and the DPU converts through the panel-calibrated IGC, Gamut and GC stages; control-word readback matches the upstream record. Extras patched KWin on KDE Plasma supports toggle and backlight restore; colour accuracy and peak luminance are not instrument-measured, see [known issues](docs/known-issues.md#指纹红外与-hdr) |
 
 ## Desktops
 

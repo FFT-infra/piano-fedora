@@ -38,7 +38,7 @@
 | 手写笔 | ✅ | Type 29 协议就绪，压感 0–1，位置与倾斜正常。轴事件、接近感应与笔尖响应完整，见[已知问题](docs/known-issues.md#手写笔) |
 | 指纹 | ✅ | 侧置电容式（汇顶 Goodix），`piano-fingerprint` 与 `piano-libfprint` 随镜像预装。录入与解锁验证链路完整，现版本状态与边界见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 | 红外 | ✅ | 消费级红外发射器，`/dev/lirc0` 节点与 `ir-spi` 驱动就绪，支持 `ir-ctl` 发码。测试边界见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
-| HDR | ❌ | 面板支持 HDR10，DSI-1 与 CRTC 属性齐全。KDE Plasma 下 extras 补丁版 KWin 支持开关与背光恢复；色调映射与实机验证限制见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
+| HDR | ✅ | 面板支持 HDR10。开启后 DSI-1 提交 PQ 元数据与 BT.2020，DPU 经面板校准的 IGC、Gamut、GC 转换输出，控制字读回与上游记录一致。KDE Plasma 下 extras 补丁版 KWin 支持开关与背光恢复；色准与峰值亮度未用仪器测量，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
 
 ## 桌面
 
