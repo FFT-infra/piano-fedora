@@ -57,7 +57,7 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 ## 核心分叉与补丁策略
 
-本项目在跟进上游主线基准的同时，针对目标机型稳定性、桌面交互与安全门禁维护了定制补丁集与策略分流：
+本仓库在 `patches/kernel/` 追加 7 条设备适配补丁，把上游 7.3 序列推到 0146。Fedora 临时重编包的删除条件见 `scripts/fedora-overlays.json`。
 
 ### 1. 内核补丁序列管理
 内核补丁集（`patches/kernel/`）共 146 条补丁，由上游 111 条封存序列与自有 35 条适配补丁组成，最终目标树固化于 `patches/kernel/series.json`（`target_tree: 507067737e5e`）：

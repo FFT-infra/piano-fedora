@@ -52,6 +52,27 @@ jobs:
             --summary build/upstream-drift.json
           cat build/upstream-drift.md
 
+      # 重编包盯的是 Fedora 稳定库版本，不是 git ref。巡检单独出一段，追加到
+      # 同一份报告；取不到时记 warning，不把「查不到」当成「没有漂移」。
+      - name: Check Fedora overlay baseline drift
+        run: |
+          set -euo pipefail
+          python3 scripts/check_fedora_overlay_releases.py \
+            --output build/fedora-overlay-releases.json \
+            --report build/fedora-overlay-report.md || \
+            echo "::warning::Fedora 重编包巡检失败，报告里单独列出"
+          # 巡检自己的失败也要能进报告，避免静默跳过。
+          if [ ! -f build/fedora-overlay-report.md ]; then
+            printf '## Fedora 重编包巡检\n\n本次未能完成，检查上面的 warning。\n' \
+              > build/fedora-overlay-report.md
+          fi
+          printf '\n' >> build/upstream-drift.md
+          cat build/fedora-overlay-report.md >> build/upstream-drift.md
+          jq -s '.[0] + {fedora_overlays: .[1]}' \
+            build/upstream-drift.json build/fedora-overlay-releases.json \
+            > build/upstream-drift.combined.json
+          mv build/upstream-drift.combined.json build/upstream-drift.json
+
       - uses: actions/upload-artifact@v4
         with:
           name: upstream-audit
@@ -59,6 +80,8 @@ jobs:
             build/upstream-audit.json
             build/upstream-drift.md
             build/upstream-drift.json
+            build/fedora-overlay-releases.json
+            build/fedora-overlay-report.md
 
       - name: Update the tracking issue
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
@@ -71,15 +94,17 @@ jobs:
           number=$(gh issue list --label upstream-drift --state open \
             --limit 1 --json number --jq '.[0].number // empty')
           drift=$(jq -r '.drift | length' build/upstream-drift.json)
+          overlays=$(jq -r '.fedora_overlays.moved | length' build/upstream-drift.json)
+          total=$((drift + overlays))
           if [ -n "$number" ]; then
             gh issue edit "$number" --body-file build/upstream-drift.md
-            if [ "$drift" -eq 0 ]; then
+            if [ "$total" -eq 0 ]; then
               gh issue close "$number" \
-                --comment "锁定 ref 与 pin 一致，先关掉；下次漂移会重新开一个。"
+                --comment "锁定 ref 与 pin 一致，Fedora 重编包也没有版本漂移，先关掉；下次漂移会重新开一个。"
             fi
-          elif [ "$drift" -gt 0 ]; then
+          elif [ "$total" -gt 0 ]; then
             gh issue create --label upstream-drift \
-              --title "上游漂移：$drift 个锁定 ref 已移动" \
+              --title "上游漂移：$drift 个锁定 ref 已移动，$overlays 个重编包版本待评估" \
               --body-file build/upstream-drift.md
           else
             echo "没有漂移，不建 issue"
