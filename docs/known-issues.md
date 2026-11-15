@@ -524,7 +524,9 @@ extras 的 KWin 带退出 HDR 恢复背光的补丁，内核封存序列里也�
 
 ## 内核在线升级
 
-`dnf upgrade` 现在会带上 `kernel-piano`。事务收尾时，`%posttrans` 重建 initramfs，再用 `systemd-ukify` 重打 ESP 上的 `/EFI/Linux/sunuefi.efi`。旧的 `boot.img` 链在平板上跑过一次真实升级（`7.2.9-1` → `7.2.9-3`）：`%posttrans` 重建了 initramfs，ESP 上的 `Image`、`initramfs` 与 `boot.img` 都换了，`.bak` 三份都在，重启后 `uname -r` 是新的内核，`graphical.target` 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载。UKI 链只做过手工替换：2026-11-12 把重打的 `/EFI/Linux/sunuefi.efi` 写回 ESP，重启后进入 Plasma。`%posttrans` 这条自动路径还没有在设备上跑过。
+`dnf upgrade` 现在会带上 `kernel-piano`。事务收尾时，`%posttrans` 重建 initramfs，再用 `systemd-ukify` 重打 ESP 上的 `/EFI/Linux/sunuefi.efi`。旧的 `boot.img` 链在平板上跑过一次真实升级（`7.2.9-1` → `7.2.9-3`）：`%posttrans` 重建了 initramfs，ESP 上的 `Image`、`initramfs` 与 `boot.img` 都换了，`.bak` 三份都在，重启后 `uname -r` 是新的内核，`graphical.target` 起来，`systemctl --failed` 为空，`v4l2loopback` 从新模块树的 `updates/` 加载。
+
+UKI 链的自动重打也验过：`%posttrans` 重建 initramfs，写 `sunuefi.efi.bak` 并替换 `sunuefi.efi`；重启后 `uname -r` 与 UKI 的 `.uname` 一致，`systemctl --failed` 只剩既有的 `lm_sensors`。`7.3.3-4` 与 `-2` 是同一份内核载荷，验的是重打与替换链路，不是换内核版本。
 
 写盘失败时，旧 UKI 保持不动，设备继续用旧内核启动。装好但起不来的内核没有自动回滚，回滚方式见 `docs/copr-repository.md`。
 

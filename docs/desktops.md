@@ -147,11 +147,11 @@ scale 与 `QT_SCALE_FACTOR` 会叠加，界面会放大两次。
 
 GNOME meta 写入 `20-piano-ambient`，只把 `org.gnome.settings-daemon.plugins.power` 的 `ambient-enabled` 改成 `true`。默认的 `00-power` 仍是 `false`，卸载 extras 后按文件名顺序回到默认值。不启用 extras 的 GNOME 不读自动亮度，KDE 的 HDR 与广色域保持默认关闭。
 
-KDE HDR 的补丁版 KWin 已经在真机验过。2026-11-12 冷启动后跑了两轮 `hdr` 与 `wcg` 同批开关，背光 1024 → 2047 → 1024，关 HDR 后回到开启前的值。细节见[已知问题](known-issues.md#hdr)。
+KDE HDR 的补丁版 KWin 已在真机验过两轮：`3.piano1` 上背光 1024 → 2047 → 1024，`4.piano1` 上 1556 → 2047 → 1556，关 HDR 后都回到开启前的值，5 秒稳态不变。细节见[已知问题](known-issues.md#hdr)。
 
 自动亮度已验两轮：`gsd-power` 加载 `piano.ini` 的 ambient profile，13–17 lux 下算出 66.7% 的目标亮度，`ktz8866-backlight` 从 1023 调到 1360（上限 2047）；遮住与强光往返时 lux 在 8–2527 之间、背光在 1600–2047 之间跟着走，延迟 1–2 秒，没有抖动。目标亮度是 lux 相对手动调光时的基准算出的比例，基准落在暗处时暗端落点仍偏高。键盘背光未验：手边没有悬浮键盘，热插拔与睡眠唤醒恢复拿不到真机结果。
 
-`mutter` 与 `gdm` 这一轮才进 extras，真机还没验。两包只对 GNOME 档有意义：KDE、niri 与 Hyprland 分别用 `plasmalogin` 和 `greetd`，不会走到 GDM；mutter 只被 `gnome-shell` 链接。`gdm` 不进 meta 的硬依赖，GNOME 用户要在装 meta 前手动 `dnf upgrade gdm`。
+`mutter` 与 `gdm` 只对 GNOME 档有意义：KDE、niri 与 Hyprland 分别用 `plasmalogin` 和 `greetd`，不会走到 GDM；mutter 只被 `gnome-shell` 链接。`gdm` 不进 meta 的硬依赖，GNOME 用户要在装 meta 前手动 `dnf upgrade gdm`。两包已在设备上装过并切到 GDM 的 GNOME 会话：登录成功，mutter 运行期间没有新 core，GSD 加载了 ambient profile。触摸手势与键盘背光需要物理输入，没有实测。
 
 2026-11-11 在默认 GNOME 档核对过原版组件：`gnome-settings-daemon-51.1-1.fc45`、`kwin-6.8.2-3.fc45`、`gtk3-3.24.52-6.fc45`，`gnome-settings-daemon-piano` 与两个 meta 包都没有安装，`ambient-enabled` 为 `false`。
 

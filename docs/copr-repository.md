@@ -20,7 +20,7 @@
 
 **失败边界。** 任何一步失败，旧 UKI 保持原样，设备继续用上一个内核启动。写入顺序是：先写 `.sunuefi.efi.new` 并 fsync，重新读出六个语义节区与预期比对；通过后把旧文件复制成 `sunuefi.efi.bak`，最后用 `os.replace` 换上去。PE 时间戳每次不同，判断文件有没有变只看 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname` 六段内容。
 
-**实机记录。** `7.2.9-1` → `7.2.9-3` 的在线升级是在旧的 `boot.img` 链上验的。UKI 链的重打与替换还没有真机记录：主机侧能证明 `apply-patches` 与 `make test` 通过，证明不了设备能起。升级后重启、`uname -r`、桌面与模块加载都要在设备上重验。审计记录写到 `/var/lib/piano/kernel-esp/<release>.json`。
+**实机记录。** `7.2.9-1` → `7.2.9-3` 的在线升级是在旧的 `boot.img` 链上验的。UKI 链也验过自动重打：`%posttrans` 重建 initramfs，写出 `sunuefi.efi.bak` 并替换 `sunuefi.efi`；重启进入桌面，`uname -r` 与 UKI 的 `.uname` 一致。`7.3.3-4` 与 `-2` 是同一份内核载荷，验的是重打与替换链路。审计写到 `/var/lib/piano/kernel-esp/<release>.json`。
 
 挂起与唤醒各测了两轮，都能回到桌面，`systemctl --failed` 保持为空。挂起路径上每次会打 4 条 `qdss already disabled/unprepared` 的 clk 警告（`amba_pm_runtime_suspend` 对 coresight qdss 重复 disable）。这条警告不影响唤醒，没有对应的故障现象。
 
@@ -118,7 +118,7 @@ sudo dnf distro-sync --repo fedora
 
 `distro-sync` 把同名的 KWin、GTK3、mutter 与 gdm 换回 Fedora 版本。GSD 用 `sudo dnf swap gnome-settings-daemon-piano gnome-settings-daemon --repo fedora`。先加 `--assumeno` 看清楚要动的包。
 
-增量安装、KDE HDR 与自动亮度都已在真机验过，结果见[桌面档](desktops.md#extras-可选组件)与[已知问题](known-issues.md#hdr)。mutter 与 gdm 这一轮才进 extras，键盘背光仍未验，手边没有悬浮键盘。
+增量安装、KDE HDR 与自动亮度都已在真机验过，结果见[桌面档](desktops.md#extras-可选组件)与[已知问题](known-issues.md#hdr)。`mutter` 与 `gdm` 也在设备上装过并切到 GDM 的 GNOME 会话：登录成功，mutter 没有崩溃，GSD 加载了 ambient profile。触摸手势需要物理操作，键盘背光仍缺悬浮键盘，两项都没有实测。
 
 ## 核对与回滚
 

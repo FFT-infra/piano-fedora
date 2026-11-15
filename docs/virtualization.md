@@ -57,7 +57,7 @@ payload DTB 的 `/hypervisor/qcom,resource-manager-rpc@…` 节点 `reg` 记录�
 | 管理器 | RPM、CLI、daemon、D-Bus 与安装二进制核验通过，KVM sandbox 回归通过 | GUI 实际创建与操作客体、完整 SELinux 流程待测；Gunyah 下自动关闭 crosvm sandbox 待验收 |
 | 扩展 | — | SMP、UEFI、图形和 Incus 分别实现与验收，不由单 vCPU 结果推定 |
 
-首次 RM 请求失败后卡在发送许可等待，属于修复前的记录。根本原因是构建期冻结的 RM capability。这条交接现在由固件在正常启动路径上完成；本轮的 UKI 链还没有真机记录。
+首次 RM 请求失败后卡在发送许可等待，属于修复前的记录。根本原因是构建期冻结的 RM capability。这条交接现在由固件在正常启动路径上完成。虚拟化的这批验收在旧 `boot.img` 链上完成；UKI 链只验了内核升级本身，虚拟化没有在 UKI 链上重跑。
 项目 guest kernel 完成 64 MiB ext4 写入和读回。VM 返回码为 0。进程资源清理通过。
 旧实验产物、错误 guest kernel 的失败尝试和最终通过结果分开记录。
 未完成的验收项见 [已知问题](known-issues.md)。
