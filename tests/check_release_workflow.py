@@ -358,9 +358,19 @@ def test_release_notes_teach_both_paths():
     assert "current-slot" not in notes  # 避免误导 OTA 到 B 槽的用户
     # 桌面特性与行为描述契约
     fill_step = text[text.index("Fill in the per-desktop table"):]
+    assert "plasma-login-manager" in fill_step
+    assert "SDDM" not in fill_step
     assert "greetd [initial_session]" in fill_step
     assert "transform" in fill_step
     assert "hyprctl" in fill_step
+    # 表格插入契约：不能带有 4+ 前导空格，否则 Markdown 会解析为缩进代码块
+    assert "indented_table" not in fill_step
+    import re
+    mock_notes = "          <!-- DESKTOP_TABLE_PLACEHOLDER -->"
+    mock_table = "| 档位 | 归档 |\n| --- | --- |\n| `kde` | arc |"
+    rendered = re.sub(r"^[ \t]*<!-- DESKTOP_TABLE_PLACEHOLDER -->", mock_table, mock_notes, flags=re.MULTILINE)
+    for line in rendered.splitlines():
+        assert not line.startswith("    "), f"table line has code-block indentation: {line!r}"
 
 
 def main():
