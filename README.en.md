@@ -51,7 +51,22 @@ Images are built per profile from the same release chain. They differ only in th
 | `niri` | niri | greetd + tuigreet | None, manual `transform` | Desktop reached |
 | `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None, manual rotate | Desktop reached |
 
-Each profile ships as one archive. Download only the profile you install. Login, power behavior, rotation and known gaps per profile are in [Desktops](docs/desktops.md). Default images use stock Fedora desktop components. If you need automatic brightness, keyboard backlight hotplug, GNOME touch or login fixes, or KDE HDR backlight restore, enable the optional, default-disabled extras repository; see [COPR repository](docs/copr-repository.md#可选的-extras-软件源).
+Each profile ships as one archive. Download only the profile you install. Login, power behavior, rotation and known gaps per profile are in [Desktops](docs/desktops.md).
+
+### Optional extras
+
+Default images use stock Fedora desktop components and work out of the box. The extras repository is a separate, default-disabled source that adds these:
+
+| What you get | Profile | What the patch does |
+|---|---|---|
+| Screen brightness follows ambient light | GNOME | GSD converts target brightness with the stock lux-to-nits curve |
+| Keyboard backlight works after plugging the folio keyboard | GNOME | GSD refreshes the keyboard backlight device |
+| Stylus works in X11 applications | All four | GTK3 looks up XI2 tool atoms on the device's own display |
+| Touch does not crash GNOME | GNOME | mutter guards against an empty KMS gamma LUT and a cancelled touch grab |
+| Backlight falls back when HDR is turned off | KDE | KWin restores the previous brightness on HDR exit |
+| GNOME waits for the display before login | GNOME | gdm waits for the KMS connector before starting a session |
+
+Commands to enable it, install, and remove it, plus the full package list, are in [COPR repository](docs/copr-repository.md#可选的-extras-软件源).
 
 ## Install
 

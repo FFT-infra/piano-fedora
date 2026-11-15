@@ -53,9 +53,22 @@
 | `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无，手动 rotate | 已登录桌面 |
 
 每档一个归档，装哪一档就下哪一档。每档的登录、电源行为、旋转能力与已知
-缺口见[桌面档](docs/desktops.md)。默认镜像用 Fedora 原版桌面组件；需要自动亮度、
-键盘背光、GNOME 触摸或登录修复、KDE HDR 背光恢复时，可选用默认关闭的 extras
-源，见 [COPR 软件源](docs/copr-repository.md#可选的-extras-软件源)。
+缺口见[桌面档](docs/desktops.md)。
+
+### extras 可选组件
+
+默认镜像用 Fedora 原版桌面组件，装完就能用。extras 是另一个默认关闭的软件源，装上后多出这些能力：
+
+| 想要的效果 | 档位 | 补丁做了什么 |
+|---|---|---|
+| 屏幕亮度跟随环境光 | GNOME | GSD 按原厂 lux→nits 曲线换算目标亮度 |
+| 悬浮键盘插拔后背光可用 | GNOME | GSD 刷新键盘背光设备 |
+| 手写笔在 X11 应用里可用 | 四档 | GTK3 用设备所属 display 取 XI2 工具原子 |
+| 触摸时 GNOME 不崩 | GNOME | mutter 加空 KMS gamma LUT 与已取消触摸 grab 两个守卫 |
+| 关掉 HDR 后背光回落 | KDE | KWin 退出 HDR 时恢复原亮度 |
+| GNOME 登录前等显示就绪 | GNOME | gdm 等 KMS connector 出现再起会话 |
+
+启用、装包与卸载的命令和完整包清单见 [COPR 软件源](docs/copr-repository.md#可选的-extras-软件源)。
 
 ## 安装
 
