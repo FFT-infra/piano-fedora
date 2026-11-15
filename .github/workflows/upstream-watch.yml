@@ -61,10 +61,15 @@ jobs:
             --output build/fedora-overlay-releases.json \
             --report build/fedora-overlay-report.md || \
             echo "::warning::Fedora 重编包巡检失败，报告里单独列出"
-          # 巡检自己的失败也要能进报告，避免静默跳过。
+          # 巡检自己的失败也要能进报告，避免静默跳过。JSON 缺失时后面的 jq
+          # 与 issue 计数都读不到 .[1]，这里补一份结构完整的空结果。
           if [ ! -f build/fedora-overlay-report.md ]; then
             printf '## Fedora 重编包巡检\n\n本次未能完成，检查上面的 warning。\n' \
               > build/fedora-overlay-report.md
+          fi
+          if [ ! -f build/fedora-overlay-releases.json ]; then
+            printf '{"schema_version": 1, "status": "failed", "packages": [], "moved": [], "unverified": []}\n' \
+              > build/fedora-overlay-releases.json
           fi
           printf '\n' >> build/upstream-drift.md
           cat build/fedora-overlay-report.md >> build/upstream-drift.md
@@ -95,7 +100,10 @@ jobs:
             --limit 1 --json number --jq '.[0].number // empty')
           drift=$(jq -r '.drift | length' build/upstream-drift.json)
           overlays=$(jq -r '.fedora_overlays.moved | length' build/upstream-drift.json)
-          total=$((drift + overlays))
+          # 巡检失败不能被当成「无漂移」把 issue 关掉，按一项待处理算。
+          failed=$(jq -r 'if .fedora_overlays.status == "failed" then 1 else 0 end' \
+            build/upstream-drift.json)
+          total=$((drift + overlays + failed))
           if [ -n "$number" ]; then
             gh issue edit "$number" --body-file build/upstream-drift.md
             if [ "$total" -eq 0 ]; then

@@ -38,6 +38,11 @@ assert "check_fedora_overlay_releases.py" in workflow
 assert "fedora-overlay-report.md" in workflow
 assert "cat build/fedora-overlay-report.md >> build/upstream-drift.md" in workflow
 assert ".fedora_overlays.moved" in workflow, "重编包漂移要算进 issue 开关"
-assert "total=$((drift + overlays))" in workflow
+# 巡检整体失败时 JSON 可能没写出来：report 与 JSON 都要有兜底，且失败不能被
+# 当成「无漂移」把 issue 关掉。
+assert "if [ ! -f build/fedora-overlay-releases.json ]" in workflow
+assert '"status": "failed"' in workflow
+assert '.fedora_overlays.status == "failed"' in workflow
+assert "total=$((drift + overlays + failed))" in workflow
 
 print("OK: Fedora 重编包巡检的报告与 workflow 接线完整")
