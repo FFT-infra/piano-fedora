@@ -29,7 +29,7 @@ SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]"
 # 运行时 RPM 的版本号。载荷每变一次就要换 NEVRA，已装设备才看得见这次替换；
 # 增量路径（scripts/package-device-integration.py）也从这里取，两处不各写一份。
 RUNTIME_VERSION = "0.2.0"
-RUNTIME_RELEASE = "5"
+RUNTIME_RELEASE = "6"
 
 
 def run(command, **kw):

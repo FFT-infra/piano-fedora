@@ -353,6 +353,15 @@ def check_kde_desktop_defaults():
     assert "qt6-qtsensors" in context["profile"]["dnf_packages"], \
         "KDE 档没有装 qt6-qtsensors，Plasma 不会提供自动旋转"
 
+    # rootfs 用 --setopt=install_weak_deps=False 装配，Fedora 里 Recommends 级别的
+    # 依赖会被丢掉。krunner/Overview 要 org.kde.milou，PowerDevil 枚举电池要
+    # upower 的 UPower DBus，所以这两个包在 KDE 档里显式点名。
+    # 退出条件：rootfs 不再关弱依赖，或 Fedora 把它们改成硬依赖，删掉这两条
+    # 显式条目和断言即可，不需要在本仓库留补偿层。
+    for name in ("plasma-milou", "upower"):
+        assert name in context["profile"]["dnf_packages"], \
+            f"KDE 档没有装 {name}，弱依赖被关时该组件会缺位"
+
     # 包里的那份环境变量文件必须与配方一致：包是唯一写者。
     packaged = (ROOT / "packages/piano-fedora-configs/etc/environment.d/60-piano-display.conf"
                 ).read_text(encoding="utf-8")

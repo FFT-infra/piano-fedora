@@ -227,15 +227,40 @@ def seed_clock_floor(root):
     return name
 
 
+def ensure_localtime_link(root):
+    """建 /etc/localtime -> /usr/share/zoneinfo/UTC，重复调用不动手。
+
+    UTC 是镜像里的固定默认值，不是用户所在地：SunUEFI 的 steamos 装配写死
+    Asia/Shanghai，公开 Fedora 镜像不该替用户选地区。链接建好后 timedatectl
+    与日志时间有可用的时区文件，setregdomain 也能读到时区；zone.tab 没有 UTC
+    条目，监管域仍保持 country 00，用户改时区后自行 iw reg set。
+
+    safe_destination 拒绝目标本身是符号链接，所以只用它校验 etc 目录没被
+    劫持，再在该目录里读取或创建 localtime 链接。
+    """
+    localtime = safe_destination(root, "etc").joinpath("localtime")
+    zoneinfo = guest_resolve(root, "/usr/share/zoneinfo/UTC")
+    if not zoneinfo.is_file():
+        raise ValueError("tzdata is missing from the rootfs: /usr/share/zoneinfo/UTC")
+    if localtime.is_symlink():
+        if str(localtime.readlink()) == "/usr/share/zoneinfo/UTC":
+            return "etc/localtime"
+        raise ValueError("existing /etc/localtime differs; preserve it for review")
+    if localtime.exists():
+        raise ValueError("existing /etc/localtime differs; preserve it for review")
+    localtime.symlink_to("/usr/share/zoneinfo/UTC")
+    return "etc/localtime"
+
+
 def stage_piano_hardware_fixes(root, context):
-    """装配期才能定值的平台修复：时钟戳、SELinux 模块与日志轮转覆写。
+    """装配期才能定值的平台修复：时钟戳、SELinux 模块、日志轮转覆写与时区链接。
 
     静态载荷（时钟脚本与单元、wait-display 脚本与单元、SELinux 安装单元、
     restore-first drop-in、KDE 的 powerdevilrc 与环境变量文件）都由
-    piano-fedora-configs 安装，构建器不再写第二份。这里只留下三样装配动作：
-    /var/lib/piano-clock/last 的构建时间戳、编译后的策略模块、以及对
-    plymouth 拥有的 /etc/logrotate.d/bootlog 的有意覆写（daily 同日轮转会撞上
-    离线时钟恢复，改用带时分秒的 dateformat）。
+    piano-fedora-configs 安装，构建器不再写第二份。这里只留下四样装配动作：
+    /var/lib/piano-clock/last 的构建时间戳、编译后的策略模块、对 plymouth
+    拥有的 /etc/logrotate.d/bootlog 的有意覆写（daily 同日轮转会撞上离线时钟
+    恢复，改用带时分秒的 dateformat），以及 /etc/localtime 到 UTC 的链接。
     """
     remove_legacy_power_overrides(root)
     files = {"etc/logrotate.d/bootlog": PIANO_BOOT_LOG_ROTATION}
@@ -247,7 +272,7 @@ def stage_piano_hardware_fixes(root, context):
     module.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "rootfs/selinux/piano_hardware.pp", module)
     return sorted([*files, "usr/share/piano/selinux/piano_hardware.pp",
-                   seed_clock_floor(root)])
+                   ensure_localtime_link(root), seed_clock_floor(root)])
 
 
 def verify_power_overlay(root, context):

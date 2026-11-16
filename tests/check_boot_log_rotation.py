@@ -22,6 +22,10 @@ def main():
         raise RuntimeError('logrotate is required for the collision regression')
     with tempfile.TemporaryDirectory(prefix='boot-log-', dir=os.environ.get('TMPDIR')) as directory:
         root = Path(directory)
+        # tzdata 由基础系统带入，finalizer 建 /etc/localtime 前要确认它在位。
+        zoneinfo = root / 'usr/share/zoneinfo/UTC'
+        zoneinfo.parent.mkdir(parents=True, exist_ok=True)
+        zoneinfo.write_bytes(b'TZif2\0UTC\0')
         finalizer.stage_piano_hardware_fixes(
             root, finalizer.piano_desktop.load('gnome', '44'))
         configuration = root / 'etc/logrotate.d/bootlog'
