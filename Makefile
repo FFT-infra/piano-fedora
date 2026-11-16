@@ -64,6 +64,7 @@ test:
 	python3 tests/check_image_workflow.py
 	python3 tests/check_runtime_extras.py
 	python3 tests/check_finger_orientation.py
+	python3 tests/check_finger_calibration_scope.py
 	python3 tests/check_fingerprint_package.py
 	python3 tests/check_libfprint_package.py
 	python3 tests/check_pipewire_gstreamer_package.py

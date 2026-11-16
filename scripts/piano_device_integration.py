@@ -103,9 +103,11 @@ def stage_payload(source, pin, payload, touch_proof, camera_proof, put, sha256, 
         # regenerated INI can never leave a stale calibration on the device.
         shipped = ROOT / "packages/xiaomi-piano-thp/usr/share/piano/touch" / f"piano-{lcd}.json"
         extracted = module.extract(ini)
-        # 上游提取器在 Focus Pen 之后会附带 pen 事实，本仓库分发的文件只装手指
-        # 电极矩阵，笔的事实由同包的 pen/calibration/*.ini 提供。
+        # 上游提取器会附带笔的事实（旧键名 pen，按 HID 选型后是 m80p），
+        # 本仓库分发的文件只装手指电极矩阵，笔的事实由同包的
+        # pen/calibration/*.ini 提供。
         extracted.pop("pen", None)
+        extracted.pop("m80p", None)
         generated = json.dumps(extracted, indent=2) + "\n"
         if not shipped.is_file():
             raise ValueError("matrix finger calibration is missing: " + str(shipped))
