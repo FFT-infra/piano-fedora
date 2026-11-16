@@ -1,17 +1,17 @@
 diff --git a/config/release.json b/config/release.json
-index a9cf7dd..eb39ed7 100644
+index 0fe306c..5833e62 100644
 --- a/config/release.json
 +++ b/config/release.json
-@@ -11,7 +11,7 @@
+@@ -51,7 +51,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "ab4d74a2bae3439b4456bbd3a440a3d90388d713",
-+    "target_tree": "506d65b7465499cd52f15f82ac6f6d6573da05c4",
+-    "target_tree": "22692e070a3825ad985e1c87891a442e408339f0",
++    "target_tree": "82bf768b9d97be4ca408bc9bd08a1b9f96d4c339",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
-@@ -39,7 +39,7 @@
+@@ -80,7 +80,7 @@
        "linux/dts/piano-tsens.dtso"
      ],
      "root_policy": "LABEL=PIANOROOT",
@@ -20,7 +20,7 @@ index a9cf7dd..eb39ed7 100644
      "preferred_display_mode": {
        "board_compatible": "xiaomi,piano",
        "refresh_hz": 120,
-diff --git a/patches/linux/7.3/0112-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0112-dpu-defer-slave-cleanup.patch
+diff --git a/patches/linux/7.3/0125-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0125-dpu-defer-slave-cleanup.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..3ced082b1f0c352588cfd77ebb7a8ea87c56c1a8
 GIT binary patch
@@ -74,7 +74,7 @@ ONK^nzflLH7*SG-M^>wrW
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0113-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0113-media-iris-decode-order-and-deblocking.patch
+diff --git a/patches/linux/7.3/0126-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0126-media-iris-decode-order-and-deblocking.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..53cb09ca783d72eed5c4a1ddd432894189ed1d4c
 GIT binary patch
@@ -174,7 +174,7 @@ M@rCgqG0?Ou0CZ1{cmMzZ
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0114-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0114-asoc-piano-speaker-gain-limit.patch
+diff --git a/patches/linux/7.3/0127-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0127-asoc-piano-speaker-gain-limit.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..494a46d46902ebc2cec68f7df62d4f1ddc844331
 GIT binary patch
@@ -217,7 +217,7 @@ wiXlB{az-!M6>PERA+#ib&4}E@3I$tGGYsqyP@x2k4-7N&QsSXfI?y5?0DRWp`v3p{
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0115-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0115-input-nt36532e-panel-vendor-misc.patch
+diff --git a/patches/linux/7.3/0128-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0128-input-nt36532e-panel-vendor-misc.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..26ff15244da36746589b6bca3323bc50305cc83a
 GIT binary patch
@@ -279,23 +279,23 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 7e6b046..8927e1b 100644
+index 7cc23b5..725c762 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
-@@ -4,8 +4,8 @@
+@@ -11,8 +11,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "ab4d74a2bae3439b4456bbd3a440a3d90388d713",
--  "original_target_commit": "7679892741f7c03527300a76f2c008eb59bf3891",
-+  "target_tree": "506d65b7465499cd52f15f82ac6f6d6573da05c4",
+-  "target_tree": "22692e070a3825ad985e1c87891a442e408339f0",
+-  "original_target_commit": "5997e1c29a4e456e5c94a6c26b732881bfacce81",
++  "target_tree": "82bf768b9d97be4ca408bc9bd08a1b9f96d4c339",
 +  "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -760,21 +760,13 @@
-       "committer_date": "2026-11-10T19:47:33+08:00",
-       "tree": "b28bdadca1a0312890369da4ef95656da96c4a7f"
+@@ -1240,26 +1240,13 @@
+         "drop_when": "Replace with an accepted platform shutdown interface or firmware behavior that requests stock off-mode charging only for USB-online power-off. Verify partition/header identification, full-block preservation, flush/readback and I/O failure handling; restart and unplugged shutdown must remain unchanged and no other stock bytes may be written."
+       }
      },
 -    {
 -      "file": "0095-input-nt36532e-matrix.patch",
@@ -303,7 +303,12 @@ index 7e6b046..8927e1b 100644
 -      "original_commit": "f1b85887d6b40c0d5b8238e6546d4924d232db62",
 -      "original_parent": "c4a58dd0f40a7ae35553943440fffcb1036e9064",
 -      "committer_date": "2026-11-10T23:45:14+08:00",
--      "tree": "d9ab95b426cb4468904cf7d59740870de385577e"
+-      "tree": "d9ab95b426cb4468904cf7d59740870de385577e",
+-      "upstream": {
+-        "status": "downstream",
+-        "url": "https://github.com/slwyts/Project-SunUEFI",
+-        "drop_when": "Accepted NT36532E support must decode finger matrices into standard multitouch events with calibration, filtering and palm handling in the kernel. Verify damaged frames, transport loss, firmware reset and suspend release/rebuild contacts safely, with IRQ/work teardown and raw-capture allocation independent of ordinary touch input."
+-      }
 -    },
      {
        "file": "0096-power-mca-session-recovery.patch",
@@ -312,184 +317,302 @@ index 7e6b046..8927e1b 100644
 -      "original_parent": "f1b85887d6b40c0d5b8238e6546d4924d232db62",
 +      "original_parent": "c4a58dd0f40a7ae35553943440fffcb1036e9064",
        "committer_date": "2026-11-10T23:49:41+08:00",
--      "tree": "9b90c73cb3784d2047502c349ad5017642a15408"
-+      "tree": "58d0ca81dd38fa6322aec96f66fbba8988b782a4"
-     },
-     {
-       "file": "0097-power-bq27xxx-suspend-recovery.patch",
-@@ -782,7 +774,7 @@
+-      "tree": "9b90c73cb3784d2047502c349ad5017642a15408",
++      "tree": "58d0ca81dd38fa6322aec96f66fbba8988b782a4",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1272,7 +1259,7 @@
        "original_commit": "8ffe21256dfbafd987a464e5e3e04ed892183af9",
        "original_parent": "d4c0684caecc11422b7ae3977fcd4f7a38b44129",
        "committer_date": "2026-11-10T23:49:41+08:00",
--      "tree": "448d71bcb028a64b49faff84ec52e85d50102308"
-+      "tree": "fc638367534c6ba7d4fc7c7f923cdd5c0daa1c10"
-     },
-     {
-       "file": "0098-iio-piano-gen4-thermistors.patch",
-@@ -790,7 +782,7 @@
+-      "tree": "448d71bcb028a64b49faff84ec52e85d50102308",
++      "tree": "fc638367534c6ba7d4fc7c7f923cdd5c0daa1c10",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1285,7 +1272,7 @@
        "original_commit": "b10af20777de0700c19bfdd87e702e14d55c3118",
        "original_parent": "8ffe21256dfbafd987a464e5e3e04ed892183af9",
        "committer_date": "2026-11-11T00:18:30+08:00",
--      "tree": "15bf2c16716bc691f3c677cdfab70c3e4ac07030"
-+      "tree": "56bed4107cea8c34e6c47770185afb4187d47bdc"
-     },
-     {
-       "file": "0099-power-mca-full-recharge.patch",
-@@ -798,7 +790,7 @@
+-      "tree": "15bf2c16716bc691f3c677cdfab70c3e4ac07030",
++      "tree": "56bed4107cea8c34e6c47770185afb4187d47bdc",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://lore.kernel.org/all/20260731-pmic5_gen4_adc-v1-0-9c49b2eea6f9@oss.qualcomm.com/",
+@@ -1298,7 +1285,7 @@
        "original_commit": "2f7576b25e806f552bf218ac60f69ecd2d253a72",
        "original_parent": "b10af20777de0700c19bfdd87e702e14d55c3118",
        "committer_date": "2026-11-11T00:18:30+08:00",
--      "tree": "79ef5595f2a6543acede4c7043da52ad69151bb7"
-+      "tree": "09f26c423cadb34650407548f180101e8755f6b9"
-     },
-     {
-       "file": "0100-power-bq27z561-original-temperature.patch",
-@@ -806,7 +798,7 @@
+-      "tree": "79ef5595f2a6543acede4c7043da52ad69151bb7",
++      "tree": "09f26c423cadb34650407548f180101e8755f6b9",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1311,7 +1298,7 @@
        "original_commit": "82a2656afe05c8d0bb2295f5fa4091f6a334defd",
        "original_parent": "2f7576b25e806f552bf218ac60f69ecd2d253a72",
        "committer_date": "2026-11-11T00:25:30+08:00",
--      "tree": "092fac403cb93c305ddbd08b6c3930d8e73d0c86"
-+      "tree": "2181d0b45322a81dd9374863b3480ecc1b6ce465"
-     },
-     {
-       "file": "0101-power-mca-skin-thermal-policy.patch",
-@@ -814,7 +806,7 @@
+-      "tree": "092fac403cb93c305ddbd08b6c3930d8e73d0c86",
++      "tree": "2181d0b45322a81dd9374863b3480ecc1b6ce465",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1324,7 +1311,7 @@
        "original_commit": "13e5e2aff2785dbd36dbd936d65dc8859c0fcfc0",
        "original_parent": "82a2656afe05c8d0bb2295f5fa4091f6a334defd",
        "committer_date": "2026-11-11T00:25:30+08:00",
--      "tree": "b0af8c547f326062ab3fed7be2e03901132225e5"
-+      "tree": "2070003ff3264c19f5aeb66ef3fd59e6fb26c927"
-     },
-     {
-       "file": "0102-soc-qcom-pmic-glink-rpmsg-registration.patch",
-@@ -822,7 +814,7 @@
+-      "tree": "b0af8c547f326062ab3fed7be2e03901132225e5",
++      "tree": "2070003ff3264c19f5aeb66ef3fd59e6fb26c927",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1337,7 +1324,7 @@
        "original_commit": "f04703e9ecb6244c1d2ed5b724fed4c9d03dca00",
        "original_parent": "13e5e2aff2785dbd36dbd936d65dc8859c0fcfc0",
        "committer_date": "2026-11-11T03:17:19+08:00",
--      "tree": "ada3010e4da585321686551ca60d5c6497c1377f"
-+      "tree": "d80c269636c8f03f922f68d289d161f7087e363e"
-     },
-     {
-       "file": "0103-power-mca-authenticated-ffc.patch",
-@@ -830,7 +822,7 @@
+-      "tree": "ada3010e4da585321686551ca60d5c6497c1377f",
++      "tree": "d80c269636c8f03f922f68d289d161f7087e363e",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://gitlab.com/Linaro/arm64-laptops/linux/-/commit/8c309c7e852a49118ddc2ee54c3d8b7c74466f6a",
+@@ -1350,7 +1337,7 @@
        "original_commit": "c0c3dcbe73b5dcc4e8baee487581fda4fda67d6d",
        "original_parent": "f04703e9ecb6244c1d2ed5b724fed4c9d03dca00",
        "committer_date": "2026-11-12T00:06:47+08:00",
--      "tree": "f3077b7e30b3c0d2423befd18e2dfef2f25f6e16"
-+      "tree": "a2793077a19c46cd8b167be98920f91dd1de07aa"
-     },
-     {
-       "file": "0104-power-mca-ffc-teardown-reference.patch",
-@@ -838,7 +830,7 @@
+-      "tree": "f3077b7e30b3c0d2423befd18e2dfef2f25f6e16",
++      "tree": "a2793077a19c46cd8b167be98920f91dd1de07aa",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1363,7 +1350,7 @@
        "original_commit": "611bb038b07681dae27d6852f4698e4873cbc980",
        "original_parent": "c0c3dcbe73b5dcc4e8baee487581fda4fda67d6d",
        "committer_date": "2026-11-12T00:22:59+08:00",
--      "tree": "60db958881b33bf2e107e37993059d5c0a0d76d9"
-+      "tree": "2019083ecb5c48c98e452860bda6a0dca1acc939"
-     },
-     {
-       "file": "0105-dpu-piano-fractional-sampling.patch",
-@@ -846,7 +838,7 @@
+-      "tree": "60db958881b33bf2e107e37993059d5c0a0d76d9",
++      "tree": "2019083ecb5c48c98e452860bda6a0dca1acc939",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1376,7 +1363,7 @@
        "original_commit": "80114e79d7a9f563f95064061be9cc6dbc4d1c1f",
        "original_parent": "611bb038b07681dae27d6852f4698e4873cbc980",
        "committer_date": "2026-11-12T23:02:24+08:00",
--      "tree": "ffc0bf5589c227d3280605c9ee8fbbd1bdabafe0"
-+      "tree": "472d11a8e04a9e5cae0e249ce5ac5d4829bc9c12"
-     },
-     {
-       "file": "0106-power-mca-stock-cycle-policy.patch",
-@@ -854,7 +846,7 @@
+-      "tree": "ffc0bf5589c227d3280605c9ee8fbbd1bdabafe0",
++      "tree": "472d11a8e04a9e5cae0e249ce5ac5d4829bc9c12",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1389,7 +1376,7 @@
        "original_commit": "ee6aa887046afb28b488bd14590ac6a0daeff3e6",
        "original_parent": "80114e79d7a9f563f95064061be9cc6dbc4d1c1f",
        "committer_date": "2026-11-14T00:09:57+08:00",
--      "tree": "5963739de247692494ba26e35fbc8951b089caab"
-+      "tree": "6bba5c8dd3a3f0c684998296ef294cf30f212a32"
-     },
-     {
-       "file": "0107-power-mca-qc-direct-charge.patch",
-@@ -862,7 +854,7 @@
+-      "tree": "5963739de247692494ba26e35fbc8951b089caab",
++      "tree": "6bba5c8dd3a3f0c684998296ef294cf30f212a32",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1402,7 +1389,7 @@
        "original_commit": "028e3daa5e2509148050c82c3599be0a5844dd65",
        "original_parent": "ee6aa887046afb28b488bd14590ac6a0daeff3e6",
        "committer_date": "2026-11-14T03:28:55+08:00",
--      "tree": "2dd997e5109a845b0e47ad11950c6f3e28255e5d"
-+      "tree": "0b758a970041d4e63f737e0386df79226ec00dbc"
-     },
-     {
-       "file": "0108-power-mca-third-pps-limits.patch",
-@@ -870,7 +862,7 @@
+-      "tree": "2dd997e5109a845b0e47ad11950c6f3e28255e5d",
++      "tree": "0b758a970041d4e63f737e0386df79226ec00dbc",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1415,7 +1402,7 @@
        "original_commit": "44f17a42a812287acb2fe19633cbaf1144c6a25a",
        "original_parent": "028e3daa5e2509148050c82c3599be0a5844dd65",
        "committer_date": "2026-11-14T03:41:04+08:00",
--      "tree": "2ac0dba057d2baa4d2d1c718994406ee2ee4bc2c"
-+      "tree": "c350e2294051790758a7816bc9f3121e4ec5af60"
-     },
-     {
-       "file": "0109-power-mca-pps-voltage-steps.patch",
-@@ -878,7 +870,7 @@
+-      "tree": "2ac0dba057d2baa4d2d1c718994406ee2ee4bc2c",
++      "tree": "c350e2294051790758a7816bc9f3121e4ec5af60",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1428,7 +1415,7 @@
        "original_commit": "35c62293a237de7fe38cec56ad720b38e079fe6e",
        "original_parent": "44f17a42a812287acb2fe19633cbaf1144c6a25a",
        "committer_date": "2026-11-14T03:47:47+08:00",
--      "tree": "8074e3908cd024e7250a489072ee874a5b1a2f52"
-+      "tree": "a2cc51358508b82f71474c78e238ca9df5acda6e"
-     },
-     {
-       "file": "0110-power-mca-battery-health-current.patch",
-@@ -886,7 +878,7 @@
+-      "tree": "8074e3908cd024e7250a489072ee874a5b1a2f52",
++      "tree": "a2cc51358508b82f71474c78e238ca9df5acda6e",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1441,7 +1428,7 @@
        "original_commit": "28d14326ff0da7eba1540f3934d55ec353f06946",
        "original_parent": "35c62293a237de7fe38cec56ad720b38e079fe6e",
        "committer_date": "2026-11-14T03:57:05+08:00",
--      "tree": "3ac4bdb365f051cf1c1283bdefbfadf9f79c9112"
-+      "tree": "599ca5aa93e3f14a2cbd4cc145c52383e91ebd5d"
-     },
-     {
-       "file": "0111-power-mca-source-voltage-window.patch",
-@@ -894,7 +886,7 @@
+-      "tree": "3ac4bdb365f051cf1c1283bdefbfadf9f79c9112",
++      "tree": "599ca5aa93e3f14a2cbd4cc145c52383e91ebd5d",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1454,7 +1441,7 @@
        "original_commit": "4858338c44393d6c08bbbb7c29ed3dfdef72425e",
        "original_parent": "28d14326ff0da7eba1540f3934d55ec353f06946",
        "committer_date": "2026-11-14T04:26:52+08:00",
--      "tree": "0e3f212b19ecf98c82717eee4509d64cdbdfb8a7"
-+      "tree": "9ab6db5b6f344e136fffa43c5a4310fea64cd664"
-     },
-     {
-       "file": "0112-power-direct-charge-conversion-modes.patch",
-@@ -902,7 +894,39 @@
+-      "tree": "0e3f212b19ecf98c82717eee4509d64cdbdfb8a7",
++      "tree": "9ab6db5b6f344e136fffa43c5a4310fea64cd664",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1467,7 +1454,7 @@
        "original_commit": "7679892741f7c03527300a76f2c008eb59bf3891",
        "original_parent": "4858338c44393d6c08bbbb7c29ed3dfdef72425e",
        "committer_date": "2026-11-14T05:10:30+08:00",
--      "tree": "ab4d74a2bae3439b4456bbd3a440a3d90388d713"
-+      "tree": "983a686a452a8b695f9b862c3de5b5dc5b2bc32a"
-+    },
-+    {
-+      "file": "0112-dpu-defer-slave-cleanup.patch",
+-      "tree": "ab4d74a2bae3439b4456bbd3a440a3d90388d713",
++      "tree": "983a686a452a8b695f9b862c3de5b5dc5b2bc32a",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1480,7 +1467,7 @@
+       "original_commit": "e8adfef4618d1829a4f7b36b06f7c3c67da62c91",
+       "original_parent": "7679892741f7c03527300a76f2c008eb59bf3891",
+       "committer_date": "2026-11-14T21:48:56+08:00",
+-      "tree": "c8b5b1733e63dd1472b82a8be0a5548d8bf97649",
++      "tree": "60fd2bcb0c29b5c3b0647c33bc3535b0cd3a1759",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1493,7 +1480,7 @@
+       "original_commit": "234828360faa08ab1c06c220a164509b25294bab",
+       "original_parent": "e8adfef4618d1829a4f7b36b06f7c3c67da62c91",
+       "committer_date": "2026-11-14T21:59:54+08:00",
+-      "tree": "fd30b8c2f34ff775a18393f2adbf851fd37915eb",
++      "tree": "6f6e1d869c418d8448f931adc0bd9d6baf5729e8",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1506,7 +1493,7 @@
+       "original_commit": "cf31a12a3d5c25b77566928338c4ff3a8c6629b7",
+       "original_parent": "234828360faa08ab1c06c220a164509b25294bab",
+       "committer_date": "2026-11-14T23:03:04+08:00",
+-      "tree": "433a39c1910096ca2d342d69f3ee7de140fb58db",
++      "tree": "cf23fa8e9a509a81b48c7a5fc4e3dedc3f1959ac",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI/blob/main/patches/linux/7.3/0004-media.patch",
+@@ -1519,7 +1506,7 @@
+       "original_commit": "458ad8d888c23d2d99cff9e7aadbfee32498121d",
+       "original_parent": "cf31a12a3d5c25b77566928338c4ff3a8c6629b7",
+       "committer_date": "2026-11-14T23:04:09+08:00",
+-      "tree": "63272cf90df64f2dc2c8cd879cbf8ef917cfa7e7",
++      "tree": "376e06c65b85d7235418c2580b2c268d2eec0e14",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://lore.kernel.org/linux-media/20260508-add-support-for-camss-on-sm8750-v3-0-fc6861a65c67@oss.qualcomm.com/",
+@@ -1531,7 +1518,7 @@
+       "sha256": "5f2cc0593f08364c6849aa5dea01520ef86b33598412972683d50641a00bf9ac",
+       "original_commit": "219c69941e0a76bfd22dca1671d9cb9a19c5330a",
+       "original_parent": "458ad8d888c23d2d99cff9e7aadbfee32498121d",
+-      "tree": "3eee7be269ac68ad1867dd39bd90dd600192d308",
++      "tree": "9713a491d144b3d98bcfe5794273eeb5bb2aef15",
+       "committer_date": "2026-11-15T00:40:18+08:00",
+       "upstream": {
+         "status": "downstream",
+@@ -1544,7 +1531,7 @@
+       "sha256": "ee651052aee1c495d9cae8803db6303b3a2602ee4b1fa5920ac9b4287ceb4c8e",
+       "original_commit": "a2b0148a0e9426b26b685db9a619b4a6a9d66ccc",
+       "original_parent": "219c69941e0a76bfd22dca1671d9cb9a19c5330a",
+-      "tree": "0f4c1f8d0d5e411ff2712b21863fadcbd1866893",
++      "tree": "82eeaac8728899911ff0f780b779fa3db5a48ea5",
+       "committer_date": "2026-11-15T00:53:33+08:00",
+       "upstream": {
+         "status": "downstream",
+@@ -1557,7 +1544,7 @@
+       "sha256": "4cda5f5aafb3119f969c7fe69833439aa16385d31943bcac9110f48e9359bc81",
+       "original_commit": "6f3acdadb986a802931fb1e726ae4e6596da78b1",
+       "original_parent": "a2b0148a0e9426b26b685db9a619b4a6a9d66ccc",
+-      "tree": "8b4645748322a3f7160f55987f6bbf346422d975",
++      "tree": "e13f691953a32e683444e9013c35dec0f68170b8",
+       "committer_date": "2026-11-15T01:21:54+08:00",
+       "upstream": {
+         "status": "downstream",
+@@ -1570,7 +1557,7 @@
+       "sha256": "df345d65ced6498a6513b3349c68768a8407cf29aeea97ce96782353e0936854",
+       "original_commit": "bd537a1307b73309e83c9d99c1db851fb921127c",
+       "original_parent": "6f3acdadb986a802931fb1e726ae4e6596da78b1",
+-      "tree": "d02bd6bc1e840fc4c52e6944df7e6e11af26125b",
++      "tree": "9fc0206be587d3824f5d0c223da8e63cf02ea5b4",
+       "committer_date": "2026-11-15T01:22:15+08:00",
+       "upstream": {
+         "status": "downstream",
+@@ -1584,7 +1571,7 @@
+       "original_commit": "f9b50fc7f3bbf3eb726f4b343d0175379658fae4",
+       "original_parent": "bd537a1307b73309e83c9d99c1db851fb921127c",
+       "committer_date": "2026-11-14T22:04:44+08:00",
+-      "tree": "a0974d1a321366d21d84d75cbfba6ca414562f4f",
++      "tree": "c3c745fb8544ba06087f6053822df80f88a2f8ee",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1592,43 +1579,36 @@
+       }
+     },
+     {
+-      "file": "0122-input-nt36532e-pen-scan.patch",
+-      "sha256": "cb5c6226c76ade9441436c8b107e296fc5c372940ee26e55377f052d50a37b05",
+-      "original_commit": "80669657c9ed8641b7ac0ef3d8f805f449e2538c",
++      "file": "0125-dpu-defer-slave-cleanup.patch",
 +      "sha256": "bc4ec8c9803116f39be6a06c6987c21b7f0ae633f413cdb24707b828e15c8fa5",
 +      "original_commit": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
-+      "original_parent": "7679892741f7c03527300a76f2c008eb59bf3891",
+       "original_parent": "f9b50fc7f3bbf3eb726f4b343d0175379658fae4",
+-      "committer_date": "2026-11-14T22:40:22+08:00",
+-      "tree": "48f5b8803e91a3a1ab39d46aaa2b098bc9619b7c",
+-      "upstream": {
+-        "status": "downstream",
+-        "url": "https://github.com/slwyts/Project-SunUEFI",
+-        "drop_when": "Remove when accepted NT36532E lifecycle handling consumes the standard pen-dock switch, preserves the requested model across dock and firmware transitions, stops scanning for panel/system sleep, and treats optional pen setup failure as a finger-input fallback. Verify dock hotplug, suspend/resume and failed initialization without losing touch input."
+-      }
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "c95fa4dbd56d36537304606743cb732809cde291"
-+    },
-+    {
-+      "file": "0113-media-iris-decode-order-and-deblocking.patch",
++      "tree": "042064f72af78e0aabe93210d5dd41e6f7166e4c"
+     },
+     {
+-      "file": "0123-input-nt36532e-pen.patch",
+-      "sha256": "7ba397e9907977c221253461e65abe1a190324f17869a28ec58d4bf504cf8b28",
+-      "original_commit": "3f081c9b87314021d491cb4776e6f8ee03f41808",
+-      "original_parent": "80669657c9ed8641b7ac0ef3d8f805f449e2538c",
+-      "committer_date": "2026-11-15T01:11:01+08:00",
+-      "tree": "709707e76e59ceb062e4f8f060ae8df163e272c6",
+-      "upstream": {
+-        "status": "downstream",
+-        "url": "https://github.com/slwyts/Project-SunUEFI",
+-        "drop_when": "Replace with accepted NT36532E pen decoding and cross-HID fusion that loads the correct LCD-ID calibration as firmware, reports coordinates, pressure, tilt and buttons on the physical input device, and preserves sample freshness, coherent release and acknowledged stop retries. Verify real drawing, tilt loss/reacquisition, PM/firmware recovery, palm interaction and both 120/144 Hz; resolve simultaneous-radio identity before removing the safe two-radio refusal, and retain standard BlueZ vendor-GATT initialization until independently replaced."
+-      }
++      "file": "0126-media-iris-decode-order-and-deblocking.patch",
 +      "sha256": "a5b907999a2313f310a32ac78fc10c25cce57ecd08cc2b3bbdb1441479e97667",
 +      "original_commit": "596c454653862c3007cb16b40b496230b213f6fb",
 +      "original_parent": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "ea7f1fb803689efc3ae34cb80a148c4ac4612a21"
-+    },
-+    {
-+      "file": "0114-asoc-piano-speaker-gain-limit.patch",
++      "tree": "4880944dc63dba610a5307a2764cffd87e3a2387"
+     },
+     {
+-      "file": "0124-input-nt36532e-pen-centroid.patch",
+-      "sha256": "35245c106950be7148314a1911db4c9ae3870cecfc6ce836fe027c04b6a2ecde",
+-      "original_commit": "5997e1c29a4e456e5c94a6c26b732881bfacce81",
+-      "original_parent": "3f081c9b87314021d491cb4776e6f8ee03f41808",
+-      "committer_date": "2026-11-15T02:21:04+08:00",
+-      "tree": "22692e070a3825ad985e1c87891a442e408339f0",
+-      "upstream": {
+-        "status": "downstream",
+-        "url": "https://github.com/slwyts/Project-SunUEFI",
+-        "drop_when": "The accepted NT36532E decoder must calculate each axis from one measured scan group, remove each group's own DC baseline, and retain weak distributed signals without splicing unrelated maxima. Verify real contact, weak hover, tilt and edge behavior with synchronized input and pen-tip evidence before replacing this centroid correction."
+-      }
++      "file": "0127-asoc-piano-speaker-gain-limit.patch",
 +      "sha256": "0f44f724d277efbb92caf40fdf1f2905cb5158997b44af3c98d113d001c3ac33",
 +      "original_commit": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "original_parent": "596c454653862c3007cb16b40b496230b213f6fb",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "7969ac3ae728e2223f50ea4a2cfad2e02ae2b31a"
++      "tree": "6f72ee6c9b0e453d7148a6d7220727312c7f27fc"
 +    },
 +    {
-+      "file": "0115-input-nt36532e-panel-vendor-misc.patch",
++      "file": "0128-input-nt36532e-panel-vendor-misc.patch",
 +      "sha256": "a345e5f1227f3ef200d3a7c1d9f152d01bc8d50896ec1b2b5572e5024c8d0bdf",
 +      "original_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
 +      "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "committer_date": "2026-10-24T18:30:00+08:00",
-+      "tree": "506d65b7465499cd52f15f82ac6f6d6573da05c4"
++      "tree": "82bf768b9d97be4ca408bc9bd08a1b9f96d4c339"
      }
    ],
    "provenance": {

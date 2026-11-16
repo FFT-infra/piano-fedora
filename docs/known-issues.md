@@ -58,8 +58,8 @@
 - **影响**：使用 systemd-stub 258+ 生成的 UKI 镜像无法被固件引导。
 - **技术根因**：systemd-stub 258 起跳转前将 UKI 的 `LoadedImage` 属性改写为内嵌内核地址与大小：
   - SunUEFI 校验启动前记录值发现改写，返回 `EFI_ACCESS_DENIED`。
-- **应对方法**：使用打入补丁的 SunUEFI 固件，或暂时使用未改写句柄属性的早期 stub。
-- **状态**：已修复待真机验证（补丁 `patches/uefi-ebs-identity/` 已收录，待冷装验证）。
+- **应对方法**：使用上游 SunUEFI `fe5b7aca` 及之后的固件；该提交在固件侧识别直入内核路径，本仓库不再维护补丁。
+- **状态**：上游已修复（SunUEFI `fe5b7aca`，待真机冷装验证）。
 
 ---
 

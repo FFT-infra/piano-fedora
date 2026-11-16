@@ -57,12 +57,12 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 ## 核心分叉与补丁策略
 
-本仓库在 `patches/kernel/` 追加 7 条设备适配补丁，把上游 7.3 序列推到 0146。Fedora 临时重编包的删除条件见 `scripts/fedora-overlays.json`。
+本仓库在 `patches/kernel/` 追加 7 条设备适配补丁，把上游 7.3 序列推到 0159。Fedora 临时重编包的删除条件见 `scripts/fedora-overlays.json`。
 
 ### 1. 内核补丁序列管理
-内核补丁集（`patches/kernel/`）共 146 条补丁，由上游 111 条封存序列与自有 35 条适配补丁组成，最终目标树固化于 `patches/kernel/series.json`（`target_tree: 507067737e5e`）：
-- **排除内核矩阵解码**：主动排除上游 `0095-input-nt36532e-matrix.patch`。该补丁将触控矩阵解码移入内核且缺乏时域滤波，与本项目的用户态 5 级卡尔曼滤波冲突。
-- **自有适配序列**：将 35 条自有补丁后移至 `0112`–`0146`，涵盖设备特定的触控平滑、音频与启动约束。
+内核补丁集（`patches/kernel/`）共 155 条补丁，由上游 120 条封存序列与自有 35 条适配补丁组成，最终目标树固化于 `patches/kernel/series.json`（`target_tree: 4e78c31a39c1`）：
+- **排除内核矩阵解码**：主动排除上游 `0095-input-nt36532e-matrix.patch`。该补丁将触控矩阵解码移入内核且缺乏时域滤波，与本项目的用户态 5 级卡尔曼滤波冲突。同组的笔序列 `0122`–`0124` 建立在它引入的矩阵基础设施上，一并排除；笔路径继续走本仓库的 `device/piano-thp` 用户态实现。
+- **自有适配序列**：将 35 条自有补丁后移至 `0125`–`0159`，涵盖设备特定的触控平滑、音频与启动约束。
 - **构建环境与优化**：采用 LLVM 23.1.5 工具链，启用 `CC_OPTIMIZE_FOR_PERFORMANCE_O3`、`LTO_CLANG_THIN` 与 `CONFIG_ARM64_PIANO_OPTIMIZE`。
 
 ### 2. 充电与电源栈适配
