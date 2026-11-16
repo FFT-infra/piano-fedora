@@ -3,7 +3,7 @@
 
 Name:           piano-camera
 Version:        0.1.0
-Release:        7%{?dist}
+Release:        8%{?dist}
 Summary:        Camera pipeline and v4l2loopback daemon for Xiaomi Pad 8 Pro (piano)
 License:        MIT
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -81,6 +81,10 @@ systemctl enable piano-camerad.service piano-camera.service || :
 %systemd_postun_with_restart piano-camerad.service piano-camera.service
 
 %changelog
+* Mon Nov 17 2026 FFT-infra <dev@piano.invalid> - 0.1.0-8
+- camera-start 载入 gt9764 而不是 dw9768；18274377 起后摄执行器是
+  giantec,gt9764ba，dw9768 驱动匹配不上，自动对焦整条路径不工作
+
 * Mon Nov 17 2026 FFT-infra <dev@piano.invalid> - 0.1.0-7
 - 对焦执行器改按传感器的 ancillary link 找 LENS 实体，不再按 dw9768 名字匹配；
   后摄模组换成双向 GT9764BA，按名字找会让自动对焦在新硬件上直接失效
