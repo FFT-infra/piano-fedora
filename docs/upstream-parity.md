@@ -27,6 +27,7 @@
 | 指纹录入 | 完成：`fprintd-enroll`、`fprintd-verify` 与锁屏解锁全流程打通 | libfprint/fprintd 录入与认证 | 详见[桌面档位](desktops.md)与[已知问题](known-issues.md#指纹红外与-hdr) |
 | 相机隐私灯 | 完成：前后摄视频流启停联动 `/sys/class/leds/green/brightness` | 随前后摄视频流启停 | 驱动控制链路完整 |
 | 相机录像 | 完成：支持 1920x1440@30 预览与录像 | 预览、录像、AE/AF/AWB | 直连与 loopback 均正常 |
+| 后摄自动对焦 | 随 18274377 换成双向 GT9764BA（`gt9764` 驱动 + `camerad` 按 ancillary link 找 LENS） | 同一颗执行器 | 新硬件上机验收未做 |
 | 手写笔进阶 | 基础输入正常：位置、压感、倾斜、proximity | 捏握、震动、磁吸识别、电量、跨系统重配 | 进阶手势与按键映射未实现 |
 | 普通 Focus Pen 校准 | 笔校准 INI 与上游同源，含第二支笔的 `stylus_2_*` 参数 | 同一份 BSP INI | 参数已入包，未实机验收 |
 | DisplayPort 音频 | topology 与 UCM 都含 `DISPLAY_PORT_RX_0`，`SectionDevice."HDMI"` 走 `hw:${CardId},1` | 同一份 BSP m4 与 UCM | 链路已接通，未实机验收 |
