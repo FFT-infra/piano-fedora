@@ -40,6 +40,18 @@ KNOWN_MISSING = {
     # 编号都对不上，按单元地址找不到对应物。传感器自己由驱动创建。
     ("piano-camera-sensors.dtso", "/soc/cci-ml@ac7b000/i2c-bus@1/camera@10"),
     ("piano-camera-sensors.dtso", "/soc/cci-ml@ac7b000/i2c-bus@1/camera@10/port/endpoint"),
+    # MCLK 时钟提供者的名字在两条血缘里不同：主线叫
+    # clock-controller-ml@1760000，厂商叫 clock-controller@1760000，而且
+    # 厂商那棵树的 power-domains 是 MTK 侧的另一组编号。
+    ("piano-camera-sensors.dtso", "/soc/clock-controller-ml@1760000"),
+    # 厂商把后摄执行器挂在 cci 下的 qcom,actuator0（compatible qcom,actuator），
+    # 出货 DTB 里才是 vcm@c。主线按 I2C 地址 0x0c 建 vcm@c，厂商源码里
+    # 没有同地址节点。
+    ("piano-camera-sensors.dtso", "/soc/cci-ml@ac7b000/i2c-bus@1/vcm@c"),
+    # CAMSS 的 ISP 在厂商侧是 techpack 里的 csid0@ad26000（同一寄存器基址
+    # 0xad27000），主线把整块 ISP 建成 isp-ml@ad27000，interconnect 只挂在
+    # 主线节点上。
+    ("piano-camera-interconnects.dtso", "/soc/isp-ml@ad27000"),
     ("piano-camera-privacy-led.dtso", "/soc/qcom,qupv3_2_geni_se@8c0000/i2c@884000/camera@10"),
     ("piano-cdsp-fastrpc.dtso", "/soc/remoteproc-cdsp@32300000/glink-edge/qcom,fastrpc"),
     ("piano-touch-panel.dtso", "/soc/display-subsystem@ae00000/dsi@ae94000/panel@0"),
