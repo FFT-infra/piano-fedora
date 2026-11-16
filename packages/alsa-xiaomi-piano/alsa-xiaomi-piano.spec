@@ -2,7 +2,7 @@
 
 Name:           alsa-xiaomi-piano
 Version:        0.1.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        ALSA UCM2 audio configuration for Xiaomi Pad 8 Pro (piano)
 License:        BSD-3-Clause
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -38,5 +38,9 @@ cp -a usr %{buildroot}/
 "%{_datadir}/alsa/ucm2/conf.d/sm8750/Xiaomi Pad 8 Pro.conf"
 
 %changelog
+* Mon Nov 16 2026 FFT-infra <dev@piano.invalid> - 0.1.0-2
+- HiFi.conf 接通 DisplayPort 播放链路：EnableSequence 打开
+  DISPLAY_PORT_RX_0 Audio Mixer MultiMedia2，新增 HDMI SectionDevice
+
 * Fri Oct 16 2026 FFT-infra <dev@piano.invalid> - 0.1.0-1
 - Initial package for Xiaomi Pad 8 Pro (piano)

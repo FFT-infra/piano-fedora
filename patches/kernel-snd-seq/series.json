@@ -2,14 +2,14 @@
   "schema_version": 1,
   "target": "sunuefi",
   "base": {
-    "sunuefi_commit": "2cc5cd62d36acb71205d0f017886f2a64c2d7a8e"
+    "sunuefi_commit": "30e23d758e37f82d1d2f9360771a2ba9567e00a8"
   },
   "patches": [
     {
       "file": "0001-enable-alsa-sequencer.patch",
       "summary": "Fedora \u6b63\u5f0f\u914d\u7f6e\u91cc\u628a ALSA sequencer \u7f16\u6210\u6a21\u5757\uff0calsa-lib \u7684 snd-seq \u52a0\u8f7d\u4e0d\u518d\u6bcf\u6b21\u5f00\u673a\u5931\u8d25\uff0c/dev/snd/seq \u53ef\u7528",
       "targets": {
-        "tools/build_piano_full_kernel.py": "ab40e0f5d7384c4707d33b2aa26f2394c97800da9dc3a6669ba774f13df437be"
+        "tools/build_piano_full_kernel.py": "413433424f3f0447fb5b01e638588089c40d71cd3a7d36b897bca70ba0c1c387"
       },
       "creates": []
     }

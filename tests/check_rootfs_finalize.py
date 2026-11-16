@@ -184,6 +184,11 @@ def stage_packaged_static_files(root):
             mode = private.get(str(relative))
             if mode is not None:
                 target.chmod(mode)
+    # tzdata 由基础系统带入，不属于三个本地矩阵包；finalizer 建 /etc/localtime
+    # 前要确认这个 zoneinfo 文件在位，fixture 里补出 DNF 安装后的那一份。
+    zoneinfo = root / "usr/share/zoneinfo/UTC"
+    zoneinfo.parent.mkdir(parents=True, exist_ok=True)
+    zoneinfo.write_bytes(b"TZif2\0UTC\0")
 
 
 def fixture(root):
@@ -700,9 +705,17 @@ def check_piano_hardware_fixes(root):
     expected = {
         "etc/logrotate.d/bootlog",
         "usr/share/piano/selinux/piano_hardware.pp",
+        "etc/localtime",
         "var/lib/piano-clock/last",
     }
     assert expected <= set(staged), sorted(set(staged))
+    localtime = root / "etc/localtime"
+    assert localtime.is_symlink(), "fresh image has no /etc/localtime link"
+    assert str(localtime.readlink()) == "/usr/share/zoneinfo/UTC", \
+        "/etc/localtime must point at the tzdata UTC zone file"
+    # 重跑一次仍是同一个链接：镜像不会因二次装配变成普通文件或改指向。
+    assert finalizer.ensure_localtime_link(root) == "etc/localtime"
+    assert localtime.is_symlink() and str(localtime.readlink()) == "/usr/share/zoneinfo/UTC"
     for name in ("usr/libexec/piano-clock-restore", "usr/libexec/piano-clock-save",
                  "usr/lib/systemd/system/piano-clock-restore.service",
                  "usr/lib/systemd/system/piano-clock-save.service",

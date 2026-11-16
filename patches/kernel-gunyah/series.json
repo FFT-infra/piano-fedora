@@ -3,14 +3,14 @@
   "target": "sunuefi",
   "note": "Fedora \u6b63\u5f0f\u5185\u6838\u9ed8\u8ba4\u5305\u542b\u5b8c\u6574 built-in Gunyah\uff1b\u9a71\u52a8\u6309\u9501\u5b9a commit \u539f\u6837\u5bfc\u5165\uff0c\u6e90\u7801\u6e05\u5355\u4f9b SDK \u91cd\u653e\u6838\u9a8c\u3002",
   "base": {
-    "sunuefi_commit": "2cc5cd62d36acb71205d0f017886f2a64c2d7a8e"
+    "sunuefi_commit": "30e23d758e37f82d1d2f9360771a2ba9567e00a8"
   },
   "patches": [
     {
       "file": "0001-isolated-gunyah-profile.patch",
       "summary": "Fedora \u6b63\u5f0f\u914d\u7f6e\u9ed8\u8ba4\u542f\u7528 Gunyah\uff0c\u7f3a\u5c11\u9a71\u52a8\u6e90\u7801\u65f6\u62d2\u7edd\u6784\u5efa",
       "targets": {
-        "tools/build_piano_full_kernel.py": "b6e46767516d9d43893e27937b70c8b95a10b1f31797243117808b18ad511513"
+        "tools/build_piano_full_kernel.py": "47cc6705965a82837136660fd52561ca31a71cc4c548e505e31b3f400e7a6ee5"
       },
       "creates": []
     }

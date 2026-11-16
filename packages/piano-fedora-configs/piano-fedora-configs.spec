@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        18%{?dist}
+Release:        19%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND BSD-2-Clause-Patent AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -21,8 +21,8 @@ Requires:       python3-gobject
 # Replaces the older standalone piano-session-fixes package. The bound is
 # written as `< %{version}-%{release}` so it can never reach this package's
 # own provide; a hard-coded number silently becomes wrong the next time the
-# version is bumped. piano-runtime is a real package again (0.2.0-5), so it
-# must not be obsoleted here.
+# version is bumped. piano-runtime is a real package again, so it must not be
+# obsoleted here.
 Obsoletes:      piano-session-fixes < %{version}-%{release}
 Provides:       piano-session-fixes = %{version}-%{release}
 
@@ -184,6 +184,10 @@ rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 
 %changelog
+* Mon Nov 16 2026 FFT-infra <dev@piano.invalid> - 0.1.0-19
+- dist-alsa.conf 注释按当前内核 CONFIG_SND_SEQUENCER=m 的事实更正；
+  Obsoletes 说明去掉写死的 piano-runtime 版本号
+
 * Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 0.1.0-18
 - GNOME 电源键单元的条件改成精确匹配 XDG_CURRENT_DESKTOP=GNOME。systemd 按
   字面比较，-17 里的 GNOME* 永远不成立，GNOME 会话两个助手都不启动；真机上

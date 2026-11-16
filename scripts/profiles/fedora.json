@@ -41,7 +41,6 @@
     "rtkit",
     "polkit",
     "cracklib-dicts",
-    "lm_sensors",
     "libcamera",
     "libcamera-ipa",
     "pipewire-plugin-libcamera",

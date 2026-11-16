@@ -399,7 +399,7 @@ def make_runtime(directory, *, status="FEDORA_RUNTIME_BUILT_NOT_DEVICE_VERIFIED"
     rows = {}
     for name in RUNTIME:
         payload = f"{name} source".encode()
-        srpm = f"{name}-0.2.0-5.fc45.src.rpm"
+        srpm = f"{name}-0.2.0-6.fc45.src.rpm"
         rows[srpm] = {"bytes": len(payload),
                       "sha256": hashlib.sha256(payload).hexdigest()}
         if name != drop_srpm:
@@ -425,7 +425,7 @@ def test_runtime_contract(module, tmp):
     good = make_runtime(tmp / "runtime-good")
     info = module.verify_runtime(good, KERNEL_RELEASE)
     assert info["kernel_release"] == KERNEL_RELEASE, info
-    assert set(info["srpms"]) == {f"{name}-0.2.0-5.fc45.src.rpm" for name in RUNTIME}, info
+    assert set(info["srpms"]) == {f"{name}-0.2.0-6.fc45.src.rpm" for name in RUNTIME}, info
 
     def rejected(label, **changes):
         candidate = make_runtime(tmp / ("runtime-bad-" + label), **changes)
@@ -435,8 +435,8 @@ def test_runtime_contract(module, tmp):
     rejected("device", device_tested=True)
     rejected("kernel", kernel_release="7.2.0-other")
     rejected("missing", drop_srpm="librevm")
-    rejected("corrupt", corrupt="srpms/librevm-0.2.0-5.fc45.src.rpm")
-    rejected("extra", extra_srpm="piano-runtime-extra-0.2.0-5.fc45.src.rpm")
+    rejected("corrupt", corrupt="srpms/librevm-0.2.0-6.fc45.src.rpm")
+    rejected("extra", extra_srpm="piano-runtime-extra-0.2.0-6.fc45.src.rpm")
 
 
 def test_runtime_order(module):
@@ -457,10 +457,10 @@ def make_extras(directory, *, status="PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED",
     rows = {
         "gnome-settings-daemon-piano": ("gnome-settings-daemon", "51.1", "3.piano1",
                                         ["gnome"]),
-        "kwin": ("kwin", "6.8.2", release, ["kde"]),
+        "kwin": ("kwin", "6.8.3", release, ["kde"]),
         "gtk3": ("gtk3", "3.24.52", "7.piano1", ["gnome", "kde"]),
         "mutter": ("mutter", "51.1", "2.piano1", ["gnome"]),
-        "gdm": ("gdm", "51.1.1", "1.piano1", ["gnome"]),
+        "gdm": ("gdm", "51.1.1", "2.piano1", ["gnome"]),
         "piano-gnome-extras": ("piano-gnome-extras", "0.1.0", "2.fc45", ["gnome"]),
         "piano-kde-extras": ("piano-kde-extras", "0.1.0", "1.fc45", ["kde"]),
     }
@@ -513,7 +513,7 @@ def test_extras_contract(module, tmp):
     rejected(device_tested=True)
     rejected(release="3.fc45")
     rejected(source="gnome-settings-daemon-piano")
-    rejected(drop_file="kwin-6.8.2-4.piano1.fc45.aarch64.rpm")
+    rejected(drop_file="kwin-6.8.3-4.piano1.fc45.aarch64.rpm")
 
 
 def test_extras_order(module):

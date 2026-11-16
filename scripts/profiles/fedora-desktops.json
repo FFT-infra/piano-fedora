@@ -51,6 +51,8 @@
       "plasma-workspace",
       "plasma-login-manager",
       "qt6-qtsensors",
+      "plasma-milou",
+      "upower",
       "dolphin",
       "konsole",
       "pipewire",

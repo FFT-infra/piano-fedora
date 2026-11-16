@@ -29,7 +29,7 @@ SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]"
 # 运行时 RPM 的版本号。载荷每变一次就要换 NEVRA，已装设备才看得见这次替换；
 # 增量路径（scripts/package-device-integration.py）也从这里取，两处不各写一份。
 RUNTIME_VERSION = "0.2.0"
-RUNTIME_RELEASE = "5"
+RUNTIME_RELEASE = "6"
 
 
 def run(command, **kw):
@@ -251,9 +251,11 @@ def build(args):
     # tree here produced a second owner for 99 paths (three of them with
     # different bytes) and DNF aborted the clean-rootfs transaction. Only the
     # AudioReach topology is built here, because the firmware package does not
-    # generate it.
-    run(["bash", public / "scripts/build-topology.sh", sun / "upstream/audioreach-topology", build / "firmware"])
-    topology = build / "firmware/qcom/sm8750/Xiaomi Pad 8 Pro-tplg.bin"
+    # generate it. The source is SunUEFI's own m4, which includes the shared
+    # speaker and microphone graphs and adds the DisplayPort playback path;
+    # the helper also checks the product against its recorded sha256.
+    topology = runtime.build_topology(public, sun / "upstream/audioreach-topology",
+                                      build / "firmware")
     run(["alsatplg", "-d", topology, "-o", build / "topology-decoded.conf"])
     put(topology, payload / "usr/lib/firmware/qcom/sm8750/Xiaomi Pad 8 Pro-tplg.bin")
     request = build_boot_request.build(build / "boot-request", "aarch64", "gcc")
