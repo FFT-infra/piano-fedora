@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checked_date": "2026-11-16",
+  "checked_date": "2026-11-17",
   "note": "只列构建链实际读取的上游；研究与后端参考单独记录在 docs/upstreams.json。vendor-kernel 与 vendor-blobs 只被对照任务读取，不进任何出货产物。",
   "sources": {
     "dtc": {
@@ -12,9 +12,9 @@
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "30e23d758e37f82d1d2f9360771a2ba9567e00a8",
+      "commit": "18274377d11e0a12288ffbb795b9982b6a9804f4",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
-      "checked_date": "2026-11-16"
+      "checked_date": "2026-11-17"
     },
     "linux-piano": {
       "url": "https://github.com/blu-sharky/linux-piano.git",

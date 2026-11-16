@@ -3,14 +3,14 @@
   "target": "sunuefi",
   "note": "\u6309\u987a\u5e8f\u5e94\u7528\u3002\u6bcf\u4e2a\u8865\u4e01\u7684 targets \u662f\u5e94\u7528\u524d\u8be5\u6587\u4ef6\u5fc5\u987b\u5339\u914d\u7684\u6458\u8981\uff1b\u4e0a\u6e38\u66f4\u65b0\u540e\u4e0d\u5339\u914d\u4f1a\u62a5\u9519\u9000\u51fa\uff0c\u4e0d\u9759\u9ed8\u8df3\u8fc7\u3002creates \u5fc5\u987b\u4e0e\u5b9e\u9645\u65b0\u5efa\u7684\u6587\u4ef6\u5b8c\u5168\u4e00\u81f4\u3002",
   "base": {
-    "sunuefi_commit": "30e23d758e37f82d1d2f9360771a2ba9567e00a8"
+    "sunuefi_commit": "18274377d11e0a12288ffbb795b9982b6a9804f4"
   },
   "patches": [
     {
       "file": "0001-f2fs-root-fedora-selinux.patch",
       "summary": "\u5728\u4e0a\u6e38 HEAD \u4e0a\u91cd\u653e F2FS \u4e0e Fedora SELinux \u8986\u76d6\uff0c\u4fdd\u7559\u65b0\u7248\u7b14\u5ea7\u3001\u84dd\u7259\u3001\u7761\u7720\u53ca PM \u8bca\u65ad\u914d\u7f6e\uff1b\u6839\u6587\u4ef6\u7cfb\u7edf\u7531 UKI cmdline \u6307\u5b9a F2FS",
       "targets": {
-        "tools/build_piano_full_kernel.py": "98411fbcdf0d484cd426a2b38726f43790ca425ee55a4b8b106bc3c77fca4794"
+        "tools/build_piano_full_kernel.py": "3fd92e3c46d65bd88acd16032ac4ce11d6b2cf720ea9c2263c026640f8f00873"
       },
       "creates": [
         "linux/configs/piano-f2fs.config"
@@ -37,7 +37,7 @@
       "file": "0005-fedora-nftables.patch",
       "summary": "\u8865\u9f50 Fedora firewalld \u4e0e libvirt \u6240\u9700 nftables \u5185\u6838\u63a5\u53e3\uff0c\u5e76\u4ee5\u6a21\u5757\u5f62\u5f0f\u63d0\u4f9b firewalld \u81ea\u5e26\u7684\u5168\u90e8 conntrack helper\uff0c\u914d\u7f6e\u540e\u9010\u9879\u9a8c\u8bc1",
       "targets": {
-        "tools/build_piano_full_kernel.py": "cfd5aedd798ebbe52b21fb600f2d01eed387808a205212656634ee873cdea414"
+        "tools/build_piano_full_kernel.py": "4bcaaa3c1c578272775c0966fadfa59005f0f4e0d391709681a38be9a2f6336e"
       },
       "creates": []
     }
