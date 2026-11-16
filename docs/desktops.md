@@ -153,7 +153,7 @@ KDE HDR 依赖补丁版 KWin 修复退出 HDR 后的背光恢复问题。实机�
 
 `mutter` 与 `gdm` 仅作用于 GNOME 档：KDE、niri 与 Hyprland 分别使用 `plasmalogin` 和 `greetd`；mutter 仅由 `gnome-shell` 链接。`gdm` 不进 meta 的硬依赖，GNOME 用户可在安装 meta 前手动 `dnf upgrade gdm`。安装后切换至 GDM 的 GNOME 会话运行稳定，GSD 正常加载 ambient profile。触摸手势与键盘背光需要物理外设，待后续验收。
 
-默认 GNOME 档安装发行版基础组件（`gnome-settings-daemon-51.1-1.fc45`、`kwin-6.8.2-3.fc45`、`gtk3-3.24.52-6.fc45`），默认不安装 extras meta 包，`ambient-enabled` 缺省为 `false`。
+默认 GNOME 档安装发行版基础组件（`gnome-settings-daemon-51.1-1.fc45`、`kwin-6.8.3-1.fc45`、`gtk3-3.24.52-6.fc45`），默认不安装 extras meta 包，`ambient-enabled` 缺省为 `false`。
 
 ## 第三方软件源
 
