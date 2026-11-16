@@ -40,12 +40,12 @@
       ],
       "fedora_packages": [
         {"name": "gnome-settings-daemon", "base_version": "51.1"},
-        {"name": "kwin", "base_version": "6.8.2"},
+        {"name": "kwin", "base_version": "6.8.3"},
         {"name": "gtk3", "base_version": "3.24.52"},
         {"name": "mutter", "base_version": "51.1"},
         {"name": "gdm", "base_version": "51.1.1"}
       ],
-      "upstream_fix": "可选桌面补丁，来自 SunUEFI 的 patches/（gsd 自动亮度/键盘背光、kwin HDR 恢复、gtk3 XI2、mutter 触摸、gdm KMS 等待），按 Fedora 51.1 源码重基",
+      "upstream_fix": "可选桌面补丁，来自 SunUEFI 的 patches/（gsd 自动亮度/键盘背光、kwin HDR 恢复、gtk3 XI2、mutter 触摸、gdm KMS 等待与重新认证会话收尾），按 Fedora 51.1 源码重基",
       "drop_when": "对应补丁进入 Fedora 官方包，或不再需要该桌面档；五个包各自独立判断",
       "tracking_issue": null,
       "rebase_on_fedora_update": true,

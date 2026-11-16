@@ -138,7 +138,7 @@ def adapt_gsd(text):
 
 
 def adapt_kwin(text):
-    text = replace_once(text, "Release: 3%{?dist}\n", "Release: 4.piano1%{?dist}\n")
+    text = replace_once(text, "Release: 1%{?dist}\n", "Release: 1.piano1%{?dist}\n")
     return add_patches(text, ["piano-kwin-hdr.patch"])
 
 
@@ -157,8 +157,9 @@ def adapt_mutter(text):
 
 def adapt_gdm(text):
     text = replace_once(text, "Release:        %autorelease\n",
-                        "Release:        1.piano1%{?dist}\n")
-    return add_patches(text, ["piano-gdm-kms-connectors.patch"])
+                        "Release:        2.piano1%{?dist}\n")
+    return add_patches(text, ["piano-gdm-kms-connectors.patch",
+                              "piano-gdm-reauthentication-close.patch"])
 
 
 PACKAGES = (
@@ -201,13 +202,13 @@ PACKAGES = (
     {
         "source": "kwin",
         "binary": "kwin",
-        "version": "6.8.2",
-        "release": "4.piano1",
-        "url": "https://kojipkgs.fedoraproject.org/packages/kwin/6.8.2/3.fc45/src/"
-               "kwin-6.8.2-3.fc45.src.rpm",
-        "srpm_sha256": "45072c4f6c94ec9ff15c18945cdeef23661d3e8a71e7605cf40f307585b3ffbd",
-        "spec_sha256": "59f2fa6b913bdc2ff69fa521d281a431fa65b51913986a2d453949a5d6bd561a",
-        "tarball_sha256": "ea5e68d957c7d70abed97222a592d4445fda29129e20942658badd224ee138b4",
+        "version": "6.8.3",
+        "release": "1.piano1",
+        "url": "https://kojipkgs.fedoraproject.org/packages/kwin/6.8.3/1.fc45/src/"
+               "kwin-6.8.3-1.fc45.src.rpm",
+        "srpm_sha256": "ac625685b5f6b5b1df1ef1371551a49760148cfe5065a4e9aca798b17438ffb3",
+        "spec_sha256": "8f2b4c93602cbc9b2efef102e205cc2e33619fac8469fc61f9045e19e466f189",
+        "tarball_sha256": "fd5cb783f220ea4526a9afee2f72b582c3e87ef7f91b19bc5c7a6662ffe7fbdc",
         "patches": [
             ("kwin/6.6.5/0001-drm-restore-brightness-after-hdr.patch",
              "d0f2300f63f1d2e26c430fda00433019ba4cda5be5acd04da236ce19e16513a7",
@@ -280,12 +281,17 @@ PACKAGES = (
             ("gdm/51.0/0001-local-display-wait-for-kms-connectors.patch",
              "9528d83ec19a8dc007e9a47ecc15e1ed89c51eaf0da01d12081e3e647f84e663",
              "piano-gdm-kms-connectors.patch"),
+            # 取消或替换的重新认证会话只 unref，会话本身还握着 PAM worker 与
+            # 它的 D-Bus 连接；反复锁屏解锁会把登录 worker 的 fd 耗光。
+            ("gdm/51.0/0003-session-worker-close-cancelled-reauthentication.patch",
+             "9212f34a3d85461670f441b02de7bc9c5f8308894aba74f44e8e85f3ccb51ad7",
+             "piano-gdm-reauthentication-close.patch"),
         ],
         "runtime": ("gdm",),
         "required": ("gdm",),
         "desktops": ("gnome",),
         "adapt": adapt_gdm,
-        "changelog": "Wait for native KMS connectors before starting the greeter",
+        "changelog": "Wait for native KMS connectors before starting the greeter, and close cancelled or replaced reauthentication sessions",
     },
 )
 

@@ -64,7 +64,7 @@ def test_package_table(module):
     assert mutter["desktops"] == ("gnome",) and len(mutter["patches"]) == 2
     assert set(mutter["required"]) == {"mutter", "mutter-common"}
     gdm = next(e for e in module.PACKAGES if e["source"] == "gdm")
-    assert gdm["desktops"] == ("gnome",) and len(gdm["patches"]) == 1
+    assert gdm["desktops"] == ("gnome",) and len(gdm["patches"]) == 2
 
 
 GSD_SPEC = """Name:           gnome-settings-daemon
@@ -121,9 +121,9 @@ def test_gsd_spec_rewrite(module):
 
 def test_same_name_specs(module):
     kwin = module.adapt_kwin(
-        "Name:    kwin\nRelease: 3%{?dist}\nPatch0: upstream.patch\n"
+        "Name:    kwin\nRelease: 1%{?dist}\nPatch0: upstream.patch\n"
         "%prep\n%changelog\n")
-    assert "Release: 4.piano1%{?dist}" in kwin
+    assert "Release: 1.piano1%{?dist}" in kwin
     assert "Patch1:        piano-kwin-hdr.patch" in kwin
     gtk3 = module.adapt_gtk3(
         "Name:    gtk3\nRelease: %autorelease\n"
@@ -137,8 +137,9 @@ def test_same_name_specs(module):
     assert "Patch1:        piano-mutter-touch-cancel.patch" in mutter
     gdm = module.adapt_gdm(
         "Name:    gdm\nRelease:        %autorelease\n%prep\n%changelog\n")
-    assert "Release:        1.piano1%{?dist}" in gdm
+    assert "Release:        2.piano1%{?dist}" in gdm
     assert "Patch0:        piano-gdm-kms-connectors.patch" in gdm
+    assert "Patch1:        piano-gdm-reauthentication-close.patch" in gdm
     # Fedora 的 gdm 用三个无编号 Patch:，rpm 按顺序编成 0..2；我们的补丁
     # 必须落在 Patch3，写成 Patch0 会和第一条重复定义。
     gdm_bare = module.adapt_gdm(
@@ -146,12 +147,13 @@ def test_same_name_specs(module):
         "Patch: a.patch\nPatch: b.patch\nPatch: c.patch\n"
         "%description\n%prep\n%changelog\n")
     assert "Patch3:        piano-gdm-kms-connectors.patch" in gdm_bare
+    assert "Patch4:        piano-gdm-reauthentication-close.patch" in gdm_bare
 
 
 def test_rewrites_refuse_drifted_specs(module):
     for call, spec in (
             (module.adapt_gsd, GSD_SPEC.replace("Name:           gnome-settings-daemon\n", "")),
-            (module.adapt_kwin, "Release: 4%{?dist}\n%prep\n%changelog\n"),
+            (module.adapt_kwin, "Release: 2%{?dist}\n%prep\n%changelog\n"),
             (module.adapt_gtk3, "Release: 6%{?dist}\n%prep\n%changelog\n"),
             (module.adapt_mutter, "Release:       1%{?dist}\n%prep\n%changelog\n"),
             (module.adapt_gdm, "Release:        2%{?dist}\n%prep\n%changelog\n")):
