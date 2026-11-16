@@ -28,7 +28,7 @@ UPSTREAM_DOC_WHITELIST = {
     ("docs/known-issues.md", "docs/ufs-dedicated-area-audit.md"),
     ("docs/known-issues.md", "docs/piano-full-ddr-producer-gaps.md"),
     ("docs/upstream-parity.md", "docs/status.md"),
-    ("docs/upstream.md", "docs/devel/panel-selection.md"),
+    ("docs/upstream.md", "docs/devel/hardware/panel-selection.md"),
 }
 ORPHAN_EXEMPT = {"README.md", "README.en.md", "docs/README.md"}
 

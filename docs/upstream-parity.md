@@ -1,6 +1,6 @@
 # 与上游的功能差距
 
-> **说明**：本文档对照上游 [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)（首次核对基线 pin `3a7e5c1b`，当前构建 pin 见 `sources.lock.json`）及相关生态组件，汇总当前支持矩阵、架构设计分歧与基线复核指引。
+> **说明**：本文档对照上游 [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)（首次核对 2026-11-11，当前构建 pin 见 `sources.lock.json`）及相关生态组件，汇总当前支持矩阵、架构设计分歧与基线复核指引。
 
 ---
 
@@ -28,6 +28,8 @@
 | 相机隐私灯 | 完成：前后摄视频流启停联动 `/sys/class/leds/green/brightness` | 随前后摄视频流启停 | 驱动控制链路完整 |
 | 相机录像 | 完成：支持 1920x1440@30 预览与录像 | 预览、录像、AE/AF/AWB | 直连与 loopback 均正常 |
 | 手写笔进阶 | 基础输入正常：位置、压感、倾斜、proximity | 捏握、震动、磁吸识别、电量、跨系统重配 | 进阶手势与按键映射未实现 |
+| 普通 Focus Pen 校准 | 笔校准 INI 与上游同源，含第二支笔的 `stylus_2_*` 参数 | 同一份 BSP INI | 参数已入包，未实机验收 |
+| DisplayPort 音频 | topology 与 UCM 都含 `DISPLAY_PORT_RX_0`，`SectionDevice."HDMI"` 走 `hw:${CardId},1` | 同一份 BSP m4 与 UCM | 链路已接通，未实机验收 |
 | exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编入内核 | 文件系统读写 | 外置存储挂载未验证 |
 | 10-bit 与 144 Hz | 面板与驱动支持，未量测色深与刷新率 | 面板 10bpc，144 Hz 可选 | 保持默认稳定档（KDE 120Hz，GNOME 可选 144Hz） |
 

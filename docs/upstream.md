@@ -61,7 +61,7 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 ### 1. 内核补丁序列管理
 内核补丁集（`patches/kernel/`）共 155 条补丁，由上游 120 条封存序列与自有 35 条适配补丁组成，最终目标树固化于 `patches/kernel/series.json`（`target_tree: 4e78c31a39c1`）：
-- **排除内核矩阵解码**：主动排除上游 `0095-input-nt36532e-matrix.patch`。该补丁将触控矩阵解码移入内核且缺乏时域滤波，与本项目的用户态 5 级卡尔曼滤波冲突。同组的笔序列 `0122`–`0124` 建立在它引入的矩阵基础设施上，一并排除；笔路径继续走本仓库的 `device/piano-thp` 用户态实现。
+- **排除内核矩阵解码**：主动排除上游 `0095-input-nt36532e-matrix.patch`。该补丁将触控矩阵解码移入内核且缺乏时域滤波，与本项目的用户态 5 级卡尔曼滤波冲突。同组的笔序列 `0122`–`0124` 建立在它引入的矩阵基础设施上，一并排除；笔路径继续走本仓库的 `device/piano-thp` 用户态实现。`0121-hid-xiaomi-pen-pressure.patch` 不在这组里：它只改 `drivers/hid/`，把 Focus Pen 的私有 Report 5 压感交给 evdev，因此保留。
 - **自有适配序列**：将 35 条自有补丁后移至 `0125`–`0159`，涵盖设备特定的触控平滑、音频与启动约束。
 - **构建环境与优化**：采用 LLVM 23.1.5 工具链，启用 `CC_OPTIMIZE_FOR_PERFORMANCE_O3`、`LTO_CLANG_THIN` 与 `CONFIG_ARM64_PIANO_OPTIMIZE`。
 
@@ -112,10 +112,10 @@ DTB 里的两个 profile 与原厂 UEFI 的两份面板描述文件一一对应�
 | 0 | CSOT | `qcom,mdss_dsi_p81_42_02_0a_dualdsi_dsc_vid` | `c4 82 … c4 06` |
 | 1 | BOE | `qcom,mdss_dsi_p81_35_02_0b_dualdsi_dsc_vid` | `bc 77 07` |
 
-这与 `PianoFactoryPanel.h`、上游 `docs/devel/panel-selection.md` 的表一致，也与原厂 UEFI 的两份面板描述文件一一对应。参考设备的 `lcd_id: 1` 对应 BOE 模块，UEFI 读到的 `dsi_display0` 应当指向 `35_02_0b`。
+这与 `PianoFactoryPanel.h`、上游 `docs/devel/hardware/panel-selection.md` 的表一致，也与原厂 UEFI 的两份面板描述文件一一对应。参考设备的 `lcd_id: 1` 对应 BOE 模块，UEFI 读到的 `dsi_display0` 应当指向 `35_02_0b`。
 
 早期移植文档曾将两者的供应商归属对应颠倒，原因在于驱动内部 `piano_boe_*` 与 `piano_csot_*` 的函数命名来自第三方移植者定义；实际面板供应商归属必须严格以原厂驱动 `nt36xxx.c` 中读出的 `lcd_id` 为准（0 为 CSOT，1 为 BOE）。
 
 核对时注意两个 profile 在 DTB 中的语法格式不同：`35_02_0b` 采用 `[...]` 字节数组，`42_02_0a` 采用 `<0x39000040 ...>` 打包字，解析工具需同时支持两种解析路径。
 
-来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/docs/devel/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/065b192b863b6f99e12ba65d3cab27c0ddd6dca4/uefi/core/PianoRawLinuxBoot.c)。
+来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/30e23d758e37f82d1d2f9360771a2ba9567e00a8/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/30e23d758e37f82d1d2f9360771a2ba9567e00a8/docs/devel/hardware/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/30e23d758e37f82d1d2f9360771a2ba9567e00a8/uefi/core/boot/PianoRawLinuxBoot.c)。

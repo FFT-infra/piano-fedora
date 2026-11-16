@@ -71,9 +71,9 @@ qcom,board-id = <0x40008 0x00>;
 
 techpack 目录包含显示、音频、摄像头、WLAN、BT 的板级片段（如 `piano-audio-mtp.dts`、`piano-sde-display.dtsi`、`piano-charger-common.dtsi`），是设备树叠层（overlay）中硬件常量（SPI 编号、稳压器、时钟）的参考源。
 
-## 23 个 overlay
+## 24 个 overlay
 
-`config/release.json` 的 `kernel` 段列 `cpu_model_overlay` 一个，加 `additional_dtb_overlays` 二十二个。`build-bundle.yml` 按这个顺序全部传入，`tests/check_bundle_overlays.py` 断言两份清单逐条相等。
+`config/release.json` 的 `kernel` 段列 `cpu_model_overlay` 一个，加 `additional_dtb_overlays` 二十四个。`product.json` 的 `dtb_overlays_not_shipped` 记着不发货的 `piano-tsens`，`build-bundle.yml` 传入其余二十三个，`tests/check_bundle_overlays.py` 断言两份清单逐条相等。
 
 | overlay | 目标节点 | 作用 |
 | --- | --- | --- |
@@ -82,6 +82,7 @@ techpack 目录包含显示、音频、摄像头、WLAN、BT 的板级片段（�
 | `piano-regdma-resource` | regdma | 资源窗口 |
 | `piano-audio-dmic-clock` | 音频 | DMIC 时钟 |
 | `piano-camera-sensors` | CCI 下的相机传感器 | 出厂模式的传感器时钟（19.2 MHz TCXO） |
+| `piano-camera-interconnects` | camera | 相机路径的互连带宽投票 |
 | `piano-camera-flash` | camera | 闪光灯 |
 | `piano-camera-privacy-led` | camera | 隐私指示灯 |
 | `piano-touch-panel` | 触控 / 面板 | 触控与面板关联 |
