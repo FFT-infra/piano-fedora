@@ -2,16 +2,21 @@
 
 `src/` 是 SunUEFI（`sources.lock.json` 的 `sunuefi` pin）里
 `linux/userspace/fingerprint` 的逐字副本。上游改这几个文件时整份替换，
-本地不另立分支。依赖同样按上游 `config/fingerprint.json` 的提交取用：
+本地不另立分支。
 
-| 源 | 提交 |
+新的 TEE 传输只依赖两样东西：
+
+| 源 | 取法 |
 | --- | --- |
-| quic-teec | `736419e25a2036aac3292a10a93e394a90750ca3` |
-| minkipc | `ce145804d9e994e0a7913f8d224d52e84bce6608` |
-| QCBOR | `590a23daf65af068cee81555c597063150e23539` |
+| QCBOR | 上游 `config/fingerprint.json` 的提交 `590a23daf65af068cee81555c597063150e23539` |
+| linux/tee.h | 发行版 `kernel-headers`，TEE 对象 uAPI 在 7.2 与 7.3 完全相同 |
 
-minkipc 的两个补丁来自上游 `patches/minkipc/0.1.0/`。产物：
+quic-teec 与 minkipc 已不在构建路径里。minkipc 只剩协议常量参考，上游也不再
+为它打补丁。
+
+产物：
 
 - `/usr/sbin/piano-fingerprint-ctl`：静态链接的诊断与录入客户端，需要 root。
-- `/usr/lib/piano-goodix/libpiano-goodix.a` 与 `piano-goodix.h`：给 libfprint 的
-  Goodix 后端链接，安装后 pkg-config 名字是 `piano-goodix`。
+- `/usr/share/piano-fingerprint/piano-goodix-sources.tar`：`piano-libfprint`
+  在目标发行版 ABI 下编译 Goodix 驱动用的后端源码归档，包含 QCBOR、TEE
+  头文件与两份 BSD 许可。不再安装 `libpiano-goodix.a` 与 pkg-config。

@@ -192,19 +192,50 @@
     "power_policy": {"kind": "logind-only"}
   },
   "denial": {
-    "label": "Denial (placeholder)",
-    "buildable": false,
-    "dnf_packages": null,
-    "repos": [],
-    "exclude_packages": [],
-    "required_packages": [],
-    "root_size_mib": 0,
-    "display_manager": null,
+    "label": "Denial",
+    "buildable": true,
+    "dnf_packages": [
+      "denial",
+      "denial-flutter-engine",
+      "greetd",
+      "tuigreet",
+      "foot",
+      "xdg-desktop-portal-wlr",
+      "xdg-desktop-portal-gtk",
+      "xorg-x11-server-Xwayland",
+      "zenity",
+      "rtkit",
+      "git",
+      "xkeyboard-config",
+      "iio-sensor-proxy",
+      "mesa-piano-vulkan-drivers",
+      "mesa-piano-libGL",
+      "mesa-piano-libEGL",
+      "pipewire",
+      "wireplumber"
+    ],
+    "repos": [
+      {
+        "id": "denial",
+        "baseurl": "https://packages.denialwm.org/rpm/fedora/44/$basearch/",
+        "gpgkey": "https://packages.denialwm.org/denial-repo-key.asc",
+        "gpgkey_sha256": "1b388fda64771cdc2b02695b1d418d354d5afe6bc001d69816f1c4ec43bc4b9c",
+        "priority": 5
+      }
+    ],
+    "exclude_packages": ["iio-sensor-proxy"],
+    "required_packages": ["denial", "denial-flutter-engine", "greetd"],
+    "root_size_mib": 8192,
+    "display_manager": {
+      "unit": "greetd.service",
+      "package": "greetd",
+      "autologin": {"kind": "greetd-config", "command": "denial-session --start-locked"}
+    },
     "session": {
-      "desktop_names": [],
-      "process_names": [],
-      "session_files": [],
-      "bins": []
+      "desktop_names": ["Denial"],
+      "process_names": ["deniald"],
+      "session_files": ["/usr/share/wayland-sessions/denial.desktop"],
+      "bins": ["/usr/bin/denial-session", "/usr/bin/deniald", "/usr/bin/denialctl"]
     },
     "power_policy": {"kind": "logind-only"}
   },

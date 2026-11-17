@@ -159,8 +159,6 @@ def main():
         dtc = lock["dtc"]
         checkout(dtc["url"], dtc["commit"], output / "dtc")
     if args.mode == "device":
-        mipps = lock["piano-mipps-auth"]
-        checkout(mipps["url"], mipps["commit"], output / "piano-mipps-auth")
         fastrpc = lock["fastrpc"]
         checkout(fastrpc["url"], fastrpc["commit"], output / "fastrpc")
         for name in ("librevm", "crosvm", "iris-vaapi", "uperf"):
