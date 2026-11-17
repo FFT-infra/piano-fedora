@@ -107,7 +107,9 @@ def test_a_failing_run_stops_the_release():
 
 def test_bad_specs_are_rejected_before_any_lookup():
     expect_error("gnome=b:p,gnome=c:q", "repeats desktop 'gnome'")
-    expect_error("denial=b:p", "unknown or unbuildable desktop 'denial'")
+    # server 是真实档位，但没有桌面会话，不在发布矩阵里；denial 现在可构建，
+    # 不能再拿来当占位档的例子。
+    expect_error("server=b:p", "unknown or unbuildable desktop 'server'")
     expect_error("kde-typo=b:p", "unknown or unbuildable desktop 'kde-typo'")
     expect_error("gnome=bp", "needs both a build-bundle and a prepare-install run")
     expect_error("gnome=b:", "needs both a build-bundle and a prepare-install run")
@@ -137,14 +139,13 @@ def test_single_desktop_defaults_still_work():
                                  resolve_fn=fake_resolve(calls))
     assert len(rows) == 1 and rows[0]["desktop"] == "kde", rows
     assert len(calls) == 2 and all(call["run_id"] is None for call in calls), calls
-    try:
-        release_desktops.plan(spec="", desktop="denial", known=BUILDABLE,
-                              commit="f" * 40, repository="o/r",
-                              resolve_fn=fake_resolve(calls))
-    except release_desktops.ReleaseError as error:
-        assert "unbuildable" in str(error), error
-    else:
-        raise AssertionError("the placeholder desktop was accepted as a release target")
+    # denial 现在是可构建的第五个桌面档，单档发布要正常解析。
+    calls = []
+    rows = release_desktops.plan(spec="", desktop="denial", known=BUILDABLE,
+                                 commit="f" * 40, repository="o/r",
+                                 resolve_fn=fake_resolve(calls))
+    assert len(rows) == 1 and rows[0]["desktop"] == "denial", rows
+    assert len(calls) == 2 and all(call["run_id"] is None for call in calls), calls
 
 
 def test_cli_writes_the_plan_and_rejects_bad_input():
@@ -153,12 +154,13 @@ def test_cli_writes_the_plan_and_rejects_bad_input():
     assert help_result.returncode == 0 and "--desktop-runs" in help_result.stdout
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory) / "plan.json"
+        # server 没有桌面会话，发布矩阵不接受；denial 已可构建，不能再当占位档。
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), "--desktop-runs", "denial=b:p",
+            [sys.executable, str(SCRIPT), "--desktop-runs", "server=b:p",
              "--commit", "e" * 40, "--repository", "o/r", "--output", str(output)],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         assert result.returncode == 2, result.stdout
-        assert "denial" in result.stdout, result.stdout
+        assert "server" in result.stdout, result.stdout
         assert not output.exists(), "a rejected plan was written anyway"
 
 

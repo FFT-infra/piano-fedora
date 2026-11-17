@@ -402,6 +402,9 @@ jobs:
               niri)
                 desc="greetd [initial_session] 自动登录（tuigreet 兜底）；无限横向滚动平铺，旋转需在 output 段声明 transform"
                 ;;
+              denial)
+                desc="greetd [initial_session] 自动登录（tuigreet 兜底）；denial-session --start-locked 启动会话，默认桌面档"
+                ;;
               *)
                 desc="定制桌面环境"
                 ;;

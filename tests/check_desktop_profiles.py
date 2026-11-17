@@ -83,23 +83,26 @@ def check_schema_is_enforced():
     finally:
         DESKTOPS.write_text(original, encoding="utf-8")
 
-    # 不可构建的档位（denial 坑位）显式写 null，plan 必须拒绝。
+    # 不可构建的档位显式写 null 时，plan 必须拒绝。denial 现在是可构建档，
+    # 用一个临时档名验证这条守卫还在，避免以后有人把某档改回占位时漏掉。
     data = json.loads(original)
-    data["denial"] = {
-        "label": "Denial", "buildable": False, "dnf_packages": None, "repos": [],
-        "exclude_packages": [], "required_packages": [], "root_size_mib": 8192,
-        "display_manager": None, "power_policy": {"kind": "logind-only"},
+    data["placeholder-probe"] = {
+        "label": "Placeholder", "buildable": False, "dnf_packages": None,
+        "repos": [], "exclude_packages": [], "required_packages": [],
+        "root_size_mib": 8192, "display_manager": None,
+        "power_policy": {"kind": "logind-only"},
         "session": {"desktop_names": [], "process_names": [],
                     "session_files": [], "bins": []},
     }
     try:
         DESKTOPS.write_text(json.dumps(data), encoding="utf-8")
-        context = piano_desktop.load("denial", "44")
+        context = piano_desktop.load("placeholder-probe", "44")
         assert not context["profile"]["buildable"]
-        assert "denial" not in piano_desktop.matrix(), "unbuildable rows must not enter the matrix"
+        assert "placeholder-probe" not in piano_desktop.matrix(), (
+            "unbuildable rows must not enter the matrix")
         with tempfile.TemporaryDirectory() as temporary:
             tool = load_module("clean_rootfs", ROOT / "scripts/build-clean-rootfs.py")
-            planned = tool.plan("44", "denial", temporary)
+            planned = tool.plan("44", "placeholder-probe", temporary)
             assert planned["status"] == "INPUTS_REQUIRED", planned
             assert "placeholder" in planned["reason"], planned
             assert planned["inputs_required"], planned
@@ -112,7 +115,8 @@ def check_schema_is_enforced():
                      contextlib.redirect_stderr(io.StringIO()):
                     for mode in ("--plan", "--execute"):
                         sys.argv = ["build-clean-rootfs.py", mode, "--releasever", "44",
-                                    "--desktop", "denial", "--rpms-dir", temporary]
+                                    "--desktop", "placeholder-probe",
+                                    "--rpms-dir", temporary]
                         assert tool.main() == 2, (
                             f"{mode} accepted an unbuildable desktop")
             finally:
@@ -130,7 +134,7 @@ def check_vulkan_desktops_install_the_driver():
     piano 版的话，dnf 会挑官方包，finalize 阶段逐一核对 Mesa 清单里的
     6 个改名包时就会失败。niri 与 Hyprland 没有元包，本来就靠显式声明。
     """
-    for desktop in ("gnome", "kde", "niri", "hyprland"):
+    for desktop in ("gnome", "kde", "niri", "hyprland", "denial"):
         context = piano_desktop.load(desktop, "44")
         packages = context["profile"]["dnf_packages"]
         # Vulkan 驱动会把 libgbm、dri-drivers 与 filesystem 一起拉进来，
@@ -159,6 +163,16 @@ def check_repo_args():
     # 已校验到本地的 key 路径要顶替 URL。
     swapped = piano_desktop.repo_args(context, {"copr-hyprland": "/tmp/copr-hyprland.gpg"})
     assert "--setopt=copr-hyprland.gpgkey=/tmp/copr-hyprland.gpg" in swapped, swapped
+
+    # Denial 走官方带签名的 DNF 仓库：路径固定到官方支持的 Fedora 44，
+    # key 按 sha256 钉住，仓库元数据也验签。
+    denial = piano_desktop.load("denial", "44")
+    denial_args = piano_desktop.repo_args(denial)
+    assert any("denial,https://packages.denialwm.org/rpm/fedora/44/aarch64/"
+               in arg for arg in denial_args), denial_args
+    assert "--setopt=denial.gpgcheck=1" in denial_args, denial_args
+    assert "--setopt=denial.repo_gpgcheck=1" in denial_args, denial_args
+    assert piano_desktop.gpgkey_pins(denial)[0][0] == "denial"
 
     # GNOME / KDE / niri 不启用任何第三方仓库。
     for desktop in ("gnome", "kde", "niri"):
@@ -273,7 +287,8 @@ def check_power_files_match_the_declared_kind():
             assert files == {} and required == [], (desktop, files, required)
         assert piano_desktop.dconf_profile_required(context) == (kind == "dconf"), desktop
     assert kinds == {"gnome": "dconf", "kde": "kconfig", "niri": "logind-only",
-                     "hyprland": "logind-only", "server": "logind-only"}, kinds
+                     "hyprland": "logind-only", "denial": "logind-only",
+                     "server": "logind-only"}, kinds
 
 
 def check_kde_power_policy_is_safe():
@@ -369,7 +384,7 @@ def check_kde_desktop_defaults():
 
     # KWin 的键对其它桌面没有意义：别的档位既不写每用户配置，也不带
     # 桌面专用环境变量。
-    for desktop in ("gnome", "niri", "hyprland", "server"):
+    for desktop in ("gnome", "niri", "hyprland", "denial", "server"):
         other = piano_desktop.load(desktop, "44")
         assert piano_desktop.user_config_files(other, "piano") == {}, desktop
         assert piano_desktop.environment_files(other) == {}, desktop
@@ -503,7 +518,8 @@ def check_greetd_desktops_stage_a_config_toml():
     profile 值与落盘内容，并由 `validate_against_rootfs` 在真实树里核对
     命令存在。
     """
-    expected = {"niri": "niri-session", "hyprland": "start-hyprland"}
+    expected = {"niri": "niri-session", "hyprland": "start-hyprland",
+                "denial": "denial-session --start-locked"}
     for desktop, command in expected.items():
         context = piano_desktop.load(desktop, "44")
         manager = context["profile"]["display_manager"]
@@ -578,7 +594,7 @@ def check_build_rootfs_expands_the_profile():
     assert "inputs.desktop" not in rootfs_section, (
         "a matrix job must use matrix.desktop, not the dispatch input")
 
-    # 子命令行为：all 展开全部桌面档，server 与占位档都不进矩阵。
+    # 子命令行为：all 展开全部桌面档，server 不进矩阵，denial 现在是第五档。
     completed = subprocess.run(
         [sys.executable, str(ROOT / "scripts/piano_desktop.py"), "expand",
          "--desktop", "all", "--releasever", "44"],
@@ -587,7 +603,7 @@ def check_build_rootfs_expands_the_profile():
     rows = json.loads(completed.stdout)
     desktops = [row["desktop"] for row in rows]
     assert desktops == piano_desktop.matrix(desktops_only=True), desktops
-    assert "server" not in desktops and "denial" not in desktops, desktops
+    assert "server" not in desktops and "denial" in desktops, desktops
     for row in rows:
         assert row["rootfs_artifact"] == f"rootfs-44-{row['desktop']}", row
         assert row["rootfs_tar"] == f"rootfs-44-{row['desktop']}.tar.zst", row

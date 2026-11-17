@@ -13,3 +13,137 @@
      if (ioctl(fd, UI_ABS_SETUP, &setup) < 0)
          throw std::system_error(errno, std::generic_category(), "UI_ABS_SETUP");
  }
+@@ -62,21 +68,25 @@
+             checkedIoctl(UI_SET_EVBIT, type);
+         checkedIoctl(UI_SET_KEYBIT, BTN_TOUCH);
+         checkedIoctl(UI_SET_KEYBIT, BTN_TOOL_FINGER);
+-        for (unsigned axis : {ABS_MT_SLOT, ABS_MT_TOUCH_MAJOR, ABS_MT_POSITION_X,
+-                              ABS_MT_POSITION_Y, ABS_MT_TOOL_TYPE, ABS_MT_TRACKING_ID,
+-                              ABS_MT_PRESSURE})
++        for (unsigned axis : {ABS_MT_SLOT, ABS_MT_TOUCH_MAJOR, ABS_MT_TOUCH_MINOR,
++                              ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOOL_TYPE,
++                              ABS_MT_TRACKING_ID, ABS_MT_PRESSURE})
+             checkedIoctl(UI_SET_ABSBIT, axis);
+         checkedIoctl(UI_SET_PROPBIT, INPUT_PROP_DIRECT);
+         uinput_setup setup{};
+-        setup.id.bustype = BUS_VIRTUAL;
+-        setup.id.vendor = 0x2717;
+-        setup.id.product = 0x3653;
++        // The panel is on the SPI bus, and the BSP udev rule groups this device
++        // with the pen by this exact name. A virtual-bus device with another
++        // name falls outside LIBINPUT_DEVICE_GROUP and loses pen arbitration.
++        setup.id.bustype = BUS_SPI;
++        setup.id.vendor = 0x0603;
++        setup.id.product = 0x6532;
+         setup.id.version = 1;
+-        std::strncpy(setup.name, "Piano THP Touchscreen", sizeof(setup.name) - 1);
++        std::strncpy(setup.name, "piano NT36532 THP touchscreen", sizeof(setup.name) - 1);
+         if (ioctl(fd_, UI_DEV_SETUP, &setup) < 0)
+             throw std::system_error(errno, std::generic_category(), "UI_DEV_SETUP");
+         setupAxis(fd_, ABS_MT_SLOT, kFingerSlots - 1);
+         setupAxis(fd_, ABS_MT_TOUCH_MAJOR, 255);
++        setupAxis(fd_, ABS_MT_TOUCH_MINOR, 255);
+         setupAxis(fd_, ABS_MT_POSITION_X, maximum_x_);
+         setupAxis(fd_, ABS_MT_POSITION_Y, maximum_y_);
+         setupAxis(fd_, ABS_MT_TOOL_TYPE, MT_TOOL_PALM);
+@@ -235,10 +245,13 @@
+             ids_[number] = -1;
+         }
+     }
++    bool finger = false;
+     for (int number = 0; number < kFingerSlots; ++number) {
+         const auto *slot = visible[number];
+         if (!slot)
+             continue;
++        if (!slot->palm)
++            finger = true;
+         event(EV_ABS, ABS_MT_SLOT, number);
+         if (active_[number] != slot->tracking_id) {
+             ids_[number] = allocateTrackingId();
+@@ -247,12 +260,14 @@
+         }
+         event(EV_ABS, ABS_MT_POSITION_X, std::clamp(slot->contact.x, 0, maximum_x_));
+         event(EV_ABS, ABS_MT_POSITION_Y, std::clamp(slot->contact.y, 0, maximum_y_));
+-        event(EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_FINGER);
++        event(EV_ABS, ABS_MT_TOOL_TYPE,
++              slot->palm ? MT_TOOL_PALM : MT_TOOL_FINGER);
+         event(EV_ABS, ABS_MT_TOUCH_MAJOR, std::clamp(slot->contact.area, 0, 255));
++        event(EV_ABS, ABS_MT_TOUCH_MINOR, std::clamp(slot->contact.minor, 0, 255));
+         event(EV_ABS, ABS_MT_PRESSURE, 1);
+     }
+-    event(EV_KEY, BTN_TOUCH, !slots.empty());
+-    event(EV_KEY, BTN_TOOL_FINGER, !slots.empty());
++    event(EV_KEY, BTN_TOUCH, finger);
++    event(EV_KEY, BTN_TOOL_FINGER, finger);
+     event(EV_SYN, SYN_REPORT, 0);
+     writeEvents(fd_, events_);
+ }
+--- a/device/piano-thp/src/live_pipeline.cpp
++++ b/device/piano-thp/src/live_pipeline.cpp
+@@ -5,9 +5,13 @@
+ 
+ namespace nvt {
+ void LivePipeline::reset() {
+-    if (active_)
+-        sink_({});
++    // Clear the flags before the sink runs: a reset means the stream is gone, so
++    // the caller must release everything instead of holding MT_TOOL_PALM.
++    const bool was_active = active_;
+     active_ = false;
++    palm_active_ = false;
++    if (was_active)
++        sink_({});
+     processor_.reset();
+     last_finger_ns_ = 0;
+ }
+@@ -75,8 +79,9 @@
+     stats.baselines += update.baseline_ready;
+     if (update.result) {
+         ++stats.processed;
++        palm_active_ = update.result->palm_active;
+         sink_(update.result->slots);
+-        active_ = !update.result->slots.empty();
++        active_ = !update.result->slots.empty() || palm_active_;
+     }
+ }
+ 
+--- a/device/piano-thp/src/live_pipeline.hpp
++++ b/device/piano-thp/src/live_pipeline.hpp
+@@ -19,6 +19,9 @@
+     void feed(const StreamRecord &record, uint64_t now_ns);
+     void expire(uint64_t now_ns);
+     void reset();
++    // The core releases all contacts while a palm is latched. The caller can
++    // use this flag to keep the previous contacts down as MT_TOOL_PALM.
++    bool palmActive() const { return palm_active_; }
+ 
+     struct Statistics {
+         uint64_t records = 0, fingers = 0, other_types = 0, invalid = 0, pen_frames = 0, pen_errors = 0;
+@@ -31,5 +34,6 @@
+     PenSink pen_sink_;
+     uint64_t sequence_ = 0, timestamp_ns_ = 0, last_finger_ns_ = 0;
+     bool active_ = false;
++    bool palm_active_ = false;
+ };
+ } // namespace nvt
+--- a/device/piano-thp/src/nvt_touch_core.hpp
++++ b/device/piano-thp/src/nvt_touch_core.hpp
+@@ -51,6 +51,9 @@
+     int area = 0;
+     int weight = 0;
+     NodeSet nodes;
++    // Smaller bounding-box span of the contact nodes, in matrix nodes. The
++    // caller reports it as ABS_MT_TOUCH_MINOR alongside area as the major axis.
++    int minor = 0;
+ 
+     bool operator==(const Contact &) const = default;
+ };
+@@ -59,6 +62,8 @@
+     int number = 0;
+     int tracking_id = 0;
+     Contact contact;
++    // A palm keeps its slot down with MT_TOOL_PALM instead of becoming a finger.
++    bool palm = false;
+ 
+     bool operator==(const Slot &) const = default;
+ };

@@ -29,7 +29,7 @@ SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]"
 # 运行时 RPM 的版本号。载荷每变一次就要换 NEVRA，已装设备才看得见这次替换；
 # 增量路径（scripts/package-device-integration.py）也从这里取，两处不各写一份。
 RUNTIME_VERSION = "0.2.0"
-RUNTIME_RELEASE = "6"
+RUNTIME_RELEASE = "8"
 
 
 def run(command, **kw):
@@ -260,11 +260,8 @@ def build(args):
     put(topology, payload / "usr/lib/firmware/qcom/sm8750/Xiaomi Pad 8 Pro-tplg.bin")
     request = build_boot_request.build(build / "boot-request", "aarch64", "gcc")
     put(build / "boot-request/piano-boot-request", payload / "usr/local/sbin/piano-boot-request", True)
-    mipps = sun.parent / "piano-mipps-auth"
-    for name, path in (("xiaomi-mipps-auth", "usr/libexec/xiaomi-mipps-auth"),
-                       ("xiaomi-mipps-auth.service", "usr/lib/systemd/system/xiaomi-mipps-auth.service"),
-                       ("90-xiaomi-mipps-auth.rules", "usr/lib/udev/rules.d/90-xiaomi-mipps-auth.rules")):
-        put(mipps / name, payload / path, name == "xiaomi-mipps-auth")
+    # MiPPS 认证已经在内核序列 0027 的 piano_mca 工作队列里完成。上游明确不
+    # 安装用户空间服务、状态文件和通知，这里不再复制第二份认证路径。
     # libssc and iio-sensor-proxy are built once, by the RPM matrix. Building
     # them here too produced a second pair with the same NEVRAs but different
     # bytes (different build host, different patch set), and merging both into
@@ -350,6 +347,10 @@ def build(args):
     # Focus Pen 事实，pen-bluetooth 与 piano-pen-offline 跟着上游改，另有一批
     # unit 与 udev 规则按上游 removed_paths 退场、相机规则改由矩阵提供。已装
     # 设备的 0.2.0-4 与这份载荷同 NEVRA 不同字节，不换 NEVRA 就装不上去。
+    # Release 7：删掉 MiPPS 用户态认证服务，认证只由内核 0027 完成；载荷少了
+    # 二进制、unit 与 udev 规则，同样换 NEVRA。
+    # Release 8：触控 uinput 改成 BUS_SPI + 0603:6532 + BSP 名字，与笔进同一
+    # LIBINPUT_DEVICE_GROUP；补 ABS_MT_TOUCH_MINOR；掌托按槽上报 MT_TOOL_PALM。
     rpm_package("piano-runtime", payload, output,
                 version=RUNTIME_VERSION, release=RUNTIME_RELEASE,
                 requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",

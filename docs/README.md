@@ -21,10 +21,10 @@
 ## 参与维护的人
 
 - [本地构建与验证](build.md)：构建依赖、源码准备、构建顺序与换 pin 步骤
-- [设备树与 23 个 Overlay](device-tree.md)：三条 DT 来源、出货基线谱系与各 overlay 说明
+- [设备树与 24 个 Overlay](device-tree.md)：三条 DT 来源、出货基线谱系与各 overlay 说明
 - [维护与验收](internals.md)：CI 流水线、产物绑定与 PR 验收项
 - [上游跟踪](upstream.md)：SunUEFI 与内核当前 pin、差异看板与跟进规则
-- [与上游的功能差距](upstream-parity.md)：对照上游基线 pin `3a7e5c1b` 的功能差距与说明，当前构建 pin 见 `sources.lock.json`
+- [与上游的功能差距](upstream-parity.md)：与上游的功能差距与架构分歧，当前构建 pin 见 `sources.lock.json`
 
 ---
 

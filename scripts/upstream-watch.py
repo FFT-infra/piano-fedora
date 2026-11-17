@@ -30,7 +30,6 @@ AUTO_BUMP = {
     "uperf",
     "piano-mesa",
     "piano-sensors",
-    "piano-mipps-auth",
 }
 
 
