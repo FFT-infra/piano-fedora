@@ -2,9 +2,10 @@
 """libfprint 重编包的离线契约。
 
 补丁来自 SunUEFI `patches/libfprint/1.94.100/`，摘要必须和那边的 series.json
-一致。这里锁住：替换发行版包所需的 Provides/Obsoletes、piano-goodix 构建依赖、
-fprintd 的 UIO/TEE 放行与状态目录、构建矩阵里的先后顺序，以及镜像清单真的
-会装上这个包和 fprintd。设备侧的验证（fprintd-list 认到设备）不在离线测试里。
+一致。这里锁住：替换发行版包所需的 Provides/Obsoletes、从 piano-fingerprint
+取源码归档、fprintd 的 UIO/TEE 放行与状态目录、构建矩阵里的先后顺序，以及
+镜像清单真的会装上这个包和 fprintd。设备侧的验证（fprintd-list 认到设备）
+不在离线测试里。
 """
 
 import hashlib
@@ -15,18 +16,24 @@ ROOT = Path(__file__).resolve().parents[1]
 PKG = ROOT / "packages" / "piano-libfprint"
 SPEC = PKG / "piano-libfprint.spec"
 PATCH = PKG / "0001-piano-goodix-uio.patch"
+SOURCE_PATCH = PKG / "0002-build-goodix-backend-from-source.patch"
 DROPIN = PKG / "20-piano.conf"
 BUILD = ROOT / "scripts" / "build-rpms.sh"
 WORKFLOW = ROOT / ".github" / "workflows" / "build-piano-rpms.yml"
 
 PATCH_SHA256 = "6577da4849d748dfe472c9a2026419f91be175a98a926e3b98f0de5203ca1696"
+SOURCE_PATCH_SHA256 = "f0f65785694e7330464015a32c7ec23ece5461453c0e102212677592ad853490"
 
 
 def main():
     assert hashlib.sha256(PATCH.read_bytes()).hexdigest() == PATCH_SHA256, \
         "补丁内容与 SunUEFI pin 的摘要不一致"
     assert "drivers/piano-goodix.c" in PATCH.read_text(), "补丁没有带 piano_goodix 驱动"
-    meson_patch = PKG / "0002-meson-dict-foreach.patch"
+    assert hashlib.sha256(SOURCE_PATCH.read_bytes()).hexdigest() == SOURCE_PATCH_SHA256, \
+        "in-tree 构建补丁与 SunUEFI pin 的摘要不一致"
+    assert "fs.exists('libfprint/drivers/piano-goodix/piano-goodix.c')" in SOURCE_PATCH.read_text(), \
+        "in-tree 构建补丁没有改掉 pkg-config 依赖"
+    meson_patch = PKG / "0003-meson-dict-foreach.patch"
     assert meson_patch.is_file(), "缺少 meson 1.12 的 foreach 兼容补丁"
     assert "foreach driver_test, driver_test_args: drivers_tests" in meson_patch.read_text(), \
         "兼容补丁没有改掉单变量遍历 dict"
@@ -37,7 +44,15 @@ def main():
         "Release 必须高于 Fedora 的 1.94.100-1，否则两份包会同时装"
     assert "Provides:       libfprint = %{version}-%{release}" in spec, "没有声明替换 libfprint"
     assert "Obsoletes:      libfprint < %{version}-%{release}" in spec, "没有淘汰发行版 libfprint"
-    assert "BuildRequires:  pkgconfig(piano-goodix)" in spec, "没有依赖 piano-fingerprint 的 pkgconfig"
+    assert "BuildRequires:  piano-fingerprint" in spec, \
+        "没有依赖 piano-fingerprint 提供的源码归档"
+    assert "BuildRequires:  pkgconfig(piano-goodix)" not in spec, \
+        "仍在依赖已经不再安装的 pkg-config"
+    assert "%{_datadir}/piano-fingerprint/piano-goodix-sources.tar" in spec, \
+        "没有从 piano-fingerprint 取后端源码归档"
+    assert "libfprint/drivers/piano-goodix" in spec, "没有把后端源码铺进驱动目录"
+    assert "BuildRequires:  kernel-headers" in spec, \
+        "rpmb 后端需要发行版的 scsi/scsi_bsg_ufs.h"
     for option in ("-Ddrivers=all", "-Dintrospection=false", "-Dudev_hwdb=disabled"):
         assert option in spec, f"meson 参数缺少 {option}"
     assert "BuildRequires:  gcc-c++" in spec, "libfprint 的 nbis 需要用 C++ 编译"
