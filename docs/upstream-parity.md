@@ -98,4 +98,4 @@ zcat /proc/config.gz | grep -E 'CONFIG_LIRC|CONFIG_IR_SPI|CONFIG_UIO_PIANO|CONFI
 rpm -q mutter libfprint fprintd tuned glibc-langpack-zh
 ```
 
-上游基线对照源文件位于 `build/test-sources/sunuefi`（`4ef8740`）的 `tools/build_piano_fingerprint.py`、`linux/userspace/camera/`、`linux/desktops/`、`patches/libfprint/` 与 `docs/status.md`。
+上游基线对照源文件位于 `build/test-sources/sunuefi`（`18274377`）的 `tools/build_piano_fingerprint.py`、`linux/userspace/camera/`、`linux/desktops/`、`patches/libfprint/` 与 `docs/status.md`。
