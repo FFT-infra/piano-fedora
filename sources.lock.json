@@ -6,7 +6,7 @@
     "dtc": {
       "url": "https://github.com/dgibson/dtc.git",
       "ref": "main",
-      "commit": "774adc25940050fb06f241b1a2a98e7421e6ed7b",
+      "commit": "c954f9dd835764ec69d3d9afb467c4541b47b66d",
       "role": "设备树打包工具：保留覆盖层目标节点已有 phandle 的 libfdt 1.8.1"
     },
     "sunuefi": {
@@ -25,13 +25,13 @@
     "vendor-kernel": {
       "url": "https://github.com/xiaomi-pad-8-pro-development/android_kernel_xiaomi_piano.git",
       "ref": "6.6",
-      "commit": "737dabf0f6076ee5d80be6b7190f9ee314c6cad7",
+      "commit": "0158badc2c1f658dfa9808c5146a9685ea9c05b4",
       "role": "厂商 Android 下游内核的 DTS 源码，作为 overlay 的审阅基准。不进任何出货产物，只被 scripts/compare-vendor-dt.py 读取"
     },
     "vendor-blobs": {
       "url": "https://github.com/xiaomi-pad-8-pro-development/android_vendor_xiaomi_piano.git",
       "ref": "seventeen",
-      "commit": "c1e5a318cfe41b5c7cef74385b376fd0c2527c49",
+      "commit": "500ef49e7022628c14d925d2087080513bdf6eb8",
       "role": "厂商固件与传感器配置的 blob 树，作为固件对照基准。只读文件清单与 git blob 摘要，不下载内容，不进镜像"
     },
     "piano-firmware": {
@@ -79,7 +79,7 @@
     "crosvm": {
       "url": "https://github.com/google/crosvm.git",
       "ref": "main",
-      "commit": "f4ef01fabd83f3c7ac8db34cace20d893a059347",
+      "commit": "ab72ab93eafe521b54f9fc130f5479cce38c13db",
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {
@@ -91,7 +91,7 @@
     "piano-integration": {
       "url": "https://github.com/yzddmr6/xiaomipad-8pro-mainline.git",
       "ref": "main",
-      "commit": "7c67564646b161aad7d6d3c26dabb59a793789ec",
+      "commit": "d9aa8fb1cf91e45224244726a5d639f45e5538e2",
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者"
     },
     "uperf": {
