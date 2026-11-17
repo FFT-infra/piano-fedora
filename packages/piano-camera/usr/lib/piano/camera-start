@@ -59,7 +59,7 @@ modprobe camcc_sm8750
 # rear sensor and its focus actuator on CCI0, front sensor on QUP2 SE1
 modprobe i2c_qcom_cci
 wait_bound "$FRONT_BUS" 'front sensor I2C bus'
-modprobe dw9768
+modprobe gt9764
 modprobe s5kjn1
 modprobe ov32d40
 modprobe qcom_camss

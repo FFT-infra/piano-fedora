@@ -1,13 +1,13 @@
 diff --git a/config/release.json b/config/release.json
-index 0fe306c..5833e62 100644
+index d4a57dc..498bbb8 100644
 --- a/config/release.json
 +++ b/config/release.json
 @@ -51,7 +51,7 @@
      "stable_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
      "stable_version": "7.3.3",
      "uapi_sha256": "5638464826c36018483e2c06f260c1bc439fc6f66b584f56c1e76ec8846c37e5",
--    "target_tree": "22692e070a3825ad985e1c87891a442e408339f0",
-+    "target_tree": "82bf768b9d97be4ca408bc9bd08a1b9f96d4c339",
+-    "target_tree": "472ad593f3d49275a96a06a943c6216b08a501cf",
++    "target_tree": "2591eefd14672ea17d8b02f19f6706e0d621147c",
      "cpu_model_overlay": "linux/dts/piano-cpu-model.dtso",
      "additional_dtb_overlays": [
        "linux/dts/piano-cma.dtso",
@@ -20,7 +20,7 @@ index 0fe306c..5833e62 100644
      "preferred_display_mode": {
        "board_compatible": "xiaomi,piano",
        "refresh_hz": 120,
-diff --git a/patches/linux/7.3/0125-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0125-dpu-defer-slave-cleanup.patch
+diff --git a/patches/linux/7.3/0127-dpu-defer-slave-cleanup.patch b/patches/linux/7.3/0127-dpu-defer-slave-cleanup.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..3ced082b1f0c352588cfd77ebb7a8ea87c56c1a8
 GIT binary patch
@@ -74,7 +74,7 @@ ONK^nzflLH7*SG-M^>wrW
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0126-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0126-media-iris-decode-order-and-deblocking.patch
+diff --git a/patches/linux/7.3/0128-media-iris-decode-order-and-deblocking.patch b/patches/linux/7.3/0128-media-iris-decode-order-and-deblocking.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..53cb09ca783d72eed5c4a1ddd432894189ed1d4c
 GIT binary patch
@@ -174,7 +174,7 @@ M@rCgqG0?Ou0CZ1{cmMzZ
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0127-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0127-asoc-piano-speaker-gain-limit.patch
+diff --git a/patches/linux/7.3/0129-asoc-piano-speaker-gain-limit.patch b/patches/linux/7.3/0129-asoc-piano-speaker-gain-limit.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..494a46d46902ebc2cec68f7df62d4f1ddc844331
 GIT binary patch
@@ -217,7 +217,7 @@ wiXlB{az-!M6>PERA+#ib&4}E@3I$tGGYsqyP@x2k4-7N&QsSXfI?y5?0DRWp`v3p{
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0128-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0128-input-nt36532e-panel-vendor-misc.patch
+diff --git a/patches/linux/7.3/0130-input-nt36532e-panel-vendor-misc.patch b/patches/linux/7.3/0130-input-nt36532e-panel-vendor-misc.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..26ff15244da36746589b6bca3323bc50305cc83a
 GIT binary patch
@@ -279,16 +279,16 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 7cc23b5..725c762 100644
+index 5a468c0..2544154 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -11,8 +11,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "22692e070a3825ad985e1c87891a442e408339f0",
--  "original_target_commit": "5997e1c29a4e456e5c94a6c26b732881bfacce81",
-+  "target_tree": "82bf768b9d97be4ca408bc9bd08a1b9f96d4c339",
+-  "target_tree": "472ad593f3d49275a96a06a943c6216b08a501cf",
+-  "original_target_commit": "6ea05f142758b185e931a162033517c3e2a61481",
++  "target_tree": "2591eefd14672ea17d8b02f19f6706e0d621147c",
 +  "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
@@ -538,7 +538,7 @@ index 7cc23b5..725c762 100644
        "committer_date": "2026-11-15T01:22:15+08:00",
        "upstream": {
          "status": "downstream",
-@@ -1584,7 +1571,7 @@
+@@ -1584,59 +1571,20 @@
        "original_commit": "f9b50fc7f3bbf3eb726f4b343d0175379658fae4",
        "original_parent": "bd537a1307b73309e83c9d99c1db851fb921127c",
        "committer_date": "2026-11-14T22:04:44+08:00",
@@ -547,17 +547,14 @@ index 7cc23b5..725c762 100644
        "upstream": {
          "status": "downstream",
          "url": "https://github.com/slwyts/Project-SunUEFI",
-@@ -1592,43 +1579,36 @@
+         "drop_when": "Remove only when the selected upstream HID driver validates the M80p/P81c private Report5 layout, exposes model-correct ABS_PRESSURE without keyboard plus events, and preserves separate HID applications and raw reports. Verify measured pressure, malformed packet rejection and reconnect on both models."
        }
      },
-     {
+-    {
 -      "file": "0122-input-nt36532e-pen-scan.patch",
 -      "sha256": "cb5c6226c76ade9441436c8b107e296fc5c372940ee26e55377f052d50a37b05",
 -      "original_commit": "80669657c9ed8641b7ac0ef3d8f805f449e2538c",
-+      "file": "0125-dpu-defer-slave-cleanup.patch",
-+      "sha256": "bc4ec8c9803116f39be6a06c6987c21b7f0ae633f413cdb24707b828e15c8fa5",
-+      "original_commit": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
-       "original_parent": "f9b50fc7f3bbf3eb726f4b343d0175379658fae4",
+-      "original_parent": "f9b50fc7f3bbf3eb726f4b343d0175379658fae4",
 -      "committer_date": "2026-11-14T22:40:22+08:00",
 -      "tree": "48f5b8803e91a3a1ab39d46aaa2b098bc9619b7c",
 -      "upstream": {
@@ -565,10 +562,8 @@ index 7cc23b5..725c762 100644
 -        "url": "https://github.com/slwyts/Project-SunUEFI",
 -        "drop_when": "Remove when accepted NT36532E lifecycle handling consumes the standard pen-dock switch, preserves the requested model across dock and firmware transitions, stops scanning for panel/system sleep, and treats optional pen setup failure as a finger-input fallback. Verify dock hotplug, suspend/resume and failed initialization without losing touch input."
 -      }
-+      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "042064f72af78e0aabe93210d5dd41e6f7166e4c"
-     },
-     {
+-    },
+-    {
 -      "file": "0123-input-nt36532e-pen.patch",
 -      "sha256": "7ba397e9907977c221253461e65abe1a190324f17869a28ec58d4bf504cf8b28",
 -      "original_commit": "3f081c9b87314021d491cb4776e6f8ee03f41808",
@@ -580,14 +575,8 @@ index 7cc23b5..725c762 100644
 -        "url": "https://github.com/slwyts/Project-SunUEFI",
 -        "drop_when": "Replace with accepted NT36532E pen decoding and cross-HID fusion that loads the correct LCD-ID calibration as firmware, reports coordinates, pressure, tilt and buttons on the physical input device, and preserves sample freshness, coherent release and acknowledged stop retries. Verify real drawing, tilt loss/reacquisition, PM/firmware recovery, palm interaction and both 120/144 Hz; resolve simultaneous-radio identity before removing the safe two-radio refusal, and retain standard BlueZ vendor-GATT initialization until independently replaced."
 -      }
-+      "file": "0126-media-iris-decode-order-and-deblocking.patch",
-+      "sha256": "a5b907999a2313f310a32ac78fc10c25cce57ecd08cc2b3bbdb1441479e97667",
-+      "original_commit": "596c454653862c3007cb16b40b496230b213f6fb",
-+      "original_parent": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
-+      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "4880944dc63dba610a5307a2764cffd87e3a2387"
-     },
-     {
+-    },
+-    {
 -      "file": "0124-input-nt36532e-pen-centroid.patch",
 -      "sha256": "35245c106950be7148314a1911db4c9ae3870cecfc6ce836fe027c04b6a2ecde",
 -      "original_commit": "5997e1c29a4e456e5c94a6c26b732881bfacce81",
@@ -599,20 +588,62 @@ index 7cc23b5..725c762 100644
 -        "url": "https://github.com/slwyts/Project-SunUEFI",
 -        "drop_when": "The accepted NT36532E decoder must calculate each axis from one measured scan group, remove each group's own DC baseline, and retain weak distributed signals without splicing unrelated maxima. Verify real contact, weak hover, tilt and edge behavior with synchronized input and pen-tip evidence before replacing this centroid correction."
 -      }
-+      "file": "0127-asoc-piano-speaker-gain-limit.patch",
+-    },
+     {
+       "file": "0125-media-gt9764ba-binding.patch",
+       "sha256": "bd319546b74efbfcf10b554acfb3217dd70dde59b8f4a3b8476dfe3cc9385bd9",
+       "original_commit": "2a243d7452c2f9c50c45c26ce0522bade20caf2a",
+-      "original_parent": "5997e1c29a4e456e5c94a6c26b732881bfacce81",
++      "original_parent": "f9b50fc7f3bbf3eb726f4b343d0175379658fae4",
+       "committer_date": "2026-11-16T11:16:46+08:00",
+-      "tree": "88f45d76037da1b403f07afb661955da92e14886",
++      "tree": "5cfccb5b1d192e74ec16ac7990768f17c031d21a",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+@@ -1649,12 +1597,44 @@
+       "original_commit": "6ea05f142758b185e931a162033517c3e2a61481",
+       "original_parent": "2a243d7452c2f9c50c45c26ce0522bade20caf2a",
+       "committer_date": "2026-11-16T11:16:46+08:00",
+-      "tree": "472ad593f3d49275a96a06a943c6216b08a501cf",
++      "tree": "54b1c5418e312b8ec22c1f106d261c8097b2c604",
+       "upstream": {
+         "status": "downstream",
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+         "drop_when": "The selected upstream kernel provides a GT9764BA binding and V4L2 lens driver with the factory AAC settings, bidirectional DAC and neutral-position parking. Verify focus movement, reopen, system sleep and parking with error handling on Piano before removing this implementation."
+       }
++    },
++    {
++      "file": "0127-dpu-defer-slave-cleanup.patch",
++      "sha256": "bc4ec8c9803116f39be6a06c6987c21b7f0ae633f413cdb24707b828e15c8fa5",
++      "original_commit": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
++      "original_parent": "6ea05f142758b185e931a162033517c3e2a61481",
++      "committer_date": "2026-10-24T17:35:21+08:00",
++      "tree": "700a637b844c61061c45ab3b2df209273956a848"
++    },
++    {
++      "file": "0128-media-iris-decode-order-and-deblocking.patch",
++      "sha256": "a5b907999a2313f310a32ac78fc10c25cce57ecd08cc2b3bbdb1441479e97667",
++      "original_commit": "596c454653862c3007cb16b40b496230b213f6fb",
++      "original_parent": "5177815cd10791d2e48ace85df1fae9b80e6ebaa",
++      "committer_date": "2026-10-24T17:35:21+08:00",
++      "tree": "977231516d37480ecd8c5de80c882e6789a8afea"
++    },
++    {
++      "file": "0129-asoc-piano-speaker-gain-limit.patch",
 +      "sha256": "0f44f724d277efbb92caf40fdf1f2905cb5158997b44af3c98d113d001c3ac33",
 +      "original_commit": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "original_parent": "596c454653862c3007cb16b40b496230b213f6fb",
 +      "committer_date": "2026-10-24T17:35:21+08:00",
-+      "tree": "6f72ee6c9b0e453d7148a6d7220727312c7f27fc"
++      "tree": "2ab4b2bb7ce1ef78e01a6575efb73c4bb35d3e77"
 +    },
 +    {
-+      "file": "0128-input-nt36532e-panel-vendor-misc.patch",
++      "file": "0130-input-nt36532e-panel-vendor-misc.patch",
 +      "sha256": "a345e5f1227f3ef200d3a7c1d9f152d01bc8d50896ec1b2b5572e5024c8d0bdf",
 +      "original_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
 +      "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
 +      "committer_date": "2026-10-24T18:30:00+08:00",
-+      "tree": "82bf768b9d97be4ca408bc9bd08a1b9f96d4c339"
++      "tree": "2591eefd14672ea17d8b02f19f6706e0d621147c"
      }
    ],
    "provenance": {

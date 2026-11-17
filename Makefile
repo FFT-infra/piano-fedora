@@ -52,6 +52,7 @@ test:
 	python3 tests/check_ssc_retry.py
 	python3 tests/check_camerad_adapter.py
 	python3 tests/check_camera_start.py
+	python3 tests/check_camera_lens_module.py
 	python3 tests/check_camera_photo.py
 	python3 tests/check_ffmpeg_port.py
 	python3 tests/check_ffmpeg_install.py
@@ -64,6 +65,7 @@ test:
 	python3 tests/check_image_workflow.py
 	python3 tests/check_runtime_extras.py
 	python3 tests/check_finger_orientation.py
+	python3 tests/check_finger_calibration_scope.py
 	python3 tests/check_fingerprint_package.py
 	python3 tests/check_libfprint_package.py
 	python3 tests/check_pipewire_gstreamer_package.py
