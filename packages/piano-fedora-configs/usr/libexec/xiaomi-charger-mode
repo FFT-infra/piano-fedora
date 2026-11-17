@@ -16,7 +16,6 @@ KEY_POWER = 116
 EV_KEY = 0x01
 
 POWER_HOLD_SECS = 2.0
-MIPPS_DELAY_SECS = 0.8
 UNPLUG_CONFIRM_SECS = 0.5
 ONLINE_DROP_IGNORE_SECS = 8.0
 INITIAL_SOURCE_WAIT_SECS = 2.0
@@ -434,24 +433,6 @@ def request_poweroff(reason):
     request_power_action(reason, LINUX_REBOOT_CMD_POWER_OFF, "POWERING OFF")
 
 
-def run_mipps_auth():
-    auth = "/usr/libexec/xiaomi-mipps-auth"
-    flock = "/usr/bin/flock"
-    if not os.path.exists(auth) or not os.path.exists(flock):
-        return False
-    log("starting xiaomi-mipps-auth")
-    result = subprocess.run(
-        [flock, "-n", "-E", "0", "/run/xiaomi-mipps-auth.lock", auth, "--timeout", "4"],
-        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, errors="replace", timeout=20, check=False)
-    for line in result.stdout.splitlines():
-        log(f"xiaomi-mipps-auth: {line}")
-    for line in result.stderr.splitlines():
-        log(f"xiaomi-mipps-auth stderr: {line}")
-    log(f"xiaomi-mipps-auth exited rc={result.returncode}")
-    return result.returncode == 0
-
-
 def main():
     if not in_charger_boot():
         return 0
@@ -468,8 +449,6 @@ def main():
     source_missing_since = None
     seen_source = False
     seen_typec = False
-    mipps_deadline = None
-    mipps_done = False
     display_ready = False
     display_ready_since = None
     display_on = True
@@ -523,8 +502,6 @@ def main():
             seen_source = True
             seen_typec = seen_typec or attached
             source_missing_since = None
-            if not mipps_done and mipps_deadline is None:
-                mipps_deadline = now + MIPPS_DELAY_SECS
         elif seen_source:
             if source_missing_since is None:
                 source_missing_since = now
@@ -538,10 +515,6 @@ def main():
         elif display_ready_since is None and now - start >= INITIAL_SOURCE_FALLBACK_SECS:
             request_poweroff("external power not detected, powering off")
             return 0
-
-        if not mipps_done and mipps_deadline is not None and now >= mipps_deadline:
-            run_mipps_auth()
-            mipps_done = True
 
         if display_ready and display_on and now >= next_draw:
             draw_screen("CHARGING", full=not screen_drawn)

@@ -56,7 +56,7 @@
       "url": "https://github.com/blu-sharky/piano-mipps-auth.git",
       "ref": "main",
       "commit": "ccdc3ce7f5200ef736d7d552eb7b387ea3bb6fd9",
-      "role": "MiPPS 充电认证。SunUEFI 构建链依赖"
+      "role": "已由内核序列 0027 取代，用户态服务不再安装；条目留到文档 PR 一并移除"
     },
     "debian-piano": {
       "url": "https://github.com/blu-sharky/debian-piano.git",
