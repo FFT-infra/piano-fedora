@@ -416,6 +416,10 @@ def repo_args(context, key_paths=None):
             # piano-local，见 dnf_install_args()。
             args += [f"--setopt={name}.gpgcheck=1",
                      f"--setopt={name}.gpgkey={gpgkey}"]
+        if repo.get("repo_gpgcheck"):
+            # 仓库元数据也带签名时才开；repomd.xml.asc 被换掉时构建要失败，
+            # 不能只验 RPM 签名而放过元数据。默认关，保持其他档位行为不变。
+            args.append(f"--setopt={name}.repo_gpgcheck=1")
         if repo.get("skip_if_unavailable"):
             args.append(f"--setopt={name}.skip_if_unavailable=True")
     return args
