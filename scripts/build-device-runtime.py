@@ -29,7 +29,7 @@ SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]"
 # 运行时 RPM 的版本号。载荷每变一次就要换 NEVRA，已装设备才看得见这次替换；
 # 增量路径（scripts/package-device-integration.py）也从这里取，两处不各写一份。
 RUNTIME_VERSION = "0.2.0"
-RUNTIME_RELEASE = "7"
+RUNTIME_RELEASE = "8"
 
 
 def run(command, **kw):
@@ -349,6 +349,8 @@ def build(args):
     # 设备的 0.2.0-4 与这份载荷同 NEVRA 不同字节，不换 NEVRA 就装不上去。
     # Release 7：删掉 MiPPS 用户态认证服务，认证只由内核 0027 完成；载荷少了
     # 二进制、unit 与 udev 规则，同样换 NEVRA。
+    # Release 8：触控 uinput 改成 BUS_SPI + 0603:6532 + BSP 名字，与笔进同一
+    # LIBINPUT_DEVICE_GROUP；补 ABS_MT_TOUCH_MINOR；掌托按槽上报 MT_TOOL_PALM。
     rpm_package("piano-runtime", payload, output,
                 version=RUNTIME_VERSION, release=RUNTIME_RELEASE,
                 requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",

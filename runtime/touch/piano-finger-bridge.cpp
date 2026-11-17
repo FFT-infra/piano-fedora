@@ -7,6 +7,7 @@
 #include "live_pipeline.hpp"
 #include "orientation.hpp"
 #include "panel.hpp"
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <filesystem>
@@ -20,7 +21,50 @@ constexpr const char *nvtThpMiscPrefix = "nvt-thp-";
 std::unique_ptr<nvt::UInputTouch> input;
 std::unique_ptr<nvt::LivePipeline> pipeline;
 nvt::Calibration calibration;
-std::vector<nvt::Slot> panel;
+// Slots currently down in the uinput device. The core reports no finger slots
+// while a palm is latched, so these are the contacts that have to be cancelled.
+std::vector<nvt::Slot> lastFingers;
+bool palmReported = false;
+
+// The core's palm latch clears every contact. Reuse the last finger slots as
+// MT_TOOL_PALM so libinput cancels the touch instead of treating it as a lift.
+int minorAxis(const nvt::Contact &contact) {
+    int minimum_row = nvt::kRows, maximum_row = -1;
+    int minimum_column = nvt::kColumns, maximum_column = -1;
+    for (int index = 0; index < nvt::kNodes; ++index) {
+        if (!contact.nodes.test(index))
+            continue;
+        const int row = index / nvt::kColumns;
+        const int column = index % nvt::kColumns;
+        minimum_row = std::min(minimum_row, row);
+        maximum_row = std::max(maximum_row, row);
+        minimum_column = std::min(minimum_column, column);
+        maximum_column = std::max(maximum_column, column);
+    }
+    if (maximum_row < minimum_row || maximum_column < minimum_column)
+        return 0;
+    return std::min(maximum_row - minimum_row,
+                    maximum_column - minimum_column) + 1;
+}
+
+void reportFingers(std::vector<nvt::Slot> fingers) {
+    palmReported = false;
+    if (fingers.empty() && lastFingers.empty())
+        return;
+    input->report(fingers);
+    lastFingers = std::move(fingers);
+}
+
+// Keep the contacts down with MT_TOOL_PALM. libinput turns that into a cancel,
+// so a palm landing on the panel does not look like a finger lift or a tap.
+void reportPalms() {
+    if (palmReported || lastFingers.empty())
+        return;
+    for (auto &slot : lastFingers)
+        slot.palm = true;
+    input->report(lastFingers);
+    palmReported = true;
+}
 
 template<class Function> int guarded(Function function) {
     try { function(); return 0; }
@@ -61,10 +105,22 @@ extern "C" int piano_finger_open(const char *path) {
         const auto identity = nvt::readPanelVendor(thpMiscNode());
         std::fprintf(stderr, "%s\n", nvt::describePanel(identity).c_str());
         input = std::make_unique<nvt::UInputTouch>(axes.width, axes.height);
+        lastFingers.clear();
+        palmReported = false;
         pipeline = std::make_unique<nvt::LivePipeline>(calibration,
             [](std::span<const nvt::Slot> slots) {
-                nvt::panelSlots(slots, calibration, nvt::PanelVendor::Csot, panel);
-                input->report(panel);
+                if (slots.empty()) {
+                    if (pipeline->palmActive())
+                        reportPalms();
+                    else
+                        reportFingers({});
+                    return;
+                }
+                std::vector<nvt::Slot> fingers;
+                nvt::panelSlots(slots, calibration, nvt::PanelVendor::Csot, fingers);
+                for (auto &slot : fingers)
+                    slot.contact.minor = minorAxis(slot.contact);
+                reportFingers(std::move(fingers));
             });
         std::fprintf(stderr, "piano finger: calibrated 32000x21360, Kalman/jitter/axis filtering, %s\n",
                      input->sysname().c_str());
