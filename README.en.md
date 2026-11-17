@@ -52,6 +52,7 @@ Images are built per profile from the same release chain. They differ only in th
 | `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Desktop reached. Rotation verified |
 | `niri` | niri | greetd + tuigreet | None, manual `transform` | Desktop reached |
 | `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None, manual rotate | Desktop reached |
+| `denial` | Denial (third-party DNF repository) | greetd + tuigreet | None | Not validated on Fedora 45 hardware |
 
 Each profile ships as one archive. Download only the profile you install. Login, power behavior, rotation and known gaps per profile are in [Desktops](docs/desktops.md).
 
@@ -63,7 +64,7 @@ Default images use stock Fedora desktop components and work out of the box. The 
 |---|---|---|
 | Screen brightness follows ambient light | GNOME | GSD converts target brightness with the stock lux-to-nits curve |
 | Keyboard backlight works after plugging the folio keyboard | GNOME | GSD refreshes the keyboard backlight device |
-| Stylus works in X11 applications | All four | GTK3 looks up XI2 tool atoms on the device's own display |
+| Stylus works in X11 applications | All five | GTK3 looks up XI2 tool atoms on the device's own display |
 | Touch does not crash GNOME | GNOME | mutter guards against an empty KMS gamma LUT and a cancelled touch grab |
 | Backlight falls back when HDR is turned off | KDE | KWin restores the previous brightness on HDR exit |
 | GNOME waits for the display before login | GNOME | gdm waits for the KMS connector before starting a session |
@@ -102,7 +103,7 @@ There are two paths. The manual path is the primary one: it lists each command, 
 
 ## Release artifacts
 
-A maintainer dispatches the release workflow with a tag. A tag push does not start a release. A release ships only verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from that run. Nothing is rebuilt. One release carries four profiles, each as one archive `piano-<tag>-<profile>.tar.zst`, split into `.part-NN` pieces above 2 GiB.
+A maintainer dispatches the release workflow with a tag. A tag push does not start a release. A release ships only verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from that run. Nothing is rebuilt. One release carries five profiles, each as one archive `piano-<tag>-<profile>.tar.zst`, split into `.part-NN` pieces above 2 GiB.
 
 An archive holds the platform images, that profile's `root-install/`, the component manifests, the one-step script and the boot tools. An install downloads one profile: about 2.1 GiB for GNOME, about 1 GiB for niri. The archive's own `SHA256SUMS` lists only the files it holds, so both verification commands run clean. For the purpose of each file, see [Artifacts and pipeline](docs/artifacts.md#release-发布).
 

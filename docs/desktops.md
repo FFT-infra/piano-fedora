@@ -1,6 +1,6 @@
 # 桌面档
 
-镜像按档位构建，同一份发布链出四档 root 文件系统。四档共用内核、ESP 与
+镜像按档位构建，同一份发布链出五档 root 文件系统。五档共用内核、ESP 与
 一键脚本，只有 root 文件系统与 `root-install/` 不同。桌面差异全部收在
 [`scripts/profiles/fedora-desktops.json`](../scripts/profiles/fedora-desktops.json)，
 由 [`scripts/piano_desktop.py`](../scripts/piano_desktop.py) 解释，构建脚本不再
@@ -12,11 +12,12 @@
 | `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | KWin 原生处理（`qt6-qtsensors`） | ✅ 桌面就绪，支持桌面定制与自动旋转 |
 | `niri` | niri | greetd `[initial_session]` | 仅 logind | 需在 output 声明 `transform` | ⚠️ 桌面就绪，需配置文件声明旋转 |
 | `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 需执行 `hyprctl keyword monitor` | ⚠️ 桌面就绪，需通过命令行控制旋转 |
+| `denial` | Denial（第三方 DNF 仓库） | greetd `[initial_session]`，`denial-session --start-locked` | 仅 logind | — | ⚠️ 只在 Fedora 44 上有上游验证记录，Fedora 45 与 SM8750 未验 |
 | `server` | 无 | 无 | 仅 logind | — | 仅用于构建测试装配，不发布镜像 |
 
 ## 登录方式
 
-四档都自动登录到 `piano` 用户。首次开机不需要在登录界面输入密码。默认口令是
+五档都自动登录到 `piano` 用户。首次开机不需要在登录界面输入密码。默认口令是
 `piano123456`，桌面起来之后用 `passwd` 改。
 
 - **GNOME**：`/etc/gdm/custom.conf` 写 `AutomaticLoginEnable=True` 与
@@ -28,9 +29,11 @@
   `/usr/share/wayland-sessions/plasma.desktop` 在树里。名字对不上时，
   登录管理器只在日志里写一条错误，然后退回登录界面。SDDM 与 plasmalogin 都会往
   `display-manager.service` 建别名，同装必冲突，所以 profile 里只装后者。
-- **niri / Hyprland**：`/etc/greetd/config.toml` 的 `[initial_session]` 指向
-  `niri-session` 或 `start-hyprland`，`[default_session]` 留 `tuigreet --time`
-  兜底。会话崩溃或用户注销后，greetd 回到 tuigreet 的文本选择界面，不显示黑屏 VT。
+- **niri / Hyprland / Denial**：`/etc/greetd/config.toml` 的 `[initial_session]`
+  指向 `niri-session`、`start-hyprland` 或 `denial-session --start-locked`，
+  `[default_session]` 留 `tuigreet --time` 兜底。会话崩溃或用户注销后，greetd
+  回到 tuigreet 的文本选择界面，不显示黑屏 VT。`--start-locked` 是 Denial 的
+  官方参数，用于没有显示管理器认证过的直接会话。
 
   `[default_session]` 的 `user` 必须是 `greetd`，不是 `greeter`。这个账户由
   `greetd` 包里的 sysusers 片段建立（`u greetd - "greetd daemon"`），名字写错时
@@ -43,14 +46,14 @@
   ```
   日志里出现 `configured default session user 'greeter' not found` 即是这个问题。
 
-四个显示管理器都直接随开机启动，不挂 `piano-display.service` 依赖。驱动按
+各档的显示管理器都直接随开机启动，不挂 `piano-display.service` 依赖。驱动按
 标准 modalias 加载，旧的分子系统手动 bring-up 单元已随 [SunUEFI](https://github.com/slwyts/Project-SunUEFI) 上游删除；给显示管理器
 挂 `Requires=` 只会在依赖永远不满足时把桌面一起拖死。
 
 ## 电源行为
 
 电源键和合盖都只关屏并锁屏，不把机器挂起，与出厂系统的动作一致。长按弹出关机
-入口。四档都不开自动挂起。
+入口。五档都不开自动挂起。
 
 GNOME 档由 `piano-fedora-configs` 的 `piano-power-button` 用户服务补这段策略。
 它不独占输入设备，按键事件照常流向 compositor；熄屏走 Mutter 的
@@ -73,7 +76,7 @@ PowerDevil 自己的 `Turn Off Screen` 动作，锁屏与 DPMS 还是 PowerDevil
 KDE 系统设置里的「电源按钮」同样可以改。改成具体动作后短按会重复触发一次，
 既关屏又执行用户选的动作。改回「无操作」就恢复。
 
-niri、Hyprland 与 server 没有桌面侧文件，靠 logind 的 `HandlePowerKey=ignore`、
+niri、Hyprland、Denial 与 server 没有桌面侧文件，靠 logind 的 `HandlePowerKey=ignore`、
 `HandleLidSwitch=ignore`、`IdleAction=ignore` 保证它不抢这两个输入。
 
 三种电源策略的落点：
@@ -85,7 +88,7 @@ niri、Hyprland 与 server 没有桌面侧文件，靠 logind 的 `HandlePowerKe
   AC / Battery / LowBattery 三个 profile 的 `AutoSuspendAction` 与
   `PowerButtonAction` 是 `0`（NoAction），`LidAction` 是 `64`（TurnOffScreen），
   空闲 300 秒关屏并锁屏。
-- **仅 logind**（niri / Hyprland / server）：没有桌面侧文件，电源键与合盖都不
+- **仅 logind**（niri / Hyprland / Denial / server）：没有桌面侧文件，电源键与合盖都不
   触发动作。
 
 挂起与唤醒（`rtcwake -m mem -s 20`）运行正常，唤醒后平稳恢复至原会话。那是
@@ -134,11 +137,11 @@ scale 与 `QT_SCALE_FACTOR` 会叠加，界面会放大两次。
 装上 `libssc` 与 `iio-sensor-proxy-ssc`，并加载 `qrtr_smd`/`qrtr_mhi`/`mhi`
 之后，代理能直接拿到加速度计、环境光与接近传感器。
 
-桌面旋转之外，`iio-sensor-proxy` 仍提供光感与接近传感器，四档都装了。
+桌面旋转之外，`iio-sensor-proxy` 仍提供光感与接近传感器，五档都装了。
 
 ## extras 可选组件
 
-四档默认镜像都用 Fedora 原版桌面组件，extras 的包不进镜像，也不进默认 COPR。需要使用补丁版桌面组件时，按[COPR 软件源](copr-repository.md#可选的-extras-软件源)启用默认关闭的 `xinyang26/piano-fedora-extras`。
+五档默认镜像都用 Fedora 原版桌面组件，extras 的包不进镜像，也不进默认 COPR。需要使用补丁版桌面组件时，按[COPR 软件源](copr-repository.md#可选的-extras-软件源)启用默认关闭的 `xinyang26/piano-fedora-extras`。
 
 | 桌面 | meta 包 | 带进来的组件 | 用途 |
 | --- | --- | --- | --- |
@@ -157,14 +160,22 @@ KDE HDR 依赖补丁版 KWin 修复退出 HDR 后的背光恢复问题。实机�
 
 ## 第三方软件源
 
-只有 Hyprland 档位启用第三方仓库 `copr-hyprland`
-（`download.copr.fedorainfracloud.org/results/lionheartp/Hyprland/`），Fedora 45
-官方仓库没有 Hyprland 及其配套组件。构建时：
+Hyprland 与 Denial 两档依赖第三方仓库，Fedora 45 官方仓库里没有这两个桌面。
+构建时仓库都以 `--repofrompath` 临时加入，不写进镜像的持久 `.repo`。
 
-- 仓库以 `--repofrompath` 临时加入，不写进镜像的持久 `.repo`。
-- `gpgcheck=1`。公钥先下载到构建目录，按 profile 里的 `gpgkey_sha256` 校验，
-  之后才交给 dnf。哈希对不上时构建直接失败。
-- 其余三档不启用任何第三方源。
+- **Hyprland**：`copr-hyprland`
+  （`download.copr.fedorainfracloud.org/results/lionheartp/Hyprland/`）提供
+  Hyprland 与配套组件。`gpgcheck=1`，公钥先下载到构建目录，按 profile 里的
+  `gpgkey_sha256` 校验，之后才交给 dnf。哈希对不上时构建直接失败。
+- **Denial**：官方签名 DNF 仓库
+  `https://packages.denialwm.org/rpm/fedora/44/aarch64/`。上游只为 Fedora 44
+  发布仓库，45 的 repodata 实测 404，所以 baseurl 固定到 `fedora/44`，不跟
+  `releasever` 走；这等于在 Fedora 45 上装上游按 44 验证的包。公钥
+  `denial-repo-key.asc` 的 sha256 钉在 profile 里，仓库经 `gpgcheck=1` 校验 RPM
+  签名。仓库元数据的 `repo_gpgcheck` 没有开：dnf5 在 `--installroot` 下会把
+  本地 gpgkey 路径当成仓库源解析，`repo_gpgcheck=1` 时直接失败；这与 Hyprland
+  COPR 的信任级别一致，覆盖包签名而不覆盖元数据签名。
+- 其余三档（GNOME、KDE、niri）不启用任何第三方源。
 
 本地未签名的 `piano-local` 仓库单独设 `gpgcheck=0`，不再用全局 `--nogpgcheck`。
 
@@ -200,8 +211,16 @@ make plan-desktop DESKTOP=niri RELEASEVER=45
 - **KDE 的自动旋转依赖 `qt6-qtsensors`**，这一条来自 Plasma 6 的已知行为，
   未在真机设备上实际验证。
 - **Hyprland 依赖第三方 COPR。** 仓库消失或公钥更换时，构建硬失败。替代方案是自己打包，评估后未采用。
-- **`denial` 是占位档位**，`buildable: false`。`build-clean-rootfs.py --plan`
-  对它返回 `INPUTS_REQUIRED` 并以非零退出，不会产出镜像。
-- **内核在 COPR 里，四档共用。** 装机用归档里的 `kernel-piano`。
+- **Denial 没有 Fedora 45 的官方验证，叠加测试也没有起来。** 上游只为
+  Fedora 44 发布仓库，并在 Fedora 44 Workstation + GDM 上验证；本镜像在
+  Fedora 45 + SM8750 上装配。2026-11-17 在 KDE 镜像上叠加 0.6.6 实测，
+  `denial-session --check` 全部通过，但临时切到 greetd 后 `deniald` 在 GPU
+  初始化阶段 SIGABRT，会话没有起来，已回滚到 KDE；详情见
+  [已知问题](known-issues.md#denial-桌面)。构建通过不等于会话可用。构建时用
+  官方默认的 `desktop` shell profile，没有开 `DENIAL_SHELL_PROFILE=mobile`。
+- **Denial 合成器不读传感器**，平板上没有自动旋转，与 niri / Hyprland 相同。
+- **Denial 的包不在本仓库的发布链里。** `denial` 与 `denial-flutter-engine`
+  直接来自上游仓库，本仓库不镜像、不重新打包，也不进 COPR。
+- **内核在 COPR 里，五档共用。** 装机用归档里的 `kernel-piano`。
   装好之后由 `dnf upgrade` 升级，`kernel-piano` 的 `%posttrans` 重建 initramfs
   并重打 ESP 的 `/EFI/Linux/sunuefi.efi`。失败与回滚边界见 [COPR 软件源](copr-repository.md)。

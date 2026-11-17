@@ -644,7 +644,7 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 ## 七、 首次登录与诊断
 
-刷完后平板自动重启，进入 120 Hz 的桌面。四个档位都自动登录到 `piano` 用户：GNOME 走 GDM，KDE 走 plasma-login-manager，niri 与 Hyprland 走 greetd 的 `tuigreet` 兜底。
+刷完后平板自动重启，进入 120 Hz 的桌面。五个档位都自动登录到 `piano` 用户：GNOME 走 GDM，KDE 走 plasma-login-manager，niri、Hyprland 与 Denial 走 greetd 的 `tuigreet` 兜底。
 
 ### 1. 默认状态
 
