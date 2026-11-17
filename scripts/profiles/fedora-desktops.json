@@ -220,7 +220,6 @@
         "baseurl": "https://packages.denialwm.org/rpm/fedora/44/$basearch/",
         "gpgkey": "https://packages.denialwm.org/denial-repo-key.asc",
         "gpgkey_sha256": "1b388fda64771cdc2b02695b1d418d354d5afe6bc001d69816f1c4ec43bc4b9c",
-        "repo_gpgcheck": true,
         "priority": 5
       }
     ],
