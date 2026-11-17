@@ -165,13 +165,16 @@ def check_repo_args():
     assert "--setopt=copr-hyprland.gpgkey=/tmp/copr-hyprland.gpg" in swapped, swapped
 
     # Denial 走官方带签名的 DNF 仓库：路径固定到官方支持的 Fedora 44，
-    # key 按 sha256 钉住，仓库元数据也验签。
+    # key 按 sha256 钉住，RPM 仍要 gpgcheck。仓库元数据不验签：dnf5 在
+    # --installroot 下加载 repo_gpgcheck=1 的仓库会报 “Signing key not found”，
+    # 本地 key 路径还会被当成仓库源。key 本身在下载时按 sha256 核对，RPM
+    # 签名也仍然验，和 Hyprland 的 COPR 档保持同一信任级别。
     denial = piano_desktop.load("denial", "44")
     denial_args = piano_desktop.repo_args(denial)
     assert any("denial,https://packages.denialwm.org/rpm/fedora/44/aarch64/"
                in arg for arg in denial_args), denial_args
     assert "--setopt=denial.gpgcheck=1" in denial_args, denial_args
-    assert "--setopt=denial.repo_gpgcheck=1" in denial_args, denial_args
+    assert "--setopt=denial.repo_gpgcheck=1" not in denial_args, denial_args
     assert piano_desktop.gpgkey_pins(denial)[0][0] == "denial"
 
     # GNOME / KDE / niri 不启用任何第三方仓库。
