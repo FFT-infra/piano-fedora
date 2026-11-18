@@ -72,7 +72,8 @@ jobs:
           manifest = json.loads((root / "manifest.json").read_text())
           assert manifest["status"] == "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
           expected = {"gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
-                      "piano-gnome-extras", "piano-kde-extras"}
+                      "piano-gnome-extras", "piano-kde-extras",
+                      "piano-droidloom-extra"}
           assert set(manifest["packages"]) == expected, sorted(manifest["packages"])
           for name, row in manifest["packages"].items():
               assert row["binary_package"] == name, (name, row)

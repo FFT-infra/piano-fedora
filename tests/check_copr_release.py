@@ -553,6 +553,8 @@ def make_extras(directory, *, status="PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED",
         "gdm": ("gdm", "51.1.1", "2.piano1", ["gnome"]),
         "piano-gnome-extras": ("piano-gnome-extras", "0.1.0", "2.fc45", ["gnome"]),
         "piano-kde-extras": ("piano-kde-extras", "0.1.0", "1.fc45", ["kde"]),
+        "piano-droidloom-extra": ("piano-droidloom-extra", "0.1.0", "1.fc45",
+                                  ["gnome", "kde"]),
     }
     files, srpms, packages = {}, {}, {}
     for name, (source_name, version, rel, desktops) in rows.items():
@@ -609,7 +611,8 @@ def test_extras_contract(module, tmp):
 def test_extras_order(module):
     assert module.EXTRAS_ORDER == ("gtk3", "kwin", "mutter", "gdm",
                                    "gnome-settings-daemon-piano",
-                                   "piano-gnome-extras", "piano-kde-extras")
+                                   "piano-gnome-extras", "piano-kde-extras",
+                                   "piano-droidloom-extra")
     for name in ("gtk3", "kwin", "mutter", "gdm", "gnome-settings-daemon-piano"):
         assert name not in module.REQUIRED
     assert module.EXTRAS_PROJECT == "xinyang26/piano-fedora-extras"

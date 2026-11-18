@@ -33,7 +33,8 @@ KERNEL_PACKAGE = "kernel-piano"
 GRAPHICS_RENAMES = {"mesa-piano-dri-drivers": "mesa-dri-drivers",
                     "ffmpeg-piano": "ffmpeg-free"}
 EXTRAS_PACKAGES = {"gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
-                   "piano-gnome-extras", "piano-kde-extras"}
+                   "piano-gnome-extras", "piano-kde-extras",
+                   "piano-droidloom-extra"}
 EXTRAS_DESKTOP = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm")
 EXTRAS_META = ("piano-gnome-extras", "piano-kde-extras")
 

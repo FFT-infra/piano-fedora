@@ -100,13 +100,15 @@ GRAPHICS = {
 # 而矩阵里的包名与它们不重叠，顺序只影响失败时先报哪一个。
 GRAPHICS_ORDER = ("mesa", "ffmpeg")
 
-# 可选 extras 仓库：默认不启用，只放桌面补丁和两个 meta 包。GSD 改名，
-# KWin/GTK3/mutter/gdm 保持同名、release 带 .piano1。GTK3 先编，两个 meta 最后。
+# 可选 extras 仓库：默认不启用，只放桌面补丁和 meta 包。GSD 改名，
+# KWin/GTK3/mutter/gdm 保持同名、release 带 .piano1。GTK3 先编，meta 最后。
 EXTRAS_ORDER = ("gtk3", "kwin", "mutter", "gdm", "gnome-settings-daemon-piano",
-                "piano-gnome-extras", "piano-kde-extras")
+                "piano-gnome-extras", "piano-kde-extras",
+                "piano-droidloom-extra")
 EXTRAS_STATUS = "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
 EXTRAS_PROJECT = "xinyang26/piano-fedora-extras"
-# 两个 meta 包只放 Requires，等它们引用的桌面包进了仓库再提交。
+# 桌面 meta 包只放 Requires，等它们引用的桌面包进了仓库再提交；droidloom
+# meta 不依赖桌面包，单独一波。
 EXTRAS_DEPENDS = {
     "piano-gnome-extras": tuple(EXTRAS_ORDER[:5]),
     "piano-kde-extras": tuple(EXTRAS_ORDER[:5]),
@@ -322,8 +324,8 @@ def verify_extras(directory):
     """核对独立 extras artifact：状态、包集合、文件摘要与 SRPM 唯一性。
 
     GSD 改名，KWin/GTK3/mutter/gdm 与 Fedora 同名但 release 必须带 piano1；
-    两个 meta 包是 noarch，不要求 piano1。这里不依赖 piano-rpms 的 manifest，extras
-    可以单独构建、单独发布。
+    meta 包（桌面 noarch、droidloom aarch64 安装器）不要求 piano1。这里不依赖
+    piano-rpms 的 manifest，extras 可以单独构建、单独发布。
     """
     directory = Path(directory)
     manifest_path = directory / "manifest.json"

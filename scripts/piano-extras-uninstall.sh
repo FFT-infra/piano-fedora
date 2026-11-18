@@ -11,7 +11,7 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-dnf remove -y piano-gnome-extras piano-kde-extras || true
+dnf remove -y piano-gnome-extras piano-kde-extras piano-droidloom-extra || true
 dnf config-manager setopt "${REPO_ID}.enabled=0"
 if command -v dconf >/dev/null 2>&1; then
     dconf update

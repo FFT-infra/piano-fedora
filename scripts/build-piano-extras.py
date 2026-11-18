@@ -24,7 +24,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STATUS = "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
 DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm")
-META_PACKAGES = ("piano-gnome-extras", "piano-kde-extras")
+META_PACKAGES = ("piano-gnome-extras", "piano-kde-extras", "piano-droidloom-extra")
+META_DESKTOPS = {"piano-gnome-extras": ["gnome"],
+                 "piano-kde-extras": ["kde"],
+                 "piano-droidloom-extra": ["gnome", "kde"]}
 PACKAGES = ("gtk3", "kwin", "mutter", "gdm",
             "gnome-settings-daemon-piano") + META_PACKAGES
 
@@ -66,6 +69,10 @@ def build_meta(spec, output, releasever):
     ambient = spec.parent / "etc/dconf/db/local.d/20-piano-ambient"
     if ambient.is_file():
         shutil.copy2(ambient, top / "SOURCES" / "20-piano-ambient")
+    # meta 包自带的 Source 平铺在 spec 旁边（目前只有安装器脚本）。
+    for source in sorted(spec.parent.iterdir()):
+        if source.is_file() and source.suffix != ".spec":
+            shutil.copy2(source, top / "SOURCES" / source.name)
     common = ("--define", "_topdir " + str(top),
               "--define", "_smp_build_ncpus 4",
               "--define", "_smp_mflags -j4",
@@ -93,7 +100,7 @@ def build_meta(spec, output, releasever):
         "binary_package": name,
         "release": rpm_release(rpm),
         "nevra": rpm_nevra(rpm),
-        "desktops": ["gnome"] if name == "piano-gnome-extras" else ["kde"],
+        "desktops": META_DESKTOPS[name],
         "rpms": {rpm.name: {"bytes": rpm.stat().st_size,
                             "sha256": sha256(rpm)}},
         "srpms": {srpms[0].name: {"bytes": srpms[0].stat().st_size,

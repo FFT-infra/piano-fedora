@@ -19,6 +19,7 @@ test:
 	python3 tests/check_fedora_overlay_watch.py
 	python3 tests/check_fedora_desktop_packages.py
 	python3 tests/check_extras_release.py
+	python3 tests/check_droidloom_extra.py
 	python3 tests/check_product.py
 	python3 tests/check_links.py
 	python3 tests/check_readme_parity.py

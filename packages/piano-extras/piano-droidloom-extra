@@ -1,0 +1,326 @@
+#!/usr/bin/env bash
+# 可选 extras：把官方 Droidloom 的 pacman 载荷铺到 Fedora 主机上。
+#
+# 载荷不重打成 RPM。两个 aarch64 包体按上游 GitHub release 的 SHA256 固定，
+# 安装时下载、校验、解包，再按清单铺到 /usr；卸载时按同一份清单删除，保留
+# Android 用户数据。版本跟随 DROIDLOOM_RELEASE，升级载荷需要更新本包。
+set -euo pipefail
+
+DROIDLOOM_RELEASE=0.1.0-46
+BASE_URL=https://github.com/denialwm/droidloom/releases/download/packages
+CACHE_DIR=/var/cache/piano-droidloom-extra
+STATE_DIR=/var/lib/piano-droidloom-extra
+LOCK_FILE=/run/lock/piano-droidloom-extra.lock
+PREFIX=/usr/lib/droidloom
+CELL_SPEC=/etc/droidloom/cell.json
+HELPER=$PREFIX/droidloom-package-helper
+
+# 名字|文件名|sha256|字节数。sha256 取自上游 release 资产的 digest，与
+# pacman 仓库 droidloom.db 的 SHA256SUM 一致。
+ASSETS=(
+    "droidloom-runtime|droidloom-runtime-0.1.0-46-aarch64.pkg.tar.zst|6bf308248af311190143783507378c290812b3c73d53fb4ef74ac9dc24c7542d|10855659"
+    "droidloom-image|droidloom-image-0.1.0-46-aarch64.pkg.tar.zst|ef6d50223f12eda7ab8ff05e12ae960367a30af2e6d95293eea0a1c384059c26|969606760"
+)
+
+BINARIES=(droidloomd droidloomctl droidloom-applications droidloom-audio
+          droidloom-gpu-server droidloom-devices droidloom-supervisor
+          droidloom-wayland)
+
+die() {
+    printf '%s: %s\n' "${0##*/}" "$*" >&2
+    exit 1
+}
+
+usage() {
+    cat <<EOF
+usage: ${0##*/} <command>
+
+命令：
+  install   下载并校验 Droidloom $DROIDLOOM_RELEASE，铺到 /usr（需要 root）
+  update    同 install：重校验并修复已安装的载荷
+  status    报告固定版本、已安装文件、cell 属主与服务状态
+  remove    停服务并按清单删除载荷，保留 Android 用户数据（需要 root）
+
+安装后以桌面用户运行 droidloomctl start；首次启动会请求管理员认证，
+写入 /etc/droidloom 配置并创建 /var/lib/droidloom 下的 Android 数据。
+EOF
+}
+
+need_root() {
+    [ "$(id -u)" -eq 0 ] || die "需要 root"
+}
+
+require_arch() {
+    [ "$(uname -m)" = aarch64 ] ||
+        die "载荷只有 aarch64 版本，当前架构是 $(uname -m)"
+}
+
+take_lock() {
+    install -d -m 0755 "$CACHE_DIR" "$STATE_DIR" /run/lock
+    exec 9>"$LOCK_FILE"
+    flock -n 9 || die "另一个实例正在运行"
+}
+
+fetch() {
+    local name=$1 file=$2 sha=$3 size=$4
+    local dest=$CACHE_DIR/$file url=$BASE_URL/$file
+
+    if [ -f "$dest" ] && [ "$(stat -c %s "$dest")" = "$size" ] &&
+        [ "$(sha256sum "$dest" | cut -d' ' -f1)" = "$sha" ]; then
+        return 0
+    fi
+
+    printf '下载 %s (%s 字节)\n' "$name" "$size"
+    rm -f -- "$dest.part"
+    curl -fL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 \
+        -o "$dest.part" "$url" || die "下载失败: $url"
+    [ "$(stat -c %s "$dest.part")" = "$size" ] ||
+        die "$file 大小不符，上游资产可能已变化"
+    [ "$(sha256sum "$dest.part" | cut -d' ' -f1)" = "$sha" ] ||
+        die "$file 的 SHA256 不符，拒绝安装"
+    mv -f -- "$dest.part" "$dest"
+}
+
+pkg_field() {
+    sed -n "s/^$2 = //p" "$1/.PKGINFO" | head -n 1
+}
+
+verify_package() {
+    local root=$1 name=$2
+    [ -f "$root/.PKGINFO" ] || die "$name 缺少 .PKGINFO"
+    [ "$(pkg_field "$root" pkgname)" = "$name" ] ||
+        die "$name 的 .PKGINFO 包名不符"
+    [ "$(pkg_field "$root" pkgver)" = "$DROIDLOOM_RELEASE" ] ||
+        die "$name 的 .PKGINFO 版本不符"
+    [ "$(pkg_field "$root" arch)" = aarch64 ] ||
+        die "$name 的 .PKGINFO 架构不符"
+}
+
+extract_package() {
+    local archive=$1 root=$2
+    tar --zstd --no-same-owner -xf "$archive" -C "$root" ||
+        die "解包失败: ${archive##*/}"
+}
+
+write_file_list() {
+    local archive=$1 list=$2
+    tar -tf "$archive" >> "$list"
+}
+
+check_file_list() {
+    local list=$1
+    local bad
+    bad=$(grep -vE '^(usr|etc|var)/[A-Za-z0-9._+/-]*$' "$list" || true)
+    if [ -n "$bad" ]; then
+        printf '%s\n' "$bad" >&2
+        die "载荷包含预期之外的路径"
+    fi
+    if grep -qE '^(etc|var)/' "$list"; then
+        die "载荷开始写入 /usr 以外的路径，先更新本安装器"
+    fi
+}
+
+validate_payload() {
+    local root=$1 path
+    for path in "${BINARIES[@]}"; do
+        [ -x "$root/usr/bin/$path" ] || die "载荷缺少 /usr/bin/$path"
+    done
+    [ -x "$root/usr/lib/droidloom/droidloom-package-helper" ] ||
+        die "载荷缺少 droidloom-package-helper"
+    [ -L "$root/usr/lib/droidloom/current" ] ||
+        die "载荷缺少 /usr/lib/droidloom/current"
+    [ -f "$root/usr/lib/droidloom/runtime/framework/services.jar" ] ||
+        die "载荷缺少 Android 框架"
+    for path in system system_ext product; do
+        [ -f "$root/usr/lib/droidloom/images/images/$path.img" ] ||
+            die "载荷缺少 $path.img"
+    done
+    [ -f "$root/usr/lib/droidloom/images/images/vendor.raw.img" ] ||
+        die "载荷缺少 vendor.raw.img"
+}
+
+stop_existing() {
+    if [ -x "$HELPER" ]; then
+        "$HELPER" before-upgrade
+    fi
+}
+
+copy_payload() {
+    local root=$1
+    install -d -m 0755 "$PREFIX"
+    cp -a --remove-destination "$root/usr/bin/." /usr/bin/
+    cp -a --remove-destination "$root/usr/lib/droidloom/." "$PREFIX/"
+    cp -a --remove-destination "$root/usr/lib/systemd/." /usr/lib/systemd/
+    cp -a --remove-destination "$root/usr/share/." /usr/share/
+}
+
+relabel_payload() {
+    command -v restorecon >/dev/null 2>&1 || return 0
+    restorecon -R "$PREFIX" /usr/share/droidloom 2>/dev/null || true
+    local binary
+    for binary in "${BINARIES[@]}"; do
+        restorecon "/usr/bin/$binary" 2>/dev/null || true
+    done
+    restorecon /usr/share/polkit-1/actions/org.droidloom.setup.policy \
+        2>/dev/null || true
+}
+
+cmd_install() {
+    need_root
+    require_arch
+    take_lock
+
+    # 已经存在别处铺的载荷时拒绝接管：卸载会按本安装器的清单删除文件，
+    # 把 pacman 或手工安装的树算进来会删掉不属于我们的东西。
+    if [ -e "$HELPER" ] && [ ! -f "$STATE_DIR/files.list" ]; then
+        die "检测到未由本安装器铺的 Droidloom 载荷（$PREFIX），先移除它"
+    fi
+
+    # 不设 local：EXIT trap 在函数返回后才触发，局部变量那时已经复原，
+    # 清理会落空，留下的暂存树有整个载荷那么大。
+    stage=$(mktemp -d "$STATE_DIR/staging.XXXXXX")
+    trap 'rm -rf -- "$stage"' EXIT
+
+    local entry name file sha size
+    : > "$stage/files.list"
+    for entry in "${ASSETS[@]}"; do
+        IFS='|' read -r name file sha size <<<"$entry"
+        fetch "$name" "$file" "$sha" "$size"
+        extract_package "$CACHE_DIR/$file" "$stage/root"
+        verify_package "$stage/root" "$name"
+        write_file_list "$CACHE_DIR/$file" "$stage/files.list"
+        # 第二个包合并到同一棵树，和 pacman 的安装顺序一致。
+    done
+
+    sort -u -o "$stage/files.list" "$stage/files.list"
+    check_file_list "$stage/files.list"
+    validate_payload "$stage/root"
+
+    stop_existing
+    copy_payload "$stage/root"
+
+    install -m 0644 "$stage/files.list" "$STATE_DIR/files.list"
+    printf '%s\n' "$DROIDLOOM_RELEASE" > "$STATE_DIR/release"
+
+    relabel_payload
+    systemctl daemon-reload
+
+    # 已有 cell 时按新载荷重写配置；全新安装只打印下一步提示。
+    "$HELPER" after-install ||
+        printf '警告: 包管理 helper 刷新配置失败，载荷已铺好，稍后重跑 update 修复\n' >&2
+
+    rm -f -- "$CACHE_DIR"/*.pkg.tar.zst "$CACHE_DIR"/*.part
+
+    printf '\nDroidloom %s 已铺到 /usr。\n' "$DROIDLOOM_RELEASE"
+    printf '以桌面用户运行 droidloomctl start；首次启动会请求管理员认证，\n'
+    printf '写入 /etc/droidloom 配置并在 /var/lib/droidloom 下创建 Android 数据。\n'
+}
+
+cmd_remove() {
+    need_root
+
+    if [ -x "$HELPER" ] && [ -f "$CELL_SPEC" ]; then
+        "$HELPER" before-remove
+    fi
+
+    local list=$STATE_DIR/files.list
+    if [ -f "$list" ]; then
+        local ordered
+        ordered=$(mktemp "$STATE_DIR/remove.XXXXXX")
+        sort -r "$list" > "$ordered"
+        local path
+        while IFS= read -r path; do
+            case $path in
+                */) rmdir --ignore-fail-on-non-empty "/$path" 2>/dev/null || true ;;
+                *)  rm -f -- "/$path" ;;
+            esac
+        done < "$ordered"
+        rm -f -- "$ordered"
+    fi
+
+    systemctl daemon-reload
+    systemctl --global disable droidloom.service 2>/dev/null || true
+    rm -f -- "$STATE_DIR/files.list" "$STATE_DIR/release"
+    rmdir --ignore-fail-on-non-empty "$STATE_DIR" "$CACHE_DIR" 2>/dev/null || true
+
+    printf 'Droidloom 载荷已移除。\n'
+    printf '/etc/droidloom 配置与 /var/lib/droidloom 下的 Android 数据都保留。\n'
+}
+
+cell_uid() {
+    [ -f "$CELL_SPEC" ] || return 0
+    grep -oE '"host_uid"[[:space:]]*:[[:space:]]*[0-9]+' "$CELL_SPEC" |
+        grep -oE '[0-9]+$' | head -n 1
+}
+
+service_state() {
+    systemctl is-active droidloomd.service 2>/dev/null || true
+}
+
+cmd_status() {
+    local release="" installed=false files=0
+    if [ -f "$STATE_DIR/release" ]; then
+        release=$(cat "$STATE_DIR/release")
+    fi
+    if [ -f "$STATE_DIR/files.list" ]; then
+        installed=true
+        files=$(wc -l < "$STATE_DIR/files.list")
+    fi
+
+    local helper=false
+    if [ -x "$HELPER" ]; then
+        helper=true
+    fi
+
+    local uid
+    uid=$(cell_uid || true)
+    local service
+    service=$(service_state)
+    [ -n "$service" ] || service=absent
+
+    local payload_bytes=0 data_bytes=0 data_dir=""
+    if [ -d "$PREFIX" ]; then
+        payload_bytes=$(du -sb "$PREFIX" 2>/dev/null | cut -f1 || true)
+    fi
+    if [ -n "$uid" ]; then
+        data_dir="/var/lib/droidloom/users/$uid/data"
+        if [ -d "$data_dir" ]; then
+            data_bytes=$(du -sb "$data_dir" 2>/dev/null | cut -f1 || true)
+        fi
+    fi
+
+    if [ "${1:-}" = --json ]; then
+        printf '{"pinned_release":"%s","installed_release":"%s","installed":%s,"files":%s,' \
+            "$DROIDLOOM_RELEASE" "$release" "$installed" "$files"
+        printf '"helper":%s,"cell_uid":%s,"droidloomd":"%s",' \
+            "$helper" "${uid:-null}" "$service"
+        printf '"payload_bytes":%s,"data_bytes":%s,"data_dir":"%s"}\n' \
+            "${payload_bytes:-0}" "${data_bytes:-0}" "$data_dir"
+        return 0
+    fi
+
+    printf '固定版本:      %s\n' "$DROIDLOOM_RELEASE"
+    printf '已铺载荷:      %s（%s，%s 个路径）\n' \
+        "$([ "$installed" = true ] && echo 是 || echo 否)" \
+        "${release:-未记录}" "$files"
+    printf '包管理 helper: %s\n' "$([ "$helper" = true ] && echo 存在 || echo 缺失)"
+    printf 'cell 属主 UID: %s\n' "${uid:-未配置}"
+    printf 'droidloomd:   %s\n' "$service"
+    printf '载荷占用:      %s 字节\n' "${payload_bytes:-0}"
+    printf 'Android 数据:  %s（%s 字节）\n' "${data_dir:-未配置}" \
+        "${data_bytes:-0}"
+}
+
+main() {
+    local command=${1:-}
+    [ $# -gt 0 ] && shift
+    case $command in
+        install|update) cmd_install ;;
+        status) cmd_status "$@" ;;
+        remove) cmd_remove ;;
+        -h|--help|help|"") usage ;;
+        *) usage >&2; exit 2 ;;
+    esac
+}
+
+main "$@"

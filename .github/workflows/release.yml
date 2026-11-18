@@ -418,7 +418,8 @@ jobs:
           manifest = json.loads((root / "manifest.json").read_text())
           assert manifest["status"] == "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
           expected = {"gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
-                      "piano-gnome-extras", "piano-kde-extras"}
+                      "piano-gnome-extras", "piano-kde-extras",
+                      "piano-droidloom-extra"}
           assert set(manifest["packages"]) == expected, sorted(manifest["packages"])
           for name in ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm"):
               assert "piano1" in manifest["packages"][name]["release"], name
@@ -439,6 +440,11 @@ jobs:
 
           脚本会启用 xinyang26/piano-fedora-extras、把仓库优先级设为 1，再安装
           对应的 meta 包。装完注销并重新登录。
+
+          可选的 Droidloom 载荷安装器与桌面档无关，另装：
+
+            sudo dnf install piano-droidloom-extra
+            sudo piano-droidloom-extra install
 
           卸载：
 

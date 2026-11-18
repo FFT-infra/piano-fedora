@@ -51,7 +51,7 @@ def test_verify_extras_parser():
     module = load_verify()
     assert module.EXTRAS_PACKAGES == {
         "gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
-        "piano-gnome-extras", "piano-kde-extras"}
+        "piano-gnome-extras", "piano-kde-extras", "piano-droidloom-extra"}
     records = module.package_releases(PRIMARY, module.EXTRAS_PACKAGES)
     assert "1.piano1.fc45" in [row["release"] for row in records["kwin"]]
     assert records["piano-gnome-extras"][0]["arch"] == "noarch"
