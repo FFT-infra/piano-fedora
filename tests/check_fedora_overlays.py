@@ -29,10 +29,10 @@ def module(name, path):
 
 def mesa_versions():
     mesa = module("mesa_overlay", ROOT / "scripts" / "build-fedora-mesa.py")
-    # 26.2.6 同时出现在 SOURCE_URL、GALLIUM 与 tarball 名里；取 tarball 名里
+    # 版本同时出现在 SOURCE_URL、GALLIUM 与 tarball 名里；取 SRPM 文件名里
     # 的版本，避免把 release 号或补丁名里的数字误当基准版本。
     import re
-    match = re.search(r"/mesa/([0-9.]+)/", mesa.SOURCE_URL)
+    match = re.search(r"/mesa-([0-9.]+)-[0-9]+\.fc[0-9]+\.src\.rpm$", mesa.SOURCE_URL)
     assert match, "SOURCE_URL 里找不到 Mesa 基准版本"
     return {"mesa": match.group(1)}
 
