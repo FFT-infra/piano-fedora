@@ -15,7 +15,7 @@ from pathlib import Path
 from piano_artifacts import sha256
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_URL = "https://kojipkgs.fedoraproject.org/packages/mesa/26.2.7/1.fc45/src/mesa-26.2.7-1.fc45.src.rpm"
+SOURCE_URL = "https://mirrors.kernel.org/fedora/updates/45/Everything/source/tree/Packages/m/mesa-26.2.7-1.fc45.src.rpm"
 SOURCE_SHA256 = "6c175e06fc5d4d639c91523398541329b807749274fcdba99d62768c090f8905"
 SPEC_SHA256 = "b1eac36637faf250b66c5ab24c59697d59f67f2e27fc40be08102c911cd30999"
 TARBALL_SHA256 = "04294f75d22e9f61cd1e050206bc48b3d39366e788f1803a3368e3d5a872ce18"
