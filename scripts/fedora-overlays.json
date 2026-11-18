@@ -7,7 +7,7 @@
       "truth": "scripts/build-fedora-mesa.py",
       "provides": ["mesa-piano"],
       "fedora_packages": [
-        {"name": "mesa", "base_version": "26.2.6", "pkgs_slug": "mesa-dri-drivers"}
+        {"name": "mesa", "base_version": "26.2.7", "pkgs_slug": "mesa-dri-drivers"}
       ],
       "upstream_fix": "freedreno: Add chip-id support for A830v1（Mesa !43878），已随 26.3.0 进入上游",
       "drop_when": "Fedora 45 稳定库提供含 A830v1 chip-id 的 Mesa 26.3+，且 dnf upgrade 不再需要 mesa-piano 顶替官方包",

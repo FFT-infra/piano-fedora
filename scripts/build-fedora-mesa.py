@@ -15,13 +15,13 @@ from pathlib import Path
 from piano_artifacts import sha256
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_URL = "https://kojipkgs.fedoraproject.org/packages/mesa/26.2.6/1.fc45/src/mesa-26.2.6-1.fc45.src.rpm"
-SOURCE_SHA256 = "d7e1bfbfebac51b18a8b32b7453f8001d368ba7ab5aa347dc405bb20093665e1"
-SPEC_SHA256 = "b3988d190cc451f6984b7a768caa4105c59df22213b5341f4938b715bb4af286"
-TARBALL_SHA256 = "b9436b3e1a8be76fbd4823dc884f90596ab7c6ac5e1867a305e66ffccfb31a92"
+SOURCE_URL = "https://kojipkgs.fedoraproject.org/packages/mesa/26.2.7/1.fc45/src/mesa-26.2.7-1.fc45.src.rpm"
+SOURCE_SHA256 = "6c175e06fc5d4d639c91523398541329b807749274fcdba99d62768c090f8905"
+SPEC_SHA256 = "b1eac36637faf250b66c5ab24c59697d59f67f2e27fc40be08102c911cd30999"
+TARBALL_SHA256 = "04294f75d22e9f61cd1e050206bc48b3d39366e788f1803a3368e3d5a872ce18"
 PATCH = "0001-freedreno-Add-chip-id-support-for-A830v1.patch"
 PATCH_SHA256 = "01bc8e6b35019f7d6b84bc2d919a60686ffb1742d4df04467a89d3aac22a7380"
-# 官方 Mesa 的版本号会一直往上走，26.2.6-1.piano1 在版本序上低于 26.2.7-1。
+# 官方 Mesa 的版本号会一直往上走，26.2.7-1.piano1 永远可能落后一档。
 # 抬 epoch 能压住，但 epoch 卸不掉：补丁进了上游之后，回到 Fedora 的 mesa
 # 要每台设备手工 distro-sync。这里改用 RPM Fusion 对同一个包的做法：换包名，
 # 声明它提供原名并与原名冲突。设备上装的从来不是 Fedora 的 mesa-libGL，
@@ -41,7 +41,7 @@ REPLACES = {
 }
 PACKAGES = {f"{SOURCE_PACKAGE}-{sub}" for sub in REPLACES}
 CHIP_ID = 0xffff44050001
-GALLIUM = "libgallium-26.2.6.so"
+GALLIUM = "libgallium-26.2.7.so"
 SPEC_NAME = "Name:           mesa\n"
 SPEC_RELEASE = "Release:        %autorelease\n"
 SPEC_SETUP = "%autosetup -n %{name}-%{ver} -p1\n"
@@ -73,7 +73,7 @@ def adapt_spec(raw):
     # 子包名与精确版本依赖都是 %{name}-<sub>，改这一处就整份跟着变。
     text = text.replace(SPEC_NAME, f"Name:           {SOURCE_PACKAGE}\n")
     # %autosetup 的 -n 原本取 %{name}-%{ver}。改名之后那个目录不存在，tarball
-    # 解出来仍然是 mesa-26.2.6。
+    # 解出来仍然是 mesa-26.2.7。
     text = text.replace(SPEC_SETUP, "%autosetup -n mesa-%{ver} -p1\n")
     text = text.replace(SPEC_RELEASE, "Release:        %autorelease -e piano1\n")
     # 每个子包声明它替代的 Fedora 包名：Provides 让依赖原名的东西继续解析；
@@ -134,7 +134,7 @@ def build(sun, output):
     run("rpm", "-i", "--nodeps", "--define", "_topdir " + str(top), srpm)
     spec = top / "SPECS/mesa.spec"
     effective = adapt_spec(spec.read_bytes())
-    if sha256(top / "SOURCES/mesa-26.2.6.tar.xz") != TARBALL_SHA256:
+    if sha256(top / "SOURCES/mesa-26.2.7.tar.xz") != TARBALL_SHA256:
         raise ValueError("Mesa source tarball differs from the official release")
     spec.write_text(effective)
     shutil.copyfile(patch, top / "SOURCES/piano-a830v1.patch")
@@ -161,7 +161,7 @@ def build(sun, output):
             "rpm", "-qp", "--qf", "%{NAME} %{VERSION} %{RELEASE} %{ARCH}", path).split()
         if name not in PACKAGES:
             continue
-        if name in selected or (version, release, arch) != ("26.2.6", "1.piano1.fc45", "aarch64"):
+        if name in selected or (version, release, arch) != ("26.2.7", "1.piano1.fc45", "aarch64"):
             raise ValueError("unexpected Mesa RPM identity: " + path.name)
         shutil.copyfile(path, rpms / path.name)
         selected[name] = {"file": path.name, "nevra": f"{name}-{version}-{release}.{arch}"}
