@@ -326,6 +326,12 @@ def test_workflow_contract():
     assert text.index("Create the draft release") < text.index("release_upload")
     # 每档的 root-install 绑定到自己的 bundle，而不是只绑一档。
     assert 'record.get("desktop") == desktop' in text
+    # finalize 的表格按空格分隔的桌面名循环；plan 的 desktops 输出是给 matrix
+    # 用的 JSON，直接塞进 shell 的 for 会把它拆成 '["gnome",' 这种词。
+    assert "desktop_names: ${{ steps.src.outputs.desktops }}" in text, (
+        "release.yml 没有给 finalize 提供空格分隔的桌面名")
+    assert "DESKTOPS: ${{ needs.plan.outputs.desktop_names }}" in text, (
+        "finalize 仍在用 JSON 桌面列表做 shell 循环")
     # 归档解压回来必须与装配目录逐项相同。
     assert "diff -r \"$archive\" build/verify" in text
     # 旧的扁平布局不再出现。

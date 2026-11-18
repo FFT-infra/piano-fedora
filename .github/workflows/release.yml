@@ -68,6 +68,8 @@ jobs:
       tag: ${{ steps.src.outputs.tag }}
       commit: ${{ steps.src.outputs.commit }}
       desktops: ${{ steps.src.outputs.desktops_json }}
+      # JSON 给 matrix 用，空格分隔的给 shell 循环用；两者不能互相顶替。
+      desktop_names: ${{ steps.src.outputs.desktops }}
       tools_prepare_run: ${{ steps.src.outputs.tools_prepare_run }}
     steps:
       - uses: actions/checkout@v4
@@ -477,7 +479,7 @@ jobs:
     env:
       TAG: ${{ needs.plan.outputs.tag }}
       STAGE: ${{ github.workspace }}/build/stage
-      DESKTOPS: ${{ needs.plan.outputs.desktops }}
+      DESKTOPS: ${{ needs.plan.outputs.desktop_names }}
     steps:
       - uses: actions/checkout@v4
 
