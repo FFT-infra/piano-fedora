@@ -21,6 +21,9 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +70,18 @@ RELEASEVER = json.loads(
 CHROOT = f"fedora-{RELEASEVER}-aarch64"
 SUCCESS_STATES = {"succeeded", "skipped"}
 FAILURE_STATES = {"failed", "canceled", "cancelled"}
+# COPR 的公开 API 用来判断某个包是不是已经按同一份 SRPM 构建过。
+COPR_API = "https://copr.fedorainfracloud.org/api_3"
+
+# 只有这些包必须先等于下面的包构建完成：BuildRequires 从项目仓库解析，
+# 依赖者提交时被依赖的包还没进仓库就会直接失败。其余包互不相干，可以
+# 在同一批里同时提交。
+DEPENDS = {
+    "iio-sensor-proxy-ssc": ("libssc",),
+    "piano-libfprint": ("piano-fingerprint",),
+    "librevm": ("piano-crosvm",),
+    "piano-runtime": ("librevm",),
+}
 
 # 图形栈的两个本地重建，来自各自的 workflow 与 artifact，不在 piano-rpms
 # 矩阵里：它们的源包是 Fedora 官方 SRPM 加补丁，不属于 packages/ 目录。
@@ -91,6 +106,11 @@ EXTRAS_ORDER = ("gtk3", "kwin", "mutter", "gdm", "gnome-settings-daemon-piano",
                 "piano-gnome-extras", "piano-kde-extras")
 EXTRAS_STATUS = "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
 EXTRAS_PROJECT = "xinyang26/piano-fedora-extras"
+# 两个 meta 包只放 Requires，等它们引用的桌面包进了仓库再提交。
+EXTRAS_DEPENDS = {
+    "piano-gnome-extras": tuple(EXTRAS_ORDER[:5]),
+    "piano-kde-extras": tuple(EXTRAS_ORDER[:5]),
+}
 DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm")
 
 
@@ -481,8 +501,8 @@ def parse_build_ids(stdout):
     return ids
 
 
-def submit(binary, config, project, srpm_dir, package, srpm_name=None):
-    """提交一个 SRPM。
+def srpm_for(srpm_dir, package, srpm_name=None):
+    """解析一个包对应的 SRPM。
 
     srpm_name 给包名与源包名不一致的图形栈用：mesa 的源包产出六个二进制
     包，按包名 glob 会找到多个；这里直接锁定 manifest 记录的那一个文件名。
@@ -492,17 +512,107 @@ def submit(binary, config, project, srpm_dir, package, srpm_name=None):
     if len(matches) != 1 or not matches[0].is_file():
         raise PublishError(f"expected one SRPM for {package}, found "
                            f"{[p.name for p in matches if p.is_file()]}")
+    return matches[0]
+
+
+def submit(binary, config, project, srpm_dir, package, srpm_name=None):
+    """提交一个 SRPM 并立即返回 build id。
+
+    不带 --nowait 时 copr-cli 会等构建结束才返回，一批包只能一个一个编。
+    这里只负责提交，等待由 wait_for_builds 统一轮询，互不依赖的包因此能
+    同时构建。
+    """
+    srpm = srpm_for(srpm_dir, package, srpm_name)
     result = run_cli(binary, config, [
-        "build", project, str(matches[0]), "--chroot", CHROOT,
+        "build", project, str(srpm), "--chroot", CHROOT, "--nowait",
     ])
-    # `copr-cli build` 不带 --nowait 时自己等完构建，失败以非零退出；
-    # 但 id 仍要从 stdout 解析，发布记录和事后核对都靠它。
     ids = parse_build_ids(result.stdout)
     if len(ids) != 1:
         raise PublishError(
             f"{package}: expected one build id, got {ids or 'none'}: "
             f"{result.stdout.strip()[:400]}")
     return result.stdout.strip(), ids[0]
+
+
+def copr_api(path):
+    """读 COPR 公开 API，失败时给出原因而不是裸 traceback。"""
+    url = f"{COPR_API}/{path}"
+    try:
+        with urllib.request.urlopen(url, timeout=60) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        raise PublishError(f"COPR API {path} failed: {error}") from error
+
+
+def published_sources(owner, project):
+    """源包名 → 该项目最近一次成功构建留下的 SRPM 地址。
+
+    发布前用这份 SRPM 和本地 SRPM 逐字节比对：内容相同就不必重建，内容
+    不同但 NVRA 相同也必须重建。只按版本号判断会把改了源却没升 release
+    的包当成已发布。
+    """
+    query = urllib.parse.urlencode({
+        "ownername": owner, "projectname": project,
+        "limit": 200, "order": "id", "order_type": "DESC",
+    })
+    payload = copr_api(f"build/list?{query}")
+    builds = {}
+    for build in payload.get("items", []):
+        if build.get("state") != "succeeded" or CHROOT not in (build.get("chroots") or []):
+            continue
+        source = build.get("source_package") or {}
+        name, url = source.get("name"), source.get("url")
+        if name and url and name not in builds:
+            builds[name] = url
+    return builds
+
+
+def remote_sha256(url):
+    digest = hashlib.sha256()
+    try:
+        with urllib.request.urlopen(url, timeout=300) as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+    except (urllib.error.URLError, OSError) as error:
+        raise PublishError(f"cannot read SRPM {url}: {error}") from error
+    return digest.hexdigest()
+
+
+def plan_publication(entries, builds):
+    """把待发布项分成「已按同一份 SRPM 构建过」和「需要提交」。
+
+    entries 每项是 {"package", "source", "srpm"}。跳过只认 SRPM 摘要，
+    不认版本号。
+    """
+    todo, skipped = [], {}
+    for entry in entries:
+        remote = builds.get(entry["source"])
+        if remote:
+            digest = sha256(entry["srpm"])
+            if remote_sha256(remote) == digest:
+                skipped[entry["package"]] = {"source": entry["source"],
+                                             "srpm_sha256": digest}
+                continue
+        todo.append(entry)
+    return todo, skipped
+
+
+def build_waves(packages, depends, done=()):
+    """按依赖分层；同一层的包可以同时提交。
+
+    已经被跳过的包算作已完成，否则依赖它的包永远等不到前驱。
+    """
+    remaining = [name for name in packages]
+    finished = set(done)
+    waves = []
+    while remaining:
+        wave = [name for name in remaining if set(depends.get(name, ())) <= finished]
+        if not wave:
+            raise PublishError("dependency cycle among: " + ", ".join(remaining))
+        waves.append(wave)
+        finished.update(wave)
+        remaining = [name for name in remaining if name not in wave]
+    return waves
 
 
 def wait_for_builds(binary, config, project, build_ids, timeout=7200, interval=30):
@@ -561,15 +671,28 @@ def publish_extras(args):
     config = write_copr_config(record_path.with_suffix(".copr.conf"), owner)
     try:
         record["project_state"] = ensure_project(binary, config, project)
-        outputs, ids = {}, []
-        for package in EXTRAS_ORDER:
-            output, build_id = submit(binary, config, project,
-                                      Path(args.extras) / "srpms", package)
-            outputs[package] = output
-            ids.append(build_id)
-        states = wait_for_builds(binary, config, project, ids, timeout=args.timeout)
-        record.update(status="PUBLISHED", build_ids=ids, build_states=states,
-                      outputs=outputs)
+        entries = [{"package": package, "source": package,
+                    "srpm": srpm_for(Path(args.extras) / "srpms", package)}
+                   for package in EXTRAS_ORDER]
+        todo, skipped = plan_publication(entries, published_sources(owner, name))
+        by_package = {entry["package"]: entry for entry in entries}
+        outputs, ids, builds, states = {}, [], {}, {}
+        for wave in build_waves([entry["package"] for entry in todo], EXTRAS_DEPENDS,
+                                done=skipped):
+            wave_ids = []
+            for package in wave:
+                entry = by_package[package]
+                output, build_id = submit(binary, config, project,
+                                          entry["srpm"].parent, package,
+                                          srpm_name=entry["srpm"].name)
+                outputs[package] = output
+                builds[package] = build_id
+                wave_ids.append(build_id)
+            ids.extend(wave_ids)
+            states.update(wait_for_builds(binary, config, project, wave_ids,
+                                          timeout=args.timeout))
+        record.update(status="PUBLISHED", build_ids=ids, builds=builds,
+                      build_states=states, outputs=outputs, skipped=skipped)
     finally:
         config.unlink(missing_ok=True)
     write_record(record, record_path)
@@ -647,36 +770,46 @@ def main():
                          indent=2))
         return 0
 
+    entries = []
+    # 图形栈与矩阵包名不重叠，提交顺序只决定失败时先报哪一个；真正需要
+    # 先后的是 DEPENDS 里的 BuildRequires 链。
+    for graphic in GRAPHICS_ORDER:
+        entries.append({"package": graphic,
+                        "source": GRAPHICS[graphic]["source"],
+                        "srpm": srpm_for(Path(getattr(args, graphic)) / "srpms",
+                                         graphic, graphics[graphic]["srpm"])})
+    for package in BUILD_ORDER:
+        if package not in packages:
+            raise PublishError(f"{package} was not built by this run")
+        entries.append({"package": package, "source": package,
+                        "srpm": srpm_for(Path(args.rpms) / "srpms", package)})
+    for package in RUNTIME_ORDER:
+        entries.append({"package": package, "source": package,
+                        "srpm": srpm_for(Path(args.runtime) / "srpms", package)})
+
     binary = copr_cli()
     config = write_copr_config(record_path.with_suffix(".copr.conf"), owner)
     try:
         record["project_state"] = ensure_project(binary, config, project)
-        outputs, ids = {}, []
-        # 先发图形栈：设备 dnf upgrade 要能看见改名后的补丁版，
-        # 而矩阵包的包名与它们不重叠，顺序只决定失败时先报哪一个。
-        for name in GRAPHICS_ORDER:
-            srpm_dir = Path(getattr(args, name)) / "srpms"
-            output, build_id = submit(binary, config, project,
-                                      srpm_dir, name,
-                                      srpm_name=graphics[name]["srpm"])
-            outputs[name] = output
-            ids.append(build_id)
-        for package in BUILD_ORDER:
-            if package not in packages:
-                raise PublishError(f"{package} was not built by this run")
-            output, build_id = submit(binary, config, project,
-                                      Path(args.rpms) / "srpms", package)
-            outputs[package] = output
-            ids.append(build_id)
-        # runtime 来自单独 artifact，但绑定同一次 kernel run；crosvm 先于 librevm。
-        for package in RUNTIME_ORDER:
-            output, build_id = submit(binary, config, project,
-                                      Path(args.runtime) / "srpms", package)
-            outputs[package] = output
-            ids.append(build_id)
-        states = wait_for_builds(binary, config, project, ids, timeout=args.timeout)
-        record.update(status="PUBLISHED", build_ids=ids, build_states=states,
-                      outputs=outputs)
+        todo, skipped = plan_publication(entries, published_sources(owner, name))
+        by_package = {entry["package"]: entry for entry in entries}
+        outputs, ids, builds, states = {}, [], {}, {}
+        for wave in build_waves([entry["package"] for entry in todo], DEPENDS,
+                                done=skipped):
+            wave_ids = []
+            for package in wave:
+                entry = by_package[package]
+                output, build_id = submit(binary, config, project,
+                                          entry["srpm"].parent, package,
+                                          srpm_name=entry["srpm"].name)
+                outputs[package] = output
+                builds[package] = build_id
+                wave_ids.append(build_id)
+            ids.extend(wave_ids)
+            states.update(wait_for_builds(binary, config, project, wave_ids,
+                                          timeout=args.timeout))
+        record.update(status="PUBLISHED", build_ids=ids, builds=builds,
+                      build_states=states, outputs=outputs, skipped=skipped)
     finally:
         config.unlink(missing_ok=True)
     write_record(record, record_path)

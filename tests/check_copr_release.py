@@ -292,6 +292,96 @@ def test_build_failure_is_not_success(module):
         module.run_cli = original
 
 
+def test_submit_requests_nowait(module, tmp):
+    srpm_dir = Path(tmp) / "srpm-nowait"
+    srpm_dir.mkdir(parents=True, exist_ok=True)
+    (srpm_dir / "libssc-0.1.0-1.fc44.src.rpm").write_bytes(b"srpm")
+    seen = {}
+
+    def fake(binary, config, args, **kwargs):
+        seen["args"] = args
+        return cli_result(stdout="Created builds: 99\n")
+
+    original = module.run_cli
+    module.run_cli = fake
+    try:
+        module.submit("copr-cli", "conf", "p", srpm_dir, "libssc")
+    finally:
+        module.run_cli = original
+    # 不带 --nowait 时 copr-cli 会等构建结束才返回，一批包只能串行。
+    assert "--nowait" in seen["args"], seen["args"]
+
+
+def test_build_waves_follow_dependencies(module):
+    names = ["libssc", "iio-sensor-proxy-ssc", "piano-crosvm", "librevm",
+             "piano-runtime", "kernel-piano"]
+    waves = module.build_waves(names, module.DEPENDS)
+    assert waves[0] == ["libssc", "piano-crosvm", "kernel-piano"], waves
+    assert waves[1] == ["iio-sensor-proxy-ssc", "librevm"], waves
+    assert waves[2] == ["piano-runtime"], waves
+    # 跳过的包算已完成，否则依赖它的包永远排不出来。
+    assert module.build_waves(["piano-runtime"], module.DEPENDS,
+                              done={"piano-crosvm", "librevm"}) == [["piano-runtime"]]
+    expect_error(module,
+                 lambda: module.build_waves(["a", "b"], {"a": ("b",), "b": ("a",)}),
+                 "dependency cycle")
+
+
+def test_depends_covers_the_real_build_requires(module):
+    known = set(module.BUILD_ORDER) | set(module.RUNTIME_ORDER) | set(module.GRAPHICS_ORDER)
+    for package, needs in module.DEPENDS.items():
+        assert package in known, package
+        assert set(needs) <= known, (package, needs)
+    # 这四条对应 spec 里的真实 BuildRequires/Requires，不是排序偏好。
+    assert module.DEPENDS == {
+        "iio-sensor-proxy-ssc": ("libssc",),
+        "piano-libfprint": ("piano-fingerprint",),
+        "librevm": ("piano-crosvm",),
+        "piano-runtime": ("librevm",),
+    }
+
+
+def test_published_sources_prefers_newest_success(module):
+    payload = {"items": [
+        {"state": "succeeded", "chroots": [module.CHROOT],
+         "source_package": {"name": "libssc", "url": "u-new"}},
+        {"state": "failed", "chroots": [module.CHROOT],
+         "source_package": {"name": "libssc", "url": "u-failed"}},
+        {"state": "succeeded", "chroots": ["fedora-44-aarch64"],
+         "source_package": {"name": "libssc", "url": "u-other-chroot"}},
+        {"state": "succeeded", "chroots": [module.CHROOT],
+         "source_package": {"name": "kernel-piano", "url": "u-kernel"}},
+    ]}
+    original = module.copr_api
+    module.copr_api = lambda path: payload
+    try:
+        builds = module.published_sources("xinyang26", "piano-fedora")
+    finally:
+        module.copr_api = original
+    assert builds == {"libssc": "u-new", "kernel-piano": "u-kernel"}, builds
+
+
+def test_plan_publication_compares_srpm_bytes(module, tmp):
+    first = Path(tmp) / "libssc-0.1.0-1.fc44.src.rpm"
+    second = Path(tmp) / "piano-camera-0.1.0-1.fc44.src.rpm"
+    first.write_bytes(b"same")
+    second.write_bytes(b"changed")
+    entries = [{"package": "libssc", "source": "libssc", "srpm": first},
+               {"package": "piano-camera", "source": "piano-camera", "srpm": second}]
+    builds = {"libssc": "url-same", "piano-camera": "url-old"}
+    original = module.remote_sha256
+    module.remote_sha256 = lambda url: (module.sha256(first) if url == "url-same"
+                                        else "0" * 64)
+    try:
+        todo, skipped = module.plan_publication(entries, builds)
+    finally:
+        module.remote_sha256 = original
+    # 内容一致才跳过；同一版本号但字节不同必须重编。
+    assert [entry["package"] for entry in todo] == ["piano-camera"], todo
+    assert set(skipped) == {"libssc"}, skipped
+    assert skipped["libssc"]["srpm_sha256"] == module.sha256(first)
+
+
 def make_graphics(directory, name, *, source=None, variant=None, status=None,
                   drop_srpm=False, corrupt=None):
     """造一个图形栈 artifact：manifest + rpms/ + srpms/。
@@ -695,6 +785,11 @@ def main():
     test_failed_run_rejected(module, _MonkeyPatch())
     test_missing_credentials(module, _MonkeyPatch())
     test_build_failure_is_not_success(module)
+    test_submit_requests_nowait(module, tmp)
+    test_build_waves_follow_dependencies(module)
+    test_depends_covers_the_real_build_requires(module)
+    test_published_sources_prefers_newest_success(module)
+    test_plan_publication_compares_srpm_bytes(module, tmp)
     test_graphics_are_in_the_publish_order(module)
     test_runtime_order(module)
     test_extras_order(module)
