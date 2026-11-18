@@ -127,7 +127,8 @@ def build(sun, output):
     with urllib.request.urlopen(SOURCE_URL, timeout=60) as incoming, srpm.open("xb") as stream:
         shutil.copyfileobj(incoming, stream)
     if sha256(srpm) != SOURCE_SHA256:
-        raise ValueError("Fedora Mesa source RPM changed")
+        raise ValueError("Fedora Mesa source RPM changed: "
+                         f"got {sha256(srpm)} ({srpm.stat().st_size} bytes)")
     top = output / "rpmbuild"
     for directory in ("SOURCES", "SPECS", "BUILD", "BUILDROOT", "RPMS", "SRPMS"):
         (top / directory).mkdir(parents=True)
