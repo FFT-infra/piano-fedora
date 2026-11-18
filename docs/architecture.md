@@ -83,17 +83,17 @@ F2FS 排在分区之前：先验证 F2FS 镜像的挂载式往返机制，再根
 - matrix job 扫配方文件展开，不手写档位：
   - 配方由 `scripts/profiles/fedora-desktops.json` 提供，workflow 自动展开。
 - 每个档位独立归档，一个 Release 带齐全部档位：
-  - ESP、内核与 initramfs 在四档各存一份，用户仅下载所选档位。
-- 一个产品 README 加一张变体对照表。表格与入口结构已经落地。四档真机验收之后再补截图。
+  - ESP、内核与 initramfs 在五档各存一份，用户仅下载所选档位。
+- 一个产品 README 加一张变体对照表。表格与入口结构已经落地。五档真机验收之后再补截图。
 
 不取：
 
 - 构建器镜像（Dockerfile → GHCR）：
   - 避免增加镜像维护与缓存失效面；podman 容器按 `releasever` 锁定并由 manifest 兜底。
 - base root 文件系统 `cp -a` 增量变体模型：
-  - 避免打断单次审计事务与 SELinux relabel；四档在 arm runner 并行构建不增加总耗时。
+  - 避免打断单次审计事务与 SELinux relabel；五档在 arm runner 并行构建不增加总耗时。
 - 独立变体脚本与全局 `--nogpgcheck`：
-  - 采用一份配方加解释器，四档共用签名安装事务；派生名与登录配置由 `make test` 覆盖。
+  - 采用一份配方加解释器，五档共用签名安装事务；派生名与登录配置由 `make test` 覆盖。
 
 各档的登录、电源与旋转差异见[桌面档](desktops.md)。
 

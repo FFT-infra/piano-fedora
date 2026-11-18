@@ -57,12 +57,12 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 ## 核心分叉与补丁策略
 
-本仓库在 `patches/kernel/` 追加 7 条设备适配补丁，把上游 7.3 序列推到 0159。Fedora 临时重编包的删除条件见 `scripts/fedora-overlays.json`。
+本仓库在 `patches/kernel/` 追加 7 条设备适配补丁，把上游 7.3 序列推到 0161。Fedora 临时重编包的删除条件见 `scripts/fedora-overlays.json`。
 
 ### 1. 内核补丁序列管理
-内核补丁集（`patches/kernel/`）共 155 条补丁，由上游 120 条封存序列与自有 35 条适配补丁组成，最终目标树固化于 `patches/kernel/series.json`（`target_tree: 4e78c31a39c1`）：
+内核补丁集（`patches/kernel/`）共 157 条补丁，由上游 122 条封存序列与自有 35 条适配补丁组成，最终目标树固化于 `patches/kernel/series.json`（`target_tree: f92d2647d84d`）：
 - **排除内核矩阵解码**：主动排除上游 `0095-input-nt36532e-matrix.patch`。该补丁将触控矩阵解码移入内核且缺乏时域滤波，与本项目的用户态 5 级卡尔曼滤波冲突。同组的笔序列 `0122`–`0124` 建立在它引入的矩阵基础设施上，一并排除；笔路径继续走本仓库的 `device/piano-thp` 用户态实现。`0121-hid-xiaomi-pen-pressure.patch` 不在这组里：它只改 `drivers/hid/`，把 Focus Pen 的私有 Report 5 压感交给 evdev，因此保留。
-- **自有适配序列**：将 35 条自有补丁后移至 `0125`–`0159`，涵盖设备特定的触控平滑、音频与启动约束。
+- **自有适配序列**：将 35 条自有补丁后移至 `0127`–`0161`，涵盖设备特定的触控平滑、音频与启动约束。
 - **构建环境与优化**：采用 LLVM 23.1.5 工具链，启用 `CC_OPTIMIZE_FOR_PERFORMANCE_O3`、`LTO_CLANG_THIN` 与 `CONFIG_ARM64_PIANO_OPTIMIZE`。
 
 ### 2. 充电与电源栈适配
@@ -118,4 +118,4 @@ DTB 里的两个 profile 与原厂 UEFI 的两份面板描述文件一一对应�
 
 核对时注意两个 profile 在 DTB 中的语法格式不同：`35_02_0b` 采用 `[...]` 字节数组，`42_02_0a` 采用 `<0x39000040 ...>` 打包字，解析工具需同时支持两种解析路径。
 
-来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/30e23d758e37f82d1d2f9360771a2ba9567e00a8/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/30e23d758e37f82d1d2f9360771a2ba9567e00a8/docs/devel/hardware/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/30e23d758e37f82d1d2f9360771a2ba9567e00a8/uefi/core/boot/PianoRawLinuxBoot.c)。
+来源：[上游设备覆盖范围](https://github.com/slwyts/Project-SunUEFI/blob/18274377d11e0a12288ffbb795b9982b6a9804f4/docs/status.md)、[面板选择合同](https://github.com/slwyts/Project-SunUEFI/blob/18274377d11e0a12288ffbb795b9982b6a9804f4/docs/devel/hardware/panel-selection.md)、[实际 Raw Linux 交接](https://github.com/slwyts/Project-SunUEFI/blob/18274377d11e0a12288ffbb795b9982b6a9804f4/uefi/core/boot/PianoRawLinuxBoot.c)。

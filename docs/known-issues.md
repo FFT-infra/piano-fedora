@@ -13,7 +13,7 @@
 - [首次启动 GPU 未绑定](#首次启动-gpu-未绑定)
 - [系统缓存（LLCC）没有生效](#系统缓存llcc没有生效)
 - [未开启的内核配置](#未开启的内核配置)
-- [驱动路径未命中（dw9768 与 fsa4480）](#驱动路径未命中)
+- [驱动路径未命中（fsa4480）](#驱动路径未命中)
 - [启动时的间歇 Oops](#启动时的间歇-oops)
 - [刷写与读回](#刷写与读回)
 - [首次安装的 userdata](#首次安装的-userdata)
@@ -103,14 +103,12 @@
 
 ---
 
-## 驱动路径未命中（dw9768 与 fsa4480） <a id="驱动路径未命中"></a>
+## 驱动路径未命中（fsa4480） <a id="驱动路径未命中"></a>
 
-- **现象**：相机音圈马达（VCM）与 Type-C 音频开关芯片驱动未绑定。
-- **影响**：相机马达无法通过 dw9768 控制对焦，音频切换芯片无法通过 fsa4480 驱动受控。
-- **技术根因**：实机设备树声明与补丁匹配项不一致导致探测跳过：
-  - 声明为 `giantec,gt9769` 与 `qcom,fsa4480-i2c`；
-  - 补丁添加项为 `giantec,gt9764` 与 `dioo,dio4485`。
-- **状态**：未解决（待修正设备树或驱动中的 compatible 声明）。
+- **现象**：Type-C 音频开关芯片驱动未绑定。
+- **影响**：`fsa4480` 不被驱动接管，USB-C 耳机与 DP 音频的 SBU 切换走不了软件控制。
+- **技术根因**：出货 DTB 里写的是 `qcom,fsa4480-i2c`，内核 `typec/mux/fsa4480.c` 只匹配 `fcs,fsa4480` 与 `dioo,dio4485`，两边没有交集，探测直接跳过。
+- **状态**：未解决（待补一条把 `qcom,fsa4480-i2c` 加入匹配表的补丁）。
 
 ---
 
@@ -237,6 +235,10 @@
   - 前后摄成像、收敛与预览路径都已单独验证，整机相机验收尚未全部走完。
 - **硬件通信边界**：
   - 触控走高频 SPI 通信，DMA 优化延迟控制在 2.5ms 内；音频子系统连续播放与录音保持稳定无 xrun 欠载。
+- **触控设备身份与掌托**：
+  - 用户态 uinput 设备按 `BUS_SPI`、vendor `0x0603`、product `0x6532`、名字 `piano NT36532 THP touchscreen` 上报，与 BSP udev 规则和笔设备落在同一个 `LIBINPUT_DEVICE_GROUP=piano-touchscreen` 组里；
+  - 上报 `ABS_MT_TOUCH_MINOR`，并按槽位上报 `MT_TOOL_PALM`：掌托锁存时清空接触，再把上一帧手指作为 `MT_TOOL_PALM` 重报，让 libinput 取消接触而不是把它们保持住；
+  - 设备身份、分组、能力位与服务自启已核对，掌托识别与双指以上的实际手感还没有真机验收记录。
 - **DisplayPort 音频**：
   - topology 由 SunUEFI 的 `piano-displayport.m4` 编出，含 `DISPLAY_PORT_RX_0` 与 `MultiMedia2` 链路；UCM 的 `SectionDevice."HDMI"` 走 `hw:${CardId},1`，`JackControl` 为 `DP0 Jack`；
   - 链路已接通，插 DP 的实机验收还没做。
@@ -247,8 +249,9 @@
 
 ### 指纹
 - **硬件与驱动**：汇顶 Goodix 侧置电容式指纹，安全认证在 TEE 的 `gfpia` TA 中执行，内核 `uio_piano_fingerprint` 与 `qcomtee` 驱动正常加载。
-- **系统堆栈**：预装 `piano-fingerprint` 与 `piano-libfprint`，fprintd 识别设备并支持录入与锁屏解锁。
-- **已知限制**：系统不支持跨系统直接读取 Android 侧录入的指纹模板，需在 Linux 环境下独立录入。
+- **系统堆栈**：预装 `piano-fingerprint` 与 `piano-libfprint`。这一版跟到上游重写的 TEE 路径，`piano-goodix` 源码内联进 libfprint，不再产出独立的 `libpiano-goodix` 静态库。fprintd 能枚举设备。
+- **已知限制**：上游把这条新 TEE 路径的验证范围限定在初始化与设备枚举，录入、重开模板与匹配都还没有达到可宣称的程度。系统不支持跨系统直接读取 Android 侧录入的指纹模板，需在 Linux 环境下独立录入。
+- **未验项**：本版镜像上的指纹录入、验证与锁屏解锁没有真机记录。
 
 ### 红外
 - **硬件与驱动**：消费级红外发射器挂载于 QUPv3 SPI 总线，`/dev/lirc0` 节点与 `ir_spi` 驱动就绪，支持通过 `ir-ctl` 发送红外码。
@@ -268,6 +271,14 @@
 
 ### 键盘背光
 - **热插拔与状态**：随磁吸键盘插拔动态识别；extras 提供 `gnome-settings-daemon-piano` 补丁支持热插拔刷新；睡眠唤醒后的背光恢复待进一步验收。
+
+---
+
+## Denial 桌面
+
+- **Fedora 45 上没有可用的会话记录。** 上游只为 Fedora 44 发布仓库，验证环境是 Fedora 44 Workstation + GDM；本仓库在 Fedora 45 + SM8750 上装配 denial 档，属于上游没有覆盖的组合。
+- **叠加验证结果（2026-11-17）**：在 KDE 镜像上装上游 0.6.6 的 `denial` 与 `denial-flutter-engine` 后，`denial-session --check` 的 DRM、Mesa、Flutter 与 Xwayland 各项全部通过；临时切到 greetd + `denial-session --start-locked` 时，`deniald` 在 GPU 初始化阶段 SIGABRT，会话没有起来。coredump 主线程栈停在 `gpu_transfer` → `gbm_bo` 释放 → `drmIoctl`，涉及的组件是 `mesa-piano-26.2.6-1.piano1.fc45` 与 `libdrm-2.4.134`。随后已回滚到 `plasmalogin` + KDE，桌面恢复。
+- **结论边界**：`denial` 档的 rootfs 构建与审计通过，只能说明组装完整；会话可用性没有成立。使用 denial 档之前先以本文的叠加方法在一台可回滚的设备上复测。
 
 ---
 

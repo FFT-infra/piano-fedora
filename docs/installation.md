@@ -252,7 +252,7 @@ sha256sum -c SHA256SUMS
 
 默认路径清空 `userdata`。需要保留 Android 数据时加 `--lossless`：先在 Android 上把解密后的 F2FS 缩到新容量，再写分区表，全程不擦除。前提是设备已 root、已装与当前 BOOT 匹配的「SunUEFI 引导助手」模块（`piano-resize-f2fs` 随模块提供），并且 `userdata` 的空闲块够用。
 
-分区表要先是首装规划器接受的形态：没有 `sunuefi_root`、`sunuefi_esp`，`userdata` 是最后一个分区并顶到盘尾。设备上已经有 Linux 分区时，先在 Android 的「SunUEFI 引导助手」WebUI 存储页用 **删除并归还 Android 空间** 删掉 `sunuefi_esp`、`sunuefi_root` 并把 `userdata` 拉回盘尾；这一步需要支持早期 init 配置的 SukiSU，早期维护会在下次启动把加密 F2FS 扩到新容量。操作顺序见上游的 [Android 存储扩容](https://github.com/slwyts/Project-SunUEFI/blob/30e23d758e37f82d1d2f9360771a2ba9567e00a8/docs/devel/boot/android-storage.md)。
+分区表要先是首装规划器接受的形态：没有 `sunuefi_root`、`sunuefi_esp`，`userdata` 是最后一个分区并顶到盘尾。设备上已经有 Linux 分区时，先在 Android 的「SunUEFI 引导助手」WebUI 存储页用 **删除并归还 Android 空间** 删掉 `sunuefi_esp`、`sunuefi_root` 并把 `userdata` 拉回盘尾；这一步需要支持早期 init 配置的 SukiSU，早期维护会在下次启动把加密 F2FS 扩到新容量。操作顺序见上游的 [Android 存储扩容](https://github.com/slwyts/Project-SunUEFI/blob/18274377d11e0a12288ffbb795b9982b6a9804f4/docs/devel/boot/android-storage.md)。
 
 `plan` 与 `apply` 都要带 `--lossless`，且都不能带 `--accept-data-loss`。计划里会多出 `f2fs_shrink.userdata_bytes`，那是设备侧缩容的目标容量；新 `userdata` 长度按 F2FS section 对齐，section 大小由设备上的解密映射读出，宿主机读不到。
 
@@ -644,7 +644,7 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 ## 七、 首次登录与诊断
 
-刷完后平板自动重启，进入 120 Hz 的桌面。四个档位都自动登录到 `piano` 用户：GNOME 走 GDM，KDE 走 plasma-login-manager，niri 与 Hyprland 走 greetd 的 `tuigreet` 兜底。
+刷完后平板自动重启，进入 120 Hz 的桌面。五个档位都自动登录到 `piano` 用户：GNOME 走 GDM，KDE 走 plasma-login-manager，niri、Hyprland 与 Denial 走 greetd 的 `tuigreet` 兜底。
 
 ### 1. 默认状态
 

@@ -33,7 +33,7 @@ build-bundle
 | build-bundle | `root_image_run_id` |
 | prepare-install | `bundle_run` |
 
-每次 dispatch 都用 tag 或分支钉住 commit，不要用会移动的分支名。四档产物必须落在同一个 commit 上。`release.yml` 会逐档核对 run 的 `head_sha`，混进一个别的提交就拒绝发布。中途往分支上推任何 commit 都会让后续步骤落到新提交上，所以发布期间停在 tag 上跑。
+每次 dispatch 都用 tag 或分支钉住 commit，不要用会移动的分支名。五档产物必须落在同一个 commit 上。`release.yml` 会逐档核对 run 的 `head_sha`，混进一个别的提交就拒绝发布。中途往分支上推任何 commit 都会让后续步骤落到新提交上，所以发布期间停在 tag 上跑。
 
 发布验收必须用这一整条链的新产物，并从原始 GPT/UFS 布局重新分区。手工补进会话 RPM 的 root 文件系统不算通过。
 
@@ -115,7 +115,7 @@ build-bundle run（deploy-bundle-<desktop>）
 prepare-install run（root-install-<desktop>，bundle_run 必须等于上面的 build-bundle run）
 ```
 
-默认不填任何 run id，四个档位的 build-bundle 与 prepare-install 都按 tag 指向的 commit 解析：
+默认不填任何 run id，五个档位的 build-bundle 与 prepare-install 都按 tag 指向的 commit 解析：
 
 ```sh
 gh workflow run release.yml -f tag=<tag> -f desktop=all

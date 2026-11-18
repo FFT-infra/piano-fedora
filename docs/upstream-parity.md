@@ -8,7 +8,7 @@
 
 | 项 | 当前实现 | 上游基线 | 说明 |
 | --- | --- | --- | --- |
-| 指纹用户态 | 完成：`piano-fingerprint` 与 `piano-libfprint` 预装，fprintd 识别设备并打通录入与解锁 | 补丁集把 Goodix 接进标准 libfprint | 认证链路打通，模板与 Android 隔离 |
+| 指纹用户态 | 部分：`piano-fingerprint` 与 `piano-libfprint` 预装并跟到上游 TEE 重写，fprintd 能枚举设备 | 补丁集把 Goodix 接进标准 libfprint | 新 TEE 路径只有初始化和枚举保证，录入与解锁未验，模板与 Android 隔离 |
 | 相机闪光灯 | 完成：`capture rear --flash`，预览流同步频闪，无流时常亮补光 | 帧同步频闪 | 补光与出流正常 |
 | 相机 JPEG 直出 | 完成：`piano-camera-ctl capture --output FILE` 直出 JPEG | `photo/jpeg.c` | 工具链完整 |
 | 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成 NV12 | `quad/` 与 v4l2loopback 生产者协商 | 格式协商完整，支持 8160x6120 输出 |
@@ -24,9 +24,10 @@
 | 自动亮度 | 已支持：profile 加载与背光换算，支持随环境光动态调光 | GSD 按原厂 lux 曲线调背光 | 纳入 extras 扩展仓 |
 | 键盘背光热插拔 | extras 的 GSD 带 50.1 补丁，背光设备随键盘盖插拔更新 | 背光走 UPower/GNOME | 外接键盘深度验收未做 |
 | KDE HDR/广色域 | 完成：extras 的 KWin 带退出 HDR 恢复背光补丁，支持正常开关 | KWin 可切换，退出 HDR 恢复背光 | 色深与色调映射精度未测，见[已知问题](known-issues.md#hdr) |
-| 指纹录入 | 完成：`fprintd-enroll`、`fprintd-verify` 与锁屏解锁全流程打通 | libfprint/fprintd 录入与认证 | 详见[桌面档位](desktops.md)与[已知问题](known-issues.md#指纹红外与-hdr) |
+| 指纹录入 | 未验：旧 TEE 路径曾打通 `fprintd-enroll`、`fprintd-verify` 与锁屏解锁，新 TEE 路径尚无流程记录 | libfprint/fprintd 录入与认证 | 详见[已知问题](known-issues.md#指纹红外与-hdr) |
 | 相机隐私灯 | 完成：前后摄视频流启停联动 `/sys/class/leds/green/brightness` | 随前后摄视频流启停 | 驱动控制链路完整 |
 | 相机录像 | 完成：支持 1920x1440@30 预览与录像 | 预览、录像、AE/AF/AWB | 直连与 loopback 均正常 |
+| 后摄自动对焦 | 随 18274377 换成双向 GT9764BA（`gt9764` 驱动 + `camerad` 按 ancillary link 找 LENS） | 同一颗执行器 | 新硬件上机验收未做 |
 | 手写笔进阶 | 基础输入正常：位置、压感、倾斜、proximity | 捏握、震动、磁吸识别、电量、跨系统重配 | 进阶手势与按键映射未实现 |
 | 普通 Focus Pen 校准 | 笔校准 INI 与上游同源，含第二支笔的 `stylus_2_*` 参数 | 同一份 BSP INI | 参数已入包，未实机验收 |
 | DisplayPort 音频 | topology 与 UCM 都含 `DISPLAY_PORT_RX_0`，`SectionDevice."HDMI"` 走 `hw:${CardId},1` | 同一份 BSP m4 与 UCM | 链路已接通，未实机验收 |
@@ -42,6 +43,7 @@
 ### 1. 触控矩阵滤波：排除内核解码（0095 补丁）
 * **上游做法**：补丁 `0095-input-nt36532e-matrix.patch` 将逐帧触控矩阵解码移入内核空间驱动中执行。
 * **本项目决策**：**主动排除该补丁**。该补丁缺乏时域滤波能力，易受高频电磁杂讯干扰。本项目坚持采用用户态 THP 读取 + 5 级卡尔曼滤波 + 24 像素正交轴向锁，抗抖动表现更平滑稳定。
+* **设备身份与掌托**：用户态 uinput 设备按 `BUS_SPI`、`0603:6532` 与 `piano NT36532 THP touchscreen` 上报，和笔设备共享 `LIBINPUT_DEVICE_GROUP=piano-touchscreen`，与 BSP 的 udev 规则对齐；补报 `ABS_MT_TOUCH_MINOR`，掌托锁存时把上一帧手指以 `MT_TOOL_PALM` 重报，让 libinput 取消接触。这些是用户态路径自己的接口契约，不依赖 0095。
 
 ### 2. 电源模式调度：禁止外部直接写频点，采用 Uperf 桥接
 * **上游做法**：在 TuneD profile 中直接向 `scaling_max_freq` 与 `3d00000.gpu/max_freq` 写入固定频率。
@@ -67,7 +69,7 @@
 
 | 子系统 / 特性 | 核心实现与配置说明 | 缺陷、异常与技术边界 |
 | --- | --- | --- |
-| **桌面与显示** | [桌面档位（desktops.md）](desktops.md)（四档会话、KWin/Mutter 缩放、登录方式） | [已知问题（known-issues.md#显示与关屏）](known-issues.md#显示与关屏) |
+| **桌面与显示** | [桌面档位（desktops.md）](desktops.md)（五档会话、KWin/Mutter 缩放、登录方式） | [已知问题（known-issues.md#显示与关屏）](known-issues.md#显示与关屏) |
 | **HDR 与广色域** | [桌面档位（desktops.md#extras-可选组件）](desktops.md#extras-可选组件)（KWin 补丁） | [已知问题（known-issues.md#hdr）](known-issues.md#hdr)（背光恢复与色彩边界） |
 | **指纹识别** | `piano-fingerprint` 与 `piano-libfprint` 软件包集 | [已知问题（known-issues.md#指纹红外与-hdr）](known-issues.md#指纹红外与-hdr)（模板隔离与鉴权） |
 | **红外发射** | 内核 `ir_spi` 驱动与 `/dev/lirc0` 设备节点 | [已知问题（known-issues.md#指纹红外与-hdr）](known-issues.md#指纹红外与-hdr)（发射与发码） |
@@ -97,4 +99,4 @@ zcat /proc/config.gz | grep -E 'CONFIG_LIRC|CONFIG_IR_SPI|CONFIG_UIO_PIANO|CONFI
 rpm -q mutter libfprint fprintd tuned glibc-langpack-zh
 ```
 
-上游基线对照源文件位于 `build/test-sources/sunuefi`（`4ef8740`）的 `tools/build_piano_fingerprint.py`、`linux/userspace/camera/`、`linux/desktops/`、`patches/libfprint/` 与 `docs/status.md`。
+上游基线对照源文件位于 `build/test-sources/sunuefi`（`18274377`）的 `tools/build_piano_fingerprint.py`、`linux/userspace/camera/`、`linux/desktops/`、`patches/libfprint/` 与 `docs/status.md`。

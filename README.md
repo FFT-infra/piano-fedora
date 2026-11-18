@@ -44,7 +44,7 @@
 
 ## 桌面
 
-镜像按档位构建，同一份发布链出四档 root 文件系统。四档共用内核、ESP 与
+镜像按档位构建，同一份发布链出五档 root 文件系统。五档共用内核、ESP 与
 一键脚本，只有 root 镜像与 `root-install/` 不同。
 
 | 档位 | 会话 | 登录 | 自动旋转 | 验收状态 |
@@ -53,6 +53,7 @@
 | `kde` | KDE Plasma | plasma-login-manager 自动登录 | KWin，需 `qt6-qtsensors` | 已登录桌面，旋转已验 |
 | `niri` | niri | greetd + tuigreet | 无，手动 `transform` | 已登录桌面 |
 | `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无，手动 rotate | 已登录桌面 |
+| `denial` | Denial（第三方 DNF 仓库） | greetd + tuigreet | 无 | 未在 Fedora 45 实机验收 |
 
 每档一个归档，装哪一档就下哪一档。每档的登录、电源行为、旋转能力与已知
 缺口见[桌面档](docs/desktops.md)。
@@ -65,7 +66,7 @@
 |---|---|---|
 | 屏幕亮度跟随环境光 | GNOME | GSD 按原厂 lux→nits 曲线换算目标亮度 |
 | 悬浮键盘插拔后背光可用 | GNOME | GSD 刷新键盘背光设备 |
-| 手写笔在 X11 应用里可用 | 四档 | GTK3 用设备所属 display 取 XI2 工具原子 |
+| 手写笔在 X11 应用里可用 | 五档 | GTK3 用设备所属 display 取 XI2 工具原子 |
 | 触摸时 GNOME 不崩 | GNOME | mutter 加空 KMS gamma LUT 与已取消触摸 grab 两个守卫 |
 | 关掉 HDR 后背光回落 | KDE | KWin 退出 HDR 时恢复原亮度 |
 | GNOME 登录前等显示就绪 | GNOME | gdm 等 KMS connector 出现再起会话 |
@@ -104,7 +105,7 @@
 
 ## 发布产物
 
-Release 由维护者用 tag 手工 dispatch，tag push 不会触发发布。一个 Release 只包含同一次 `build-bundle` 与这次 run 派生的 `prepare-install` 的已验证产物，不重新编译。一个 Release 带四档桌面，每档一个归档 `piano-<tag>-<档位>.tar.zst`，超过 2 GiB 时切成 `.part-NN`。
+Release 由维护者用 tag 手工 dispatch，tag push 不会触发发布。一个 Release 只包含同一次 `build-bundle` 与这次 run 派生的 `prepare-install` 的已验证产物，不重新编译。一个 Release 带五档桌面，每档一个归档 `piano-<tag>-<档位>.tar.zst`，超过 2 GiB 时切成 `.part-NN`。
 
 归档里有平台镜像、所选档位的 `root-install/`、组件 manifest、一键脚本与 boot-tools。装机只下所选档位，GNOME 约 2.1 GiB，niri 约 1 GiB。归档自带的 `SHA256SUMS` 只列真实存在的文件，两条校验命令都能直接通过。逐个文件的作用见[交付物与流水线](docs/artifacts.md#release-发布)。
 

@@ -1,6 +1,6 @@
 # 构建与交付产物
 
-目标是 Fedora 45（四档桌面）+ F2FS 的主机构建集合。构建阶段停在写入设备之前。平板启动、首次分区和本机 BOOT 包装另行验收。
+目标是 Fedora 45（五档桌面）+ F2FS 的主机构建集合。构建阶段停在写入设备之前。平板启动、首次分区和本机 BOOT 包装另行验收。
 
 | 产物 | 生产入口 | 集成关系 |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ clean root 文件系统的 `kernel-piano` 与内核压缩包必须来自同一�
 
 最终 deploy-bundle 包含 `sunuefi_esp.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、`initramfs.tar.zst`、`diagnostic-abl-storage.tar.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。
 
-`initramfs.tar.zst` 由 build-image 用固定时间戳与 owner 打出，四档逐字节相同。`initramfs.tar.zst` 是 `build-bundle` 解包后重新打进 UKI `.initrd` 节区的中间产物，不进 Release 归档。
+`initramfs.tar.zst` 由 build-image 用固定时间戳与 owner 打出，五档逐字节相同。`initramfs.tar.zst` 是 `build-bundle` 解包后重新打进 UKI `.initrd` 节区的中间产物，不进 Release 归档。
 
 deploy-bundle 自带 sparse。Release 归档里带的是 `prepare-install` 产出的 prepared root，两者内容相同，prepared root 带着设备配置与 SELinux 标签。
 
@@ -86,9 +86,9 @@ ESP 上只有 `/EFI/Linux/sunuefi.efi` 一个 Linux 载荷。它是 UKI，内核
 
 发布不由 tag push 触发。手工 dispatch 并填 tag，内容与 tag 指向的 commit 绑定。
 
-默认不填 run id：`desktop` 留 `all`，四档的 run 都按 tag commit 解析。某个档位缺 run 时，用 `desktop_runs` 只发其余档（`gnome=<bundle>:<prepare>,kde=<bundle>:<prepare>`）。没写 run id 的条目仍按 commit 解析。
+默认不填 run id：`desktop` 留 `all`，五档的 run 都按 tag commit 解析。某个档位缺 run 时，用 `desktop_runs` 只发其余档（`gnome=<bundle>:<prepare>,kde=<bundle>:<prepare>`）。没写 run id 的条目仍按 commit 解析。
 
-build-bundle 与 prepare-install 的 artifact 都带档位：`deploy-bundle-<档位>` 与 `root-install-<档位>`。`boot-tools` 与 `host-boot-tool` 四档同源，只取第一档的，其余各档与它逐字节比对。
+build-bundle 与 prepare-install 的 artifact 都带档位：`deploy-bundle-<档位>` 与 `root-install-<档位>`。`boot-tools` 与 `host-boot-tool` 五档同源，只取第一档的，其余各档与它逐字节比对。
 
 ### 每档一个归档
 
@@ -130,17 +130,17 @@ deploy-bundle 里有三类文件不进归档。
 
 ### 资产清单
 
-体积数据取自四档发布构建基准，随内核与套件更新有所浮动。
+体积数据取自五档发布构建基准，随内核与套件更新有所浮动。
 
 | 资产 | 数量 | 体积 | 用途 |
 | --- | --- | --- | --- |
-| `piano-<tag>-<档位>.tar.zst[.part-NN]` | 6 个分片 | 合计约 6.8 GiB | 每档一个归档，gnome 与 kde 各 2 个分片，niri 与 hyprland 各 1 个 |
-| `piano-<tag>-<档位>.sha256` | 4 份 | 每份 1–2 行 | 这一档的分片摘要，`sha256sum -c` 直接喂 |
+| `piano-<tag>-<档位>.tar.zst[.part-NN]` | 7 个分片 | 合计约 7.7 GiB | 每档一个归档，gnome 与 kde 各 2 个分片，niri、hyprland 与 denial 各 1 个 |
+| `piano-<tag>-<档位>.sha256` | 5 份 | 每份 1–2 行 | 这一档的分片摘要，`sha256sum -c` 直接喂 |
 | `RELEASE-SHA256SUMS` | 1 份 | 几 KiB | 全部资产的哈希，`actions/attest-build-provenance` 的输入 |
 
-四档 Release 合计 11 个资产。装 gnome 下 2 个分片加 1 份 sidecar，合计 2.1 GiB。
+五档归档加 extras 归档与各自 sidecar、`RELEASE-SHA256SUMS`，合计 15 个资产。装 gnome 下 2 个分片加 1 份 sidecar，合计 2.1 GiB；kde 约 2.8 GiB，niri、hyprland 与 denial 各约 1 GiB。
 
-归档总量比扁平布局多 318 MiB。多出的体积是平台镜像与 boot-tools 在四档里各存一份。用户下载量不变。
+归档总量比扁平布局多出的部分是平台镜像与 boot-tools 在五档里各存一份。用户只下载自己那一档，下载量不变。
 
 ### 平台镜像压缩
 

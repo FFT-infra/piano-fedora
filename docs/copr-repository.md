@@ -79,7 +79,7 @@ sudo dnf upgrade --refresh
 
 ## 可选的 extras 软件源
 
-默认镜像与上面的默认仓库都不带补丁版桌面组件。需要 GNOME 自动亮度、键盘背光热插拔、GNOME 触摸崩溃修复、GNOME 登录前等 DRM connector 或 KDE HDR 退出后背光恢复时，再单独启用 `xinyang26/piano-fedora-extras`。这个项目默认关闭，不装它时四档桌面仍用 Fedora 原版 GSD、KWin、GTK3、mutter 与 gdm。
+默认镜像与上面的默认仓库都不带补丁版桌面组件。需要 GNOME 自动亮度、键盘背光热插拔、GNOME 触摸崩溃修复、GNOME 登录前等 DRM connector 或 KDE HDR 退出后背光恢复时，再单独启用 `xinyang26/piano-fedora-extras`。这个项目默认关闭，不装它时五档桌面仍用 Fedora 原版 GSD、KWin、GTK3、mutter 与 gdm。
 
 | 包 | 内容 |
 | --- | --- |
@@ -175,10 +175,11 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 - COPR 覆盖全部 18 个包（包括内核）：
   - ESP 上的 `/EFI/Linux/sunuefi.efi` 由 `%posttrans` 维护，`.dtb` 节区沿用现有 UKI；
   - 板级 overlay 不在这条升级路径上更新。
-- 设备的 `.repo` 只指向项目自己的 COPR。Hyprland 档位在构建期另加第三方源
-  `lionheartp/Hyprland`（Fedora 44 官方仓库没有 Hyprland 及其配套组件）。仓库以
-  `--repofrompath` 临时加入并校验公钥，不写进镜像的持久配置。四档里只有
-  Hyprland 用这个源，其余三档只连官方仓库。细节见[桌面档](desktops.md)。
+- 设备的 `.repo` 只指向项目自己的 COPR。Hyprland 与 Denial 两档在构建期另加
+  第三方源：Hyprland 用 `lionheartp/Hyprland` COPR，Denial 用官方
+  `packages.denialwm.org` 的 Fedora 44 仓库（Fedora 45 官方仓库没有这两个桌面）。
+  仓库都以 `--repofrompath` 临时加入并校验公钥，不写进镜像的持久配置。其余三档
+  只连官方仓库。细节见[桌面档](desktops.md)。
 - 重建产物和 CI 矩阵产物环境不同，版本号相同但非逐字节一致：
   - 需要完全一致二进制时直接使用 bundle 内的 RPM，不使用 COPR。
 
