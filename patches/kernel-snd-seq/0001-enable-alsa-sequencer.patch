@@ -1,17 +1,17 @@
 diff --git a/tools/build_piano_full_kernel.py b/tools/build_piano_full_kernel.py
-index 13fec3c..40660c3 100644
+index 2290a6b..5129e7e 100644
 --- a/tools/build_piano_full_kernel.py
 +++ b/tools/build_piano_full_kernel.py
-@@ -121,6 +121,12 @@ FEDORA_OVERRIDES.update({key:'m' for key in (
-     'CONFIG_NF_CONNTRACK_IRC','CONFIG_NF_CONNTRACK_NETBIOS_NS','CONFIG_NF_CONNTRACK_PPTP',
-     'CONFIG_NF_CONNTRACK_SANE','CONFIG_NF_CONNTRACK_SIP','CONFIG_NF_CONNTRACK_SNMP',
-     'CONFIG_NF_CONNTRACK_TFTP')})
+@@ -110,6 +110,12 @@ F2FS_OVERRIDES={'CONFIG_F2FS_FS':'y','CONFIG_F2FS_FS_XATTR':'y',
+                 'CONFIG_F2FS_FS_POSIX_ACL':'y','CONFIG_F2FS_FS_SECURITY':'y'}
+ FEDORA_OVERRIDES={'CONFIG_SECURITY_NETWORK':'y','CONFIG_SECURITY_SELINUX':'y',
+                   'CONFIG_LSM':'"selinux"'}
 +# Fedora user space routes MIDI through the ALSA sequencer: alsa-lib's
 +# dist-alsa.conf loads snd-seq whenever a sound card comes up, and FluidSynth or
 +# aconnect need /dev/snd/seq to exist. The public profile leaves the sequencer
 +# off, so that modprobe attempt fails on every boot. Keep it a module: nothing
 +# loads it on a default desktop, and SND is a module too.
 +FEDORA_OVERRIDES.update({'CONFIG_SND_SEQUENCER':'m'})
- # The Fedora production kernel always includes the locked upstream Gunyah VMM.
- GUNYAH_OVERRIDES={'CONFIG_GUNYAH':'y','CONFIG_GUNYAH_HYPERCALLS':'y',
-                   'CONFIG_GUNYAH_TIMER':'y','CONFIG_GUNYAH_PLATFORM_HOOKS':'y',
+ # Fedora firewalld and libvirt need connection tracking and NAT switched on. The
+ # shared platform fragment already owns the nftables options themselves, so only
+ # the switches it leaves at their defaults are named here: redefining one of its
