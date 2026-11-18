@@ -3,7 +3,7 @@
   "target": "sunuefi",
   "note": "按顺序应用。每个补丁的 targets 是应用前该文件必须匹配的摘要；上游更新后不匹配会报错退出，不静默跳过。creates 必须与实际新建的文件完全一致。",
   "base": {
-    "sunuefi_commit": "18274377d11e0a12288ffbb795b9982b6a9804f4"
+    "sunuefi_commit": "f06ad9eeb4d505ffae70c2814b089e381ae72145"
   },
   "patches": [
     {

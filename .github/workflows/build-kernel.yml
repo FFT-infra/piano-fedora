@@ -34,6 +34,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 记下这条链真正吃了哪些输入，下游按摘要复用，不再按 commit 绑定。
+      # 手动指定 sunuefi_ref 时产物不对应 sources.lock.json，不上传摘要，
+      # 发布链也就解析不到它。
+      - name: Record the build input digest
+        if: ${{ inputs.sunuefi_ref == '' }}
+        run: |
+          set -euo pipefail
+          name=$(python3 scripts/build-inputs.py --chain kernel --artifact-name)
+          mkdir -p build/inputs
+          python3 scripts/build-inputs.py --chain kernel --record build/inputs/inputs.json
+          echo "DIGEST_ARTIFACT=$name" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.sunuefi_ref == '' }}
+        with:
+          name: ${{ env.DIGEST_ARTIFACT }}
+          path: build/inputs/inputs.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Read pinned commits
         id: pins
         run: |

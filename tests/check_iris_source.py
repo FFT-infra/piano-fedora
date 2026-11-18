@@ -21,11 +21,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SERIES = Path("patches/linux/7.3/series.json")
 # 补丁文件名 -> 它必须改到的内核文件。
 EXPECTED = {
-    "0127-dpu-defer-slave-cleanup.patch": "drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c",
-    "0128-media-iris-decode-order-and-deblocking.patch":
+    "0133-dpu-defer-slave-cleanup.patch": "drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c",
+    "0134-media-iris-decode-order-and-deblocking.patch":
         "drivers/media/platform/qcom/iris/iris_hfi_gen2.c",
-    "0129-asoc-piano-speaker-gain-limit.patch": "sound/soc/qcom/sc8280xp.c",
-    "0130-input-nt36532e-panel-vendor-misc.patch":
+    "0135-asoc-piano-speaker-gain-limit.patch": "sound/soc/qcom/sc8280xp.c",
+    "0136-input-nt36532e-panel-vendor-misc.patch":
         "drivers/input/touchscreen/nt36532e/nt36xxx.c",
 }
 

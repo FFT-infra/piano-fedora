@@ -254,7 +254,9 @@ runs = json.load(open(os.environ['PIANO_GH_RUNS']))
 ids = {name: 1000 + index for index, name in enumerate(sorted(workflows))}
 m = re.search(r'/actions/runs/(\d+)/artifacts', path)
 if m:
-    print(json.dumps({'artifacts': [{'name': name, 'expired': False} for name in artifacts]})); sys.exit(0)
+    rid = m.group(1)
+    names = artifacts.get(rid, []) if isinstance(artifacts, dict) else artifacts
+    print(json.dumps({'artifacts': [{'name': name, 'expired': False} for name in names]})); sys.exit(0)
 m = re.match(r'.*/actions/runs/(\d+)$', path)
 if m:
     rid = m.group(1)
@@ -295,12 +297,14 @@ def resolve_step_env(root, workflows, artifacts, runs):
 
 def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_run="",
                 rootfs_run="", mesa_run="", ffmpeg_run="", release_mode="false",
-                desktop="gnome", rootfs_artifact=None, size_mib="", sha="", runs=None):
+                desktop="gnome", rootfs_artifact=None, size_mib="", sha="", runs=None,
+                artifacts=None):
     workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
                  "build-mesa.yml", "host-check.yml"]
-    artifacts = [ROOTFS_GNOME, ROOTFS_KDE, "kernel-release-7.3.0", "kernel-sdk-7.3.0",
-                 "kernel-experimental-gunyah", "piano-fedora-runtime",
-                 "piano-fedora-runtime-gunyah", "piano-fedora-mesa", "piano-fedora-ffmpeg"]
+    if artifacts is None:
+        artifacts = [ROOTFS_GNOME, ROOTFS_KDE, "kernel-release-7.3.0", "kernel-sdk-7.3.0",
+                     "kernel-experimental-gunyah", "piano-fedora-runtime",
+                     "piano-fedora-runtime-gunyah", "piano-fedora-mesa", "piano-fedora-ffmpeg"]
     if runs is None:
         runs = {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml"}
     env, output = resolve_step_env(root, workflows, artifacts, runs)
@@ -319,46 +323,57 @@ def run_resolve(root, kernel_artifact, runtime_artifact, kernel_run="", runtime_
     return result, output.read_text()
 
 
-def check_release_mode_binds_every_input_run(root):
-    """release_mode 必须把每个输入 run 钉在本 workflow 的 commit 上。
+def input_digest_artifacts():
+    """当前仓库状态下五条长链的 input-digest artifact 名。"""
+    return {chain: subprocess.check_output(
+                [sys.executable, "scripts/build-inputs.py", "--chain", chain, "--artifact-name"],
+                cwd=ROOT, text=True).strip()
+            for chain in ("rootfs", "kernel", "runtime", "mesa", "ffmpeg")}
 
-    release.yml 只核对 build-bundle 与 prepare-install 的 head_sha。固定下来的
-    rootfs / kernel / runtime / mesa / ffmpeg run 若不核对提交，镜像里混进的可以是
-    任意提交的产物，而发布说明写的是 tag 的 commit。这里跑真实的 resolve step：
-    同一提交必须通过，任一 run 来自别的提交必须失败。
+
+def check_release_mode_binds_every_input_run(root):
+    """release_mode 按输入摘要绑定每个输入 run，而不是按 commit。
+
+    改一行文档也会换 commit，但 kernel/rootfs/runtime/mesa/ffmpeg 的输入没变，
+    这时按 commit 绑定等于让五条长链白跑。这里跑真实的 resolve step：
+    摘要一致即使 run 在别的 commit 上也必须接受；摘要缺失或不一致必须失败。
     """
-    workflows = ["build-rootfs.yml", "build-kernel.yml", "build-device-runtime.yml",
-                 "build-mesa.yml", "host-check.yml"]
     artifacts = [ROOTFS_GNOME, "kernel-release-7.3.0", "kernel-sdk-7.3.0",
                  "piano-fedora-runtime", "piano-fedora-mesa", "piano-fedora-ffmpeg"]
+    digests = input_digest_artifacts()
     runs = {"7001": "build-kernel.yml", "7002": "build-device-runtime.yml",
             "7003": "build-rootfs.yml", "7004": "build-mesa.yml",
             "7005": "host-check.yml"}
     pin = dict(kernel_run="7001", runtime_run="7002", rootfs_run="7003",
                mesa_run="7004", ffmpeg_run="7005", release_mode="true", runs=runs)
-    sha = "a" * 40
-    result, output = run_resolve(root / "same-commit", "kernel-release-7.3.0",
-                                 "piano-fedora-runtime", sha=sha, **pin)
+
+    # 每个 run 都在别的 commit 上：摘要一致,必须接受。
+    result, output = run_resolve(
+        root / "other-commit", "kernel-release-7.3.0", "piano-fedora-runtime",
+        sha="b" * 40, artifacts=artifacts + list(digests.values()), **pin)
     assert result.returncode == 0, result.stderr
     for key in ("rootfs_run=7003", "kernel_run=7001", "runtime_run=7002",
-                "mesa_run=7004", "ffmpeg_run=7005"):
+                "mesa_run=7004", "ffmpeg_run=7005", "input_digest_kernel=" + digests["kernel"].rsplit("-", 1)[1]):
         assert key in output, (key, output)
 
-    # 只让 ffmpeg 的 run 落在别的提交：必须失败，否则"逐档核对"只是核对了两层。
-    env, _ = resolve_step_env(root / "other-commit", workflows, artifacts, runs)
-    env.update(DESKTOP="gnome", SIZE_MIB="", ROOTFS_ARTIFACT="",
-               KERNEL_ARTIFACT="kernel-release-7.3.0",
-               RUNTIME_ARTIFACT="piano-fedora-runtime",
-               KERNEL_RUN="7001", RUNTIME_RUN="7002", ROOTFS_RUN="7003",
-               MESA_RUN="7004", FFMPEG_RUN="7005", RELEASE_MODE="true",
-               GITHUB_SHA=sha,
-               PIANO_GH_SHAS=json.dumps({**{rid: sha for rid in runs}, "7005": "b" * 40}))
-    result = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
-                             step_body(".github/workflows/build-image.yml",
-                                       "Resolve successful input runs")],
-                            cwd=ROOT, env=env, capture_output=True, text=True)
-    assert result.returncode != 0, "a pinned run from another commit was accepted in release_mode"
-    assert "7005" in result.stderr, result.stderr
+    # 只把 ffmpeg 的摘要换成一个旧值：必须失败,且失败点是 ffmpeg 那次解析。
+    stale = dict(digests, ffmpeg="input-digest-ffmpeg-" + "0" * 64)
+    per_run = {rid: artifacts + list(stale.values()) for rid in runs}
+    per_run["7005"] = artifacts + [stale[c] for c in ("rootfs", "kernel", "runtime", "mesa")]
+    result, _ = run_resolve(
+        root / "stale-digest", "kernel-release-7.3.0", "piano-fedora-runtime",
+        sha="b" * 40, artifacts=per_run, **pin)
+    assert result.returncode != 0, "a run with a stale ffmpeg digest was accepted in release_mode"
+    assert digests["ffmpeg"] in result.stderr, result.stderr
+
+    # 旧 run 没有摘要 artifact(改动前产出的产物)：同样必须失败。
+    per_run = {rid: artifacts + list(digests.values()) for rid in runs}
+    per_run["7001"] = artifacts
+    result, _ = run_resolve(
+        root / "no-digest", "kernel-release-7.3.0", "piano-fedora-runtime",
+        sha="b" * 40, artifacts=per_run, **pin)
+    assert result.returncode != 0, "a kernel run without an input digest was accepted in release_mode"
+    assert digests["kernel"] in result.stderr, result.stderr
 
 
 def check_image_kernel_tiers(root):

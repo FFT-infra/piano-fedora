@@ -302,6 +302,46 @@ def test_workflows_upload_and_download_per_desktop_artifacts():
         assert "name: deploy-bundle\n" not in text, workflow
 
 
+def test_required_digest_artifact_is_enforced():
+    """--require-digest 让上游 run 必须带着当前仓库算出的输入摘要。
+
+    只凭 run 里的产物名看不出它吃了哪套补丁/pin；摘要 artifact 是可核对的
+    声明。缺失或对不上都必须拒绝。
+    """
+    digest = "input-digest-kernel-" + "a" * 64
+    original = resolve_artifact_run.digest_artifact
+    resolve_artifact_run.digest_artifact = lambda chain: (
+        digest if chain == "kernel" else (_ for _ in ()).throw(AssertionError(chain)))
+    backend = FakeGitHub(
+        workflows={"build-kernel.yml": {"id": 101}},
+        runs={200: run(id=200, workflow_id=101),
+              201: run(id=201, workflow_id=101)},
+        artifacts={200: [artifact("kernel-release-7.3.0")],
+                   201: [artifact("kernel-release-7.3.0"), artifact(digest)]})
+    resolve_artifact_run.api = backend
+    previous_argv = sys.argv
+
+    def argv(run_id):
+        return ["resolve-artifact-run.py", "--repository", "o/r",
+                "--workflow", "build-kernel.yml",
+                "--artifact", "kernel-release-7.3.0",
+                "--require-digest", "kernel", "--run-id", run_id]
+
+    try:
+        sys.argv = argv("200")
+        try:
+            resolve_artifact_run.main()
+        except ValueError as error:
+            assert digest in str(error), error
+        else:
+            raise AssertionError("a run without the input digest artifact was accepted")
+        sys.argv = argv("201")
+        resolve_artifact_run.main()
+    finally:
+        sys.argv = previous_argv
+        resolve_artifact_run.digest_artifact = original
+
+
 def main():
     for check in (test_wrong_workflow_same_artifact_is_rejected,
                   test_explicit_run_id_matching_workflow_returns_str,
@@ -312,6 +352,7 @@ def main():
                   test_commit_scoped_selection_skips_other_commits,
                   test_explicit_run_id_rejects_commit_mismatch,
                   test_cli_writes_output_key_and_prints_run_id,
+                  test_required_digest_artifact_is_enforced,
                   test_per_desktop_artifacts_do_not_match_each_other,
                   test_workflows_upload_and_download_per_desktop_artifacts,
                   test_every_resolved_workflow_is_registered_on_default_branch):

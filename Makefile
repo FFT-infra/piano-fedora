@@ -6,6 +6,7 @@ test:
 	python3 tests/check_upstreams.py
 	python3 tests/check_upstream_watch.py
 	python3 tests/check_artifact_run.py
+	python3 tests/check_build_inputs.py
 	python3 tests/check_release_workflow.py
 	python3 tests/check_release_desktops.py
 	python3 tests/check_release_assets.py

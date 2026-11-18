@@ -13,6 +13,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 记下这条链真正吃了哪些输入，下游按摘要复用，不再按 commit 绑定。
+      - name: Record the build input digest
+        run: |
+          set -euo pipefail
+          name=$(python3 scripts/build-inputs.py --chain mesa --artifact-name)
+          mkdir -p build/inputs
+          python3 scripts/build-inputs.py --chain mesa --record build/inputs/inputs.json
+          echo "DIGEST_ARTIFACT=$name" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DIGEST_ARTIFACT }}
+          path: build/inputs/inputs.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Prepare the native builder and locked patches
         run: |
           set -euo pipefail

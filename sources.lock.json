@@ -12,9 +12,9 @@
     "sunuefi": {
       "url": "https://github.com/slwyts/Project-SunUEFI.git",
       "ref": "main",
-      "commit": "18274377d11e0a12288ffbb795b9982b6a9804f4",
+      "commit": "f06ad9eeb4d505ffae70c2814b089e381ae72145",
       "role": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
-      "checked_date": "2026-11-17"
+      "checked_date": "2026-11-18"
     },
     "linux-piano": {
       "url": "https://github.com/blu-sharky/linux-piano.git",

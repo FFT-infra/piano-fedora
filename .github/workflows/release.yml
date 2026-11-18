@@ -8,6 +8,11 @@ name: release
 # GitHub 的单文件上限切成 `.part-NN`。平台镜像与这一档的 root 都在归档里，
 # 用户只下自己那一档：合并分片、解开归档，目录就是安装指南的暂存目录。
 #
+# 任务拆成四段：plan 解析 tag 与各档 run 并建 draft；tools 只下载一次引导
+# 工具；archive 按桌面档并行装配、压缩、上传；finalize 汇总校验和、补说明
+# 表、做 attestation 并按 publish 输入决定公开或留在 draft。并行只改变调度，
+# 每一档的绑定校验与原来逐条相同。
+#
 # 不填 desktop_runs 时每档的 run 都按 tag commit 自动解析。手动给
 # `desktop_runs` 只用于某个档位缺 run 时单独发其余档。
 on:
@@ -56,11 +61,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  plan:
     runs-on: ubuntu-24.04-arm
-    # 四档时每档都要下载 6-8 GiB 的 bundle 与 root-install，再压缩 2-3 GiB
-    # 的归档。单档原来 240 分钟，GitHub 的单 job 上限是 360。
-    timeout-minutes: 360
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.src.outputs.tag }}
+      commit: ${{ steps.src.outputs.commit }}
+      desktops: ${{ steps.src.outputs.desktops_json }}
+      tools_prepare_run: ${{ steps.src.outputs.tools_prepare_run }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,6 +120,9 @@ jobs:
           desktops=$(python3 -c 'import json; print(" ".join(row["desktop"] for row in json.load(open("build/release-plan.json"))))')
           test -n "$desktops"
           echo "desktops=${desktops}" >> "$GITHUB_OUTPUT"
+          echo "desktops_json=$(python3 -c 'import json; print(json.dumps([row["desktop"] for row in json.load(open("build/release-plan.json"))]))')" >> "$GITHUB_OUTPUT"
+          # 引导工具四档共用，取计划里第一档的 prepare run 下载一次。
+          echo "tools_prepare_run=$(python3 -c 'import json; print(json.load(open("build/release-plan.json"))[0]["prepare_run"])')" >> "$GITHUB_OUTPUT"
           echo "DESKTOPS=${desktops}" >> "$GITHUB_ENV"
 
       - name: Refuse to overwrite an existing release
@@ -179,34 +190,110 @@ jobs:
           gh release create "$TAG" --draft --title "piano Fedora ${release} ${TAG}" \
             --notes-file build/stage/notes.md
 
-      - name: Assemble one self-contained archive per desktop
+      # 后续各档并行取计划，不靠 job 输出字符串再拆一遍。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-plan
+          path: build/release-plan.json
+          if-no-files-found: error
+          retention-days: 7
+
+  tools:
+    needs: plan
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - name: Download the shared boot tools once
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/in/tools/boot-tools build/in/tools/host-boot-tool
+          gh run download "${{ needs.plan.outputs.tools_prepare_run }}" -R "$GITHUB_REPOSITORY" \
+            --name boot-tools --dir build/in/tools/boot-tools
+          gh run download "${{ needs.plan.outputs.tools_prepare_run }}" -R "$GITHUB_REPOSITORY" \
+            --name host-boot-tool --dir build/in/tools/host-boot-tool
+          (cd build/in/tools/boot-tools/installer && sha256sum -c SHA256SUMS)
+          python3 - <<'PYEOF'
+          import json
+          from pathlib import Path
+          host = json.loads(Path("build/in/tools/host-boot-tool/manifest.json").read_text())
+          native = json.loads(Path("build/in/tools/boot-tools/native/manifest.json").read_text())
+          assert host["sources"] == native["sources"] and host.get("arch") == "host", (
+              "host and Android repackers were built from different sources")
+          print("OK: host and Android boot tools share one source pin")
+          PYEOF
+          mkdir -p build/reference/tools
+          mv build/in/tools/boot-tools build/in/tools/host-boot-tool build/reference/tools/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-boot-tools
+          path: build/reference/tools
+          if-no-files-found: error
+          retention-days: 7
+
+  archive:
+    needs: [plan, tools]
+    runs-on: ubuntu-24.04-arm
+    # 每档一个 job：下载 6-8 GiB 的 bundle 与 root-install，再压缩并解压核对
+    # 2-3 GiB 的归档。四档并行，单档 240 分钟足够。
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        desktop: ${{ fromJSON(needs.plan.outputs.desktops) }}
+    env:
+      TAG: ${{ needs.plan.outputs.tag }}
+      STAGE: ${{ github.workspace }}/build/stage
+      DESKTOP: ${{ matrix.desktop }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install packaging tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq zstd coreutils
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-plan
+          path: build
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-boot-tools
+          path: build/reference/tools
+
+      - name: Assemble this desktop's self-contained archive
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           . scripts/release-upload.sh
+          desktop="$DESKTOP"
+          mkdir -p "$STAGE"
           printf '' > "$STAGE/RELEASE-SHA256SUMS"
+          bundle_run=$(release_plan_value "$desktop" bundle_run)
+          prepare_run=$(release_plan_value "$desktop" prepare_run)
 
-          for desktop in $DESKTOPS; do
-            bundle_run=$(release_plan_value "$desktop" bundle_run)
-            prepare_run=$(release_plan_value "$desktop" prepare_run)
+          # bundle 与 root 不能同时留在盘上：单个 8 GiB 镜像两份就撑爆 runner。
+          rm -rf build/in/bundle build/in/root-install build/archive
+          gh run download "$bundle_run" -R "$GITHUB_REPOSITORY" \
+            --name "deploy-bundle-${desktop}" --dir build/in/bundle
+          (cd build/in/bundle && sha256sum -c SHA256SUMS)
+          python3 scripts/verify-bundle.py --bundle build/in/bundle
+          # bundle 里只允许出现成员表认识的文件。多出一个说明上游改了产物，
+          # 这里必须失败，不能悄悄漏发。
+          python3 scripts/release-assets.py check-bundle build/in/bundle
 
-            # bundle 与 root 不能同时留在盘上：单个 8 GiB 镜像两份就撑爆 runner。
-            rm -rf build/in/bundle build/in/root-install build/in/tools build/archive
-            gh run download "$bundle_run" -R "$GITHUB_REPOSITORY" \
-              --name "deploy-bundle-${desktop}" --dir build/in/bundle
-            (cd build/in/bundle && sha256sum -c SHA256SUMS)
-            python3 scripts/verify-bundle.py --bundle build/in/bundle
-            # bundle 里只允许出现成员表认识的文件。多出一个说明上游改了产物，
-            # 这里必须失败，不能悄悄漏发。
-            python3 scripts/release-assets.py check-bundle build/in/bundle
+          gh run download "$prepare_run" -R "$GITHUB_REPOSITORY" \
+            --name "root-install-${desktop}" --dir build/in/root-install
+          (cd build/in/root-install && sha256sum -c SHA256SUMS)
 
-            gh run download "$prepare_run" -R "$GITHUB_REPOSITORY" \
-              --name "root-install-${desktop}" --dir build/in/root-install
-            (cd build/in/root-install && sha256sum -c SHA256SUMS)
-
-            # 这一档的 root-install 必须来自它自己的 bundle 与 root 镜像。
-            python3 - "$desktop" <<'PYEOF'
+          # 这一档的 root-install 必须来自它自己的 bundle 与 root 镜像。
+          python3 - "$desktop" <<'PYEOF'
           import hashlib, json, sys
           from pathlib import Path
           desktop = sys.argv[1]
@@ -226,91 +313,99 @@ jobs:
           print(f"OK: {desktop} root-install binds to its own bundle")
           PYEOF
 
-            # 引导工具按 pin 的源码构建，四档共用。只在第一档下载一次，留在
-            # build/reference/tools 里给后面各档复用；每档仍与它逐字节比对
-            # 产品镜像，不一致就停下，不能悄悄挑一份发布。
-            if [ ! -d build/reference/tools ]; then
-              mkdir -p build/reference/tools
-              gh run download "$prepare_run" -R "$GITHUB_REPOSITORY" \
-                --name boot-tools --dir build/in/tools/boot-tools
-              gh run download "$prepare_run" -R "$GITHUB_REPOSITORY" \
-                --name host-boot-tool --dir build/in/tools/host-boot-tool
-              (cd build/in/tools/boot-tools/installer && sha256sum -c SHA256SUMS)
-              python3 - <<'PYEOF'
-          import json
-          from pathlib import Path
-          host = json.loads(Path("build/in/tools/host-boot-tool/manifest.json").read_text())
-          native = json.loads(Path("build/in/tools/boot-tools/native/manifest.json").read_text())
-          assert host["sources"] == native["sources"] and host.get("arch") == "host", (
-              "host and Android repackers were built from different sources")
-          print("OK: host and Android boot tools share one source pin")
-          PYEOF
-              mv build/in/tools/boot-tools build/in/tools/host-boot-tool build/reference/tools/
-            fi
-            cmp build/reference/tools/boot-tools/product/PianoUEFI-product.img \
-              build/in/bundle/PianoUEFI-product.img
+          # 引导工具按 pin 的源码构建，四档共用；tools job 只下载一次，各档
+          # 从这里取同一份。每档仍与它逐字节比对产品镜像，不一致就停下，
+          # 不能悄悄挑一份发布。
+          cmp build/reference/tools/boot-tools/product/PianoUEFI-product.img \
+            build/in/bundle/PianoUEFI-product.img
 
-            # 装配归档。平台镜像、组件 manifest 与这一档的 root 都在里面，
-            # 用户不需要再从别处拼第二个目录。
-            archive="build/archive"
-            mkdir -p "$archive/root-install" "$archive/scripts"
-            mapfile -t bundled < <(python3 scripts/release-assets.py bundled)
-            for name in "${bundled[@]}"; do
-              cp -p "build/in/bundle/$name" "$archive/$name"
-            done
-            cp -p build/in/root-install/pianoroot.f2fs.sparse.img \
-                  build/in/root-install/root-install-manifest.json \
-                  build/in/root-install/SHA256SUMS "$archive/root-install/"
-            cp -a build/reference/tools/boot-tools build/reference/tools/host-boot-tool "$archive/"
-            cp scripts/prepare-device-boot.py scripts/piano_artifacts.py scripts/piano_sparse.py \
-              "$archive/scripts/"
-            cp scripts/installer/flash-linux.sh scripts/installer/flash-linux.bat \
-              scripts/installer/README-INSTALL.txt scripts/make-device-boot.sh "$archive/"
-            chmod +x "$archive/flash-linux.sh" "$archive/make-device-boot.sh"
-            # 归档自己的清单只列目录里真有的文件。留一份列着未发布文件的清单，
-            # 手动路径的 `sha256sum -c SHA256SUMS` 就会恒返回 1。
-            python3 scripts/release-assets.py write-sums "$archive"
-
-            name=$(python3 scripts/release-assets.py archive-name "$TAG" "$desktop")
-            tar -C "$archive" --sort=name --mtime=@0 --owner=0 --group=0 \
-              --numeric-owner -cf - . | zstd -10 -T0 --no-progress -o "$STAGE/$name"
-            # 压缩必须可逆：解开的字节要与装配目录逐项相同，否则用户下完
-            # 才发现清单对不上。
-            mkdir -p build/verify
-            tar -I zstd -xf "$STAGE/$name" -C build/verify
-            diff -r "$archive" build/verify
-            rm -rf build/verify "$archive"
-
-            # 单文件就列它自己，切片就列每个分片：这一档的 sidecar 能直接喂给
-            # `sha256sum -c`，不需要再下一份覆盖全档的清单。
-            release_upload_split "$STAGE/$name" "$name"
-            sidecar=$(python3 scripts/release-assets.py sidecar-name "$TAG" "$desktop")
-            awk -v want="$name" '$2 == want || $2 ~ "^" want "\\.part-[0-9]+$"' \
-              "$STAGE/RELEASE-SHA256SUMS" > "$STAGE/$sidecar"
-            test -s "$STAGE/$sidecar" || {
-              echo "no uploaded piece matches $name" >&2
-              exit 2
-            }
-            gh release upload "$TAG" "$STAGE/$sidecar"
-            # sidecar 由上面的清单切出来，所以只能在切完之后再记它自己的摘要。
-            # 它能进总清单，是因为 attestation 只按总清单列出的文件建 subject。
-            release_record "$STAGE/$sidecar" "$sidecar"
-            rm -rf build/in/bundle build/in/root-install
+          # 装配归档。平台镜像、组件 manifest 与这一档的 root 都在里面，
+          # 用户不需要再从别处拼第二个目录。
+          archive="build/archive"
+          mkdir -p "$archive/root-install" "$archive/scripts"
+          mapfile -t bundled < <(python3 scripts/release-assets.py bundled)
+          for name in "${bundled[@]}"; do
+            cp -p "build/in/bundle/$name" "$archive/$name"
           done
+          cp -p build/in/root-install/pianoroot.f2fs.sparse.img \
+                build/in/root-install/root-install-manifest.json \
+                build/in/root-install/SHA256SUMS "$archive/root-install/"
+          cp -a build/reference/tools/boot-tools build/reference/tools/host-boot-tool "$archive/"
+          cp scripts/prepare-device-boot.py scripts/piano_artifacts.py scripts/piano_sparse.py \
+            "$archive/scripts/"
+          cp scripts/installer/flash-linux.sh scripts/installer/flash-linux.bat \
+            scripts/installer/README-INSTALL.txt scripts/make-device-boot.sh "$archive/"
+          chmod +x "$archive/flash-linux.sh" "$archive/make-device-boot.sh"
+          # 归档自己的清单只列目录里真有的文件。留一份列着未发布文件的清单，
+          # 手动路径的 `sha256sum -c SHA256SUMS` 就会恒返回 1。
+          python3 scripts/release-assets.py write-sums "$archive"
+
+          name=$(python3 scripts/release-assets.py archive-name "$TAG" "$desktop")
+          tar -C "$archive" --sort=name --mtime=@0 --owner=0 --group=0 \
+            --numeric-owner -cf - . | zstd -10 -T0 --no-progress -o "$STAGE/$name"
+          # 压缩必须可逆：解开的字节要与装配目录逐项相同，否则用户下完
+          # 才发现清单对不上。
+          mkdir -p build/verify
+          tar -I zstd -xf "$STAGE/$name" -C build/verify
+          diff -r "$archive" build/verify
+          rm -rf build/verify "$archive"
+
+          # 单文件就列它自己，切片就列每个分片：这一档的 sidecar 能直接喂给
+          # `sha256sum -c`，不需要再下一份覆盖全档的清单。
+          release_upload_split "$STAGE/$name" "$name"
+          sidecar=$(python3 scripts/release-assets.py sidecar-name "$TAG" "$desktop")
+          awk -v want="$name" '$2 == want || $2 ~ "^" want "\\.part-[0-9]+$"' \
+            "$STAGE/RELEASE-SHA256SUMS" > "$STAGE/$sidecar"
+          test -s "$STAGE/$sidecar" || {
+            echo "no uploaded piece matches $name" >&2
+            exit 2
+          }
+          gh release upload "$TAG" "$STAGE/$sidecar"
+          # sidecar 由上面的清单切出来，所以只能在切完之后再记它自己的摘要。
+          # 它能进总清单，是因为 attestation 只按总清单列出的文件建 subject。
+          release_record "$STAGE/$sidecar" "$sidecar"
+          rm -rf build/in/bundle build/in/root-install
+
+      # 总校验和在 finalize 汇总；每档只交自己那份。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-sums-${{ matrix.desktop }}
+          path: build/stage/RELEASE-SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
+  extras:
+    needs: plan
+    if: ${{ inputs.extras_run != '' }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
+    env:
+      TAG: ${{ needs.plan.outputs.tag }}
+      STAGE: ${{ github.workspace }}/build/stage
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install packaging tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq zstd coreutils
 
       - name: Add the optional extras archive
-        if: ${{ inputs.extras_run != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EXTRAS_RUN: ${{ inputs.extras_run }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
         run: |
           set -euo pipefail
           . scripts/release-upload.sh
+          mkdir -p "$STAGE"
+          printf '' > "$STAGE/RELEASE-SHA256SUMS"
           run_id=$(python3 scripts/resolve-artifact-run.py \
             --workflow build-piano-extras.yml \
             --artifact piano-extras \
             --run-id "$EXTRAS_RUN" \
-            --commit "${{ steps.src.outputs.commit }}")
+            --commit "$COMMIT")
           gh run download "$run_id" -n piano-extras -D build/in/piano-extras
           extras=build/in/piano-extras
           test -f "$extras/manifest.json"
@@ -367,12 +462,42 @@ jobs:
           gh release upload "$TAG" "$STAGE/$sidecar"
           release_record "$STAGE/$sidecar" "$sidecar"
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-sums-extras
+          path: build/stage/RELEASE-SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
+  finalize:
+    needs: [plan, archive, extras]
+    if: ${{ always() && needs.plan.result == 'success' && needs.archive.result == 'success' && (needs.extras.result == 'success' || needs.extras.result == 'skipped') }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      TAG: ${{ needs.plan.outputs.tag }}
+      STAGE: ${{ github.workspace }}/build/stage
+      DESKTOPS: ${{ needs.plan.outputs.desktops }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 每个 artifact 解到自己的目录：各档交上来的文件同名，合并会互相覆盖。
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-sums-*
+          path: build/sums
+
       - name: Upload the release checksums
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          . scripts/release-upload.sh
+          mkdir -p "$STAGE"
+          cat build/sums/*/RELEASE-SHA256SUMS > "$STAGE/RELEASE-SHA256SUMS"
+          # 每个分片与 sidecar 只能被记一次；排序后再交上去。
           sort -k2 "$STAGE/RELEASE-SHA256SUMS" -o "$STAGE/RELEASE-SHA256SUMS"
+          test -s "$STAGE/RELEASE-SHA256SUMS"
           gh release upload "$TAG" "$STAGE/RELEASE-SHA256SUMS"
 
       - name: Fill in the per-desktop table
@@ -385,10 +510,16 @@ jobs:
           echo "| --- | --- | --- | --- | --- |" >> build/stage/notes-table.md
           for desktop in $DESKTOPS; do
             name=$(python3 scripts/release-assets.py archive-name "$TAG" "$desktop")
-            sidecar=$(python3 scripts/release-assets.py sidecar-name "$TAG" "$desktop")
-            parts=$(wc -l < "$STAGE/$sidecar")
-            total=$(gh release view "$TAG" --json assets \
-              --jq "[.assets[] | select(.name | startswith(\"${name}\")) | .size] | add")
+            read -r parts total <<<"$(python3 - "$TAG" "$name" <<'PYEOF'
+          import json, re, subprocess, sys
+          tag, name = sys.argv[1], sys.argv[2]
+          assets = json.loads(subprocess.check_output(
+              ["gh", "release", "view", tag, "--json", "assets"]))["assets"]
+          pattern = re.compile(r"^" + re.escape(name) + r"(\.part-[0-9]+)?$")
+          rows = [asset for asset in assets if pattern.match(asset["name"])]
+          print(len(rows), sum(asset["size"] for asset in rows))
+          PYEOF
+          )"
             case "$desktop" in
               gnome)
                 desc="GDM 自动登录；Wayland 原生会话，Mutter 自动旋转"

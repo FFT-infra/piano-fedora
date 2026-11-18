@@ -25,6 +25,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 记下这条链真正吃了哪些输入，下游按摘要复用，不再按 commit 绑定。
+      # 传了 calibration_run_id 时产物还含那份外部校准数据，摘要无法覆盖，
+      # 不上传，发布链也就不会按摘要取到它。
+      - name: Record the build input digest
+        if: ${{ inputs.calibration_run_id == '' }}
+        run: |
+          set -euo pipefail
+          name=$(python3 scripts/build-inputs.py --chain runtime --artifact-name)
+          mkdir -p build/inputs
+          python3 scripts/build-inputs.py --chain runtime --record build/inputs/inputs.json
+          echo "DIGEST_ARTIFACT=$name" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.calibration_run_id == '' }}
+        with:
+          name: ${{ env.DIGEST_ARTIFACT }}
+          path: build/inputs/inputs.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Install the builder tools
         run: |
           set -euo pipefail
@@ -42,7 +62,8 @@ jobs:
           args=()
           if [ -n "$KERNEL_RUN" ]; then args+=(--run-id "$KERNEL_RUN"); fi
           python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml \
-            --artifact kernel-release-7.3.0 --artifact kernel-sdk-7.3.0 "${args[@]}"
+            --artifact kernel-release-7.3.0 --artifact kernel-sdk-7.3.0 \
+            --require-digest kernel "${args[@]}"
 
       - if: inputs.calibration_run_id != ''
         uses: actions/download-artifact@v4
