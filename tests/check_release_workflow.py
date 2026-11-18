@@ -332,6 +332,10 @@ def test_workflow_contract():
         "release.yml 没有给 finalize 提供空格分隔的桌面名")
     assert "DESKTOPS: ${{ needs.plan.outputs.desktop_names }}" in text, (
         "finalize 仍在用 JSON 桌面列表做 shell 循环")
+    # finalize 是独立 job，拿不到 plan 的 build/stage/notes.md；正文要从 draft
+    # 里取回，否则填表那一步直接 FileNotFoundError。
+    assert 'gh release view "$TAG" --json body --jq .body > build/stage/notes.md' in text, (
+        "finalize 没有从 draft 取回发布说明正文")
     # 归档解压回来必须与装配目录逐项相同。
     assert "diff -r \"$archive\" build/verify" in text
     # 旧的扁平布局不再出现。

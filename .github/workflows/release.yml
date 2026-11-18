@@ -507,6 +507,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # finalize 是另一个 job，工作区是干净的 checkout；plan 写下的
+          # build/stage/notes.md 不在。正文只存在 draft 里，从这里取回来。
+          mkdir -p build/stage
+          gh release view "$TAG" --json body --jq .body > build/stage/notes.md
+          grep -q '<!-- DESKTOP_TABLE_PLACEHOLDER -->' build/stage/notes.md || {
+            echo "release notes lost the desktop table placeholder" >&2
+            exit 2
+          }
           : > build/stage/notes-table.md
           echo "| 档位 | 归档 | 分片数 | 下载量 | 特性与场景 |" >> build/stage/notes-table.md
           echo "| --- | --- | --- | --- | --- |" >> build/stage/notes-table.md
