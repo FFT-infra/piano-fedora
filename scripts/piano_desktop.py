@@ -472,6 +472,24 @@ def _basearch(arch):
     return {"aarch64": "aarch64", "x86_64": "x86_64"}.get(arch, arch)
 
 
+def autologin_program(command):
+    """会话命令真正执行的程序名。
+
+    `denial` 要在 greetd 里带上 `env DENIAL_RENDER_DEVICE=...`：这台机器的
+    显示控制器（msm_dpu）和 GPU（adreno）是两个 DRM 设备，不给渲染节点时
+    deniald 会拿显示卡去渲染然后 abort。剥掉 env 前缀后仍要核对
+    `denial-session` 本体在树里，否则换一个拼错的程序名也会静默通过。
+    """
+    words = shlex.split(command)
+    if words[:1] == ["env"]:
+        rest = words[1:]
+        index = 0
+        while index < len(rest) and "=" in rest[index]:
+            index += 1
+        words = rest[index:]
+    return words[0] if words else ""
+
+
 def validate_against_rootfs(root, context, *, require_enabled=True):
     """装配完成后在真实 rootfs 里核对配方声明过的每一样东西。
 
@@ -520,7 +538,7 @@ def validate_against_rootfs(root, context, *, require_enabled=True):
                         for d in ("usr/share/wayland-sessions", "usr/share/xsessions"))
             want(found, f"autologin session exists: {session}.desktop")
         elif autologin["kind"] == "greetd-config":
-            command = shlex.split(autologin["command"])[0]
+            command = autologin_program(autologin["command"])
             want((root / "usr/bin" / command).exists()
                  or (root / "usr/sbin" / command).exists(),
                  f"greetd session command exists: {command}")

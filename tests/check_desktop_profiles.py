@@ -521,8 +521,13 @@ def check_greetd_desktops_stage_a_config_toml():
     profile 值与落盘内容，并由 `validate_against_rootfs` 在真实树里核对
     命令存在。
     """
+    # piano 的显示控制器是 msm_dpu（card2），GPU 是独立的 adreno 渲染节点。
+    # 只给显示卡时 EGL 选到 renderD128，与请求的 card2 不符，deniald 直接
+    # abort（"EGL selected ... instead of requested scene GPU"），所以命令
+    # 必须点名渲染节点。
     expected = {"niri": "niri-session", "hyprland": "start-hyprland",
-                "denial": "denial-session --start-locked"}
+                "denial": "env DENIAL_RENDER_DEVICE=/dev/dri/by-path/"
+                          "platform-3d00000.gpu-render denial-session --start-locked"}
     for desktop, command in expected.items():
         context = piano_desktop.load(desktop, "44")
         manager = context["profile"]["display_manager"]
@@ -535,6 +540,9 @@ def check_greetd_desktops_stage_a_config_toml():
             text.split("[initial_session]", 1)[1]
                 .split("command = ", 1)[1].splitlines()[0]
         ) == command, (desktop, text)
+        # env 前缀不能把树校验变成只核对 `/usr/bin/env`。
+        expected_program = "denial-session" if desktop == "denial" else command
+        assert piano_desktop.autologin_program(command) == expected_program, command
         assert '[default_session]' in text and 'user = "greetd"' in text, text
         # 上面那句只证明字符串出现过。分段落再断言一次：`[default_session]`
         # 的 user 才是 tuigreet 的运行账户，写成 greeter 时 greetd 每 1 秒

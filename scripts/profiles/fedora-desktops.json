@@ -229,7 +229,7 @@
     "display_manager": {
       "unit": "greetd.service",
       "package": "greetd",
-      "autologin": {"kind": "greetd-config", "command": "denial-session --start-locked"}
+      "autologin": {"kind": "greetd-config", "command": "env DENIAL_RENDER_DEVICE=/dev/dri/by-path/platform-3d00000.gpu-render denial-session --start-locked"}
     },
     "session": {
       "desktop_names": ["Denial"],
