@@ -45,6 +45,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 记下这条链真正吃了哪些输入，下游按摘要复用，不再按 commit 绑定。
+      # rootfs 的输入与桌面无关，矩阵各档摘要相同，所以只在这里传一次。
+      - name: Record the build input digest
+        run: |
+          set -euo pipefail
+          name=$(python3 scripts/build-inputs.py --chain rootfs --artifact-name)
+          mkdir -p build/inputs
+          python3 scripts/build-inputs.py --chain rootfs --record build/inputs/inputs.json
+          echo "DIGEST_ARTIFACT=$name" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DIGEST_ARTIFACT }}
+          path: build/inputs/inputs.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Expand the desktop matrix from the profile
         id: expand
         env:
@@ -100,13 +117,17 @@ jobs:
           # exact build-piano-rpms job in that run. Binding to the registered
           # host-check workflow avoids depending on an unregistered workflow.
           python3 scripts/resolve-artifact-run.py --workflow host-check.yml \
-            --artifact piano-rpms --run-id "$PIANO_RPMS_RUN" --output-key piano_rpms_run
+            --artifact piano-rpms --require-digest rpms \
+            --run-id "$PIANO_RPMS_RUN" --output-key piano_rpms_run
           python3 scripts/resolve-artifact-run.py --workflow build-device-runtime.yml \
-            --artifact piano-fedora-runtime --run-id "$RUNTIME_RUN" --output-key runtime_run
+            --artifact piano-fedora-runtime --require-digest runtime \
+            --run-id "$RUNTIME_RUN" --output-key runtime_run
           python3 scripts/resolve-artifact-run.py --workflow build-mesa.yml \
-            --artifact piano-fedora-mesa --run-id "$MESA_RUN" --output-key mesa_run
+            --artifact piano-fedora-mesa --require-digest mesa \
+            --run-id "$MESA_RUN" --output-key mesa_run
           python3 scripts/resolve-artifact-run.py --workflow host-check.yml \
-            --artifact piano-fedora-ffmpeg --run-id "$FFMPEG_RUN" --output-key ffmpeg_run
+            --artifact piano-fedora-ffmpeg --require-digest ffmpeg \
+            --run-id "$FFMPEG_RUN" --output-key ffmpeg_run
 
       - name: Install podman
         run: |

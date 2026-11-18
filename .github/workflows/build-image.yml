@@ -127,28 +127,29 @@ jobs:
             exit 2
           }
           echo "kernel_tier=$KERNEL_TIER" >> "$GITHUB_OUTPUT"
-          if [ "$RELEASE_MODE" = true ]; then
-            for pair in "rootfs_run_id:$ROOTFS_RUN" "kernel_run_id:$KERNEL_RUN" \
-                        "runtime_run_id:$RUNTIME_RUN" "mesa_run_id:$MESA_RUN" \
-                        "ffmpeg_run_id:$FFMPEG_RUN"; do
-              name=${pair%%:*}; value=${pair#*:}
-              test -n "$value" || { echo "$name is required in release_mode" >&2; exit 2; }
-            done
-          fi
           rootfs_args=(); kernel_args=(); runtime_args=(); mesa_args=(); ffmpeg_args=()
           if [ -n "$ROOTFS_RUN" ]; then rootfs_args+=(--run-id "$ROOTFS_RUN"); fi
           if [ -n "$KERNEL_RUN" ]; then kernel_args+=(--run-id "$KERNEL_RUN"); fi
           if [ -n "$RUNTIME_RUN" ]; then runtime_args+=(--run-id "$RUNTIME_RUN"); fi
           if [ -n "$MESA_RUN" ]; then mesa_args+=(--run-id "$MESA_RUN"); fi
           if [ -n "$FFMPEG_RUN" ]; then ffmpeg_args+=(--run-id "$FFMPEG_RUN"); fi
-          # 发布构建的每个输入 run 都必须落在本 workflow 的 commit 上。release.yml
-          # 只核对 build-bundle 与 prepare-install 的 head_sha；没有这一条，被固定的
-          # 上游 run 可以来自任意提交，镜像与发布说明的源码提交对不上。
+          # 发布构建要求每个输入 run 带着与当前仓库一致的输入摘要 artifact。
+          # 摘要由 scripts/build-inputs.py 从仓库文件、锁定的上游条目与上游链
+          # 递归算出：换一个文档提交不会让长链作废，改了补丁或 pin 一定不等。
+          # 这比按 commit 绑定更精确，也不接受内容不同的旧产物。
           if [ "$RELEASE_MODE" = true ]; then
-            commit_args=(--commit "$GITHUB_SHA")
-            rootfs_args+=("${commit_args[@]}"); kernel_args+=("${commit_args[@]}")
-            runtime_args+=("${commit_args[@]}"); mesa_args+=("${commit_args[@]}")
-            ffmpeg_args+=("${commit_args[@]}")
+            for chain in rootfs kernel runtime mesa ffmpeg; do
+              digest=$(python3 scripts/build-inputs.py --chain "$chain")
+              artifact=$(python3 scripts/build-inputs.py --chain "$chain" --artifact-name)
+              case "$chain" in
+                rootfs) rootfs_args+=(--artifact "$artifact") ;;
+                kernel) kernel_args+=(--artifact "$artifact") ;;
+                runtime) runtime_args+=(--artifact "$artifact") ;;
+                mesa) mesa_args+=(--artifact "$artifact") ;;
+                ffmpeg) ffmpeg_args+=(--artifact "$artifact") ;;
+              esac
+              echo "input_digest_${chain}=${digest}" >> "$GITHUB_OUTPUT"
+            done
           fi
           python3 scripts/resolve-artifact-run.py --workflow build-rootfs.yml --artifact "$ROOTFS_ARTIFACT" --output-key rootfs_run "${rootfs_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml "${kernel_artifacts[@]}" --output-key kernel_run "${kernel_args[@]}"
