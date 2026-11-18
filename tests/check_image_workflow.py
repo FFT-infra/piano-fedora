@@ -118,10 +118,13 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
                                                 "hevc_v4l2m2m": " V..... hevc_v4l2m2m"}})
     write("rootfs-manifest.json", {**identity, "releasever": "45", **{name + "_manifest_sha256": digest(root / (name + "-manifest.json"))
                                                 for name in ("runtime", "mesa", "ffmpeg")}})
-    # esp-manifest.json 由上游 package_release.py 产出；内核与板级 DTB 都在
-    # UKI 里，ESP 只有一个载荷文件。
-    write("esp-manifest.json", {"kernel_manifest_sha256": kernel,
-          "esp_files": ["/EFI/Linux/sunuefi.efi"],
+    # esp-manifest.json 由上游 package_release.py 产出；默认 BLS 布局，内核、
+    # initramfs 与板级 DTB 分放在 /linux/<release>/，入口是 systemd-boot。
+    write("esp-manifest.json", {"kernel_manifest_sha256": kernel, "boot_layout": "bls",
+          "esp_files": ["/linux/fixture/linux", "/linux/fixture/initrd",
+                        "/linux/fixture/board.dtb", "/loader/entries/linux-fixture.conf",
+                        "/EFI/systemd/systemd-bootaa64.efi", "/EFI/BOOT/BOOTAA64.EFI",
+                        "/loader/loader.conf"],
           "files": {
               "esp.img": {"sha256": digest(root / "sunuefi_esp.img"),
                            "bytes": (root / "sunuefi_esp.img").stat().st_size},

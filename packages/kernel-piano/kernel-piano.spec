@@ -39,7 +39,8 @@ ExclusiveArch:  aarch64
 # installonly 按这些 provides 匹配，会把新的 Release 当成再装一份内核；模块树
 # 的目录只由编译期 release 决定（7.3.3-piano-sunuefi-cachy-optimize），两个
 # Release 指向同一批文件，事务在安装阶段直接报 file conflict。这里按普通包
-# 升级，%posttrans 仍在事务收尾时重建 initramfs 并重打 ESP 的 UKI。
+# 升级，%posttrans 仍在事务收尾时重建 initramfs 并为新内核写 systemd-boot
+# 启动项（BLS 布局；ESP 是可选 UKI 布局时写版本化 UKI）。
 
 Requires:       dracut
 Requires:       qbootctl
@@ -53,8 +54,9 @@ Requires:       python3
 Requires:       kmod
 Requires:       busybox
 Requires:       util-linux
-# %posttrans 用 systemd-ukify 重打 ESP 上的 UKI，stub 由 systemd-boot-unsigned
-# 提供。两个都缺时设备侧升级只能放弃写 ESP，新内核不会生效。
+# 出厂是 BLS 布局，写启动项不需要 ukify。ESP 若被改成可选 UKI 布局，
+# %posttrans 用 systemd-ukify 重打 UKI，stub 由 systemd-boot-unsigned 提供；
+# 缺这两个工具时那条路径放弃写 ESP，BLS 布局的升级不受影响。
 Requires:       systemd-ukify
 Requires:       systemd-boot-unsigned
 
@@ -142,12 +144,13 @@ install -m 0644 piano-tools/build-initramfs.py \
 %{_prefix}/lib/piano/piano_artifacts.py
 
 %posttrans
-# 设备侧升级：depmod 之后重建 initramfs，再把新内核重新打进 ESP 上固件实际
-# 读取的 UKI。镜像构建（dnf --installroot）里没有 ESP 载荷，直接跳过；
-# 判据是 UKI 在不在，而不是靠调用方传参，因为 %posttrans 拿不到上下文。
-ESP=/boot/efi/EFI/Linux
-if [ ! -f "$ESP/sunuefi.efi" ]; then
-    echo "piano: no ESP payload at $ESP; skipping the UKI rebuild"
+# 设备侧升级：depmod 之后重建 initramfs，再为刚装上的内核写一条 systemd-boot
+# 启动项。出厂是 BLS 布局（/linux/<release>/ 与 /loader/entries/），工具也认
+# 可选的 UKI 布局。镜像构建（dnf --installroot）里没有 ESP 载荷，直接跳过；
+# 判据是 ESP 上有没有启动项，而不是靠调用方传参，%posttrans 拿不到上下文。
+ESP=/boot/efi
+if [ ! -d "$ESP/loader/entries" ] && [ ! -d "$ESP/EFI/Linux" ]; then
+    echo "piano: no ESP boot entries at $ESP; skipping the boot entry update"
     exit 0
 fi
 # manifest 按 NVRA 各存一份，盘上可能留着旧版本。这里读刚装上的那份：

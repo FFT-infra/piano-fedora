@@ -132,8 +132,8 @@ def check_boot_image_selection():
 
     实机教训（2026-10-20）：ESP 内部的 Linux 载荷只有 SunUEFI 固件能加载，
     ABL 不能。把它写进 boot_a，ABL 拒绝整条引导链，平板停在 Fastboot，活动槽
-    被标记 unbootable。早期归档里这份载荷叫 boot_sunuefi.img；现在它是
-    /EFI/Linux/sunuefi.efi 里的 UKI，同样不能当 boot_a 镜像。
+    被标记 unbootable。早期归档里这份载荷叫 boot_sunuefi.img；现在是
+    systemd-boot 加载的 /linux/<release>/，同样不能当 boot_a 镜像。
 
     这里对 shell 脚本、Windows 脚本与 ZIP 内的 README 一起加约束。
     """
@@ -176,7 +176,8 @@ def check_boot_image_selection():
     if "NEVER flash boot_sunuefi.img to boot_a" in readme:
         failures.append(
             "README-INSTALL.txt: still names the retired boot_sunuefi.img")
-    if "/EFI/Linux/sunuefi.efi" not in readme or "not a device boot image" not in readme:
+    if ("systemd-boot" not in readme or "/linux/" not in readme
+            or "not a device boot image" not in readme):
         failures.append(
             "README-INSTALL.txt: does not warn that the ESP payload is not a "
             "device boot image")

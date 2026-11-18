@@ -4,15 +4,16 @@ r"""制作 ESP 镜像：FAT32，写入 UEFI 启动文件与内核。
 ESP 是 UEFI 从其中加载 Linux 的分区，格式 vfat，不需要挂载即可用
 mtools（mformat/mcopy）离线写入，所以在任何环境都能跑。
 
-固件按固定路径读取载荷（`\EFI\Linux\sunuefi.efi`），镜像内路径由调用方
-给定，工具不假设。
+镜像内路径由调用方给定，工具不假设。真实 ESP 由上游 `package_release.py`
+产出（默认 BLS：`/linux/<release>/` 加 systemd-boot 条目）；这个工具用于
+构造 fixture 与离线拼装。
 
 mtools 的 mmd 不补中间层，且对已存在的目录返回非零；两条都不是调用方能从
 退出码看出来的，所以这里自己按层级建目录并跳过已建项。写入后逐个读回比对
 sha256，把静默失败挡在交付之前。
 
 用法：
-    scripts/build-esp-image.py --file EFI/Linux/sunuefi.efi:sunuefi.efi \
+    scripts/build-esp-image.py --file EFI/Linux/linux-7.3.3.efi:fixture/uki.efi \
         --size-mib 512 --output esp.img --manifest esp-manifest.json
 """
 

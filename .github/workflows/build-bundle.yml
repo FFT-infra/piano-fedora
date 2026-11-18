@@ -41,12 +41,10 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq zstd dosfstools mtools device-tree-compiler python3 git gcc make flex bison \
-            systemd-ukify python3-pefile
-          # 上游 package_release.py 直接调 /usr/lib/systemd/ukify 组 UKI，
-          # aa64 stub 由 Fedora rootfs 提供。缺任一项就在这里停，别等打包到一半。
-          test -f /usr/lib/systemd/ukify
-          python3 -c 'import pefile'
+          sudo apt-get install -y -qq zstd dosfstools mtools device-tree-compiler python3 git gcc make flex bison
+          # 上游 package_release.py 默认出 BLS 布局：内核、initramfs 与 DTB 分放
+          # /linux/<release>/，入口是它自带的 systemd-boot，不需要 ukify 或
+          # PE stub。UKI 是上游的可选布局，本流水线不选它。
 
       - name: Resolve complete image and UEFI inputs
         id: src
@@ -252,7 +250,8 @@ jobs:
           sudo cp build/packaged/PianoUEFI-product.img bundle/PianoUEFI-product.img
           # Retired names stay out of the release artifact. If a consumer still
           # reads them, fail here instead of publishing two identities for the
-          # same payload: the Linux kernel now lives inside /EFI/Linux/sunuefi.efi.
+          # same payload: the kernel now lives under /linux/<release>/ and
+          # systemd-boot (EFI/BOOT/BOOTAA64.EFI) loads it.
           test ! -e bundle/esp.img
           test ! -e bundle/boot.img
           test ! -e bundle/boot_sunuefi.img

@@ -17,6 +17,8 @@ config 只有 6 行硬编码。装进镜像等于没有内核，但构建全程�
 """
 
 from pathlib import Path
+import importlib.machinery
+import importlib.util
 import re
 import subprocess
 import sys
@@ -74,18 +76,19 @@ def check_spec(failures):
                 f"kernel-piano.spec provides {provided}; dnf would treat a Release "
                 "bump as installonly and collide on the shared module tree")
 
-    # 设备侧内核升级：%posttrans 重建 initramfs 并重打 ESP 的 boot.img。镜像
-    # 构建（dnf --installroot）里没有 ESP 载荷，必须先跳过再动手，否则
-    # build-rootfs 会在 chroot 里失败。
+    # 设备侧内核升级：%posttrans 重建 initramfs 并为新内核写 systemd-boot
+    # 启动项（BLS 布局，可选 UKI）。镜像构建（dnf --installroot）里没有 ESP
+    # 载荷，必须先跳过再动手，否则 build-rootfs 会在 chroot 里失败。
     posttrans = body.split("%posttrans", 1)
     if len(posttrans) != 2:
         failures.append("kernel-piano.spec has no %posttrans; a dnf kernel upgrade "
                         "would leave the ESP booting the old Image")
     else:
         script = posttrans[1].split("%changelog", 1)[0]
-        if "EFI/Linux" not in script:
-            failures.append("%posttrans does not name the ESP payload path")
-        if "sunuefi.efi" not in script or "exit 0" not in script:
+        for path in ("loader/entries", "EFI/Linux"):
+            if path not in script:
+                failures.append(f"%posttrans does not name the ESP layout path {path!r}")
+        if 'exit 0' not in script:
             failures.append("%posttrans does not skip a rootfs with no ESP payload")
         skip = script.split("exit 0", 1)[0]
         if "depmod" in skip or "piano-kernel-esp-update" in skip:
@@ -262,11 +265,77 @@ def check_built_rpm(failures):
                         f"{rpm.name}: module tree {release} does not match the Image")
 
 
+def load_esp_update():
+    loader = importlib.machinery.SourceFileLoader(
+        "piano_kernel_esp_update", str(ROOT / "scripts" / "piano-kernel-esp-update"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def check_esp_layout(failures):
+    """出厂是 BLS 布局：以 ESP 上现有条目为准，写出的条目要能被 systemd-boot 读。"""
+    updater = load_esp_update()
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp)
+        entries = esp / "loader" / "entries"
+        entries.mkdir(parents=True)
+        (esp / "linux" / "7.3.3").mkdir(parents=True)
+        (esp / "linux" / "7.3.3" / "linux").write_bytes(b"old-image")
+        source_entry = entries / "linux-7.3.3.conf"
+        source_entry.write_text(
+            "title Linux\nversion 7.3.3\nlinux /linux/7.3.3/linux\n"
+            "initrd /linux/7.3.3/initrd\ndevicetree /linux/7.3.3/board.dtb\n"
+            "options root=LABEL=PIANOROOT rw\n", encoding="utf-8")
+        dtb = esp / "linux" / "7.3.3" / "board.dtb"
+        dtb.write_bytes(b"board-dtb")
+        layout, entry, fields = updater.current_boot(esp)
+        if layout != "bls" or entry != source_entry:
+            failures.append(f"current_boot found {layout!r} at {entry}, not the BLS entry")
+            return
+        if fields.get("options") != "root=LABEL=PIANOROOT rw":
+            failures.append("current_boot does not preserve the BLS options line")
+        image = esp / "image.src"
+        image.write_bytes(b"new-image")
+        initramfs = esp / "initramfs.src"
+        initramfs.write_bytes(b"new-initrd")
+        record = {"changed": {}}
+        updater.update_bls(esp, fields, image, initramfs, dtb, "7.3.4", False, record)
+        target = esp / "linux" / "7.3.4"
+        expected_entry = (
+            "title Linux\nversion 7.3.4\nlinux /linux/7.3.4/linux\n"
+            "initrd /linux/7.3.4/initrd\ndevicetree /linux/7.3.4/board.dtb\n"
+            "options root=LABEL=PIANOROOT rw\n")
+        written = entries / "linux-7.3.4.conf"
+        if not written.is_file() or written.read_text(encoding="utf-8") != expected_entry:
+            failures.append("update_bls does not write the expected loader entry")
+        for name, data in (("linux", b"new-image"), ("initrd", b"new-initrd"),
+                           ("board.dtb", b"board-dtb")):
+            if not (target / name).is_file() or (target / name).read_bytes() != data:
+                failures.append(f"update_bls does not stage /linux/7.3.4/{name}")
+        if record["changed"].get("payload") is not True:
+            failures.append("update_bls did not report the new payload as changed")
+        again = {"changed": {}}
+        updater.update_bls(esp, fields, image, initramfs, dtb, "7.3.4", False, again)
+        if again["changed"].get("payload") is not False:
+            failures.append("update_bls rewrites an unchanged payload")
+    # ESP 若被改成可选 UKI 布局，检测也认它，不当成“不可启动的系统”。
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp)
+        (esp / "EFI" / "Linux").mkdir(parents=True)
+        (esp / "EFI" / "Linux" / "linux-7.3.3.efi").write_bytes(b"uke")
+        layout, entry, _ = updater.current_boot(esp)
+        if layout != "uki" or entry.name != "linux-7.3.3.efi":
+            failures.append("current_boot does not fall back to the optional UKI layout")
+
+
 def main():
     failures = []
     check_spec(failures)
     check_tools(failures)
     check_build_script(failures)
+    check_esp_layout(failures)
     check_built_rpm(failures)
     if failures:
         for item in failures:

@@ -124,8 +124,8 @@ echo [INFO] Target partitions !BOOT_PART!, sunuefi_esp, sunuefi_root verified.
 REM 4. Image file validation
 REM The active slot's boot partition takes the device-specific boot_linux.img
 REM that prepare-device-boot.py repacks from this tablet's stock 96 MiB BOOT.
-REM The ESP payload (/EFI/Linux/sunuefi.efi inside sunuefi_esp.img) is a UKI:
-REM SunUEFI loads it from the ESP; the ABL does not, and rejects the whole chain
+REM The ESP payload (systemd-boot at EFI/BOOT/BOOTAA64.EFI plus /linux/<release>/)
+REM only loads through SunUEFI; the ABL does not, and rejects the whole chain
 REM when it is written to boot_a or boot_b.
 set "BOOT_IMG="
 if exist "boot_linux.img" set "BOOT_IMG=boot_linux.img"

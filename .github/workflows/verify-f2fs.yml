@@ -116,8 +116,9 @@ jobs:
           set -euo pipefail
           mkdir -p fixture
           printf 'MZfake-efi-application' > fixture/sunuefi.efi
-          # 用固件实际读取的布局：/EFI/Linux/sunuefi.efi 这一个 UKI 里带内核、
-          # initramfs、板级 DTB 与 cmdline。mtools 不补中间层。
+          # fixture 只验证 ESP 的写入与读回；mtools 不补中间层。真实 ESP 由
+          # 上游 package_release.py 产出，默认是 /linux/<release>/ 加
+          # systemd-boot。
           python3 scripts/build-esp-image.py \
             --size-mib 64 \
             --label SUNUEFI_ESP \

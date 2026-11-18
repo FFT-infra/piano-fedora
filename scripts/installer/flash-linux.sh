@@ -263,8 +263,9 @@ find_file() {
 }
 
 # Auto-detect the device boot image.
-# The ESP payload (/EFI/Linux/sunuefi.efi inside sunuefi_esp.img) is a UKI.
-# SunUEFI's firmware loads it from the ESP; ABL cannot. Older archives named a
+# The ESP payload (systemd-boot at EFI/BOOT/BOOTAA64.EFI plus /linux/<release>/)
+# is only reachable through SunUEFI's boot manager; ABL cannot load it. Older
+# archives named a
 # copy of the old boot-container payload boot_sunuefi.img; writing either one
 # to the active slot's boot partition leaves the tablet in Fastboot with no
 # bootable slot, so neither is ever used here. boot_a/boot_b takes the

@@ -1,25 +1,28 @@
 #!/usr/bin/python3
-"""把刚装上的内核重建成 ESP 上固件实际读取的 UKI。
+"""把刚装上的内核写进 ESP 上 systemd-boot 实际读取的启动项。
 
-固件执行 `\\EFI\\Linux\\sunuefi.efi`。它是 systemd-stub、内核、initramfs、
-板级 DTB 与引导参数组成的单个 PE 镜像。内核升级不需要重编固件：在设备上
-取出现有 UKI 的 .dtb、.cmdline 与 .osrel，配上新内核与重建的 initramfs
-重新打包，再原子替换这一个文件。
+新固件走标准 UEFI 启动顺序：ESP 的 `/EFI/BOOT/BOOTAA64.EFI`（systemd-boot）
+是入口，Linux 载荷由它加载。SunUEFI 出厂默认是 BLS 布局：内核、initramfs
+与板级 DTB 分放在 `/linux/<release>/`，启动项写在
+`/loader/entries/linux-<release>.conf`。上游也支持可选的 UKI 布局
+（`/EFI/Linux/linux-<release>.efi`），这里两种都认，以 ESP 上现有条目为准。
+
+内核升级不需要重编固件：在设备上取出现有条目里的 cmdline 与板级 DTB，
+配上新内核与重建的 initramfs，写成新 release 的条目，旧 release 原样留着，
+systemd-boot 菜单因此天然给出回退项。
 
 顺序是固定的，任何一步失败都不落盘：
 
 1. 用封存 manifest 校验已安装的内核（`inspect_installed_kernel`）；
-2. 读现有 UKI 的 .dtb、.cmdline 与 .osrel。.dtb 是构建时叠加过板级 dtbo
-   的那一份，不是 `/boot/dtb/qcom/` 里的；
+2. 从现有启动项读 cmdline 与板级 DTB。DTB 是构建时叠加过板级 dtbo 的那一份，
+   不是 `/boot/dtb/qcom/` 里的；
 3. 在临时目录重建 initramfs；
-4. 用 systemd-ukify 打包，再逐段读回比对；
-5. 先写 `.sunuefi.efi.new` 并 fsync，把旧文件复制成 `.bak`，最后
-   `os.replace` 换上去；
-6. 写审计记录。
+4. 先把载荷写进同级临时目录并读回比对，再改名就位，最后才落启动项；
+5. 写审计记录。
 
-失败模式与之前相同：写失败时旧 UKI 原样留着，设备继续用上一个内核启动。
-已经装好但起不来的内核没有自动回滚（上游没有 boot counter），回滚靠
-`.bak` 与 installonly 保留下来的旧模块树。
+失败模式：写失败时旧条目与旧载荷原样留着，设备继续用上一个内核启动。
+已经装好但起不来的内核没有自动回滚，回滚靠旧 release 的条目与
+installonly 保留下来的旧模块树。
 
 由 kernel-piano 的 `%posttrans` 调用；镜像构建（`dnf --installroot`）里没有
 ESP 载荷，那种环境直接跳过。
@@ -43,10 +46,14 @@ from piano_artifacts import inspect_installed_kernel, sha256  # noqa: E402
 # ESP 在系统里的挂载点由 rootfs 策略固定（LABEL=SUNUEFI_ESP /boot/efi）。
 # 测试与救援环境可以覆盖。
 DEFAULT_ESP = Path(os.environ.get("PIANO_ESP_DIR", "/boot/efi"))
-ESP_PAYLOAD = "EFI/Linux"
-UKI_NAME = "sunuefi.efi"
+# 上游 package_release.py 的两种布局。
+BLS_PAYLOAD = "linux"
+ENTRY_DIR = "loader/entries"
+ENTRY_PREFIX = "linux-"
+UKI_PAYLOAD = "EFI/Linux"
+UKI_PREFIX = "linux-"
 # ukify 与 aa64 stub 由 systemd-ukify、systemd-boot-unsigned 提供，RPM 依赖
-# 已声明。测试用环境变量指向同版本工具，避免依赖构建机的安装位置。
+# 已声明。只有 UKI 布局用得到；BLS 布局不碰这两个工具。
 UKIFY = Path(os.environ.get("PIANO_UKIFY", "/usr/lib/systemd/ukify"))
 UKI_STUB = Path(os.environ.get("PIANO_UKI_STUB",
                                "/usr/lib/systemd/boot/efi/linuxaa64.efi.stub"))
@@ -99,6 +106,39 @@ def replace_atomically(source, target, backup):
         fsync_path(backup)
     os.replace(source, target)
     fsync_directory(target.parent)
+
+
+def read_entry(path):
+    """读 systemd-boot 的 Type #1 条目；只有键值行，值可以带空格。"""
+    fields = {}
+    for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+        key, _, value = line.partition(" ")
+        if key and key not in fields:
+            fields[key] = value
+    return fields
+
+
+def esp_relative(esp, path):
+    return esp / path.lstrip("/")
+
+
+def current_boot(esp):
+    """返回 (布局, 现有启动项, 条目字段)，以 ESP 上实际存在的为准。"""
+    entries = sorted((esp / ENTRY_DIR).glob(ENTRY_PREFIX + "*.conf"))
+    usable = []
+    for entry in entries:
+        fields = read_entry(entry)
+        if (esp_relative(esp, fields.get("linux", "")).is_file()
+                and esp_relative(esp, fields.get("devicetree", "")).is_file()):
+            usable.append((entry.stat().st_mtime, entry.name, entry, fields))
+    if usable:
+        _, _, entry, fields = max(usable)
+        return "bls", entry, fields
+    ukis = sorted((esp / UKI_PAYLOAD).glob("*.efi"))
+    if ukis:
+        return "uki", max(ukis, key=lambda p: (p.stat().st_mtime, p.name)), {}
+    raise EspUpdateError(
+        f"no boot entry or UKI under {esp}; this is not a bootable piano install")
 
 
 def uki_sections(path):
@@ -170,34 +210,125 @@ def build_initramfs(root, output, manifest=None):
     return json.loads((output / "manifest.json").read_text())
 
 
+def update_bls(esp, fields, image, initramfs, dtb, release, dry_run, record):
+    """写 BLS 布局：/linux/<release>/ 三个文件加一个 loader 条目。"""
+    cmdline = fields.get("options")
+    if not cmdline:
+        raise EspUpdateError("existing boot entry has no options line")
+    payload = {"linux": image, "initrd": initramfs, "board.dtb": dtb}
+    target_dir = esp / BLS_PAYLOAD / release
+    entry_path = esp / ENTRY_DIR / f"{ENTRY_PREFIX}{release}.conf"
+    text = "\n".join((f"title Linux",
+                      f"version {release}",
+                      f"linux /{BLS_PAYLOAD}/{release}/linux",
+                      f"initrd /{BLS_PAYLOAD}/{release}/initrd",
+                      f"devicetree /{BLS_PAYLOAD}/{release}/board.dtb",
+                      f"options {cmdline}")) + "\n"
+    record["layout"] = "bls"
+    record["entry"] = str(entry_path)
+    record["payload"] = {"path": str(target_dir), "files": {}}
+    changed = True
+    if target_dir.is_dir() and entry_path.is_file():
+        if entry_path.read_text(encoding="utf-8") == text and all(
+                (target_dir / name).is_file()
+                and sha256(target_dir / name) == sha256(source)
+                for name, source in payload.items()):
+            changed = False
+    record["changed"] = {"payload": changed}
+    if not changed:
+        for name, source in payload.items():
+            record["payload"]["files"][name] = {"sha256": sha256(source),
+                                                "bytes": source.stat().st_size}
+        return record
+    needed = sum(source.stat().st_size for source in payload.values())
+    if free_bytes(esp) < needed:
+        raise EspUpdateError(
+            f"ESP has {free_bytes(esp)} bytes free, the update needs {needed}")
+    if dry_run:
+        record["dry_run"] = True
+        return record
+    staged = target_dir.with_name("." + release + ".new")
+    if staged.exists():
+        shutil.rmtree(staged)
+    staged.mkdir(parents=True)
+    for name, source in payload.items():
+        staged_file = staged / name
+        shutil.copyfile(source, staged_file)
+        fsync_path(staged_file)
+        if sha256(staged_file) != sha256(source):
+            raise EspUpdateError("staged ESP payload differs from its source: " + name)
+    # 同 release 重装时先让开旧目录，新目录就位后再删。
+    previous = target_dir.with_name("." + release + ".old")
+    if target_dir.exists():
+        if previous.exists():
+            shutil.rmtree(previous)
+        target_dir.rename(previous)
+    staged.rename(target_dir)
+    fsync_directory(target_dir.parent)
+    if previous.exists():
+        shutil.rmtree(previous)
+    # 载荷就位之后才写条目，systemd-boot 不会看到指向半份文件的条目。
+    entry_staged = entry_path.with_name("." + entry_path.name + ".new")
+    entry_staged.write_text(text, encoding="utf-8")
+    fsync_path(entry_staged)
+    os.replace(entry_staged, entry_path)
+    fsync_directory(entry_path.parent)
+    for name, source in payload.items():
+        record["payload"]["files"][name] = {"sha256": sha256(target_dir / name),
+                                            "bytes": source.stat().st_size}
+    return record
+
+
+def update_uki(esp, current, image, initramfs, dtb, release, dry_run, record):
+    """可选 UKI 布局：重建单个 PE 文件，版本化文件名，旧 UKI 留着回退。"""
+    existing = uki_sections(current)
+    missing = [name for name in (".cmdline", ".osrel") if name not in existing]
+    if missing:
+        raise EspUpdateError("existing ESP UKI lacks " + ", ".join(missing))
+    target = esp / UKI_PAYLOAD / f"{UKI_PREFIX}{release}.efi"
+    record["layout"] = "uki"
+    record["uki"] = {"path": str(target)}
+    with tempfile.TemporaryDirectory(prefix="piano-esp-") as scratch:
+        built_uki = Path(scratch) / target.name
+        sections = build_uki(image, initramfs, dtb, existing[".cmdline"],
+                             existing[".osrel"], release, built_uki)
+        record["uki"]["sections"] = sections
+        rebuilt = uki_sections(built_uki)
+        present = uki_sections(target) if target.is_file() else {}
+        changed = not present or any(
+            present.get(name) != rebuilt.get(name) for name in UKI_SECTIONS)
+        record["changed"] = {"uki": changed}
+        if not changed or dry_run:
+            if dry_run:
+                record["dry_run"] = True
+            return record
+        # 替换峰值是新 UKI 与它的 .bak 两份同时存在。
+        needed = target.stat().st_size * 2 if target.exists() else built_uki.stat().st_size
+        if free_bytes(target.parent) < needed:
+            raise EspUpdateError(
+                f"ESP has {free_bytes(target.parent)} bytes free, the update needs {needed}")
+        staged = target.with_name("." + target.name + ".new")
+        shutil.copyfile(built_uki, staged)
+        replace_atomically(staged, target, target.with_name(target.name + ".bak"))
+    return record
+
+
 def update(root, esp, release_expected=None, dry_run=False, manifest_name=None):
     root, esp = Path(root), Path(esp)
-    uki = esp / ESP_PAYLOAD / UKI_NAME
-    if not uki.is_file():
-        raise EspUpdateError(
-            f"no ESP payload at {uki}; this is not a bootable piano install")
+    layout, current, fields = current_boot(esp)
     manifest, manifest_sha, image = inspect_installed_kernel(root, manifest=manifest_name)
     release = manifest["kernel_release"]
     if release_expected is not None and release != release_expected:
         raise EspUpdateError(
             f"installed kernel release {release} differs from the requested {release_expected}")
 
-    existing = uki_sections(uki)
-    missing = [name for name in (".dtb", ".cmdline", ".osrel") if name not in existing]
-    if missing:
-        raise EspUpdateError("existing ESP UKI lacks " + ", ".join(missing))
-
     record = {
         "release": release,
         "kernel_manifest_sha256": manifest_sha,
         "image": {"source": str(image), "sha256": sha256(image), "bytes": image.stat().st_size},
-        "esp": str(uki.parent),
-        "changed": {},
+        "esp": str(esp),
+        "current": str(current),
     }
-    if dry_run:
-        record["dry_run"] = True
-        return record
-
     with tempfile.TemporaryDirectory(prefix="piano-esp-") as scratch:
         scratch = Path(scratch)
         initramfs_dir = scratch / "initramfs"
@@ -205,26 +336,13 @@ def update(root, esp, release_expected=None, dry_run=False, manifest_name=None):
         if built["kernel_manifest_sha256"] != manifest_sha:
             raise EspUpdateError("rebuilt initramfs names a different kernel manifest")
         initramfs = initramfs_dir / "initramfs.cpio.gz"
-        dtb = scratch / "board.dtb"
-        dtb.write_bytes(existing[".dtb"])
-
-        built_uki = scratch / UKI_NAME
-        sections = build_uki(image, initramfs, dtb, existing[".cmdline"],
-                             existing[".osrel"], release, built_uki)
-        rebuilt = uki_sections(built_uki)
-        changed = any(existing.get(name) != rebuilt.get(name) for name in UKI_SECTIONS)
-        # 替换峰值是旧 UKI、它的 .bak 与新文件三份同时存在。
-        needed = uki.stat().st_size * 2 + built_uki.stat().st_size
-        if changed and free_bytes(uki.parent) < needed:
-            raise EspUpdateError(
-                f"ESP has {free_bytes(uki.parent)} bytes free, the update needs {needed}")
-        record["changed"][UKI_NAME] = changed
-        if changed:
-            staged = uki.with_name("." + uki.name + ".new")
-            shutil.copyfile(built_uki, staged)
-            # 校验通过之后才碰 UKI：此前的任何失败都只留下 .new 与 .bak。
-            replace_atomically(staged, uki, uki.with_name(uki.name + ".bak"))
-        record["uki"] = {"path": str(uki), "sections": sections}
+        if layout == "bls":
+            dtb = esp_relative(esp, fields["devicetree"])
+            update_bls(esp, fields, image, initramfs, dtb, release, dry_run, record)
+        else:
+            dtb = scratch / "board.dtb"
+            dtb.write_bytes(uki_sections(current)[".dtb"])
+            update_uki(esp, current, image, initramfs, dtb, release, dry_run, record)
 
     record["initramfs"] = {
         "sha256": built["initramfs_sha256"],

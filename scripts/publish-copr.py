@@ -474,9 +474,9 @@ def ensure_project(binary, config, project):
         "--description",
         f"Fedora {RELEASEVER} aarch64 packages for Xiaomi Pad 8 Pro (piano)",
         "--instructions",
-        "kernel-piano upgrades rebuild the UKI on the ESP: the package's "
-        "%posttrans rebuilds the initramfs and repacks /EFI/Linux/sunuefi.efi. "
-        "Keep a copy of that file if you want a manual rollback.",
+        "kernel-piano upgrades write a new systemd-boot entry: the package's "
+        "%posttrans rebuilds the initramfs and adds /linux/<release>/ with a "
+        "loader entry. Older kernels stay on the ESP for rollback.",
     ], check=False)
     if created.returncode:
         # 并发创建或权限问题：再看一次列表，真的没有才算失败。

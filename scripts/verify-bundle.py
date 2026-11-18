@@ -37,11 +37,24 @@ def verify(root):
     esp = read("esp-manifest.json")
     if esp["kernel_manifest_sha256"] != kernel_hash:
         raise ValueError("ESP and rootfs use different kernel manifests")
-    # 固件直接执行 /EFI/Linux/sunuefi.efi。内核、initramfs、板级 DTB 与
-    # cmdline 都在这个 UKI 的 PE 段里，ESP 不再有第二个载荷文件。
-    expected_paths = {"/EFI/Linux/sunuefi.efi"}
+    # 固件走标准启动顺序，ESP 的 EFI/BOOT/BOOTAA64.EFI（systemd-boot）是入口。
+    # 上游 package_release.py 默认给 BLS 布局，也支持可选的版本化 UKI；两种都
+    # 带同一个 systemd-boot，载荷按 boot_layout 字段核对，不猜。
+    layout = esp.get("boot_layout")
+    release = kernel["kernel_release"]
+    systemd_boot = {"/EFI/systemd/systemd-bootaa64.efi", "/EFI/BOOT/BOOTAA64.EFI",
+                    "/loader/loader.conf"}
+    if layout == "bls":
+        expected_paths = systemd_boot | {
+            f"/linux/{release}/linux", f"/linux/{release}/initrd",
+            f"/linux/{release}/board.dtb", f"/loader/entries/linux-{release}.conf"}
+    elif layout == "uki":
+        expected_paths = systemd_boot | {f"/EFI/Linux/linux-{release}.efi"}
+    else:
+        raise ValueError(f"ESP manifest names an unknown boot layout: {layout!r}")
     if set(esp["esp_files"]) != expected_paths:
-        raise ValueError("ESP layout differs from the actual firmware loader")
+        raise ValueError("ESP layout differs from the actual firmware loader: "
+                         f"got {sorted(esp['esp_files'])}")
     for asset, packaged in ASSETS.items():
         row = esp["files"][packaged]
         if sha256(root / asset) != row["sha256"] or (root / asset).stat().st_size != row["bytes"]:

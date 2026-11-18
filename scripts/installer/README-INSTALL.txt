@@ -173,9 +173,10 @@ Step 4 - Flash, one command at a time (each must print OKAY):
    Do not add os_version, and do not re-sign the image: piano-boot-repack
    compares the wrapper header byte-for-byte, and a patched os_version breaks
    the Android boot-assistant module.
-   The ESP payload /EFI/Linux/sunuefi.efi is not a device boot image. SunUEFI
-   loads it; the ABL does not. If you flash it to boot_a or boot_b, the tablet
-   sticks in Fastboot with no bootable slot.
+   The ESP payload is not a device boot image. SunUEFI's systemd-boot
+   (EFI/BOOT/BOOTAA64.EFI) loads the kernel from /linux/<release>/; the ABL
+   does not. If you flash that payload to boot_a or boot_b, the tablet sticks
+   in Fastboot with no bootable slot.
 
 Step 5 - Verify after reboot:
    Confirm: the GNOME desktop appears; "uname -r" shows the release kernel;
