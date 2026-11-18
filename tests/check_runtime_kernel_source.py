@@ -62,6 +62,22 @@ def main():
             assert "checksum" in str(error)
         else:
             raise AssertionError("a changed patch checksum was accepted")
+    # 封存内核从 f06ad9ee 起把 -b<提交时间>-g<ABI 摘要> 放进 LOCALVERSION，
+    # 模块编译必须复现同一段，否则 vermagic 少一截。
+    config = 'CONFIG_LOCALVERSION="-piano-sunuefi-cachy-optimize"\n'
+    assert runtime.localversion_override(
+        config, "7.3.3-piano-sunuefi-cachy-optimize-b1794958869-g45cb6084ff1b"
+    ) == "-b1794958869-g45cb6084ff1b"
+    # 旧内核没有这段尾缀时保持空值，行为与之前一致。
+    assert runtime.localversion_override(
+        config, "7.3.3-piano-sunuefi-cachy-optimize") == ""
+    assert runtime.localversion_override("", "7.3.3") == ""
+    try:
+        runtime.localversion_override(config, "7.3.3-other")
+    except ValueError as error:
+        assert "localversion" in str(error), error
+    else:
+        raise AssertionError("a release without the configured localversion was accepted")
     print("OK: runtime source replay reads the 7.3 manifest, applies the loopback series")
 
 

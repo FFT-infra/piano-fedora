@@ -4,6 +4,7 @@
 import argparse
 import difflib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,25 @@ def comparable_config(text):
 
 def run(command, **kw):
     subprocess.run([str(x) for x in command], check=True, **kw)
+
+
+def localversion_override(sealed_config, release):
+    """外部模块编译要复现封存内核构建时传入的 LOCALVERSION。
+
+    SunUEFI 的封存内核把 `-b<提交时间>-g<ABI 摘要>` 通过 make 的
+    LOCALVERSION 写进 release（build_piano_full_kernel.py 里替换掉空值），
+    内核自身的 UTS_RELEASE 因此带这段后缀。外部模块若仍以空 LOCALVERSION
+    编译，vermagic 会少这一段，与封存内核配不上。这里从封存配置里取出
+    CONFIG_LOCALVERSION，剩下的一段就是构建时传入的值。
+    """
+    match = re.search(r'^CONFIG_LOCALVERSION="(.*)"$', sealed_config, re.M)
+    configured = match.group(1) if match else ""
+    if not configured:
+        return ""
+    if configured not in release:
+        raise ValueError(
+            f"kernel release {release!r} does not contain the configured localversion {configured!r}")
+    return release.split(configured, 1)[1]
 
 
 def apply_patch_series(series, target):
@@ -80,12 +100,20 @@ def main():
     build.mkdir(parents=True)
     shutil.copy2(restored / ".config", build / ".config")
     shutil.copy2(restored / "Module.symvers", build / "Module.symvers")
-    # LOCALVERSION 必须显式置空：不置空时 setlocalversion 会给发布串补一个 "+"，
-    # 外部模块的 vermagic 就与封存内核对不上，而封存内核自身是以 LOCALVERSION=
-    # 构建的。
+    # LOCALVERSION 必须显式给出：置空时 setlocalversion 会补一个 "+"，而带上
+    # 封存内核的尾缀才能让模块 vermagic 与内核 release 一致。
+    localversion = localversion_override(sealed_config, record["kernel_release"])
     command = ["make", "-C", prepared["worktree"], "O=" + str(build),
-               "ARCH=arm64", "LLVM=1", "LLVM_IAS=1", "LOCALVERSION="]
+               "ARCH=arm64", "LLVM=1", "LLVM_IAS=1", "LOCALVERSION=" + localversion]
     run([*command, "-j4", "modules_prepare"], env=kernel_env)
+    # 模块构建目录里重建的 release 必须与封存内核一致，否则后面 vermagic
+    # 对不上只报一句笼统的错，看不出是哪一段版本串丢了。
+    generated = (build / "include/config/kernel.release")
+    if generated.is_file():
+        rebuilt = generated.read_text().strip()
+        if rebuilt != record["kernel_release"]:
+            raise ValueError(
+                f"module build kernel release {rebuilt!r} != sealed {record['kernel_release']!r}")
     after_config = (build / ".config").read_text()
     if comparable_config(after_config) != comparable_config(sealed_config):
         # syncconfig 会重写 .config；把差异打出来，否则只能看到一条哈希不符。
@@ -105,7 +133,9 @@ def main():
     module = loop / "v4l2loopback.ko"
     release = subprocess.check_output(["modinfo", "-F", "vermagic", str(module)], text=True, env=kernel_env)
     if release.split()[0] != record["kernel_release"]:
-        raise ValueError("external module vermagic differs from the selected kernel")
+        raise ValueError(
+            f"external module vermagic {release.split()[0]!r} "
+            f"differs from the selected kernel {record['kernel_release']!r}")
     proof = {"kernel_manifest_sha256": kernel_hash,
              "kernel_release": record["kernel_release"], "kernel_commit": record["source_commit"],
              "module_sha256": sha256(module), "vermagic": release.strip(),
