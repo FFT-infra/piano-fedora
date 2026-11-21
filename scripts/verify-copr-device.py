@@ -235,6 +235,7 @@ def main():
             expected = {
                 "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
                 "piano-camera", "piano-fingerprint", "piano-libfprint",
+                "piano-libwacom",
                 "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
                 "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
                 # 设备原生运行时：由 build-device-runtime 从锁定源码编译，

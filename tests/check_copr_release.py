@@ -25,6 +25,7 @@ DEVICE_VERIFIER = ROOT / "scripts" / "verify-copr-device.py"
 
 PACKAGES = ("piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
             "piano-camera", "piano-fingerprint", "piano-libfprint",
+            "piano-libwacom",
             "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
             "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano")
 RUNTIME = ("piano-runtime", "piano-crosvm", "librevm")

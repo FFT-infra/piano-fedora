@@ -31,7 +31,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # 用户态包：COPR 仓库对它们提供升级。
 USERSPACE = (
     "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
-    "piano-camera", "piano-fingerprint", "piano-libfprint",
+    "piano-camera", "piano-fingerprint", "piano-libfprint", "piano-libwacom",
     "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
     "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
 )
@@ -51,6 +51,7 @@ BUILD_ORDER = (
     "piano-camera",
     "piano-fingerprint",
     "piano-libfprint",
+    "piano-libwacom",
     "piano-pipewire-gstreamer",
     "xiaomi-piano-thp",
     "sm8750-video-accel",
