@@ -2,7 +2,7 @@
 
 Name:           piano-gnome-extras
 Version:        0.1.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Optional GNOME desktop patches for Xiaomi Pad 8 Pro (piano)
 License:        MIT
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -12,6 +12,7 @@ Source0:        20-piano-ambient
 Requires:       gnome-settings-daemon-piano
 Requires:       gtk3
 Requires:       mutter
+Requires:       gnome-control-center
 Requires:       dconf
 
 %description
@@ -21,6 +22,8 @@ Installs the optional GNOME extras for the Xiaomi Pad 8 Pro:
   keyboard backlight hotplug handling
 - gtk3 with the X11 XI2 tool-atom fix
 - mutter with the empty KMS gamma LUT and cancelled touch-grab guards
+- gnome-control-center waiting for fingerprint verification to stop before
+  starting an enrollment
 - gdm with the native KMS connector wait (upgrade it separately before
   installing this meta package)
 
@@ -50,6 +53,9 @@ fi
 %{_datadir}/piano-extras/gnome
 
 %changelog
+* Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-3
+- Pull in gnome-control-center with the fingerprint enrollment wait
+
 * Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 0.1.0-2
 - Pull in the patched mutter; gdm stays a separate upgrade so installing
   the meta package does not add a login manager on non-GNOME images

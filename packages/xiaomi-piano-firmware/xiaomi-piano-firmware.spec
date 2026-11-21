@@ -60,7 +60,7 @@ find %{buildroot}%{_firmwaredir} -type f -exec chmod 0644 {} \;
 %{_firmwaredir}/*
 
 %changelog
-* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 20261113-3
+* Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 20261113-3
 - Source1 的 SunUEFI 提交号跟到 edcf272。叠层文件逐字节未变，只有归档 URL
   变了，所以产物摘要会变，需要新的 release 号
 

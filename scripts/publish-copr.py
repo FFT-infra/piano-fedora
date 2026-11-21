@@ -32,6 +32,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 USERSPACE = (
     "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
     "piano-camera", "piano-fingerprint", "piano-libfprint", "piano-libwacom",
+    "piano-bluez",
     "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
     "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
 )
@@ -52,6 +53,7 @@ BUILD_ORDER = (
     "piano-fingerprint",
     "piano-libfprint",
     "piano-libwacom",
+    "piano-bluez",
     "piano-pipewire-gstreamer",
     "xiaomi-piano-thp",
     "sm8750-video-accel",
@@ -104,15 +106,16 @@ GRAPHICS_ORDER = ("mesa", "ffmpeg")
 # 可选 extras 仓库：默认不启用，只放桌面补丁和两个 meta 包。GSD 改名，
 # KWin/GTK3/mutter/gdm 保持同名、release 带 .piano1。GTK3 先编，两个 meta 最后。
 EXTRAS_ORDER = ("gtk3", "kwin", "mutter", "gdm", "gnome-settings-daemon-piano",
-                "piano-gnome-extras", "piano-kde-extras")
+                "gnome-control-center", "piano-gnome-extras", "piano-kde-extras")
 EXTRAS_STATUS = "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
 EXTRAS_PROJECT = "xinyang26/piano-fedora-extras"
 # 两个 meta 包只放 Requires，等它们引用的桌面包进了仓库再提交。
 EXTRAS_DEPENDS = {
-    "piano-gnome-extras": tuple(EXTRAS_ORDER[:5]),
+    "piano-gnome-extras": tuple(EXTRAS_ORDER[:6]),
     "piano-kde-extras": tuple(EXTRAS_ORDER[:5]),
 }
-DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm")
+DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
+                    "gnome-control-center")
 
 
 class PublishError(Exception):

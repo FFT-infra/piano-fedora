@@ -33,8 +33,10 @@ KERNEL_PACKAGE = "kernel-piano"
 GRAPHICS_RENAMES = {"mesa-piano-dri-drivers": "mesa-dri-drivers",
                     "ffmpeg-piano": "ffmpeg-free"}
 EXTRAS_PACKAGES = {"gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
+                   "gnome-control-center",
                    "piano-gnome-extras", "piano-kde-extras"}
-EXTRAS_DESKTOP = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm")
+EXTRAS_DESKTOP = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
+                  "gnome-control-center")
 EXTRAS_META = ("piano-gnome-extras", "piano-kde-extras")
 
 
@@ -235,7 +237,7 @@ def main():
             expected = {
                 "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
                 "piano-camera", "piano-fingerprint", "piano-libfprint",
-                "piano-libwacom",
+                "piano-libwacom", "piano-bluez",
                 "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
                 "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
                 # 设备原生运行时：由 build-device-runtime 从锁定源码编译，

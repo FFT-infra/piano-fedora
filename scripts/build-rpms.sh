@@ -117,6 +117,7 @@ if [ "$HOST_ARCH" = "aarch64" ]; then
         "piano-fingerprint"
         "piano-libfprint"
         "piano-libwacom"
+        "piano-bluez"
         "piano-pipewire-gstreamer"
         "xiaomi-piano-thp"
         "sm8750-video-accel"

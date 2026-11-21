@@ -23,10 +23,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STATUS = "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
-DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm")
+DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
+                    "gnome-control-center")
 META_PACKAGES = ("piano-gnome-extras", "piano-kde-extras")
 PACKAGES = ("gtk3", "kwin", "mutter", "gdm",
-            "gnome-settings-daemon-piano") + META_PACKAGES
+            "gnome-settings-daemon-piano", "gnome-control-center") + META_PACKAGES
 
 
 def sha256(path):

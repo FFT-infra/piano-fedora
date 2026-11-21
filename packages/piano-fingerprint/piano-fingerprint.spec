@@ -84,7 +84,7 @@ install -Dm0644 /usr/include/linux/tee.h %{buildroot}%{_licensedir}/%{name}/linu
 %license %{_licensedir}/%{name}/*
 
 %changelog
-* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.2.0-2
+* Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.2.0-2
 - 源码不再入库维护：构建期从 SunUEFI edcf272 的 linux/userspace/fingerprint 取，
   拿到 1cb8216 的等旧存储服务注销修复，录入不再立即失败
 

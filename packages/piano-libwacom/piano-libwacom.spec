@@ -128,7 +128,7 @@ Header, pkg-config file and the unversioned shared library link.
 %{_libdir}/pkgconfig/libwacom.pc
 
 %changelog
-* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 2.20.0-1
+* Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 2.20.0-1
 - New package: upstream libwacom 2.20.0 with SunUEFI's SPI digitizer patch,
   replacing Fedora's libwacom family so desktop tablet settings see the
   Novatek Focus Pen

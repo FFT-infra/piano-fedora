@@ -162,6 +162,13 @@ def adapt_gdm(text):
                               "piano-gdm-reauthentication-close.patch"])
 
 
+def adapt_gcc(text):
+    """只加 release 后缀与补丁；包名与 Fedora 相同，靠 priority 选中。"""
+    text = replace_once(text, "Release:        %autorelease\n",
+                        "Release:        1.piano1%{?dist}\n")
+    return add_patches(text, ["piano-fingerprint-wait.patch"])
+
+
 PACKAGES = (
     {
         "source": "gnome-settings-daemon",
@@ -292,6 +299,31 @@ PACKAGES = (
         "desktops": ("gnome",),
         "adapt": adapt_gdm,
         "changelog": "Wait for native KMS connectors before starting the greeter, and close cancelled or replaced reauthentication sessions",
+    },
+    {
+        # 指纹录入：fprintd 在 VerifyStop 回复之前一直占着验证动作，控制中心
+        # 立刻发 EnrollStart 会拿到 AlreadyInProgress。上游 44926f54 还没进
+        # 51.1，按 51.1 源码套 SunUEFI 的同一份补丁（--fuzz=0 可套）。
+        "source": "gnome-control-center",
+        "binary": "gnome-control-center",
+        "version": "51.1",
+        "release": "1.piano1",
+        "url": "https://kojipkgs.fedoraproject.org/packages/gnome-control-center/"
+               "51.1/1.fc45/src/gnome-control-center-51.1-1.fc45.src.rpm",
+        "srpm_sha256": "bc70ab5ab70dc2683041a4a410c8ae4ea79804d84daea452ad2f7cee02d1ae21",
+        "spec_sha256": "493580128e56f9dc55ecf12564f23ff7f37857450de693237b277e4be34f7191",
+        "tarball_sha256": "1054976c2f1977f770ba134b872f547c89db7005e4422f09a96d521379c083cb",
+        "patches": [
+            ("gnome-control-center/51.0/"
+             "0001-users-wait-for-verification-before-enrolling.patch",
+             "77c25d89c145dcbfcda69e7dea9ce981c2d7a76044c90cf5b640f699e9211bd0",
+             "piano-fingerprint-wait.patch"),
+        ],
+        "runtime": ("gnome-control-center", "gnome-control-center-filesystem"),
+        "required": ("gnome-control-center", "gnome-control-center-filesystem"),
+        "desktops": ("gnome",),
+        "adapt": adapt_gcc,
+        "changelog": "Wait for fingerprint verification to stop before starting an enrollment",
     },
 )
 

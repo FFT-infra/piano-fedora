@@ -35,7 +35,8 @@ def load_module():
 
 def test_package_table(module):
     assert {entry["source"] for entry in module.PACKAGES} == {
-        "gnome-settings-daemon", "kwin", "gtk3", "mutter", "gdm"}
+        "gnome-settings-daemon", "kwin", "gtk3", "mutter", "gdm",
+        "gnome-control-center"}
     for entry in module.PACKAGES:
         name = entry["source"]
         assert entry["url"].endswith(".src.rpm"), name

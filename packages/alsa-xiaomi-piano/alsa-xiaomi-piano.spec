@@ -40,7 +40,7 @@ cp -a usr %{buildroot}/
 "%{_datadir}/alsa/ucm2/conf.d/sm8750/Xiaomi Pad 8 Pro.conf"
 
 %changelog
-* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-3
+* Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-3
 - HiFi.conf 跟到 SunUEFI edcf272：扬声器在 DAP 可用时走 MultiMedia4 立体声
   PCM，不可用时回到 MultiMedia1 四声道；四条功放默认值改成原厂的 235
 

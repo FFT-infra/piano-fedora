@@ -40,6 +40,8 @@ PRIMARY = """<metadata>
 <version epoch="0" ver="51.1" rel="2.piano1.fc45"/></package>
 <package type="rpm"><name>gdm</name><arch>aarch64</arch>
 <version epoch="0" ver="51.1.1" rel="2.piano1.fc45"/></package>
+<package type="rpm"><name>gnome-control-center</name><arch>aarch64</arch>
+<version epoch="0" ver="51.1" rel="1.piano1.fc45"/></package>
 <package type="rpm"><name>piano-gnome-extras</name><arch>noarch</arch>
 <version epoch="0" ver="0.1.0" rel="2.fc45"/></package>
 <package type="rpm"><name>piano-kde-extras</name><arch>noarch</arch>
@@ -51,6 +53,7 @@ def test_verify_extras_parser():
     module = load_verify()
     assert module.EXTRAS_PACKAGES == {
         "gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
+        "gnome-control-center",
         "piano-gnome-extras", "piano-kde-extras"}
     records = module.package_releases(PRIMARY, module.EXTRAS_PACKAGES)
     assert "1.piano1.fc45" in [row["release"] for row in records["kwin"]]
@@ -95,7 +98,7 @@ def test_extras_workflows_and_scripts():
         assert script.stat().st_mode & 0o111, f"{script} is not executable"
     # 原版同名包已经满足 meta 的裸 Requires，单装 meta 不会换包；脚本必须显式
     # 升级 KWin/GTK3，让 priority=1 有机会选中 .piano1 构建。
-    assert "dnf upgrade -y kwin gtk3 mutter gdm" in INSTALL.read_text()
+    assert "dnf upgrade -y kwin gtk3 mutter gdm gnome-control-center" in INSTALL.read_text()
 
 
 def main():

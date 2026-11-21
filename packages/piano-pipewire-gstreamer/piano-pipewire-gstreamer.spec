@@ -167,7 +167,7 @@ rm -rf %{buildroot}%{_libdir}/libspa-0.2.so*
 %{_libdir}/gstreamer-1.0/libgstpipewire.so
 
 %changelog
-* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 1.6.11-7
+* Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 1.6.11-7
 - 补丁序列改成逐字节取自 SunUEFI edcf272 的 patches/pipewire 1.6.11 序列：
   新增 0013 报告不兼容的采集格式，不重连的判定改为上游 97699d70 的原文；
   上游 0008 的 per-plane stride 已在 1.6.11 tag 里，不再重复带

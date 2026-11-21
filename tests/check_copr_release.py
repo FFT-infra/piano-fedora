@@ -25,7 +25,7 @@ DEVICE_VERIFIER = ROOT / "scripts" / "verify-copr-device.py"
 
 PACKAGES = ("piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
             "piano-camera", "piano-fingerprint", "piano-libfprint",
-            "piano-libwacom",
+            "piano-libwacom", "piano-bluez",
             "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
             "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano")
 RUNTIME = ("piano-runtime", "piano-crosvm", "librevm")
@@ -552,7 +552,9 @@ def make_extras(directory, *, status="PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED",
         "gtk3": ("gtk3", "3.24.52", "7.piano1", ["gnome", "kde"]),
         "mutter": ("mutter", "51.1", "2.piano1", ["gnome"]),
         "gdm": ("gdm", "51.1.1", "2.piano1", ["gnome"]),
-        "piano-gnome-extras": ("piano-gnome-extras", "0.1.0", "2.fc45", ["gnome"]),
+        "gnome-control-center": ("gnome-control-center", "51.1", "1.piano1",
+                                 ["gnome"]),
+        "piano-gnome-extras": ("piano-gnome-extras", "0.1.0", "3.fc45", ["gnome"]),
         "piano-kde-extras": ("piano-kde-extras", "0.1.0", "1.fc45", ["kde"]),
     }
     files, srpms, packages = {}, {}, {}
@@ -610,8 +612,10 @@ def test_extras_contract(module, tmp):
 def test_extras_order(module):
     assert module.EXTRAS_ORDER == ("gtk3", "kwin", "mutter", "gdm",
                                    "gnome-settings-daemon-piano",
+                                   "gnome-control-center",
                                    "piano-gnome-extras", "piano-kde-extras")
-    for name in ("gtk3", "kwin", "mutter", "gdm", "gnome-settings-daemon-piano"):
+    for name in ("gtk3", "kwin", "mutter", "gdm", "gnome-settings-daemon-piano",
+                 "gnome-control-center"):
         assert name not in module.REQUIRED
     assert module.EXTRAS_PROJECT == "xinyang26/piano-fedora-extras"
 

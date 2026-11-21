@@ -194,7 +194,9 @@ jobs:
                 dbus-devel polkit-devel json-c-devel gtk4-devel libadwaita-devel \
                 libgudev-devel libevdev-devel libgusb-devel pixman-devel openssl-devel \
                 cargo rust libjpeg-turbo-devel libyuv-devel glibc-static \
-                gstreamer1-devel gstreamer1-plugins-base-devel
+                gstreamer1-devel gstreamer1-plugins-base-devel \
+                libell-devel libical-devel readline-devel cups-devel \
+                libtool automake autoconf python3-docutils python3-pygments
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory /workspace/build/sources/sunuefi
               export KERNEL_PAYLOAD=/workspace/build/kernel
@@ -216,7 +218,7 @@ jobs:
           required = {
               "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
               "piano-camera", "piano-fingerprint", "piano-libfprint",
-              "piano-libwacom",
+              "piano-libwacom", "piano-bluez",
               "piano-pipewire-gstreamer",
               "xiaomi-piano-thp", "sm8750-video-accel",
               "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",

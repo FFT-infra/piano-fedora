@@ -95,7 +95,7 @@ systemctl enable piano-camerad.service piano-camera.service || :
 %systemd_postun_with_restart piano-camerad.service piano-camera.service
 
 %changelog
-* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-9
+* Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-9
 - 源码不再入库维护：构建期从 SunUEFI edcf272 的 linux/userspace/camera 取，
   静态拍摄与 ancillary link 找镜头改成 patches/0001 一份补丁；quad/vendor/
   demosaic 仍随包，构建不联网

@@ -71,6 +71,7 @@ test:
 	python3 tests/check_touch_identity.py
 	python3 tests/check_fingerprint_package.py
 	python3 tests/check_libfprint_package.py
+	python3 tests/check_bluez_package.py
 	python3 tests/check_libwacom_package.py
 	python3 tests/check_pipewire_gstreamer_package.py
 	python3 tests/check_rootfs_finalize.py

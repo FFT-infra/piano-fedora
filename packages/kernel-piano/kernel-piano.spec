@@ -164,7 +164,7 @@ depmod -a "$RELEASE" || exit 1
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
-* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 7.3.3-7.piano
+* Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 7.3.3-7.piano
 - 封存序列跟到 SunUEFI edcf272：上游 261 条（新增 q6apm/audioreach 五条与
   音频 DAP 一条），自有 36 条后移到 0261–0296，末端树 b2107541 → a152a01d
 
