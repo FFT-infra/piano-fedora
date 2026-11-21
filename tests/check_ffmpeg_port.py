@@ -70,8 +70,8 @@ def check_guards():
     else:
         raise AssertionError("build accepted an output outside the build directory")
     releasever = json.loads((ROOT / "product.json").read_text())["target"]["releasever"]
-    assert ffmpeg.SPEC_RELEASE_NEW == "Release:        3.piano1%{?dist}\n"
-    assert ffmpeg.RELEASE == f"3.piano1.fc{releasever}", "RPM release and product releasever disagree"
+    assert ffmpeg.SPEC_RELEASE_NEW == "Release:        4.piano1%{?dist}\n"
+    assert ffmpeg.RELEASE == f"4.piano1.fc{releasever}", "RPM release and product releasever disagree"
     assert f"fc{releasever}" in ffmpeg.SOURCE_URL and ffmpeg.SOURCE_SHA256
 
 
@@ -104,7 +104,7 @@ def check_spec():
     subpackages = "".join(f"{anchor}Summary:        {fedora}\n"
                           for anchor, fedora in ffmpeg.REPLACES.items())
     synthetic = ("%global pkg_suffix -free\n"
-                 "Name:           ffmpeg\nVersion:        9.0.2\nRelease:        3%{?dist}\n"
+                 "Name:           ffmpeg\nVersion:        9.0.2\nRelease:        4%{?dist}\n"
                  "Patch11:        ffmpeg-foo.patch\n"
                  "Patch1002:      ffmpeg-chromium.patch\n"
                  + subpackages +
@@ -113,7 +113,7 @@ def check_spec():
     raw = synthetic.encode()
     with pinned("SPEC_SHA256", hashlib.sha256(raw).hexdigest()):
         adapted = ffmpeg.adapt_spec(raw, names)
-    assert "Release:        3.piano1%{?dist}\n" in adapted
+    assert "Release:        4.piano1%{?dist}\n" in adapted
     # 改名压过官方版：子包全部带 -piano 后缀，各自声明替代的 Fedora 原名。
     assert ffmpeg.SPEC_SUFFIX_NEW in adapted, adapted
     assert "%global pkg_suffix -free\n" not in adapted, adapted
@@ -131,7 +131,7 @@ def check_spec():
     declared = "".join(f"Patch{2001 + index}:      {name}\n" for index, name in enumerate(names))
     assert "Patch1002:      ffmpeg-chromium.patch\n" + declared in adapted, adapted
     for broken in (synthetic.replace("Patch1002", "Patch1001"),
-                   synthetic.replace("Release:        3%{?dist}\n", ""),
+                   synthetic.replace("Release:        4%{?dist}\n", ""),
                    synthetic.replace("%global pkg_suffix -free\n", ""),
                    synthetic.replace("%package -n libswscale%{?pkg_suffix}\n", "")):
         try:

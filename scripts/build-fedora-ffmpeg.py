@@ -24,15 +24,15 @@ from pathlib import Path
 from piano_artifacts import sha256
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_URL = "https://kojipkgs.fedoraproject.org/packages/ffmpeg/9.0.2/3.fc45/src/ffmpeg-9.0.2-3.fc45.src.rpm"
-SOURCE_SHA256 = "0fabe97324ebeda50b02b4e6303f3a09187a6a24907e9b679d045de2021507b3"
-SPEC_SHA256 = "ad2066c09c916e2942182770bdeb2c4f9dd7a235969ab827c10b45499691f687"
+SOURCE_URL = "https://kojipkgs.fedoraproject.org/packages/ffmpeg/9.0.2/4.fc45/src/ffmpeg-9.0.2-4.fc45.src.rpm"
+SOURCE_SHA256 = "e0c5f679c25a268a0dc0406c8e5ab1587c9ed87a59d2518c6c3e59e918b6ee62"
+SPEC_SHA256 = "5084f940338c1b874e06ea5c4400f06710c1f38866c13af86bf03fb5a43eb7a7"
 TARBALL_SHA256 = "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
 ENABLE_DECODERS_SHA256 = "84ee7d0501f5c9d501f9518f5f9d2458f529ae519b51df0bd9751c66dfaa03b6"
-SPEC_RELEASE_OLD = "Release:        3%{?dist}\n"
-SPEC_RELEASE_NEW = "Release:        3.piano1%{?dist}\n"
+SPEC_RELEASE_OLD = "Release:        4%{?dist}\n"
+SPEC_RELEASE_NEW = "Release:        4.piano1%{?dist}\n"
 SPEC_PATCH_ANCHOR = "Patch1002:      ffmpeg-chromium.patch\n"
-RELEASE = "3.piano1.fc45"
+RELEASE = "4.piano1.fc45"
 # 官方版本号一旦走到 9.0.3，release 后缀的 piano1 就压不住了。抬 epoch 能压住，
 # 但 epoch 卸不掉：补丁进了上游之后回不到 Fedora 的包。这里改用 RPM Fusion
 # 对同一个包的做法：换包名，声明它提供原名并与原名冲突。
