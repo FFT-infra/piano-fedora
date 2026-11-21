@@ -3,14 +3,14 @@
   "target": "sunuefi",
   "note": "按顺序应用。每个补丁的 targets 是应用前该文件必须匹配的摘要；上游更新后不匹配会报错退出，不静默跳过。creates 必须与实际新建的文件完全一致。",
   "base": {
-    "sunuefi_commit": "f06ad9eeb4d505ffae70c2814b089e381ae72145"
+    "sunuefi_commit": "edcf272063bfaf9be50f69c85961a5bbe1447b7b"
   },
   "patches": [
     {
       "file": "0001-f2fs-root-fedora-selinux.patch",
       "summary": "在上游 HEAD 上重放 F2FS 与 Fedora SELinux 覆盖，保留新版笔座、蓝牙、睡眠及 PM 诊断配置；根文件系统由 UKI cmdline 指定 F2FS",
       "targets": {
-        "tools/build_piano_full_kernel.py": "178ef8425e810e66e1cb14e5aeac3347ee747321c20f5dbe1966109a2ad2d7d5"
+        "tools/build_piano_full_kernel.py": "67c48c835677090295278ca9ab42e6ece3ab3f9d975d0c88ef0abbb37b8e149e"
       },
       "creates": [
         "linux/configs/piano-f2fs.config"
@@ -37,7 +37,7 @@
       "file": "0005-fedora-nftables.patch",
       "summary": "补齐 Fedora firewalld 与 libvirt 所需 nftables 内核接口，并以模块形式提供 firewalld 自带的全部 conntrack helper，配置后逐项验证",
       "targets": {
-        "tools/build_piano_full_kernel.py": "d79175eabec4bc5e70e423dff769fa1e1a91d94111694b136302cf11e1dfab7e"
+        "tools/build_piano_full_kernel.py": "5aef2958a6c6767f3758e204ed3da0f1f04421ca3d155bf1a3537d7001dfe248"
       },
       "creates": []
     }

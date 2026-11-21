@@ -1,90 +1,96 @@
-diff --git a/patches/linux/7.3/0137-spi-geni-gpi-dma-deep-idle.patch b/patches/linux/7.3/0137-spi-geni-gpi-dma-deep-idle.patch
+diff --git a/patches/linux/7.3/0265-spi-geni-qcom-keep-the-system-out-of-deep-idle-while-a-GPI-D.patch b/patches/linux/7.3/0265-spi-geni-qcom-keep-the-system-out-of-deep-idle-while-a-GPI-D.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..4264a1279043ee7a919ea3ae7c7ef73f7443b0e9
+index 0000000000000000000000000000000000000000..a07c1429b5acc027b80843e7397b5ce9e0aa95a3
 GIT binary patch
-literal 4489
-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
-bfa`;zR8aVU-HxO`H7_wKCl%y!O=~UyInd34
+literal 4623
+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
+H11>HA9&hZ^
 
 literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 112e4cc..7a3da8f 100644
+index 5eaa4a5..f13be28 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -11,8 +11,8 @@
-     "kernel_version": "7.3.3",
-     "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
-     "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--    "target_tree": "32441eba0e2f022f62af153195eb6263c02c2b26",
--    "original_target_commit": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
-+    "target_tree": "e58ccf653c48a020bf778e8bad2a724de5f325e0",
-+    "original_target_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
-     "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
-     "patches": [
-         {
-@@ -1752,6 +1752,14 @@
-             "original_parent": "950727bf8de3663e1dbd15fde0414e06e1a7e7a5",
-             "committer_date": "2026-10-24T18:30:00+08:00",
-             "tree": "32441eba0e2f022f62af153195eb6263c02c2b26"
-+        },
-+        {
-+            "file": "0137-spi-geni-gpi-dma-deep-idle.patch",
-+            "sha256": "8ccef216bbd292600a5ba08e9d3876b83b614a98e733465cbb6ca9eb9c6862ad",
-+            "original_commit": "3ced27fd232208d150cfe9dd28ad12a8f513147c",
-+            "original_parent": "faf3a1b024a2364a193d77aa3d9ac32330f1ee89",
-+            "committer_date": "2026-10-25T03:50:00+08:00",
-+            "tree": "e58ccf653c48a020bf778e8bad2a724de5f325e0"
-         }
-     ],
-     "provenance": {
+   "kernel_version": "7.3.3",
+   "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
+   "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
+-  "target_tree": "e996b79fd52999fb0ac88b5d0596e78617923be0",
+-  "original_target_commit": "f52bb0df3c9e15b07bbc08c08948e309932c42b4",
++  "target_tree": "e3472308945c97317fee3f734b945dcccf1ca905",
++  "original_target_commit": "d0d6d0de3ae63d2ec10cf0a97ace074c64817c99",
+   "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
+   "patches": [
+     {
+@@ -3484,6 +3484,19 @@
+         "url": "https://github.com/slwyts/Project-SunUEFI",
+         "drop_when": "This Piano device adaptation is not part of the upstream sealed series; remove it when the corresponding subsystem fix is accepted upstream and the sealed series carries it."
+       }
++    },
++    {
++      "file": "0265-spi-geni-qcom-keep-the-system-out-of-deep-idle-while-a-GPI-D.patch",
++      "sha256": "dec2cf4aee9de53cd458f80a17a5950c3d8a94d1b50eee69cd908ac7994d0778",
++      "original_commit": "d0d6d0de3ae63d2ec10cf0a97ace074c64817c99",
++      "original_parent": "f52bb0df3c9e15b07bbc08c08948e309932c42b4",
++      "committer_date": "2026-11-21T17:05:07+08:00",
++      "tree": "e3472308945c97317fee3f734b945dcccf1ca905",
++      "upstream": {
++        "status": "downstream",
++        "url": "https://github.com/slwyts/Project-SunUEFI",
++        "drop_when": "This Piano device adaptation is not part of the upstream sealed series; remove it when the corresponding subsystem fix is accepted upstream and the sealed series carries it."
++      }
+     }
+   ],
+   "provenance": {

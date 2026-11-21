@@ -71,7 +71,7 @@ DECODERS = {"h264_v4l2m2m": "h263p", "hevc_v4l2m2m": "hdr"}
 BSP_SERIES = "patches/ffmpeg/9.0.2"
 BSP_SERIES_FILE = "series.json"
 BSP_VERSION = "9.0.2"
-BSP_REVISION = "sunuefi4"
+BSP_REVISION = "sunuefi7"
 PORT_MAIL_HEADER = "From: slwyts <slwyts@foxmail.com>\n"
 # 每一条的 sha256 与 series.json 记录的一致。单独钉一份是为了在 upstream
 # 原地改写同一版本号时仍然失败，而不是安静地跟着换补丁。
@@ -88,6 +88,14 @@ PORT_SHA256 = {
         "83360b9c808c765a2f40ede0978e8984c6e1fec76ee1a1d7ebbadb32e32ca7ae",
     "0003-v4l2m2m-stop-unstarted-encoder.patch":
         "b8069106dc3c73279444607d7b3aab8726c0cf5a9bfb59d95fd7fed4c942d1f4",
+    "0007-v4l2m2m-h264-level.patch":
+        "f1acfffc6a5ccb6cc17fec3e52c41ac475c63a29e30e88cf3d2d2ff33615a572",
+    "0008-v4l2m2m-bound-capture-payload.patch":
+        "5d436b7d0601a820b903c75d488ea9557e3a3124b6515d05e2f065b6470d0778",
+    "0009-v4l2m2m-reserve-capture-buffers.patch":
+        "fffe8e3471e9480024860b525db1eb3949cb9d3d7bf6369aae1cdf239c2086e0",
+    "0010-matroska-write-late-h26x-codec-private.patch":
+        "5041ad55d4a6d535ae5217b4364231b7a0c0abb2664d1aad3d50283fde1eb984",
 }
 # Fedora 的 %autosetup -S git_am 用 git am 提交补丁，需要 committer 身份；
 # Koji 构建机有完整域名可以自动推断，容器里没有，所以显式给出。

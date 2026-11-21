@@ -27,9 +27,7 @@ FRAGMENT = re.compile(r"^fragment@\d+$")
 KNOWN_MISSING = {
     ("piano-usb-typec.dtso", "/soc/pinctrl@f100000"),
     ("piano-fingerprint.dtso", "/soc/pinctrl@f100000"),
-    ("piano-pen-dock.dtso", "/soc/pinctrl@f100000"),
     ("piano-pen-charger.dtso", "/soc/pinctrl@f100000"),
-    ("piano-pen-charger.dtso", "/soc/pen-dock"),
     ("piano-fingerprint.dtso", "/soc/rsc@16500000/regulators-4"),
     ("piano-regdma-resource.dtso", "/soc/display-subsystem@ae00000/display-controller@ae01000"),
     ("piano-audio-dmic-clock.dtso", "/soc/codec@7660000"),

@@ -56,13 +56,14 @@ def main():
         panel = '/soc/display-subsystem@ae00000/dsi@ae94000/panel@0'
         touch = '/soc/qcom,qupv3_1_geni_se@ac0000/spi@a88000/touchscreen@0'
         assert handles[cells(tree[touch]['panel'])[0]] == panel
-        dock = tree['/soc/pen-dock']
-        assert dock['compatible'] == b'xiaomi,piano-pen-dock\0'
+        # 上游把笔的霍尔与充电器合并进 SC96231 节点，单独的 pen-dock 节点没有了。
+        charger = tree['/soc/qcom,qupv3_2_geni_se@8c0000/i2c@894000/charger@38']
+        assert charger['compatible'] == b'southchip,sc96231\0'
         tlmm = tree['/__symbols__']['piano_tlmm_ml'].rstrip(b'\0').decode()
-        gpio = cells(dock['hall-gpios'])
+        gpio = cells(charger['hall-gpios'])
         assert handles[gpio[0]] == handles[gpio[3]] == tlmm
         assert (gpio[1:3], gpio[4:6]) == ((200, 1), (196, 1))
-        assert handles[cells(dock['pinctrl-0'])[0]] == tlmm + '/pen-dock-default-state'
+        assert handles[cells(charger['pinctrl-0'])[0]] == tlmm + '/pen-charger-irqs-state'
         # 补齐的七个 overlay 在最终 DT 上各自留下的痕迹。少传一个不会让构建失败，
         # 只会让对应的硬件在设备上不工作，所以只能在这里固定住。
         assert tree['/reserved-memory/linux,cma']['size'] == struct.pack('>II', 0, 0x10000000)

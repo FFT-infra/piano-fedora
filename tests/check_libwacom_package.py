@@ -2,7 +2,7 @@
 """libwacom 重编包的离线契约。
 
 补丁来自 SunUEFI `patches/libwacom/2.20/`，摘要必须和那边的 series.json
-一致。这里锁住：SPI 笔描述与内核 0225 报出来的 ID 对齐、四个替换包的
+一致。这里锁住：SPI 笔描述与内核 0230 报出来的 ID 对齐、四个替换包的
 Provides/Obsoletes、构建矩阵与发布链的接入，以及 %check 真的在解析新
 tablet。设备侧验证（桌面设置里能看到这支笔）不在离线测试里。
 """
@@ -21,7 +21,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "build-piano-rpms.yml"
 PATCH_SHA256 = "63017df69dc0454782b13c67d9b7c2ca02aabd912b02485321c64807e441e54b"
 TARBALL_SHA256 = "370b45b5e05a91960df0aeb9c9481ae05846aab92ab2d4ec66945a0da4216888"
 
-# 内核 0225-LOCAL-input-nt36532e-pen.patch 报出来的身份。描述文件用同一组
+# 内核 0230-LOCAL-input-nt36532e-pen.patch 报出来的身份。描述文件用同一组
 # 值匹配，两个数字对不上桌面就认不到笔。
 PEN_VENDOR = "0603"
 PEN_PRODUCT = "6532"
@@ -37,7 +37,7 @@ def main():
         "补丁没有带上内核报的两支笔名"
     assert f"DeviceMatch=spi|{PEN_VENDOR}|{PEN_PRODUCT}|Novatek Focus Pen;" \
            f"spi|{PEN_VENDOR}|{PEN_PRODUCT}|Novatek Focus Pen Pro;" in patch, \
-        "tablet 的 DeviceMatch 与内核 0225 的 vendor/product 不一致"
+        "tablet 的 DeviceMatch 与内核 0230 的 vendor/product 不一致"
     assert "xiaomi-pad-8-pro.tablet" in patch and "Name=Xiaomi Pad 8 Pro" in patch, \
         "补丁没有新增 Xiaomi Pad 8 Pro 的 tablet 描述"
     assert 'bustypes = {' in patch and '"spi": "001C",' in patch, \

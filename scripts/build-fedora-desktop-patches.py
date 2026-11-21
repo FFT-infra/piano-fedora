@@ -211,7 +211,7 @@ PACKAGES = (
         "tarball_sha256": "fd5cb783f220ea4526a9afee2f72b582c3e87ef7f91b19bc5c7a6662ffe7fbdc",
         "patches": [
             ("kwin/6.6.5/0001-drm-restore-brightness-after-hdr.patch",
-             "d0f2300f63f1d2e26c430fda00433019ba4cda5be5acd04da236ce19e16513a7",
+             "c9fb27ad758fe01421fee30a8778a7b49a5ef58eb0a244b9b005be092a883672",
              "piano-kwin-hdr.patch"),
         ],
         "runtime": ("kwin", "kwin-libs", "kwin-common"),
@@ -284,7 +284,7 @@ PACKAGES = (
             # 取消或替换的重新认证会话只 unref，会话本身还握着 PAM worker 与
             # 它的 D-Bus 连接；反复锁屏解锁会把登录 worker 的 fd 耗光。
             ("gdm/51.0/0003-session-worker-close-cancelled-reauthentication.patch",
-             "9212f34a3d85461670f441b02de7bc9c5f8308894aba74f44e8e85f3ccb51ad7",
+             "c47546d7814ce481d26f766fc6dfddd265999af9c7bab364664e120fd6a9bf83",
              "piano-gdm-reauthentication-close.patch"),
         ],
         "runtime": ("gdm",),
