@@ -1,0 +1,344 @@
+From: xinyang <xinyang@localhost>
+Subject: [PATCH] camera: keep still capture on top of the upstream tree
+
+The upstream camera only records frames under an FRAME_SYNC strobe
+window. Without a subscription the strobe path cannot time a pulse, so a
+still is taken from a settled preview stream instead: run the largest
+native mode, let auto exposure adapt, copy one packed NV12 frame, and
+restore the preview. The record carries its own flag and omits the
+exposure and line-time fields that only a strobe frame has.
+
+The lens is resolved through the sensor's ancillary link rather than by
+driver name, so an actuator change does not break focus.
+
+---
+--- a/src/piano-camerad.c
++++ b/src/piano-camerad.c
+@@ -296,6 +296,11 @@
+ 	return NULL;
+ }
+ 
++/*
++ * The lens is found through the sensor's ancillary link, not by name: the
++ * rear module moved from a DW9768 to a bidirectional GT9764BA, and any
++ * future actuator change keeps the same association.
++ */
+ static int topo_lens(const struct topo *tp, uint32_t sensor_id,
+ 		     const struct media_v2_entity **lens)
+ {
+@@ -2655,6 +2660,173 @@
+ 	return ret;
+ }
+ 
++/*
++ * Without a FRAME_SYNC subscription the strobe path above cannot time a pulse.
++ * The still then lights both rear channels as a torch instead, so auto
++ * exposure meters the scene under the light that will make the frame.
++ */
++#define STILL_WARMUP	8	/* frames before the copy */
++#define STILL_FLASH_LIMIT 90	/* torch: auto exposure may need a few seconds */
++
++static int camera_torch_start(struct cam *c)
++{
++	int ret = camera_flash_open(c), error = 0;
++
++	if (ret < 0)
++		return ret;
++	for (unsigned int i = 0; i < c->flash_count && !error; i++) {
++		struct camera_flash *flash = &c->flash[i];
++		struct v4l2_query_ext_ctrl range = { .id = V4L2_CID_FLASH_INTENSITY };
++
++		/* Cleanup must turn this channel off even if a call below fails. */
++		flash->configured = true;
++		if (xioctl(flash->fd, VIDIOC_QUERY_EXT_CTRL, &range) == 0 &&
++		    range.maximum <= INT_MAX)
++			ctrl_set(flash->fd, V4L2_CID_FLASH_INTENSITY, (int)range.maximum);
++		if (ctrl_set(flash->fd, V4L2_CID_FLASH_LED_MODE,
++			     V4L2_FLASH_LED_MODE_TORCH) < 0)
++			error = errno;
++	}
++	if (error) {
++		uint64_t stop_ns;
++		uint32_t fault;
++
++		(void)camera_flash_stop(c, &stop_ns, &fault);
++		return -error;
++	}
++	return 0;
++}
++
++/*
++ * A still outside the strobe path: run the largest native PIX mode, let auto
++ * exposure adapt for a few frames, copy one packed NV12 frame and put the
++ * preview back. Used for the front camera and for rear shots on a kernel
++ * without FRAME_SYNC, where the strobe request above is not available.
++ * The reply is sent here; a negative return leaves client_fd to the caller.
++ */
++static int camera_still_request(struct cam *c, bool flash, int client_fd)
++{
++	const struct cam_cfg preview = c->mode;
++	const struct capture_mode *native = &preview.modes[0];
++	const unsigned int limit = flash ? STILL_FLASH_LIMIT : 2 * STILL_WARMUP;
++	struct piano_photo_result result = {
++		.magic = PIANO_PHOTO_MAGIC, .version = PIANO_PHOTO_VERSION,
++		.flags = PIANO_PHOTO_PHYSICAL_EOF | PIANO_PHOTO_STILL_FRAME,
++	};
++	bool was_streaming = c->streaming;
++	unsigned int frames = 0;
++	uint32_t fault = 0;
++	int ret = -ETIMEDOUT, fd = -1;
++
++	if (c->quad_raw || piano_photo_active(&c->photo))
++		return -EBUSY;
++	if (was_streaming && cam_stop(c) < 0)
++		return -EIO;
++	c->mode.in_w = c->mode.max_out_w = native->width;
++	c->mode.in_h = c->mode.max_out_h = native->height;
++	c->mode.out_w = native->width;
++	c->mode.out_h = native->height;
++	c->mode.fps = native->fps;
++	if (cam_start(c) < 0) {
++		ret = -EIO;
++		goto restore;
++	}
++	if (flash) {
++		ret = camera_torch_start(c);
++		if (ret < 0)
++			goto restore;
++	}
++	while (frames < limit) {
++		struct v4l2_plane pl[VIDEO_MAX_PLANES] = { 0 };
++		struct v4l2_buffer b = {
++			.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
++			.memory = V4L2_MEMORY_MMAP,
++			.length = VIDEO_MAX_PLANES,
++			.m.planes = pl,
++		};
++		struct pollfd pfd = { .fd = c->vid_fd, .events = POLLIN };
++		const uint8_t *y;
++		int ready;
++
++		do {
++			ready = poll(&pfd, 1, 3000);
++		} while (ready < 0 && errno == EINTR);
++		if (ready <= 0)
++			break;
++		if (xioctl(c->vid_fd, VIDIOC_DQBUF, &b) < 0) {
++			if (errno == EAGAIN)
++				continue;
++			break;
++		}
++		if (!(b.flags & V4L2_BUF_FLAG_ERROR) && b.index < c->nbufs &&
++		    b.length == 1 && c->bufs[b.index].ptr &&
++		    pl[0].data_offset <= pl[0].bytesused &&
++		    c->frame_span <= pl[0].bytesused - pl[0].data_offset) {
++			y = (const uint8_t *)c->bufs[b.index].ptr + pl[0].data_offset;
++			if (flash || frames % AE_PERIOD == 0) {
++				struct stats s;
++
++				frame_stats(c, y, y + c->uv_offset, c->bpl, &s);
++				control_update(c, &s);
++			}
++			af_update(c, y, c->bpl);
++			/* Under the torch the scene changes with the light, so let auto
++			 * exposure settle before copying, within the frame budget.
++			 */
++			if (++frames > STILL_WARMUP &&
++			    (!flash || frames >= limit || camera_photo_ready(c))) {
++				/* Fill the record before the restore below resets
++				 * the stream geometry.
++				 */
++				result.width = result.native_width = c->cfg->out_w;
++				result.height = result.native_height = c->cfg->out_h;
++				result.stride = result.width;
++				result.capture_stride = c->bpl;
++				result.pixelformat = V4L2_PIX_FMT_NV12;
++				result.colorspace = c->colorspace;
++				result.ycbcr_enc = c->ycbcr_enc;
++				result.quantization = c->quantization;
++				result.sequence = b.sequence;
++				result.data_bytes = (uint64_t)result.width * result.height * 3 / 2;
++				result.eof_ns = monotonic_ns();
++				fd = piano_photo_image(y, y + c->uv_offset,
++						       c->cfg->out_w, c->cfg->out_h,
++						       c->bpl);
++				ret = fd < 0 ? fd : 0;
++			}
++		}
++		if (xioctl(c->vid_fd, VIDIOC_QBUF, &b) < 0)
++			logmsg(c, "still: QBUF: %s", strerror(errno));
++		if (frames > STILL_WARMUP && (fd >= 0 || frames >= limit))
++			break;
++	}
++restore:
++	cam_stop(c);
++	if (flash) {
++		uint64_t stop_ns;
++
++		(void)camera_flash_stop(c, &stop_ns, &fault);
++		if (!ret && fault)
++			ret = -EIO;
++	}
++	c->mode = preview;
++	if (was_streaming && cam_start(c) < 0)
++		logmsg(c, "still: preview did not come back: %s", strerror(errno));
++	if (ret < 0) {
++		logmsg(c, "still: %s", strerror(-ret));
++		return ret;
++	}
++	ret = piano_photo_send(client_fd, &result, fd);
++	if (ret < 0)
++		logmsg(c, "still reply: %s", strerror(-ret));
++	close(client_fd);
++	if (fd >= 0)
++		close(fd);
++	logmsg(c, "still %ux%u%s (%u frames)", result.width, result.height,
++	       flash ? " with torch" : "", frames);
++	return 0;
++}
++
+ static void camera_photo_frame(struct cam *c, const struct v4l2_buffer *buffer,
+ 			       const uint8_t *y, const uint8_t *uv, bool complete)
+ {
+@@ -2768,12 +2940,28 @@
+ 		packet[n] = 0;
+ 		if (!strncmp(packet, "capture ", 8)) {
+ 			char camera[16], mode[16], extra[2];
++			int fields = sscanf(packet, "capture %15s %15s %1s", camera, mode, extra);
+ 			int ret = -EINVAL;
+ 
+-			if (sscanf(packet, "capture %15s %15s %1s", camera, mode, extra) == 2 &&
+-			    !strcmp(mode, "flash")) {
+-				for (unsigned int k = 0; k < NUM_CAMS; k++)
+-					if (!strcmp(camera, cams[k].cfg->name)) ret = camera_photo_request(&cams[k], fd);
++			/* "capture <camera>" leaves the trailing conversion unmatched, so
++			 * sscanf counts only the camera; "<camera> flash" counts two.
++			 */
++			if (fields == 1 || (fields == 2 && !strcmp(mode, "flash"))) {
++				for (unsigned int k = 0; k < NUM_CAMS; k++) {
++					if (strcmp(camera, cams[k].cfg->name))
++						continue;
++					/* Upstream times the strobe on a converged preview
++					 * stream. Without one the scene may be at maximum gain,
++					 * where a full pulse only saturates, so the still lights
++					 * the torch and adapts auto exposure under it instead.
++					 */
++					ret = -EOPNOTSUPP;
++					if (fields == 2 && cams[k].streaming &&
++					    camera_photo_ready(&cams[k]))
++						ret = camera_photo_request(&cams[k], fd);
++					if (ret == -EOPNOTSUPP)
++						ret = camera_still_request(&cams[k], fields == 2, fd);
++				}
+ 			}
+ 			control_clients[i] = -1;
+ 			if (ret < 0) {
+--- a/src/piano-camera-ctl.c
++++ b/src/piano-camera-ctl.c
+@@ -15,7 +15,7 @@
+ 
+ #define CONTROL_PATH "/run/piano-camerad/control.sock"
+ 
+-static int capture(const char *camera, const char *path)
++static int capture(const char *camera, bool flash, const char *path)
+ {
+ 	struct sockaddr_un sa = { .sun_family = AF_UNIX, .sun_path = CONTROL_PATH };
+ 	struct piano_photo_result result;
+@@ -25,10 +25,13 @@
+ 	int fd = -1, image_fd = -1, output_fd = -1, ret = 0, ready;
+ 	bool created = false;
+ 
+-	if (strcmp(camera, "rear")) { fprintf(stderr, "Flash capture is available only for the rear camera.\n"); return 2; }
++	if (flash && strcmp(camera, "rear")) {
++		fprintf(stderr, "The fill light is available only on the rear camera.\n");
++		return 2;
++	}
+ 	fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+ 	if (fd < 0 || connect(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) { ret = -errno; goto out; }
+-	int length = snprintf(request, sizeof(request), "capture %s flash", camera);
++	int length = snprintf(request, sizeof(request), "capture %s%s", camera, flash ? " flash" : "");
+ 	if (send(fd, request, (size_t)length, MSG_NOSIGNAL) != length) { ret = -errno; goto out; }
+ 	wait = (struct pollfd){ .fd = fd, .events = POLLIN };
+ 	do { ready = poll(&wait, 1, 6000); } while (ready < 0 && errno == EINTR);
+@@ -58,7 +61,7 @@
+ 	if (fd >= 0) close(fd);
+ 	if (ret && created) unlink(path);
+ 	if (ret == -EOPNOTSUPP)
+-		fprintf(stderr, "This camera mode does not support synchronized flash capture.\n");
++		fprintf(stderr, "Still capture is not available in this camera mode.\n");
+ 	else if (ret) fprintf(stderr, "Photo capture: %s\n", strerror(-ret));
+ 	return ret ? 1 : 0;
+ }
+@@ -66,11 +69,11 @@
+ static void usage(FILE *stream, const char *program)
+ {
+ 	fprintf(stream, "Usage: %s caps|get rear|front\n"
+-			"       %s capture rear --flash --output FILE|-\n"
++			"       %s capture rear|front [--flash] --output FILE|-\n"
+ 			"       %s set rear|front ae|awb|af auto|manual\n"
+ 			"       %s set rear|front exposure|analog-gain|digital-gain|red-balance|blue-balance|focus INTEGER\n"
+ 			"       %s set rear|front exposure-time-ns NANOSECONDS\n"
+-			"The camera must already be streaming. Exposure time is quantized to sensor lines; caps reports the active mode and live ranges. Other values use driver-native units.\n",
++			"Exposure time is quantized to sensor lines; caps reports the active mode and live ranges. Other values use driver-native units. A capture briefly stops the preview; --flash lights the rear fill light for the shot.\n",
+ 			program, program, program, program, program);
+ }
+ 
+@@ -82,9 +85,11 @@
+ 	int fd;
+ 	ssize_t n;
+ 
+-	if (argc == 6 && !strcmp(argv[1], "capture") && !strcmp(argv[3], "--flash") &&
+-	    !strcmp(argv[4], "--output"))
+-		return capture(argv[2], argv[5]);
++	if ((argc == 5 || argc == 6) && !strcmp(argv[1], "capture") &&
++	    (!strcmp(argv[2], "rear") || !strcmp(argv[2], "front")) &&
++	    (argc == 5 ? !strcmp(argv[3], "--output") :
++	     !strcmp(argv[3], "--flash") && !strcmp(argv[4], "--output")))
++		return capture(argv[2], argc == 6, argv[argc - 1]);
+ 
+ 	if (argc == 2 && !strcmp(argv[1], "--help")) {
+ 		usage(stdout, argv[0]);
+--- a/src/photo/protocol.c
++++ b/src/photo/protocol.c
+@@ -78,14 +78,20 @@
+ 	if (!r->width || !r->height || (r->width & 1) || (r->height & 1) ||
+ 	    r->stride != r->width || r->capture_stride < r->width ||
+ 	    r->pixelformat != V4L2_PIX_FMT_NV12 ||
+-	    r->flags != (PIANO_PHOTO_PHYSICAL_EOF | PIANO_PHOTO_FLASH_COMPLETE) ||
+-	    r->flash_fault || !r->flash_channels ||
+-	    r->exposure_start_ns < r->light_start_ns ||
+-	    r->exposure_end_ns > r->light_end_ns ||
+-	    r->exposure_start_ns > r->exposure_end_ns || !r->eof_ns ||
+-	    !r->sof_ns || r->sof_ns > r->eof_ns || !r->freeze_ns ||
+-	    !r->line_ns_num || !r->line_ns_den || !r->exposure_lines ||
+-	    !r->native_width || !r->native_height || !r->frame_ns)
++	    r->flash_fault || !r->eof_ns)
++		return -EPROTO;
++	if (r->flags == (PIANO_PHOTO_PHYSICAL_EOF | PIANO_PHOTO_STILL_FRAME)) {
++		/* A settled-preview still carries frame layout only. */
++	} else if (r->flags == (PIANO_PHOTO_PHYSICAL_EOF | PIANO_PHOTO_FLASH_COMPLETE)) {
++		if (!r->flash_channels ||
++		    r->exposure_start_ns < r->light_start_ns ||
++		    r->exposure_end_ns > r->light_end_ns ||
++		    r->exposure_start_ns > r->exposure_end_ns ||
++		    !r->sof_ns || r->sof_ns > r->eof_ns || !r->freeze_ns ||
++		    !r->line_ns_num || !r->line_ns_den || !r->exposure_lines ||
++		    !r->native_width || !r->native_height || !r->frame_ns)
++			return -EPROTO;
++	} else
+ 		return -EPROTO;
+ 	expected = (uint64_t)r->width * r->height;
+ 	if (expected > SIZE_MAX - expected / 2) return -EPROTO;
+--- a/src/photo/protocol.h
++++ b/src/photo/protocol.h
+@@ -9,6 +9,10 @@
+ #define PIANO_PHOTO_VERSION 1
+ #define PIANO_PHOTO_PHYSICAL_EOF (1U << 0)
+ #define PIANO_PHOTO_FLASH_COMPLETE (1U << 1)
++/* A still copied from a settled preview stream: no strobe window is claimed,
++ * so the exposure and line-time fields are not part of the record.
++ */
++#define PIANO_PHOTO_STILL_FRAME (1U << 2)
+ 
+ /* One fixed-size little-endian record accompanies one SCM_RIGHTS descriptor.
+  * A failure record contains a positive errno and no descriptor. All image

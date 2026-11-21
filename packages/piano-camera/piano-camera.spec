@@ -1,13 +1,19 @@
 %global _annotated_build 0
 %global debug_package %{nil}
+# 与 sources.lock.json 的 sunuefi pin 相同；tests/check_camera_package.py 守住。
+%global sunuefi_commit edcf272063bfaf9be50f69c85961a5bbe1447b7b
 
 Name:           piano-camera
 Version:        0.1.0
-Release:        8%{?dist}
+Release:        9%{?dist}
 Summary:        Camera pipeline and v4l2loopback daemon for Xiaomi Pad 8 Pro (piano)
 License:        MIT
 URL:            https://github.com/FFT-infra/piano-fedora
+# src/ 只带 quad/vendor/demosaic；其余源码（含 quad/ 本体）在构建期从
+# SunUEFI pin 的 linux/userspace/camera 取，再叠 0001 补丁。
 Source0:        %{name}-%{version}.tar.gz
+Source1:        https://github.com/slwyts/Project-SunUEFI/archive/%{sunuefi_commit}/Project-SunUEFI-%{sunuefi_commit}.tar.gz
+Patch0:         0001-still-capture-and-ancillary-lens.patch
 
 ExclusiveArch:  aarch64
 
@@ -30,12 +36,20 @@ and exposes preview and still capture on the v4l2loopback cameras. The rear full
 mode keeps the whole Quad CFA sample from the sensor and converts it in software.
 
 %prep
-%autosetup -p1
+%autosetup -N -n %{name}-%{version}
+tar -xf %{SOURCE1} -C %{_builddir}
+UPSTREAM=%{_builddir}/Project-SunUEFI-%{sunuefi_commit}/linux/userspace/camera
+test -f "$UPSTREAM/piano-camerad.c"
+# 上游源码整份复制进 src/，再叠静态拍摄补丁。本地 src/quad/vendor 是锁定的
+# crates.io 0.3.0 加一份 QPPG 修正补丁（--offline 不需要网络），上游的
+# quad/ 没有 vendor/，先挪出来再放回去。
+mv src/quad/vendor vendor-demosaic
+cp -a "$UPSTREAM"/. src/
+mv vendor-demosaic src/quad/vendor
+%patch 0 -p1 --fuzz=0
 
 %build
 export CARGO_HOME=%{_builddir}/cargo-home
-# src/ 是 SunUEFI linux/userspace/camera 的副本；quad/vendor/demosaic 是锁定的
-# crates.io 0.3.0 加一份 QPPG 修正补丁，--offline 因此不需要网络。
 make -C src OUT=%{_builddir}/%{name}-%{version}/camera %{?_smp_mflags} \
   CC=gcc CXX=g++ \
   CFLAGS="%{optflags} -Wall -Wextra" \
@@ -81,6 +95,11 @@ systemctl enable piano-camerad.service piano-camera.service || :
 %systemd_postun_with_restart piano-camerad.service piano-camera.service
 
 %changelog
+* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-9
+- 源码不再入库维护：构建期从 SunUEFI edcf272 的 linux/userspace/camera 取，
+  静态拍摄与 ancillary link 找镜头改成 patches/0001 一份补丁；quad/vendor/
+  demosaic 仍随包，构建不联网
+
 * Mon Nov 17 2026 FFT-infra <dev@piano.invalid> - 0.1.0-8
 - camera-start 载入 gt9764 而不是 dw9768；18274377 起后摄执行器是
   giantec,gt9764ba，dw9768 驱动匹配不上，自动对焦整条路径不工作

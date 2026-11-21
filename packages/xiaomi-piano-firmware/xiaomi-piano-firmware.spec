@@ -9,7 +9,7 @@
 
 Name:           xiaomi-piano-firmware
 Version:        20261113
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Firmware binaries for Xiaomi Pad 8 Pro (piano)
 # 厂商没有给出书面许可。包内只有部分文件来自 linux-firmware，按 LICENSES/
 # 里的原条款分发；stock ROM 的文件没有再分发许可。整包用 proprietary 标记，
@@ -60,6 +60,10 @@ find %{buildroot}%{_firmwaredir} -type f -exec chmod 0644 {} \;
 %{_firmwaredir}/*
 
 %changelog
+* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 20261113-3
+- Source1 的 SunUEFI 提交号跟到 edcf272。叠层文件逐字节未变，只有归档 URL
+  变了，所以产物摘要会变，需要新的 release 号
+
 * Mon Nov 17 2026 FFT-infra <dev@piano.invalid> - 20261113-2
 - Source1 的 SunUEFI 提交号跟到 18274377。叠层文件本身逐字节未变，
   只有归档 URL 变了，所以产物摘要会变，需要新的 release 号

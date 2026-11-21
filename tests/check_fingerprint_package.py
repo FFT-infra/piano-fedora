@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """指纹用户态包的离线契约。
 
-原生客户端是 SunUEFI 源码的副本。新的 TEE 传输只用内核 `linux/tee.h` 对象
-uAPI 与 QCBOR；这里锁住：源码文件齐全、spec 不再引用 quic-teec/minkipc、
-源码归档装进包里供 libfprint 编译、构建矩阵会为远程 QCBOR 跑 spectool。
-设备侧的结论（TEE 能初始化、枚举）不在离线测试里。
+源码不随包：spec 在构建期从 SunUEFI pin 取 `linux/userspace/fingerprint`。
+新的 TEE 传输只用内核 `linux/tee.h` 对象 uAPI 与 QCBOR；这里锁住：pin 与
+sources.lock.json 一致、spec 不再引用 quic-teec/minkipc、源码归档装进包里
+供 libfprint 编译、构建矩阵会为远程 Source 跑 spectool。设备侧的结论
+（TEE 能初始化、枚举）不在离线测试里。
 """
 
+import json
+import os
 import re
 from pathlib import Path
 
@@ -14,6 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 PKG = ROOT / "packages" / "piano-fingerprint"
 SPEC = PKG / "piano-fingerprint.spec"
 BUILD = ROOT / "scripts" / "build-rpms.sh"
+UPSTREAM = Path(os.environ.get("PIANO_TEST_SUNUEFI",
+                               ROOT / "build/test-sources/sunuefi")) / \
+    "linux/userspace/fingerprint"
 
 SOURCES = (
     "piano-goodix.c", "piano-goodix.h", "piano-goodix-cli.c",
@@ -29,11 +35,15 @@ SOURCES = (
 
 
 def main():
-    for name in SOURCES:
-        assert (PKG / "src" / name).is_file(), f"缺少 {name}"
+    assert not (PKG / "src").exists(), "上游源码副本不该入库"
+
     spec = SPEC.read_text()
     match = re.search(r"%global qcbor_commit\s+([0-9a-f]{40})", spec)
     assert match, "qcbor_commit 不是 40 位提交"
+    pin = re.search(r"%global sunuefi_commit\s+([0-9a-f]{40})", spec)
+    assert pin, "spec 没有 sunuefi_commit"
+    lock = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["sunuefi"]["commit"]
+    assert pin.group(1) == lock, "指纹包 pin 与 sources.lock.json 不一致"
     assert "quic_teec_commit" not in spec and "minkipc_commit" not in spec, \
         "spec 仍在引用已经退出构建路径的 Qualcomm 依赖"
     assert "BuildRequires:  kernel-headers" in spec, "需要内核的 linux/tee.h"
@@ -51,7 +61,13 @@ def main():
     assert '"piano-fingerprint"' in build, "构建矩阵没有包含 piano-fingerprint"
     assert "Fetching remote dependency sources" in build, \
         "build-rpms 不会为带远程 Source 的 spec 拉取依赖源码"
-    print("OK: 指纹包源码、QCBOR、TEE 头、源码归档与构建矩阵齐全")
+
+    if UPSTREAM.is_dir():
+        missing = [name for name in SOURCES if not (UPSTREAM / name).is_file()]
+        assert not missing, f"pin 里缺 {missing}"
+    else:
+        print("SKIP: 上游指纹源码需要 PIANO_TEST_SUNUEFI")
+    print("OK: 指纹包按 pin 取源，QCBOR、TEE 头、源码归档与构建矩阵齐全")
 
 
 if __name__ == "__main__":

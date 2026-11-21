@@ -222,6 +222,10 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
 
         # Copy local patches, helper files and companion sources
         find "$PACKAGES_DIR/$pkg" -maxdepth 1 -type f ! -name "*.spec" ! -name "*.tar.*" -exec cp -p {} "$BUILD_TMP/SOURCES/" \;
+        # 包内的 patches/ 目录放 %patch 用的补丁；rpmbuild 只从 SOURCES 找。
+        if [ -d "$PACKAGES_DIR/$pkg/patches" ]; then
+            find "$PACKAGES_DIR/$pkg/patches" -maxdepth 1 -type f -name "*.patch" -exec cp -p {} "$BUILD_TMP/SOURCES/" \;
+        fi
 
         SOURCE0_LINE=$(grep -E '^[[:space:]]*Source0?:' "$SPEC_FILE" | head -n 1 | awk '{print $2}')
         # %{url} expands to an https URL in every spec that uses it. Matching

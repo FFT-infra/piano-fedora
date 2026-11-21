@@ -1,8 +1,7 @@
 # piano-fingerprint
 
-`src/` 是 SunUEFI（`sources.lock.json` 的 `sunuefi` pin）里
-`linux/userspace/fingerprint` 的逐字副本。上游改这几个文件时整份替换，
-本地不另立分支。
+源码不随包维护。构建期从 SunUEFI（`sources.lock.json` 的 `sunuefi` pin）取
+`linux/userspace/fingerprint`，与设备上跑的内核同一份客户端，本地不另立分支。
 
 新的 TEE 传输只依赖两样东西：
 

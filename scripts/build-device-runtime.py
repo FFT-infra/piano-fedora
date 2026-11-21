@@ -29,7 +29,7 @@ SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]"
 # 运行时 RPM 的版本号。载荷每变一次就要换 NEVRA，已装设备才看得见这次替换；
 # 增量路径（scripts/package-device-integration.py）也从这里取，两处不各写一份。
 RUNTIME_VERSION = "0.2.0"
-RUNTIME_RELEASE = "8"
+RUNTIME_RELEASE = "9"
 
 
 def run(command, **kw):
@@ -151,6 +151,32 @@ def stage_sensor_integration(sun, output):
     }
 
 
+def resolve_speaker_acdb(args, sun, build):
+    """取得原厂 Mi_acdb_cal.acdb，核对 config/release.json 记录的两个摘要之一。
+
+    构建机不一定有厂商 blob 树：`--speaker-acdb` 给本地文件，否则按
+    `audio_topology.speaker_dap.acdb_url` 下载。.acdb 是厂商数据，不入库，
+    派生出的 95 项参数随 piano-runtime 走 COPR。
+    """
+    import hashlib
+    policy = json.loads((sun / "config/release.json").read_text())["audio_topology"]["speaker_dap"]
+    allowed = set(policy["acdb_sha256"])
+    if args.speaker_acdb is not None:
+        path = args.speaker_acdb.resolve()
+        if not path.is_file():
+            raise ValueError("speaker ACDB not found: " + str(path))
+        data = path.read_bytes()
+    else:
+        with urllib.request.urlopen(policy["acdb_url"], timeout=300) as response:
+            data = response.read()
+        path = build / "Mi_acdb_cal.acdb"
+        path.write_bytes(data)
+    digest = hashlib.sha256(data).hexdigest()
+    if digest not in allowed:
+        raise ValueError("speaker ACDB digest not in the supported set: " + digest)
+    return path
+
+
 def build(args):
     if platform.machine() not in ("aarch64", "arm64"):
         raise ValueError("native Fedora aarch64 builder required")
@@ -254,10 +280,21 @@ def build(args):
     # generate it. The source is SunUEFI's own m4, which includes the shared
     # speaker and microphone graphs and adds the DisplayPort playback path;
     # the helper also checks the product against its recorded sha256.
+    speaker_acdb = resolve_speaker_acdb(args, sun, build)
     topology = runtime.build_topology(public, sun / "upstream/audioreach-topology",
-                                      build / "firmware")
+                                      build / "firmware", speaker_acdb=speaker_acdb)
     run(["alsatplg", "-d", topology, "-o", build / "topology-decoded.conf"])
     put(topology, payload / "usr/lib/firmware/qcom/sm8750/Xiaomi Pad 8 Pro-tplg.bin")
+    # The DAP calibration is embedded in the topology blob; keep the standalone
+    # file beside it so the payload can be inspected without decoding the tplg.
+    dap_config = build / "firmware" / "speaker-dap-config.bin"
+    put(dap_config, payload / "usr/lib/firmware/qcom/sm8750/speaker-dap-config.bin")
+    topology_proof = {
+        "source": "linux/bsp/topology/piano-displayport.m4 + piano-dap.m4",
+        "sha256": sha256(topology),
+        "speaker_dap": {"acdb_sha256": sha256(speaker_acdb),
+                        "config_sha256": sha256(dap_config)},
+    }
     request = build_boot_request.build(build / "boot-request", "aarch64", "gcc")
     put(build / "boot-request/piano-boot-request", payload / "usr/local/sbin/piano-boot-request", True)
     # MiPPS 认证已经在内核序列 0027 的 piano_mca 工作队列里完成。上游明确不
@@ -328,6 +365,7 @@ def build(args):
     provenance = {"status": "FEDORA_RUNTIME_BUILT_NOT_DEVICE_VERIFIED",
                   "kernel_release": record["kernel_release"], "kernel_manifest_sha256": kernel_hash,
                   "touch": touch_proof, "camera": camera_proof, "boot_request": request,
+                  "audio_topology": topology_proof,
                   "sensor_sources": sensor_proof, "fastrpc_daemon": fastrpc_proof,
                   "extras": extras_proof,
                   "integration": integration_proof, "pruned_matrix_owned": pruned,
@@ -351,6 +389,8 @@ def build(args):
     # 二进制、unit 与 udev 规则，同样换 NEVRA。
     # Release 8：触控 uinput 改成 BUS_SPI + 0603:6532 + BSP 名字，与笔进同一
     # LIBINPUT_DEVICE_GROUP；补 ABS_MT_TOUCH_MINOR；掌托按槽上报 MT_TOOL_PALM。
+    # Release 9：跟到 SunUEFI edcf272，扬声器拓扑改由原厂 ACDB 派生的 DAP 配置
+    # 生成，tplg 与 speaker-dap-config.bin 的字节都变了，必须换 NEVRA。
     rpm_package("piano-runtime", payload, output,
                 version=RUNTIME_VERSION, release=RUNTIME_RELEASE,
                 requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
@@ -374,6 +414,8 @@ def main():
                     help="私有完整原厂 piano_nova_{csot,boe}_thp_config.ini 目录；精简笔配置不能替代")
     for name in ("sunuefi", "kernel", "uapi", "output"):
         ap.add_argument("--" + name, type=Path, required=True)
+    ap.add_argument("--speaker-acdb", type=Path,
+                    help="原厂 Mi_acdb_cal.acdb；不给就按 config/release.json 的 acdb_url 下载")
     build(ap.parse_args())
 
 

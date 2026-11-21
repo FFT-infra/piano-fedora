@@ -2,7 +2,7 @@
 
 Name:           alsa-xiaomi-piano
 Version:        0.1.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        ALSA UCM2 audio configuration for Xiaomi Pad 8 Pro (piano)
 License:        BSD-3-Clause
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -14,8 +14,10 @@ Requires:       alsa-lib >= 1.2.10
 
 %description
 ALSA Use Case Manager (UCM2) profile for Xiaomi Pad 8 Pro (SM8750 piano):
-- High-fidelity quad-speaker configuration with FourSemi FS19xx amplifiers
-- Safe amplifier hardware ceiling (192 default, capped at 215) to prevent physical transducer damage
+- High-fidelity quad-speaker configuration with FourSemi FS19xx amplifiers,
+  following the upstream OEM levels (235 on all four paths)
+- Speaker routing switches to the AudioReach Dolby DAP PCM when the kernel
+  topology provides it, and keeps the raw four-slot PCM otherwise
 - VA digital macro microphone boost (+40 dB) for clear voice capture
 - Automatic profile selection on CardId matching Xiaomi Pad 8 Pro
 
@@ -38,6 +40,10 @@ cp -a usr %{buildroot}/
 "%{_datadir}/alsa/ucm2/conf.d/sm8750/Xiaomi Pad 8 Pro.conf"
 
 %changelog
+* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-3
+- HiFi.conf 跟到 SunUEFI edcf272：扬声器在 DAP 可用时走 MultiMedia4 立体声
+  PCM，不可用时回到 MultiMedia1 四声道；四条功放默认值改成原厂的 235
+
 * Mon Nov 16 2026 FFT-infra <dev@piano.invalid> - 0.1.0-2
 - HiFi.conf 接通 DisplayPort 播放链路：EnableSequence 打开
   DISPLAY_PORT_RX_0 Audio Mixer MultiMedia2，新增 HDMI SectionDevice

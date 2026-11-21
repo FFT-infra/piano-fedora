@@ -3,16 +3,20 @@
 # 新的 TEE 传输直接用内核的 linux/tee.h 对象 uAPI，不再取 quic-teec 与
 # minkipc。QCBOR 仍按上游 config/fingerprint.json 的提交取用。
 %global qcbor_commit 590a23daf65af068cee81555c597063150e23539
+# 与 sources.lock.json 的 sunuefi pin 相同；tests/check_fingerprint_package.py 守住。
+%global sunuefi_commit edcf272063bfaf9be50f69c85961a5bbe1447b7b
 
 Name:           piano-fingerprint
 Version:        0.2.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Goodix under-display fingerprint client for Xiaomi Pad 8 Pro (piano)
 License:        BSD-3-Clause AND BSD-3-Clause-Clear AND (GPL-2.0-only WITH Linux-syscall-note)
 URL:            https://github.com/FFT-infra/piano-fedora
-# 本地源码：src/ 是 SunUEFI linux/userspace/fingerprint 的副本，见 README.md。
+# 源码不随包维护：构建期从 SunUEFI pin 的 linux/userspace/fingerprint 取，
+# 与设备上跑的内核同一份客户端。
 Source0:        %{name}-%{version}.tar.gz
-Source1:        https://github.com/laurencelundblade/QCBOR/archive/%{qcbor_commit}.tar.gz#/QCBOR-%{qcbor_commit}.tar.gz
+Source1:        https://github.com/slwyts/Project-SunUEFI/archive/%{sunuefi_commit}/Project-SunUEFI-%{sunuefi_commit}.tar.gz
+Source2:        https://github.com/laurencelundblade/QCBOR/archive/%{qcbor_commit}.tar.gz#/QCBOR-%{qcbor_commit}.tar.gz
 
 ExclusiveArch:  aarch64
 
@@ -29,7 +33,12 @@ compiles directly into its Goodix driver.
 
 %prep
 %autosetup -N -n %{name}-%{version}
-tar -xzf %{SOURCE1}
+tar -xf %{SOURCE1} -C %{_builddir}
+UPSTREAM=%{_builddir}/Project-SunUEFI-%{sunuefi_commit}/linux/userspace/fingerprint
+test -f "$UPSTREAM/piano-goodix.c"
+mkdir -p src
+cp -a "$UPSTREAM"/. src/
+tar -xzf %{SOURCE2}
 
 %build
 QCBOR=QCBOR-%{qcbor_commit}
@@ -75,6 +84,10 @@ install -Dm0644 /usr/include/linux/tee.h %{buildroot}%{_licensedir}/%{name}/linu
 %license %{_licensedir}/%{name}/*
 
 %changelog
+* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.2.0-2
+- 源码不再入库维护：构建期从 SunUEFI edcf272 的 linux/userspace/fingerprint 取，
+  拿到 1cb8216 的等旧存储服务注销修复，录入不再立即失败
+
 * Wed Nov 18 2026 FFT-infra <dev@piano.invalid> - 0.2.0-1
 - 跟到上游的 TEE 重写：直接走内核 linux/tee.h 对象 uAPI，删掉 quic-teec 与
   minkipc 依赖；为 libfprint 产出源码归档，不再安装 libpiano-goodix.a
