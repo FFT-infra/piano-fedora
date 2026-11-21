@@ -24,29 +24,35 @@ SPEC = PKG / "piano-pipewire-gstreamer.spec"
 
 def main():
     patches = sorted(p.name for p in PKG.glob("*.patch"))
-    assert len(patches) == 8, f"补丁序列应为 8 个，实际 {patches}"
+    assert len(patches) == 9, f"补丁序列应为 9 个，实际 {patches}"
     body = "\n".join((PKG / name).read_text() for name in patches)
     # 三条必须都在：首选值进 caps、回收 buffer 的加锁顺序、首帧空指针。
     assert "set_pref_int_range" in body and "gst_value_list_append_and_take_value" in body, \
         "补丁没有把 SPA choice 的首选值带进 caps，fixate 仍会落到最小值"
     assert "pw_thread_loop_lock" in body, "补丁没有改 buffer_recycle 的加锁顺序"
     assert "last_buffer" in body, "补丁没有修首帧 keepalive 的空指针"
-    # 每个补丁头里的 From 就是 1.6 分支上的提交号，六个必须一一对上。
+    # 每个补丁头里的 From 就是 1.6 分支上的提交号，必须一一对上。
     expected = {
-        "f7623429d7ead35a0b0443aa40af483bd48b364c",
-        "90ddb7e65bf0f480a17488438449f5d8e3d96c51",
-        "04f0d3ffe3278f2baeaafa5fd372f8e6de35cfcc",
-        "4d3a3fc8af6c0abb1a685555c10f0a54837f0d0e",
+        "c4309f0eb5667f15c6c98a3ab19ea2c6f45afa3e",
+        "18244c9741dda4d5c48df29d15834f25ef97da2b",
+        "97699d707df374773fe5d6e32ea7362ef8dcf51b",
+        "765e628cb2ad2153cf6adc581262da7abd0d9213",
         "1efc570002f01502f75f335ed464aea864c18e05",
         "e57890495a6ca105a5945ec5eb8496eb8b61890c",
     }
     got = set(re.findall(r"^From ([0-9a-f]{40}) ", body, re.M))
     assert got == expected, f"补丁序列与 1.6 分支不一致：多 {got - expected} 少 {expected - got}"
-    # 第 7 个不在 1.6 分支上，是 master 的手工 backport：判定要改成"现有 caps
-    # 仍是下游子集就不重连"，否则每秒重连十几次、池子拆掉后 sink 还在拷贝。
+    # 不重连的判定要改成"现有 caps 仍是下游子集就不重连"，否则每秒重连
+    # 十几次、池子拆掉后 sink 还在拷贝。
     assert "gst_caps_is_subset (current_caps, possible_caps)" in body, \
         "缺少不重连的判定，reconfigure 会继续反复重连"
-    assert "97699d70" in body, "手工 backport 没有记 master 提交号"
+    assert "97699d70" in body, "不重连的判定没有记上游提交号"
+    # 上游 0013：caps 交集为空时 fixate 仍留空 caps，断言会让 wait_negotiated
+    # 一直等下去；只有这条流该失败。
+    assert "No compatible capture format" in body, \
+        "缺少不兼容采集格式的错误路径，wait_negotiated 会一直等"
+    # 上游序列里 1.6.11 tag 已含 per-plane stride，重复带会在 %prep 阶段反向失败。
+    assert "extrapolate_stride" not in body, "per-plane stride 已在 1.6.11 tag 里，不该再带"
     # 第 8 个来自 SunUEFI：MemPtr 指向的映射在重协商时会被移除，必须拷贝后再
     # 交出；fd 背书的内存仍走 share。少了这条，sink 手里的 buffer 会在池子
     # 拆掉后读到已解映射的地址。

@@ -1,7 +1,7 @@
-From 04f0d3ffe3278f2baeaafa5fd372f8e6de35cfcc Mon Sep 17 00:00:00 2001
+From 18244c9741dda4d5c48df29d15834f25ef97da2b Mon Sep 17 00:00:00 2001
 From: Viorel Cernateanu <vrilutza@gmail.com>
 Date: Fri, 23 Oct 2026 20:53:35 +0300
-Subject: [PATCH 3/7] gst: fix video format conversion and enumeration matching
+Subject: [PATCH] gst: fix video format conversion and enumeration matching
 
 - SPA -> GStreamer: creates a separate caps structure for each size pair
   instead of separate width/height lists, preventing invalid
@@ -12,17 +12,16 @@ Subject: [PATCH 3/7] gst: fix video format conversion and enumeration matching
   containing a preferred scalar and a range.
 - Preserves mixed fixed/range axes, integer steps, and represents equal
   bounds as scalars instead of invalid ranges.
-
-(cherry picked from commit 18244c9741dda4d5c48df29d15834f25ef97da2b)
+Source: https://github.com/PipeWire/pipewire/commit/18244c9741dda4d5c48df29d15834f25ef97da2b
 ---
- src/gst/gstpipewireformat.c      |  91 ++++++-------
+ src/gst/gstpipewireformat.c      |  93 +++++++-------
  src/gst/meson.build              |  36 ++++++
  src/gst/test-gstpipewireformat.c | 211 +++++++++++++++++++++++++++++++
- 3 files changed, 289 insertions(+), 49 deletions(-)
+ 3 files changed, 290 insertions(+), 50 deletions(-)
  create mode 100644 src/gst/test-gstpipewireformat.c
 
 diff --git a/src/gst/gstpipewireformat.c b/src/gst/gstpipewireformat.c
-index 036c3cf..971f870 100644
+index 951bbf2e2d..ae23b6fcb6 100644
 --- a/src/gst/gstpipewireformat.c
 +++ b/src/gst/gstpipewireformat.c
 @@ -296,6 +296,9 @@ get_nth_int (const GValue *val, int idx, int *res)
@@ -42,10 +41,7 @@ index 036c3cf..971f870 100644
 -  const GValue *w = NULL, *h = NULL;
 -  GType wt = G_VALUE_TYPE (width);
 -  GType ht = G_VALUE_TYPE (height);
-+  gboolean wrange = GST_VALUE_HOLDS_INT_RANGE (width);
-+  gboolean hrange = GST_VALUE_HOLDS_INT_RANGE (height);
-+  int w, h;
- 
+-
 -  if (wt == G_TYPE_INT && ht == G_TYPE_INT && idx == 0) {
 -    w = width;
 -    h = height;
@@ -73,6 +69,15 @@ index 036c3cf..971f870 100644
 -      w = &g_array_index (wa, GValue, SPA_MAX (idx-1, 0));
 -    if (idx < (int)(ha->len + 1))
 -      h = &g_array_index (ha, GValue, SPA_MAX (idx-1, 0));
+-  }
+-  if (w && h) {
+-    r->width = g_value_get_int (w);
+-    r->height = g_value_get_int (h);
+-    return true;
++  gboolean wrange = GST_VALUE_HOLDS_INT_RANGE (width);
++  gboolean hrange = GST_VALUE_HOLDS_INT_RANGE (height);
++  int w, h;
++
 +  if ((wrange || hrange) && idx == 3) {
 +    w = wrange ? gst_value_get_int_range_step (width) : 1;
 +    h = hrange ? gst_value_get_int_range_step (height) : 1;
@@ -86,11 +91,6 @@ index 036c3cf..971f870 100644
 +        !get_nth_int (height, hi, &h))
 +      return false;
    }
--  if (w && h) {
--    r->width = g_value_get_int (w);
--    r->height = g_value_get_int (h);
--    return true;
--  }
 -  return false;
 +  r->width = w;
 +  r->height = h;
@@ -98,7 +98,7 @@ index 036c3cf..971f870 100644
  }
  
  static uint32_t
-@@ -857,8 +842,12 @@ gst_caps_to_format_all (GstCaps *caps)
+@@ -916,8 +901,12 @@ gst_caps_to_format_all (GstCaps *caps)
  
    d.array = g_ptr_array_new_full (gst_caps_get_size (caps), (GDestroyNotify)g_free);
  
@@ -111,7 +111,7 @@ index 036c3cf..971f870 100644
  
    return d.array;
  }
-@@ -1156,6 +1145,11 @@ set_pref_int_range (GstCaps *res, const char *key, int pref, int min, int max)
+@@ -1215,6 +1204,11 @@ set_pref_int_range (GstCaps *res, const char *key, int pref, int min, int max)
  {
    GValue list = { 0 }, v = { 0 };
  
@@ -123,7 +123,7 @@ index 036c3cf..971f870 100644
    if (pref <= min || pref > max) {
      gst_caps_set_simple (res, key, GST_TYPE_INT_RANGE, min, max, NULL);
      return;
-@@ -1287,23 +1281,22 @@ handle_rect_prop (const struct spa_pod_prop *prop, const char *width, const char
+@@ -1346,23 +1340,22 @@ handle_rect_prop (const struct spa_pod_prop *prop, const char *width, const char
      }
      case SPA_CHOICE_Enum:
      {
@@ -160,7 +160,7 @@ index 036c3cf..971f870 100644
      }
      default:
 diff --git a/src/gst/meson.build b/src/gst/meson.build
-index 1e39bcf..e6282ea 100644
+index 1e39bcf893..e6282ea35c 100644
 --- a/src/gst/meson.build
 +++ b/src/gst/meson.build
 @@ -33,3 +33,39 @@ pipewire_gst = shared_library('gstpipewire',
@@ -205,7 +205,7 @@ index 1e39bcf..e6282ea 100644
 +endif
 diff --git a/src/gst/test-gstpipewireformat.c b/src/gst/test-gstpipewireformat.c
 new file mode 100644
-index 0000000..e30ba3c
+index 0000000000..e30ba3c3d5
 --- /dev/null
 +++ b/src/gst/test-gstpipewireformat.c
 @@ -0,0 +1,211 @@
@@ -420,6 +420,3 @@ index 0000000..e30ba3c
 +  gst_caps_unref (caps);
 +  return 0;
 +}
--- 
-2.54.0
-

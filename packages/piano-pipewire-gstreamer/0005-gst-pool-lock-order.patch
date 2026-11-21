@@ -1,7 +1,7 @@
-From 4d3a3fc8af6c0abb1a685555c10f0a54837f0d0e Mon Sep 17 00:00:00 2001
+From 765e628cb2ad2153cf6adc581262da7abd0d9213 Mon Sep 17 00:00:00 2001
 From: Wim Taymans <wtaymans@redhat.com>
 Date: Mon, 5 Oct 2026 11:16:25 +0200
-Subject: [PATCH 4/7] gstpipewiresrc: fix locking order
+Subject: [PATCH] gstpipewiresrc: fix locking order
 
 The locking order is thread_lock > object_lock
 
@@ -12,17 +12,16 @@ which have the thread_lock taken. Check this only once and as soon as the
 thread_lock is acquired.
 
 Fixes #5507
-
-(cherry picked from commit 765e628cb2ad2153cf6adc581262da7abd0d9213)
+Source: https://github.com/PipeWire/pipewire/commit/765e628cb2ad2153cf6adc581262da7abd0d9213
 ---
  src/gst/gstpipewiresrc.c | 15 ++++-----------
  1 file changed, 4 insertions(+), 11 deletions(-)
 
 diff --git a/src/gst/gstpipewiresrc.c b/src/gst/gstpipewiresrc.c
-index 9918a63..930c315 100644
+index fb48a0e65..ade63758b 100644
 --- a/src/gst/gstpipewiresrc.c
 +++ b/src/gst/gstpipewiresrc.c
-@@ -563,21 +563,15 @@ buffer_recycle (GstMiniObject *obj)
+@@ -581,21 +581,15 @@ buffer_recycle (GstMiniObject *obj)
      return TRUE;
    }
  
@@ -47,7 +46,7 @@ index 9918a63..930c315 100644
    gst_mini_object_ref (obj);
  
    data->queued = TRUE;
-@@ -587,9 +581,8 @@ buffer_recycle (GstMiniObject *obj)
+@@ -607,9 +601,8 @@ buffer_recycle (GstMiniObject *obj)
    else
      GST_LOG_OBJECT (src, "recycle buffer %p", obj);
  
@@ -58,6 +57,3 @@ index 9918a63..930c315 100644
  
    return FALSE;
  }
--- 
-2.54.0
-

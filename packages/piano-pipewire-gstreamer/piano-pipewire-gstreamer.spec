@@ -1,38 +1,38 @@
 %global debug_package %{nil}
 
 # Fedora 45 的 pipewire-1.6.11-1 是 1.6.11 tag 的源码，缺 1.6 分支在那之后
-# 收的全部 GStreamer 修复。三个问题串在一起：
+# 收的 GStreamer 修复。串在一起的问题有三个：
 #
 # 1. 转 caps 时丢掉 SPA choice 的首选值，gst_caps_fixate() 对区间取最小值，
-#    Snapshot 走 portal 拿到 16x4 而不是 1920x1440（90ddb7e6）。
+#    Snapshot 走 portal 拿到 16x4 而不是 1920x1440。
 # 2. buffer_recycle 的加锁顺序反了，回收的 SPA buffer 可能在 sink 里还在被
-#    复制（4d3a3fc8）。
+#    复制。
 # 3. caps 带列表时 "caps 没变就不重连" 的判定永远不成立，每次 reconfigure 都
-#    断开重连，池子被拆掉时 sink 手里的缓冲还在被复制（master 97699d70，
-#    1.6 分支还没有）。
+#    断开重连，池子被拆掉时 sink 手里的缓冲还在被复制。
 #
-# 前 6 个补丁是 1.6 分支 tip（9376731）在 src/gst/ 下的全部提交，套完后两个
-# 源文件与分支 tip 逐字节一致；第 7 个补上与 master 的差距。第 8 个来自
-# SunUEFI：MemPtr 指向的映射会在流重协商时被移除，下游持有 buffer 引用也留不住，
-# 改成拷贝后再交出。Fedora 跟上之后整份包删除。
+# 前七个补丁逐字节取自 SunUEFI patches/pipewire 的 1.6.11 序列（1.6.9 目录里
+# 那几条按系列引用），套完与上游序列的树一致。后两个是 1.6 分支上的提交，
+# SunUEFI 序列没带，我们自己补：首帧 keepalive 的空指针（1efc5700）与 32 位
+# 架构上的 modifier 截断（e5789049）。Fedora 跟上之后整份包删除。
 #
 # 这份包只替换 pipewire-gstreamer 这一个插件（它只含 libgstpipewire.so）。
-# spa v4l2 的修复（865c43d6、f528e254）在 pipewire-libs 里，不在下发范围。
+# spa v4l2 的修复在 pipewire-libs 里，不在下发范围。
 Name:           piano-pipewire-gstreamer
 Version:        1.6.11
-Release:        6%{?dist}
+Release:        7%{?dist}
 Summary:        GStreamer 1.0 plugin for PipeWire, GStreamer fixes from the 1.6 branch tip
 License:        MIT
 URL:            https://gitlab.freedesktop.org/pipewire/pipewire
 Source0:        %{url}/-/archive/%{version}/pipewire-%{version}.tar.gz
-Patch0:         0001-gst-clamp-a-fraction-that-does-not-fit-a-GstFraction.patch
-Patch1:         0002-gst-keep-the-value-a-source-prefers-when-converting-.patch
-Patch2:         0003-gst-fix-video-format-conversion-and-enumeration-matc.patch
-Patch3:         0004-gstpipewiresrc-fix-locking-order.patch
-Patch4:         0005-gstpipewiresrc-fix-NULL-gst_buffer_unref-on-first-bu.patch
-Patch5:         0006-gst-fix-format-conversion-failure-on-32-bit-architec.patch
-Patch6:         0007-gstpipewiresrc-skip-restart-when-running-caps-still-fit.patch
-Patch7:         0008-gst-copy-memptr.patch
+Patch0:         0001-gst-fraction-range.patch
+Patch1:         0002-gst-preferred-caps.patch
+Patch2:         0003-gst-format-tests.patch
+Patch3:         0004-gst-retain-running-caps.patch
+Patch4:         0005-gst-pool-lock-order.patch
+Patch5:         0006-gst-copy-memptr.patch
+Patch6:         0007-gst-report-incompatible-capture-format.patch
+Patch7:         0008-gstpipewiresrc-fix-NULL-gst_buffer_unref-on-first-bu.patch
+Patch8:         0009-gst-fix-format-conversion-failure-on-32-bit-architec.patch
 
 ExclusiveArch:  aarch64
 
@@ -167,6 +167,12 @@ rm -rf %{buildroot}%{_libdir}/libspa-0.2.so*
 %{_libdir}/gstreamer-1.0/libgstpipewire.so
 
 %changelog
+* Sat Nov 22 2026 FFT-infra <dev@piano.invalid> - 1.6.11-7
+- 补丁序列改成逐字节取自 SunUEFI edcf272 的 patches/pipewire 1.6.11 序列：
+  新增 0013 报告不兼容的采集格式，不重连的判定改为上游 97699d70 的原文；
+  上游 0008 的 per-plane stride 已在 1.6.11 tag 里，不再重复带
+- 仍保留两条上游序列没带的 1.6 分支提交：首帧空指针与 32 位 modifier 截断
+
 * Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 1.6.11-6
 - 加第 8 个补丁：MemPtr chunk 改成拷贝后再交出。MemPtr 指向的 PipeWire
   映射会在流重协商时被移除，下游持有 buffer 引用也留不住；fd 背书的内存
