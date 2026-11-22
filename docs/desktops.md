@@ -10,10 +10,10 @@
 |---|---|---|---|---|---|
 | `gnome` | GNOME 51（Workstation 环境） | GDM 自动登录 | dconf（`00-power`） | Mutter 原生处理 | ✅ 桌面就绪，完整支持手势与自动旋转 |
 | `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | KWin 原生处理（`qt6-qtsensors`） | ✅ 桌面就绪，支持桌面定制与自动旋转 |
-| `niri` | niri | greetd `[initial_session]` | logind：短按关机，合盖挂起 | 需在 output 声明 `transform` | ⚠️ 桌面就绪，需配置文件声明旋转 |
-| `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | logind：短按关机，合盖挂起 | 需执行 `hyprctl keyword monitor` | ⚠️ 桌面就绪，需通过命令行控制旋转 |
-| `denial` | Denial（第三方 DNF 仓库） | greetd `[initial_session]`，`DENIAL_SHELL_PROFILE=mobile` 与 `denial-session --start-locked` | logind：短按关机，合盖挂起 | — | ⚠️ 只在 Fedora 44 上有上游验证记录，Fedora 45 与 SM8750 未验 |
-| `server` | 无 | 无 | logind：短按关机，合盖挂起 | — | 仅用于构建测试装配，不发布镜像 |
+| `niri` | niri | greetd `[initial_session]` | logind：短按挂起，长按关机 | 需在 output 声明 `transform` | ⚠️ 桌面就绪，需配置文件声明旋转 |
+| `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | logind：短按挂起，长按关机 | 需执行 `hyprctl keyword monitor` | ⚠️ 桌面就绪，需通过命令行控制旋转 |
+| `denial` | Denial（第三方 DNF 仓库） | greetd `[initial_session]`，`DENIAL_SHELL_PROFILE=mobile` 与 `denial-session --start-locked` | logind：短按挂起，长按关机 | — | ⚠️ 只在 Fedora 44 上有上游验证记录，Fedora 45 与 SM8750 未验 |
+| `server` | 无 | 无 | logind：短按挂起，长按关机 | — | 仅用于构建测试装配，不发布镜像 |
 
 ## 登录方式
 
@@ -54,7 +54,7 @@
 
 GNOME 与 KDE 档的电源键和合盖都只关屏并锁屏，不把机器挂起，与出厂系统的动作
 一致；长按弹出关机入口。niri、Hyprland、Denial 与 server 四档没有桌面侧助手，
-由 logind 自己处理：短按电源键直接关机，合盖挂起。五档都不开空闲自动挂起。
+由 logind 自己处理：短按挂起、长按关机、合盖挂起。五档都不开空闲自动挂起。
 
 GNOME 档由 `piano-fedora-configs` 的 `piano-power-button` 用户服务补这段策略。
 它不独占输入设备，按键事件照常流向 compositor；熄屏走 Mutter 的
@@ -79,7 +79,7 @@ KDE 系统设置里的「电源按钮」同样可以改。改成具体动作后�
 
 niri、Hyprland、Denial 与 server 没有桌面侧文件，按键交回 logind。包里的
 `piano.conf` 那三行 `ignore` 是给 GNOME/KDE 助手让路的，这四个档位在装配时另写
-`etc/systemd/logind.conf.d/zz-piano-login.conf`，按档位声明 `HandlePowerKey` 与
+`etc/systemd/logind.conf.d/zz-piano-login.conf`，按档位声明 `HandlePowerKey`、`HandlePowerKeyLongPress` 与
 `HandleLidSwitch`；文件名排在 `piano.conf` 之后，覆盖那三行里的两项，
 `IdleAction` 仍是 `ignore`。
 
@@ -93,7 +93,7 @@ niri、Hyprland、Denial 与 server 没有桌面侧文件，按键交回 logind�
   `PowerButtonAction` 是 `0`（NoAction），`LidAction` 是 `64`（TurnOffScreen），
   空闲 300 秒关屏并锁屏。
 - **仅 logind**（niri / Hyprland / Denial / server）：没有桌面侧文件，装配时写
-  `etc/systemd/logind.conf.d/zz-piano-login.conf`，短按电源键关机、合盖挂起。
+  `etc/systemd/logind.conf.d/zz-piano-login.conf`，短按挂起、长按关机、合盖挂起。
 
 挂起与唤醒（`rtcwake -m mem -s 20`）运行正常，唤醒后平稳恢复至原会话。那是
 用户主动发起的挂起，默认策略里没有任何一条会自动睡下去。
