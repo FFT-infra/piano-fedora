@@ -236,9 +236,11 @@
 - **硬件通信边界**：
   - 触控走高频 SPI 通信，DMA 优化延迟控制在 2.5ms 内；音频子系统连续播放与录音保持稳定无 xrun 欠载。
 - **触控设备身份与掌托**：
-  - 用户态 uinput 设备按 `BUS_SPI`、vendor `0x0603`、product `0x6532`、名字 `piano NT36532 THP touchscreen` 上报，与 BSP udev 规则和笔设备落在同一个 `LIBINPUT_DEVICE_GROUP=piano-touchscreen` 组里；
-  - 上报 `ABS_MT_TOUCH_MINOR`，并按槽位上报 `MT_TOOL_PALM`：掌托锁存时清空接触，再把上一帧手指作为 `MT_TOOL_PALM` 重报，让 libinput 取消接触而不是把它们保持住；
-  - 设备身份、分组、能力位与服务自启已核对，掌托识别与双指以上的实际手感还没有真机验收记录。
+  - 手指矩阵解码在内核 IRQ 线程里完成（上游 `0197`），`/proc/nvt_thp_status` 报 `kernel_input: enabled` 时用户态手指桥接不创建设备；
+  - 两条路径上报同一身份：`BUS_SPI`、vendor `0x0603`、product `0x6532`、名字 `piano NT36532 THP touchscreen`，与 BSP udev 规则和笔设备落在同一个 `LIBINPUT_DEVICE_GROUP=piano-touchscreen` 组里，所以接管前后 libinput 看到的是同一台设备；
+  - 都上报 `ABS_MT_TOUCH_MINOR`，并按槽位上报 `MT_TOOL_PALM`：掌托锁存时清空接触，再把上一帧手指作为 `MT_TOOL_PALM` 重报，让 libinput 取消接触而不是把它们保持住；
+  - 内核解码用写死的矩阵尺寸，不读原厂逐屏电极校准（本仓库把校准校验后随 `xiaomi-piano-thp` 分发，只供用户态路径使用）；
+  - 设备身份、分组与能力位已核对，掌托识别、双指以上的手感与新解码的跟手程度还没有真机验收记录。
 - **DisplayPort 音频**：
   - topology 由 SunUEFI 的 `piano-displayport.m4` 编出，含 `DISPLAY_PORT_RX_0` 与 `MultiMedia2` 链路；UCM 的 `SectionDevice."HDMI"` 走 `hw:${CardId},1`，`JackControl` 为 `DP0 Jack`；
   - 链路已接通，插 DP 的实机验收还没做。
