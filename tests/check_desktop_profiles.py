@@ -92,8 +92,8 @@ def check_schema_is_enforced():
         "label": "Placeholder", "buildable": False, "dnf_packages": None,
         "repos": [], "exclude_packages": [], "required_packages": [],
         "root_size_mib": 8192, "display_manager": None,
-        "power_policy": {"kind": "logind-only",
-                         "power_key": "poweroff", "lid_switch": "suspend"},
+        "power_policy": {"kind": "logind-only", "power_key": "suspend",
+                         "long_press": "poweroff", "lid_switch": "suspend"},
         "session": {"desktop_names": [], "process_names": [],
                     "session_files": [], "bins": []},
     }
@@ -631,7 +631,8 @@ def check_greetd_validation_checks_the_session_command():
         # logind-only 档的按键取值由 finalize 写进这份 drop-in。
         dropin = root / piano_desktop.LOGIND_DROPIN
         dropin.parent.mkdir(parents=True, exist_ok=True)
-        dropin.write_text("[Login]\nHandlePowerKey=poweroff\nHandleLidSwitch=suspend\n")
+        dropin.write_text("[Login]\nHandlePowerKey=suspend\n"
+                          "HandlePowerKeyLongPress=poweroff\nHandleLidSwitch=suspend\n")
         # inspect 阶段（enable 之前）
         try:
             piano_desktop.validate_against_rootfs(root, context, require_enabled=False)

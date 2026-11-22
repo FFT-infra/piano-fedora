@@ -197,7 +197,7 @@ def stage_login_power(root, context):
     """logind-only 档的按键取值。
 
     piano.conf 的 ignore 是给 GNOME/KDE 的按键助手让路的，这份 drop-in
-    文件名排在它之后，把取值覆盖回来；只覆盖两项，IdleAction 仍是 ignore。
+    文件名排在它之后，把取值覆盖回来；只覆盖这三项，IdleAction 仍是 ignore。
     """
     policy = context["profile"]["power_policy"]
     if policy["kind"] != "logind-only":
@@ -205,6 +205,7 @@ def stage_login_power(root, context):
     name = piano_desktop.LOGIND_DROPIN
     text = ("[Login]\n"
             f"HandlePowerKey={policy['power_key']}\n"
+            f"HandlePowerKeyLongPress={policy['long_press']}\n"
             f"HandleLidSwitch={policy['lid_switch']}\n")
     target = safe_destination(root, name)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -380,6 +381,7 @@ def verify_power_overlay(root, context):
         parser.read_string(guest_resolve(
             root, "/" + piano_desktop.LOGIND_DROPIN).read_text())
         expected = {"HandlePowerKey": policy["power_key"],
+                    "HandlePowerKeyLongPress": policy["long_press"],
                     "HandleLidSwitch": policy["lid_switch"]}
         for key, value in expected.items():
             actual = parser.get("Login", key, fallback=None)
