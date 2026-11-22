@@ -88,6 +88,7 @@ sudo dnf upgrade --refresh
 | `gtk3` | 同名重建，`Release` 带 `.piano1`，带 XI2 工具原子补丁 |
 | `mutter` | 同名重建，`Release` 带 `.piano1`，带空 KMS gamma LUT 与取消的触摸 grab 两个守卫补丁 |
 | `gdm` | 同名重建，`Release` 带 `.piano1`，登录前等原生 KMS connector；只对 GNOME 档有意义 |
+| `gnome-control-center` | 同名重建，`Release` 带 `.piano1`，指纹录入前等 `fprintd` 的验证动作结束；只对 GNOME 档有意义 |
 | `piano-gnome-extras` | noarch meta，拉入 GSD、GTK3 与 mutter，并写入 `20-piano-ambient` dconf drop-in |
 | `piano-kde-extras` | noarch meta，拉入 KWin 与 GTK3 |
 
@@ -187,4 +188,4 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 
 `verify-copr-device.py` 在平板上跑。只读模式核对：仓库里的 15 个矩阵包、3 个运行时包和 Mesa/FFmpeg 齐全、图形栈是改名后的 `mesa-piano-*` 与 `ffmpeg-piano` 且仓库里没有同名的 Fedora 包（避免升级时被官方包覆盖）、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。
 
-`--extras` 换到 extras 仓库：核对 GSD/KWin/GTK3/mutter/gdm 与两个 meta 包齐全、五个桌面包的 `Release` 含 `.piano1`、两个 meta 是 noarch、仓库里没有官方的 `gnome-settings-daemon`，报告写到 `copr-extras-device-check.json`。
+`--extras` 换到 extras 仓库：核对 GSD/KWin/GTK3/mutter/gdm/gnome-control-center 与两个 meta 包齐全、六个桌面包的 `Release` 含 `.piano1`、两个 meta 是 noarch、仓库里没有官方的 `gnome-settings-daemon`，报告写到 `copr-extras-device-check.json`。
