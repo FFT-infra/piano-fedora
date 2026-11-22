@@ -42,7 +42,7 @@
 
 ### 1. 触控矩阵滤波：跟进内核解码（0197 补丁）
 * **上游做法**：`0197-LOCAL-input-nt36532e-matrix.patch` 在既有 IRQ 线程里用整数运算解码互容矩阵，做 32 帧参考、中值滤波与基线漂移处理，按标准多点触控事件上报，并保留掌托分类。
-* **本项目决策**：**跟进该补丁**。序列启用后 `/proc/nvt_thp_status` 报 `kernel_input: enabled`，`piano-touch-view` 据此让用户态手指桥接退出，笔 owner 仍走用户态 `device/piano-thp`。内核解码用写死的矩阵尺寸，不读本仓库校验并随 `xiaomi-piano-thp` 分发的原厂逐屏电极校准；这条差异与触感平滑度在真机上验收，验收前不把它写成已完成。
+* **本项目决策**：**跟进该补丁**。序列启用后 `/proc/nvt_thp_status` 报 `kernel_input: enabled`，`piano-touch-view` 据此让用户态手指桥接退出。笔解码同样进了内核（`0229`、`0230`），从标准固件目录取逐屏校准，用户态只保留 `pen-control.py` 做 BlueZ 初始化。内核解码用写死的矩阵尺寸，不读本仓库校验并随 `xiaomi-piano-thp` 分发的原厂逐屏电极校准；这条差异与触感平滑度在真机上验收，验收前不把它写成已完成。
 * **用户态路径保留的契约**：用户态桥接仍按 `BUS_SPI`、`0603:6532` 与 `piano NT36532 THP touchscreen` 上报，补报 `ABS_MT_TOUCH_MINOR`，掌托锁存时把上一帧手指以 `MT_TOOL_PALM` 重报。内核接管时该设备不创建，避免同名同 ID 的两个输入设备并存。
 
 ### 2. 电源模式调度：禁止外部直接写频点，采用 Uperf 桥接

@@ -61,7 +61,7 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 ### 1. 内核补丁序列管理
 内核补丁集（`patches/kernel/`）共 297 条补丁，由上游 261 条封存序列与自有 36 条适配补丁组成，最终目标树固化于 `patches/kernel/series.json`（`target_tree: a152a01d87d1`）：
-- **触控矩阵解码**：序列里的 `0197-LOCAL-input-nt36532e-matrix.patch` 把逐帧手指矩阵解码放进内核 IRQ 线程（32 帧参考、中值滤波、基线漂移处理），`/proc/nvt_thp_status` 报 `kernel_input: enabled`；笔序列 `0229`、`0230` 建立在它引入的矩阵基础设施上。内核输入设备与用户态桥接设备同名同 ID，两者不会同时创建：内核接管后 `piano-touch-view` 的 `kernel_hand_input` 判定让用户态手指桥接退出。内核解码用写死的矩阵尺寸，不读本仓库校验并随包分发的原厂逐屏电极校准；这条差异在真机上验收。
+- **触控矩阵解码**：序列里的 `0197-LOCAL-input-nt36532e-matrix.patch` 把逐帧手指矩阵解码放进内核 IRQ 线程（32 帧参考、中值滤波、基线漂移处理），`/proc/nvt_thp_status` 报 `kernel_input: enabled`；笔序列 `0229`、`0230` 建立在它引入的矩阵基础设施上，笔也从标准固件目录读校准并在内核里上报。内核输入设备与用户态桥接设备同名同 ID，两者不会同时创建：内核接管后 `piano-touch-view` 的 `kernel_hand_input` 判定让用户态手指桥接退出。上游随之删掉 `touch-input` 与 `pen-bluetooth`，`piano-touch.service` 只剩 BlueZ 笔初始化。内核解码用写死的矩阵尺寸，不读本仓库校验并随包分发的原厂逐屏电极校准；这条差异在真机上验收。
 - **自有适配序列**：将 36 条自有补丁后移至 `0261`–`0296`，涵盖设备特定的 DPU/Iris、音频、启动与 UFS MCQ 约束。
 - **构建环境与优化**：采用 LLVM 23.1.5 工具链，启用 `CC_OPTIMIZE_FOR_PERFORMANCE_O3`、`LTO_CLANG_THIN` 与 `CONFIG_ARM64_PIANO_OPTIMIZE`。
 
