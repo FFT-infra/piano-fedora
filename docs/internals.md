@@ -72,6 +72,17 @@ make test-device-media MEDIA_HOST=<ssh 目标> MEDIA_OUTPUT=<新的证据目录>
 设备上的 `ffprobe` 把开源码流的 `pict_type` 报成 `?`。主机先算好帧类型清单，一起带过去。
 `vainfo` 在目标镜像里不存在，那一步记为 skipped。
 
+只读冒烟：
+
+```sh
+make test-device DEVICE_HOST=piano-usb SMOKE_OUTPUT=<新的报告目录>
+```
+
+`scripts/run-device-smoke.sh` 把 `scripts/verify-device-smoke.py` 经 ssh stdin
+推过去，在设备上核对内核 release 与已装 manifest 一致、模块树在、没有失败
+单元、两个相机单元与触控单元 active、PipeWire 有默认 sink 且能收十帧静音、
+上一次 ESP 升级的审计记录对得上当前 release，报告拉回 `SMOKE_OUTPUT`。
+
 COPR 仓库验收：`scripts/verify-copr-device.py`，在设备上跑，只读模式与
 `--install-test` 两种，见 [COPR 软件源](copr-repository.md#设备侧验证)。
 
