@@ -151,7 +151,7 @@ sudo dnf makecache
 
 ## 图形栈为什么换包名
 
-Fedora 的 mesa 与 ffmpeg 版本号一直在往上走，补丁版的版本号永远落后：`26.2.6-1.piano1` 排在 `26.2.7-1` 之下，`dnf upgrade` 会把补丁版换回官方版。
+Fedora 的 mesa 与 ffmpeg 版本号一直在往上走，补丁版的版本号永远落后：本地包是 `26.2.7-1.piano1`，官方一升到 `26.2.8-1` 就排到它上面，`dnf upgrade` 会把补丁版换回官方版。
 
 抬 Epoch 能压住，但 epoch 是单向的。`1:` 一旦发出去就回不到 `0:`，等 A830v1 的 chip id 进了上游、要回到 Fedora 的包时，每台设备都得手工 `dnf distro-sync`。所以改成 RPM Fusion 对同两个包的做法：换包名。
 

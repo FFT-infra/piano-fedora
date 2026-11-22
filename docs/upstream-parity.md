@@ -30,6 +30,7 @@
 | 后摄自动对焦 | 随 18274377 换成双向 GT9764BA（`gt9764` 驱动 + `camerad` 按 ancillary link 找 LENS） | 同一颗执行器 | 新硬件上机验收未做 |
 | 手写笔进阶 | 基础输入正常：位置、压感、倾斜、proximity | 捏握、震动、磁吸识别、电量、跨系统重配 | 进阶手势与按键映射未实现 |
 | 普通 Focus Pen 校准 | 笔校准 INI 与上游同源，含第二支笔的 `stylus_2_*` 参数 | 同一份 BSP INI | 参数已入包，未实机验收 |
+| 扬声器 DAP | 跟进上游：构建期从厂商树取 `Mi_acdb_cal.acdb`，派生 `speaker-dap-config.bin` 随 `piano-runtime` 分发；拓扑按原厂矩阵把立体声铺到四路 | 同一份 DAP 配置与矩阵 | DAP 加载与四扬声器分频未实机验收 |
 | DisplayPort 音频 | topology 与 UCM 都含 `DISPLAY_PORT_RX_0`，`SectionDevice."HDMI"` 走 `hw:${CardId},1` | 同一份 BSP m4 与 UCM | 链路已接通，未实机验收 |
 | exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编入内核 | 文件系统读写 | 外置存储挂载未验证 |
 | 10-bit 与 144 Hz | 面板与驱动支持，未量测色深与刷新率 | 面板 10bpc，144 Hz 可选 | 保持默认稳定档（KDE 120Hz，GNOME 可选 144Hz） |

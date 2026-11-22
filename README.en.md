@@ -25,13 +25,13 @@ Hardware peripheral support status for the current release:
 
 | Module | Status | Notes |
 |---|---|---|
-| Display | ✅ | 3200×2136 at 120 Hz, Mesa 26.2.6 Turnip (Adreno 830) |
+| Display | ✅ | 3200×2136 at 120 Hz, Mesa 26.2.7 Turnip (Adreno 830) |
 | Touch | ⏳ | Finger matrix decode now runs in the kernel (32 reference frames, median filtering, baseline drift handling, palm classification). The user-space Kalman filter and 24 px dead zone path stays and steps aside when the kernel takes over. The new decode does not read the factory per-panel electrode calibration; feel and multitouch behavior await device verification |
 | Video | ✅ | Iris V4L2 M2M works. H.264 and HEVC encode and decode in hardware, 300 frames each. B-frame sources decode too, all at 1080p. Frame-by-frame digests match software decode, and the Iris interrupt count grows. In-browser decode is ready: Chrome and Firefox decode in hardware by default, Fedora's Chromium uses software decode, see [known issues](docs/known-issues.md#触屏网络音频与相机). VP9, 10-bit and 4K60 are pending further testing |
 | Power | ✅ | Dual-cell battery reporting, deep suspend |
 | Boot | ✅ | `qbootctl.service` writes `Successful: 1`, so the ABL counter cannot drop to Fastboot |
 | Camera | ✅ | `piano-camerad` streams NV12 straight from the ISP. Both the front and the rear camera image normally. The first frames after streaming starts are black. Auto-exposure takes a few frames to converge. See [known issues](docs/known-issues.md#触屏网络音频与相机) |
-| Audio | ✅ | Speaker amp capped at 215 (-15 dB), microphone gain +40 dB. 120 seconds of playback with no xrun, 130 seconds of recording with signal throughout |
+| Audio | ⏳ | The four speakers run through the stock DAP, and the topology spreads a stereo stream across all four paths with the stock matrix. The amplifier cap is 235 (-7.5 dB), the stock FSM_Volume, so there is no measured protection against driver damage. DAP loading and the four-speaker crossover await device verification; 120 seconds of playback with no xrun and 130 seconds of recording with signal came from the earlier direct path |
 | Scheduling | ✅ | `uperf-linux` raises frequency on touch |
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
 | Sensors | ✅ | SSC backend (`libssc` + `iio-sensor-proxy-ssc` over QRTR/MHI). The accelerometer, ambient light and proximity sensors all report data. Auto-rotate supported: screen rotates 90° when orientation changes |
