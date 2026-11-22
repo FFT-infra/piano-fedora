@@ -106,6 +106,12 @@ def test_digest_tracks_only_declared_inputs():
             assert build_inputs.digest("kernel", root) != kernel
             kernel = build_inputs.digest("kernel", root)
 
+            # 解释器产物不是输入：谁在这棵树里跑过一次 python，摘要都不能变，
+            # 否则同一个 commit 在 CI 与本机会算出不同的值。
+            (root / "patches/__pycache__").mkdir()
+            (root / "patches/__pycache__/a.cpython-313.pyc").write_bytes(b"\x00pyc")
+            assert build_inputs.digest("kernel", root) == kernel
+
             # 只属于 rpms 的输入：kernel 不动，rpms 变。
             (root / "product.json").write_text('{"target": {"releasever": "45"}}\n')
             assert build_inputs.digest("kernel", root) == kernel

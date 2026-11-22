@@ -154,7 +154,11 @@ def expand(root, relative):
     if path.is_file():
         return [path]
     if path.is_dir():
-        return sorted(p for p in path.rglob("*") if p.is_file())
+        # 解释器产物不是仓库内容：谁在这棵树里跑过一次 python，摘要就变，
+        # 于是同一个 commit 在 CI 与本机会算出不同的值，按内容复用失效。
+        return sorted(p for p in path.rglob("*")
+                      if p.is_file() and "__pycache__" not in p.parts
+                      and p.suffix != ".pyc")
     raise InputError(f"declared input is missing: {relative}")
 
 
