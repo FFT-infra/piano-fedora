@@ -85,7 +85,11 @@ def package_librevm(source, build, output, pin, patch, package, put, sha256):
     sysusers = payload / "usr/lib/sysusers.d/librevm.conf"
     sysusers.parent.mkdir(parents=True, exist_ok=True)
     sysusers.write_text("g librevm -\n")
-    package("librevm", payload, output, version="0.2.0", requires=("piano-crosvm", "iproute", "util-linux", "e2fsprogs"),
+    # Rust 二进制不是可复现构建：同 commit、同 Cargo.lock 在不同机器上编出的
+    # 字节不同。Release 停在 1 时，设备上从 piano-local 装的那份与 COPR 的
+    # 那份同 NEVRA，dnf upgrade 认为已是最新，永远换不到 COPR 版本。
+    package("librevm", payload, output, version="0.2.0", release="2",
+            requires=("piano-crosvm", "iproute", "util-linux", "e2fsprogs"),
             license_expression="GPL-3.0-or-later")
     return {"commit": pin["commit"], "adapter_sha256": sha256(patch),
                           "cargo_lock_sha256": sha256(source / "Cargo.lock"),
