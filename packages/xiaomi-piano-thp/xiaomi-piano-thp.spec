@@ -3,7 +3,7 @@
 
 Name:           xiaomi-piano-thp
 Version:        0.2.0
-Release:        6%{?dist}
+Release:        7%{?dist}
 Summary:        Touch Host Processor (THP) and Xiaomi Focus Pen driver for Xiaomi Pad 8 Pro (piano)
 License:        Apache-2.0 AND MIT
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -18,6 +18,8 @@ BuildRequires:  systemd-rpm-macros
 Requires:       systemd
 Requires:       python3
 Requires:       python3-evdev
+# 本包拥有 piano-touch.service，它启动的 pen-control.py 走 Gio/GLib 连 BlueZ。
+Requires:       python3-gobject
 Requires:       bluez
 
 Provides:       piano-touch = %{version}-%{release}
@@ -42,11 +44,9 @@ if [ -f src/build/piano-thp-live ]; then
 fi
 
 %files
-# /usr/bin/piano-touch-view, touch-input and pen-bluetooth belong to
-# piano-runtime: SunUEFI generates them from the pinned debian-piano overlay and
-# linux/userspace/pen, and the runtime patches touch-input for the LCD-specific
-# finger calibration. A checked-in copy here gave every one of them two owners,
-# and rpm aborted the transaction on the three that had already drifted apart.
+# piano-touch-view, pen-control.py 与 piano-pen-offline 归 piano-runtime：
+# SunUEFI 从 pin 的 debian-piano overlay 与 linux/userspace/pen 生成它们。
+# 在这里再放一份同名文件就有两个所有者，内容一旦分叉 rpm 会整单回滚。
 %{_bindir}/piano-thp-live
 %{_unitdir}/piano-touch.service
 %config(noreplace) %{_sysconfdir}/systemd/system/piano-touch.service.d/20-fast-restart.conf
@@ -71,6 +71,11 @@ fi
 %systemd_postun_with_restart piano-touch.service
 
 %changelog
+* Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.2.0-7
+- piano-touch.service 跟到 SunUEFI edcf272：手指与笔改由内核解码，
+  unit 只剩 BlueZ 笔初始化，启动 /usr/lib/piano/pen-control.py。
+  已装设备上的旧 unit 指向已删除的 touch-input，不换 NEVRA 就升级不到
+
 * Mon Nov 16 2026 FFT-infra <dev@piano.invalid> - 0.2.0-6
 - 笔校准 INI 跟到上游 BSP 的普通 Focus Pen 参数，补 stylus_2 一组键值
 
