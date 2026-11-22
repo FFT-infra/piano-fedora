@@ -412,15 +412,20 @@ jobs:
           extras=build/in/piano-extras
           test -f "$extras/manifest.json"
           python3 - "$extras" <<'PYEOF'
-          import json, sys
+          import importlib.util, json, sys
           from pathlib import Path
           root = Path(sys.argv[1])
+          # 包集合只有 publish-copr.py 的 EXTRAS_ORDER 一份真源：这里再抄一遍
+          # 名单，加包时就只有一处会忘，发布停在一个假失败上。
+          spec = importlib.util.spec_from_file_location(
+              "publish_copr", Path("scripts/publish-copr.py"))
+          publish_copr = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(publish_copr)
           manifest = json.loads((root / "manifest.json").read_text())
           assert manifest["status"] == "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
-          expected = {"gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
-                      "piano-gnome-extras", "piano-kde-extras"}
-          assert set(manifest["packages"]) == expected, sorted(manifest["packages"])
-          for name in ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm"):
+          assert set(manifest["packages"]) == set(publish_copr.EXTRAS_ORDER), \
+              sorted(manifest["packages"])
+          for name in publish_copr.DESKTOP_PACKAGES:
               assert "piano1" in manifest["packages"][name]["release"], name
           PYEOF
 
