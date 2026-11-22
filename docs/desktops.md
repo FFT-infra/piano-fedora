@@ -174,7 +174,8 @@ Hyprland 与 Denial 两档依赖第三方仓库，Fedora 45 官方仓库里没�
   `denial-repo-key.asc` 的 sha256 钉在 profile 里，仓库经 `gpgcheck=1` 校验 RPM
   签名。仓库元数据的 `repo_gpgcheck` 没有开：dnf5 在 `--installroot` 下会把
   本地 gpgkey 路径当成仓库源解析，`repo_gpgcheck=1` 时直接失败；这与 Hyprland
-  COPR 的信任级别一致，覆盖包签名而不覆盖元数据签名。
+  COPR 的信任级别一致，覆盖包签名而不覆盖元数据签名。这个主机按 UA 拒绝
+  `Python-urllib/*`，取公钥的请求带项目自己的 UA，不伪装成浏览器。
 - 其余三档（GNOME、KDE、niri）不启用任何第三方源。
 
 本地未签名的 `piano-local` 仓库单独设 `gpgcheck=0`，不再用全局 `--nogpgcheck`。
