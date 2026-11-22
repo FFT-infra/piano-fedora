@@ -79,7 +79,7 @@
     "crosvm": {
       "url": "https://github.com/google/crosvm.git",
       "ref": "main",
-      "commit": "ab72ab93eafe521b54f9fc130f5479cce38c13db",
+      "commit": "c41a3d34c2a0074262ae7f4630a5b45f7cb586ad",
       "role": "带 Gunyah、virtio-net 后端的原生 VMM"
     },
     "iris-vaapi": {

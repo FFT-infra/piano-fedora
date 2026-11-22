@@ -44,7 +44,9 @@ def build(sources, output, package, put, sha256, run):
     put(source / "LICENSE", payload / "usr/share/licenses/piano-crosvm/LICENSE")
     put(ROOT / "runtime/crosvm/piano-crosvm.conf", payload / "usr/lib/tmpfiles.d/piano-crosvm.conf")
     run([build / "release/crosvm", "run", "--help"], timeout=15)
-    package("piano-crosvm", payload, output, license_expression="BSD-3-Clause")
+    # Release 2：跟到 crosvm c41a3d34，载荷里的二进制字节变了。不换 NEVRA
+    # 的话，设备上 dnf upgrade 会把 0.1.0-1 当成已是最新，新 crosvm 装不上去。
+    package("piano-crosvm", payload, output, release="2", license_expression="BSD-3-Clause")
     proofs["crosvm"] = {"commit": pin["commit"], "features": ["gunyah", "net", "balloon"],
                          "binary_sha256": sha256(build / "release/crosvm")}
 
