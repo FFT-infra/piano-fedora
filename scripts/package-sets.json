@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "note": "包集合的唯一真源。构建矩阵、COPR 发布、rootfs 装配、设备验收与文档包数都从这里派生；不要在各脚本里另写一份包名清单。数组顺序即 COPR 的构建顺序。",
+  "matrix": [
+    {"name": "libssc", "arches": ["aarch64"]},
+    {"name": "iio-sensor-proxy-ssc", "arches": ["aarch64"]},
+    {"name": "piano-fedora-configs"},
+    {"name": "alsa-xiaomi-piano"},
+    {"name": "xiaomi-piano-firmware"},
+    {"name": "piano-camera", "arches": ["aarch64"]},
+    {"name": "piano-fingerprint", "arches": ["aarch64"]},
+    {"name": "piano-libfprint", "arches": ["aarch64"]},
+    {"name": "piano-libwacom", "arches": ["aarch64"]},
+    {"name": "piano-bluez", "arches": ["aarch64"]},
+    {"name": "piano-pipewire-gstreamer", "arches": ["aarch64"]},
+    {"name": "xiaomi-piano-thp", "arches": ["aarch64"]},
+    {"name": "sm8750-video-accel", "arches": ["aarch64"]},
+    {"name": "uperf-linux", "arches": ["aarch64"]},
+    {"name": "kernel-piano", "arches": ["aarch64"], "kernel": true}
+  ],
+  "runtime": ["piano-crosvm", "librevm", "piano-runtime"],
+  "graphics": {
+    "order": ["mesa", "ffmpeg"],
+    "binaries": ["mesa-piano-dri-drivers", "ffmpeg-piano"]
+  },
+  "extras": {
+    "order": ["gtk3", "kwin", "mutter", "gdm", "gnome-settings-daemon-piano",
+              "gnome-control-center", "piano-gnome-extras", "piano-kde-extras"],
+    "desktop": ["gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
+                "gnome-control-center"],
+    "meta": ["piano-gnome-extras", "piano-kde-extras"],
+    "depends": {
+      "piano-gnome-extras": ["gtk3", "kwin", "mutter", "gdm",
+                             "gnome-settings-daemon-piano", "gnome-control-center"],
+      "piano-kde-extras": ["gtk3", "kwin", "mutter", "gdm",
+                           "gnome-settings-daemon-piano"]
+    }
+  }
+}

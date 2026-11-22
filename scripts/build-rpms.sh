@@ -105,28 +105,11 @@ echo "Build root   : $BUILD_TMP"
 echo ""
 
 HOST_ARCH="$(uname -m)"
-PACKAGES_TO_BUILD=(
-    "piano-fedora-configs"
-    "alsa-xiaomi-piano"
-    "xiaomi-piano-firmware"
+# 包集合与构建顺序来自 scripts/package-sets.json 的唯一真源。这里只按本机
+# 架构过滤：带 arches 的包（相机、指纹等）只在 aarch64 上编译。
+mapfile -t PACKAGES_TO_BUILD < <(
+    python3 "$REPO_ROOT/scripts/package_sets.py" --set matrix --arch "$HOST_ARCH"
 )
-
-if [ "$HOST_ARCH" = "aarch64" ]; then
-    PACKAGES_TO_BUILD+=(
-        "piano-camera"
-        "piano-fingerprint"
-        "piano-libfprint"
-        "piano-libwacom"
-        "piano-bluez"
-        "piano-pipewire-gstreamer"
-        "xiaomi-piano-thp"
-        "sm8750-video-accel"
-        "uperf-linux"
-        "libssc"
-        "iio-sensor-proxy-ssc"
-        "kernel-piano"
-    )
-fi
 
 if [ -n "${ONLY_PKG:-}" ]; then
     PACKAGES_TO_BUILD=("$ONLY_PKG")

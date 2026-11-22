@@ -81,6 +81,8 @@ CHAINS = {
             "patches",
             "product.json",
             "scripts/build-rpms.sh",
+            "scripts/package_sets.py",
+            "scripts/package-sets.json",
             "scripts/build-initramfs.py",
             "scripts/piano_artifacts.py",
             "scripts/piano-kernel-esp-update",
@@ -122,6 +124,9 @@ CHAINS = {
         "paths": [
             "product.json",
             "scripts/build-clean-rootfs.py",
+            "scripts/finalize-fedora-rootfs.py",
+            "scripts/package_sets.py",
+            "scripts/package-sets.json",
             "scripts/piano_desktop.py",
             "scripts/piano_artifacts.py",
             "scripts/apply-rootfs-policy.py",

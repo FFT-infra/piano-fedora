@@ -10,9 +10,12 @@
 
 import hashlib
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import package_sets
 PKG = ROOT / "packages" / "piano-libfprint"
 SPEC = PKG / "piano-libfprint.spec"
 PATCH = PKG / "0001-piano-goodix-uio.patch"
@@ -64,7 +67,7 @@ def main():
         assert directive in dropin, f"fprintd drop-in 缺少 {directive}"
 
     build = BUILD.read_text()
-    order = re.findall(r'"([a-z0-9-]+)"', build.split("PACKAGES_TO_BUILD+=(")[1].split(")")[0])
+    order = package_sets.matrix()
     assert "piano-libfprint" in order, "构建矩阵没有包含 piano-libfprint"
     assert order.index("piano-fingerprint") < order.index("piano-libfprint"), \
         "piano-fingerprint 必须排在 piano-libfprint 前面"
@@ -72,17 +75,17 @@ def main():
         "build-rpms 没有把刚编的 piano-fingerprint 装进构建环境"
 
     workflow = WORKFLOW.read_text()
+    assert "package_sets.matrix()" in workflow, "workflow 的产物清单没有从 package_sets 派生"
     for name in ("piano-fingerprint", "piano-libfprint"):
-        assert f'"{name}"' in workflow, f"workflow 的产物清单没有 {name}"
+        assert name in package_sets.matrix(), f"package-sets.json 没有 {name}"
     for dep in ("libgusb-devel", "pixman-devel", "openssl-devel"):
         assert dep in workflow, f"workflow 没有安装 {dep}"
 
-    rootfs = (ROOT / "scripts" / "build-clean-rootfs.py").read_text()
     for name in ("piano-fingerprint", "piano-libfprint"):
-        assert f'"{name}"' in rootfs, f"clean rootfs 清单没有 {name}"
-    finalize = (ROOT / "scripts" / "finalize-fedora-rootfs.py").read_text()
-    for name in ("piano-fingerprint", "piano-libfprint"):
-        assert f'"{name}"' in finalize, f"finalize 的必需包集合没有 {name}"
+        assert name in package_sets.matrix(), f"package-sets.json 没有 {name}"
+    for script in ("build-clean-rootfs.py", "finalize-fedora-rootfs.py"):
+        text = (ROOT / "scripts" / script).read_text()
+        assert "package_sets" in text, f"{script} 没有从 package_sets 取包清单"
 
     profiles = (ROOT / "scripts" / "profiles" / "fedora-desktops.json").read_text()
     assert '"fprintd"' in profiles and '"fprintd-pam"' in profiles, "GNOME 档没有装 fprintd"
@@ -102,6 +105,7 @@ def main():
     assert "-f $(SELINUX_FC)" in makefile, "make selinux 没有把文件上下文打进模块"
 
     # PAM：fprintd-pam 装了不等于接上，Fedora 需要 authselect 选 with-fingerprint。
+    finalize = (ROOT / "scripts" / "finalize-fedora-rootfs.py").read_text()
     assert '"authselect", "select", "local", "with-fingerprint"' in finalize, \
         "finalize 没有启用 authselect 的 with-fingerprint"
     print("OK: libfprint 补丁、替换声明、fprintd drop-in、SELinux 规则、PAM 接入与镜像清单齐全")

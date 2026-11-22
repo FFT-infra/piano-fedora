@@ -11,9 +11,21 @@ import hashlib
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import package_sets
+
+
+def load_publish_copr():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "publish_copr", ROOT / "scripts" / "publish-copr.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 PKG = ROOT / "packages" / "piano-bluez"
 SPEC = PKG / "piano-bluez.spec"
 BUILD = ROOT / "scripts" / "build-rpms.sh"
@@ -64,21 +76,20 @@ def main():
     assert "Conflicts:      bluez > %{version}-%{release}" in spec, \
         "没有拦住 Fedora 更高版本的静默替换"
 
-    build = BUILD.read_text()
-    packages = re.findall(r'"([a-z0-9-]+)"',
-                          build.split("PACKAGES_TO_BUILD+=(")[1].split(")")[0])
-    assert "piano-bluez" in packages, "构建矩阵没有包含 piano-bluez"
+    assert "piano-bluez" in package_sets.matrix(), "构建矩阵没有包含 piano-bluez"
     workflow = WORKFLOW.read_text()
-    assert '"piano-bluez"' in workflow, "workflow 的产物清单没有 piano-bluez"
+    assert "package_sets.matrix()" in workflow, "workflow 的产物清单没有从 package_sets 派生"
     assert "libell-devel" in workflow, "workflow 没有安装 libell-devel"
 
-    copr = (ROOT / "scripts" / "publish-copr.py").read_text()
-    assert copr.count('"piano-bluez"') >= 2, \
-        "publish-copr.py 的 REQUIRED 与 BUILD_ORDER 都要有 piano-bluez"
+    # 发布链的包名不再逐处手写，都从 package-sets.json 派生。这里核对派生
+    # 结果真的含 piano-bluez，而不是核对源码里有没有那串字面量。
+    copr = load_publish_copr()
+    assert "piano-bluez" in copr.REQUIRED, "publish-copr 的必需清单没有 piano-bluez"
+    assert "piano-bluez" in copr.BUILD_ORDER, "publish-copr 的构建顺序没有 piano-bluez"
     for script in ("build-clean-rootfs.py", "finalize-fedora-rootfs.py",
                    "verify-copr-device.py"):
         text = (ROOT / "scripts" / script).read_text()
-        assert '"piano-bluez"' in text, f"{script} 没有 piano-bluez"
+        assert "package_sets" in text, f"{script} 没有从 package_sets 取包清单"
 
     if (SUNUEFI / "patches/bluez/5.88/series.json").is_file():
         series = json.loads((SUNUEFI / "patches/bluez/5.88/series.json").read_text())

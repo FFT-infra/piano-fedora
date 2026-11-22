@@ -215,14 +215,11 @@ jobs:
           import hashlib, json
           from pathlib import Path
 
-          required = {
-              "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
-              "piano-camera", "piano-fingerprint", "piano-libfprint",
-              "piano-libwacom", "piano-bluez",
-              "piano-pipewire-gstreamer",
-              "xiaomi-piano-thp", "sm8750-video-accel",
-              "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
-          }
+          import sys
+          sys.path.insert(0, "scripts")
+          import package_sets
+
+          required = set(package_sets.matrix())
           repo = Path("out/rpms")
           files = {}
           for path in sorted(repo.glob("*.rpm")):

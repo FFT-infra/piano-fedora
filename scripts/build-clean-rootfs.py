@@ -36,22 +36,13 @@ RPMS_DEFAULT = ROOT / "out" / "rpms"
 PROFILES = ROOT / "scripts" / "profiles"
 DISTROS = ROOT / "build" / "clean-distros"
 
-PIANO_PACKAGES = [
-    "piano-fedora-configs",
-    "alsa-xiaomi-piano",
-    "piano-camera",
-    "piano-fingerprint",
-    "piano-libfprint",
-    "piano-libwacom",
-    "piano-bluez",
-    "piano-pipewire-gstreamer",
-    "xiaomi-piano-thp",
-    "sm8750-video-accel",
-    "uperf-linux",
-    "libssc",
-    "iio-sensor-proxy-ssc",
-    "xiaomi-piano-firmware",
-]
+# 包集合来自 scripts/package-sets.json 的唯一真源。这里是 rootfs 安装集合：
+# 矩阵包（去掉内核，内核单独放最前面）加设备运行时。
+import package_sets  # noqa: E402
+
+_SETS = package_sets.load()
+KERNEL_PACKAGE = package_sets.kernel(_SETS)
+PIANO_PACKAGES = [name for name in package_sets.matrix(_SETS) if name != KERNEL_PACKAGE]
 
 # The device runtime payload (piano-runtime) and the VM bits it depends on are
 # built together by build-device-runtime and merged into the same local
@@ -61,11 +52,7 @@ PIANO_PACKAGES = [
 # set. The VA-API backend is no longer built here: it comes from
 # packages/sm8750-video-accel, and a second build under the old
 # libva-v4l2-iris name owned the same driver path with different bytes.
-RUNTIME_PACKAGES = [
-    "piano-runtime",
-    "librevm",
-    "piano-crosvm",
-]
+RUNTIME_PACKAGES = package_sets.runtime(_SETS)
 
 # Superseded by piano-fedora-configs; kept out so an old package lingering in a
 # repository cannot pull its files back in.
@@ -73,13 +60,6 @@ LEGACY_OPTIONAL_PACKAGES = [
     "piano-session-fixes",
     "libva-v4l2-iris",
 ]
-
-# The device kernel is not in the Fedora repositories: it is packaged by
-# packages/kernel-piano and installed from the same local repo. It used to be
-# missing from this list, so a "clean" assembly produced a root filesystem with
-# an empty /usr/lib/modules while the ESP booted a 7.2.9 kernel - the system
-# came up with no drivers at all. It is required, not optional.
-KERNEL_PACKAGE = "kernel-piano"
 
 DEFAULT_USER = "piano"
 DEFAULT_PASS = "piano123456"

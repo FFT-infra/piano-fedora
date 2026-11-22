@@ -23,21 +23,23 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import package_sets
+
+_SET_PACKAGES = package_sets.published()
+EXTRAS_PACKAGES = set(package_sets.extras(key="order"))
+EXTRAS_DESKTOP = tuple(package_sets.extras(key="desktop"))
+EXTRAS_META = tuple(package_sets.extras(key="meta"))
+
 DEFAULT_REPO_ID = "copr:copr.fedorainfracloud.org:xinyang26:piano-fedora"
 DEFAULT_BASEURL = "https://download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora/"
 EXTRAS_REPO_ID = "copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras"
 EXTRAS_BASEURL = "https://download.copr.fedorainfracloud.org/results/xinyang26/piano-fedora-extras/"
-KERNEL_PACKAGE = "kernel-piano"
+KERNEL_PACKAGE = package_sets.kernel()
 # 图形栈的补丁版改用改名包，这里列的是仓库里必须出现的新名字，以及它们
 # 替代的 Fedora 原名。
 GRAPHICS_RENAMES = {"mesa-piano-dri-drivers": "mesa-dri-drivers",
                     "ffmpeg-piano": "ffmpeg-free"}
-EXTRAS_PACKAGES = {"gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
-                   "gnome-control-center",
-                   "piano-gnome-extras", "piano-kde-extras"}
-EXTRAS_DESKTOP = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
-                  "gnome-control-center")
-EXTRAS_META = ("piano-gnome-extras", "piano-kde-extras")
 
 
 def run(args, *, check=True, sudo=False, binary=False, timeout=None):
@@ -234,19 +236,10 @@ def main():
             if "gnome-settings-daemon" in names:
                 problems.append("extras repository still ships gnome-settings-daemon")
         else:
-            expected = {
-                "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
-                "piano-camera", "piano-fingerprint", "piano-libfprint",
-                "piano-libwacom", "piano-bluez",
-                "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
-                "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano",
-                # 设备原生运行时：由 build-device-runtime 从锁定源码编译，
-                # 在默认 COPR 里提供升级，不再冻结在镜像里。
-                "piano-runtime", "piano-crosvm", "librevm",
-                # 图形栈：这两个是本地重建的包，靠改名后声明 Provides/Conflicts
-                # 压过官方版本。仓库里没有它们，设备 dnf upgrade 就会装回官方版。
-                "mesa-piano-dri-drivers", "ffmpeg-piano",
-            }
+            # 矩阵（含内核）、设备运行时与图形栈改名包都来自
+            # scripts/package-sets.json。仓库里缺任何一个，设备 dnf upgrade
+            # 就会漏掉它或装回官方版。
+            expected = set(_SET_PACKAGES)
             missing = sorted(expected - set(names))
             if missing:
                 problems.append("repository is missing: " + ", ".join(missing))

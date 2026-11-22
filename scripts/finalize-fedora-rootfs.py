@@ -16,6 +16,7 @@ from piano_artifacts import guest_resolve, inspect_kernel, safe_destination, saf
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+import package_sets
 import piano_desktop
 
 # 上游 1b3c538 的默认登录策略：piano 用文档化默认口令，root 保持锁定、不加
@@ -693,15 +694,10 @@ def main():
     packages = chroot(root, "rpm", "-qa", "--qf", "%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{ARCH}\n")
     output.mkdir(parents=True, exist_ok=True)
     (output / "packages.tsv").write_text("".join(sorted(packages.splitlines(keepends=True))))
-    # clean 矩阵显式列出硬件包。聚合 runtime 仍为旧 bundle 提供
-    # librevm/crosvm/VA-API，但它不再是这些载荷的唯一来源。
-    required = {"piano-fedora-configs", "alsa-xiaomi-piano", "piano-camera",
-                "piano-fingerprint", "piano-libfprint", "piano-libwacom",
-                "piano-bluez",
-                "piano-pipewire-gstreamer",
-                "xiaomi-piano-thp", "sm8750-video-accel", "uperf-linux",
-                "libssc", "iio-sensor-proxy-ssc", "xiaomi-piano-firmware",
-                "kernel-piano", "systemd", *piano_desktop.required_packages(context)}
+    # 硬件包来自 scripts/package-sets.json 的矩阵，含内核。聚合 runtime 仍为
+    # 旧 bundle 提供 librevm/crosvm/VA-API，但它不再是这些载荷的唯一来源。
+    required = {*package_sets.matrix(), "systemd",
+                *piano_desktop.required_packages(context)}
     installed = {line.split("\t")[0] for line in packages.splitlines()}
     missing = required - installed
     if missing:

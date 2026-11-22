@@ -10,27 +10,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "scripts" / "build-clean-rootfs.py"
+sys.path.insert(0, str(ROOT / "scripts"))
+import package_sets
 
-EXPECTED_PIANO_PACKAGES = {
-    "piano-fedora-configs",
-    "alsa-xiaomi-piano",
-    "piano-camera",
-    "piano-fingerprint",
-    "piano-libfprint",
-    "piano-libwacom",
-    "piano-bluez",
-    "piano-pipewire-gstreamer",
-    "xiaomi-piano-thp",
-    "sm8750-video-accel",
-    "uperf-linux",
-    "libssc",
-    "iio-sensor-proxy-ssc",
-    "xiaomi-piano-firmware",
-}
-
-# The device kernel ships from the same local repo. It is listed separately
-# because a "clean" rootfs without it boots with no modules at all.
-EXPECTED_KERNEL_PACKAGE = "kernel-piano"
+# 包清单只从 scripts/package-sets.json 取，测试里不再抄一份。
+EXPECTED_KERNEL_PACKAGE = package_sets.kernel()
+EXPECTED_PIANO_PACKAGES = set(package_sets.matrix()) - {EXPECTED_KERNEL_PACKAGE}
 
 
 def run(*args):
@@ -53,6 +38,11 @@ def check_runtime_packages_installed():
     module = _ilu.module_from_spec(spec)
     spec.loader.exec_module(module)
     planned = set(module.PIANO_PACKAGES) | set(module.RUNTIME_PACKAGES) | {module.KERNEL_PACKAGE}
+    assert set(module.PIANO_PACKAGES) == EXPECTED_PIANO_PACKAGES, \
+        "build-clean-rootfs 的安装集合偏离了 package-sets.json"
+    assert set(module.RUNTIME_PACKAGES) == set(package_sets.runtime()), \
+        "build-clean-rootfs 的运行时集合偏离了 package-sets.json"
+    assert module.KERNEL_PACKAGE == EXPECTED_KERNEL_PACKAGE
     for name in ("piano-runtime", "librevm", "piano-crosvm",
                  "kernel-piano", "piano-fedora-configs"):
         assert name in planned, f"{name} is not part of the install set"
@@ -113,7 +103,7 @@ def main():
             check(names.get("image_artifact") == "root-image-44-gnome",
                   f"GNOME image artifact changed: {names.get('image_artifact')}")
             check(EXPECTED_PIANO_PACKAGES.issubset(set(data.get("piano_packages", []))),
-                  "all 9 expected piano RPM packages must be scheduled in plan")
+                  "every matrix package must be scheduled in plan")
             check(EXPECTED_KERNEL_PACKAGE in data.get("all_packages", []),
                   "kernel-piano must be scheduled in the clean assembly; without it "
                   "the image boots with an empty /usr/lib/modules")

@@ -231,7 +231,12 @@ def test_sunuefi_patch_hashes(module):
 
 
 def test_makefile_registers_test():
-    assert "tests/check_fedora_desktop_packages.py" in MAKEFILE.read_text()
+    # make test 现在交给 run-checks.py 自动发现 tests/check_*.py，不再逐行登记。
+    assert "scripts/run-checks.py" in MAKEFILE.read_text(), \
+        "make test 不再调用统一 runner"
+    runner = (ROOT / "scripts" / "run-checks.py").read_text()
+    assert 'TESTS.glob("check_*.py")' in runner, \
+        "runner 没有按 check_*.py 自动发现，新测试会被静默跳过"
 
 
 def main():

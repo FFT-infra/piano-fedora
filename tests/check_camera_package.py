@@ -8,11 +8,14 @@ SOURCES，缺了 `%patch 0` 会在 rpmbuild 阶段才炸。
 
 import json
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = ROOT / "packages" / "piano-camera" / "piano-camera.spec"
 BUILD = ROOT / "scripts" / "build-rpms.sh"
+sys.path.insert(0, str(ROOT / "scripts"))
+import package_sets
 
 
 def main():
@@ -25,7 +28,7 @@ def main():
     assert "test -f" in spec or "test -s" in spec, "取到空的上游树时应报错退出"
 
     build = BUILD.read_text()
-    assert '"piano-camera"' in build, "构建矩阵没有包含 piano-camera"
+    assert "piano-camera" in package_sets.matrix(), "构建矩阵没有包含 piano-camera"
     assert '-name "*.patch"' in build, "build-rpms 不会把包内 patches/ 放进 SOURCES"
     print("OK: 相机包 pin 与锁定一致，补丁进入 SOURCES")
 
