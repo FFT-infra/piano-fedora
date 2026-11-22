@@ -36,6 +36,11 @@ ARCHIVE_STEM = "piano"
 BUNDLE_MEMBERS = (
     "PianoUEFI-product.img",
     "sunuefi_esp.img",
+    # 模块 ZIP 装进 Android 侧的引导助手。ESP 与 root 刷写装不到它，所以
+    # 已装设备换 UEFI 固件只走这条通道；缺了它，用户只能装上游模块，
+    # 本仓库的 UFS 与 DWC3 补丁就丢了。
+    "sunuefi-module.zip",
+    "module-manifest.json",
     "bundle-manifest.json",
     "esp-manifest.json",
     "ffmpeg-manifest.json",

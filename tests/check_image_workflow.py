@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -144,6 +145,16 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     piano_sparse.encode(root / "pianoroot.raw", root / "pianoroot.f2fs.sparse.img")
     (root / "pianoroot.raw").unlink()
     write("source-runs.json", {"kernel_run": "fixture", "uefi_run": "12345"})
+    # Android 侧引导助手模块。ZIP 要带 fd/app/shim，清单要绑定同一份产品。
+    module_names = ("module.prop", "payload/selector.bin", "payload/fd.bin",
+                    "payload/app.bin", "payload/shim.bin")
+    with zipfile.ZipFile(root / "sunuefi-module.zip", "w") as archive:
+        for name in module_names:
+            archive.writestr(name, "fixture " + name)
+    write("module-manifest.json", {
+        "artifact_kind": "android-product-module",
+        "zip_sha256": digest(root / "sunuefi-module.zip"),
+        "same_product": {"product_sha256": digest(root / "PianoUEFI-product.img")}})
     source = json.loads((ROOT / "sources.lock.json").read_text())["sources"]["sunuefi"]["commit"]
     uefi = {"schema_version": 1, "run_id": "12345", "workflow": ".github/workflows/build-uefi.yml",
             "producer_commit": "1" * 40, "sunuefi_commit": source,
@@ -227,6 +238,33 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     else:
         raise AssertionError("bundle missing the FFmpeg manifest was accepted")
     (root / "ffmpeg-manifest.json").write_bytes(saved)
+
+    # 模块 ZIP 必须与 bundle 里的产品同源：拿别的产品构建的模块，装到
+    # Android 侧之后固件就和 ESP 不一致了。
+    record = json.loads((root / "module-manifest.json").read_text())
+    for changed in ({"same_product": {"product_sha256": "0" * 64}},
+                    {"zip_sha256": "0" * 64},
+                    {"artifact_kind": "installable-module"}):
+        write("module-manifest.json", {**record, **changed})
+        try:
+            verify()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("bundle accepted a foreign module: " + str(changed))
+    write("module-manifest.json", record)
+    saved_zip = (root / "sunuefi-module.zip").read_bytes()
+    with zipfile.ZipFile(root / "sunuefi-module.zip", "w") as archive:
+        archive.writestr("module.prop", "fixture module.prop")
+    write("module-manifest.json", {**record, "zip_sha256": digest(root / "sunuefi-module.zip")})
+    try:
+        verify()
+    except ValueError as error:
+        assert "lacks" in str(error), error
+    else:
+        raise AssertionError("a module ZIP without the fd/app/shim payload was accepted")
+    (root / "sunuefi-module.zip").write_bytes(saved_zip)
+    write("module-manifest.json", record)
 
 
 def step_body(workflow, name):
@@ -759,7 +797,7 @@ def run_workflow_step(step_file, step_name, env_extra, workflows, artifacts, run
 def check_image_artifact_follows_the_desktop():
     """build-bundle 与 build-initramfs 的镜像 artifact 必须由桌面档派生。"""
     workflows = ["build-image.yml", "build-uefi.yml"]
-    artifacts = [ROOT_IMAGE_GNOME, ROOT_IMAGE_KDE, "uefi-product"]
+    artifacts = [ROOT_IMAGE_GNOME, ROOT_IMAGE_KDE, "uefi-product", "uefi-module"]
     runs = {}
     for step_file, step_name, env_key in (
             (".github/workflows/build-bundle.yml", "Resolve complete image and UEFI inputs",

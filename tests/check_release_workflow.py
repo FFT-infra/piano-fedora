@@ -50,6 +50,8 @@ ARCHIVE_FILES = {
     "runtime-manifest.json": b'{"runtime": true}\n',
     "source-runs.json": b'{"uefi_run": "1"}\n',
     "uefi-source.json": b'{"uefi": true}\n',
+    "module-manifest.json": b'{"artifact_kind": "android-product-module"}\n',
+    "sunuefi-module.zip": b"PK\\x05\\x06" + b"\\0" * 18,
     "README-INSTALL.txt": b"install guide\n",
     "flash-linux.sh": b"#!/usr/bin/env bash\n",
     "flash-linux.bat": b"@echo off\n",
