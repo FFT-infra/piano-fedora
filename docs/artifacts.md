@@ -42,7 +42,9 @@ clean root 文件系统的 `kernel-piano` 与内核压缩包必须来自同一�
 
 每档各有一个 `build-bundle` run，artifact 名是 `deploy-bundle-<档位>`。`verify-bundle.py`、`prepare-root-capacity.py` 与 `flash-linux.sh` 只认规范名，bundle 内部文件名不随档位变化。档位维度只出现在 artifact 名与归档名上。
 
-最终 deploy-bundle 包含 `sunuefi_esp.img`、`PianoUEFI-product.img`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、`initramfs.tar.zst`、`diagnostic-abl-storage.tar.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。
+最终 deploy-bundle 包含 `sunuefi_esp.img`、`PianoUEFI-product.img`、`sunuefi-module.zip`、`module-manifest.json`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、`initramfs.tar.zst`、`diagnostic-abl-storage.tar.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。
+
+`sunuefi-module.zip` 是 Android 侧的引导助手模块，装的是同一份 `PianoUEFI-product.img` 里的 fd/app/shim。`module-manifest.json` 记着 ZIP 摘要与 `same_product.product_sha256`，`verify-bundle.py` 核对它与 bundle 里的产品镜像一致。ESP 与 root 刷写装不到这份模块，已装设备只换 UEFI 固件时用它。
 
 `initramfs.tar.zst` 由 build-image 用固定时间戳与 owner 打出，五档逐字节相同。`initramfs.tar.zst` 是 `build-bundle` 解包后重新打进 UKI `.initrd` 节区的中间产物，不进 Release 归档。
 
@@ -103,6 +105,7 @@ piano-<tag>-<档位>.sha256             这一档已上传文件的摘要
 归档里：
 
 - 平台镜像 `sunuefi_esp.img`、`PianoUEFI-product.img`。
+- Android 侧引导助手 `sunuefi-module.zip` 与绑定它的 `module-manifest.json`。
 - 这一档的 `root-install/`，含 sparse root、清单与摘要。
 - 组件 manifest 与 bundle manifest。
 - `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt`、`make-device-boot.sh`。
@@ -144,7 +147,7 @@ deploy-bundle 里有三类文件不进归档。
 
 ### 平台镜像压缩
 
-归档里的三份镜像保持原样，压缩由外层 `.tar.zst` 完成。ESP 是 512 MiB 的 FAT32，绝大部分扇区是零，归档整体压缩比因此很高。不做内层压缩，一键脚本读的就是规范名，不需要再解一次。
+归档里的三份镜像保持原样，压缩由外层 `.tar.zst` 完成。模块 ZIP 本身已压缩，外层再压不改变它的字节。ESP 是 512 MiB 的 FAT32，绝大部分扇区是零，归档整体压缩比因此很高。不做内层压缩，一键脚本读的就是规范名，不需要再解一次。
 
 ### 校验与 provenance
 
