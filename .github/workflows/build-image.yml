@@ -280,13 +280,9 @@ jobs:
           installed = fedora_rpm("-qa")
           print("rpm -qa count:", len(installed))
           names = {line.rsplit("-", 2)[0] for line in installed}
-          required = {
-              "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
-              "piano-camera", "xiaomi-piano-thp", "sm8750-video-accel",
-              "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
-              "piano-runtime", "librevm", "piano-crosvm",
-              "mesa-piano-dri-drivers", "ffmpeg-piano", "kernel-piano",
-          }
+          sys.path.insert(0, str(Path(ROOT) / "scripts"))
+          import package_sets
+          required = set(package_sets.published())
           missing = sorted(required - names)
           assert not missing, f"rootfs lacks release packages: {missing}"
           owner = fedora_rpm("-qf", f"/usr/lib/modules/{releases[0]}/modules.dep")[0].strip()

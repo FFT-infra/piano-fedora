@@ -15,9 +15,12 @@ Fedora 跟上 1.6 分支之后，本测试与整份包一起删掉。
 """
 
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import package_sets
 PKG = ROOT / "packages" / "piano-pipewire-gstreamer"
 SPEC = PKG / "piano-pipewire-gstreamer.spec"
 
@@ -82,27 +85,28 @@ def main():
     assert "-Dgstreamer=enabled" in spec and "-Dgstreamer-device-provider=enabled" in spec, \
         "没有启用 GStreamer 插件与设备枚举"
 
-    build = (ROOT / "scripts" / "build-rpms.sh").read_text()
-    assert '"piano-pipewire-gstreamer"' in build, "构建矩阵没有包含 piano-pipewire-gstreamer"
+    assert "piano-pipewire-gstreamer" in package_sets.matrix(), \
+        "构建矩阵没有包含 piano-pipewire-gstreamer"
 
     workflow = (ROOT / ".github" / "workflows" / "build-piano-rpms.yml").read_text()
-    assert '"piano-pipewire-gstreamer"' in workflow, "workflow 的产物清单没有 piano-pipewire-gstreamer"
+    assert "package_sets.matrix()" in workflow, "workflow 的产物清单没有从 package_sets 派生"
 
-    rootfs = (ROOT / "scripts" / "build-clean-rootfs.py").read_text()
-    assert '"piano-pipewire-gstreamer"' in rootfs, "clean rootfs 清单没有 piano-pipewire-gstreamer"
-
-    finalize = (ROOT / "scripts" / "finalize-fedora-rootfs.py").read_text()
-    assert '"piano-pipewire-gstreamer"' in finalize, "finalize 的必需包集合没有 piano-pipewire-gstreamer"
+    for script in ("build-clean-rootfs.py", "finalize-fedora-rootfs.py",
+                   "verify-copr-device.py"):
+        text = (ROOT / "scripts" / script).read_text()
+        assert "package_sets" in text, f"{script} 没有从 package_sets 取包清单"
 
     # 没有进 COPR 就没有任何一台设备会拿到它。publish-copr.py 对 REQUIRED 之外
     # 的产物静默跳过，少写一行等于这个包只存在于 CI 的 artifact 里。
-    publish = (ROOT / "scripts" / "publish-copr.py").read_text()
-    assert publish.count('"piano-pipewire-gstreamer"') >= 2, \
-        "publish-copr.py 的 REQUIRED 与 BUILD_ORDER 都要有 piano-pipewire-gstreamer"
-
-    device = (ROOT / "scripts" / "verify-copr-device.py").read_text()
-    assert '"piano-pipewire-gstreamer"' in device, \
-        "verify-copr-device.py 的仓库清单没有 piano-pipewire-gstreamer"
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "publish_copr", ROOT / "scripts" / "publish-copr.py")
+    publish = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(publish)
+    assert "piano-pipewire-gstreamer" in publish.REQUIRED, \
+        "publish-copr.py 的必需清单没有 piano-pipewire-gstreamer"
+    assert "piano-pipewire-gstreamer" in publish.BUILD_ORDER, \
+        "publish-copr.py 的构建顺序没有 piano-pipewire-gstreamer"
 
     copr = (ROOT / "tests" / "check_copr_release.py").read_text()
     assert '"piano-pipewire-gstreamer"' in copr, \

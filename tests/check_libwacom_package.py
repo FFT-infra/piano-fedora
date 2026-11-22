@@ -9,9 +9,12 @@ tablet。设备侧验证（桌面设置里能看到这支笔）不在离线测�
 
 import hashlib
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import package_sets
 PKG = ROOT / "packages" / "piano-libwacom"
 SPEC = PKG / "piano-libwacom.spec"
 PATCH = PKG / "0001-spi-digitizers-and-xiaomi-pad.patch"
@@ -78,23 +81,24 @@ def main():
                  "%{_udevhwdbdir}/65-libwacom.hwdb"):
         assert path in spec, f"%files 缺少 {path}"
 
-    build = BUILD.read_text()
-    packages = re.findall(r'"([a-z0-9-]+)"', build.split("PACKAGES_TO_BUILD+=(")[1].split(")")[0])
-    assert "piano-libwacom" in packages, "构建矩阵没有包含 piano-libwacom"
+    assert "piano-libwacom" in package_sets.matrix(), "构建矩阵没有包含 piano-libwacom"
 
     workflow = WORKFLOW.read_text()
-    assert '"piano-libwacom"' in workflow, "workflow 的产物清单没有 piano-libwacom"
+    assert "package_sets.matrix()" in workflow, "workflow 的产物清单没有从 package_sets 派生"
     assert "libevdev-devel" in workflow, "workflow 没有安装 libevdev-devel"
 
-    copr = (ROOT / "scripts" / "publish-copr.py").read_text()
-    assert '"piano-libwacom"' in copr, "COPR 的用户态包清单没有 piano-libwacom"
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "publish_copr", ROOT / "scripts" / "publish-copr.py")
+    copr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(copr)
+    assert "piano-libwacom" in copr.BUILD_ORDER, "COPR 的用户态包清单没有 piano-libwacom"
 
-    rootfs = (ROOT / "scripts" / "build-clean-rootfs.py").read_text()
-    assert '"piano-libwacom"' in rootfs, "clean rootfs 清单没有 piano-libwacom"
-    finalize = (ROOT / "scripts" / "finalize-fedora-rootfs.py").read_text()
-    assert '"piano-libwacom"' in finalize, "finalize 的必需包集合没有 piano-libwacom"
-    verifier = (ROOT / "scripts" / "verify-copr-device.py").read_text()
-    assert '"piano-libwacom"' in verifier, "设备端 COPR 校验没有 piano-libwacom"
+    assert "piano-libwacom" in package_sets.matrix(), "package-sets.json 没有 piano-libwacom"
+    for script in ("build-clean-rootfs.py", "finalize-fedora-rootfs.py",
+                   "verify-copr-device.py"):
+        text = (ROOT / "scripts" / script).read_text()
+        assert "package_sets" in text, f"{script} 没有从 package_sets 取包清单"
 
     print("OK: libwacom SPI 笔补丁、四个替换包、构建与发布链接入齐全")
 

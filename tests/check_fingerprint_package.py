@@ -11,12 +11,15 @@ sources.lock.json 一致、spec 不再引用 quic-teec/minkipc、源码归档装
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PKG = ROOT / "packages" / "piano-fingerprint"
 SPEC = PKG / "piano-fingerprint.spec"
 BUILD = ROOT / "scripts" / "build-rpms.sh"
+sys.path.insert(0, str(ROOT / "scripts"))
+import package_sets
 UPSTREAM = Path(os.environ.get("PIANO_TEST_SUNUEFI",
                                ROOT / "build/test-sources/sunuefi")) / \
     "linux/userspace/fingerprint"
@@ -58,7 +61,7 @@ def main():
     assert "backend/qcbor" in spec, "归档没有 QCBOR 源码"
 
     build = BUILD.read_text()
-    assert '"piano-fingerprint"' in build, "构建矩阵没有包含 piano-fingerprint"
+    assert "piano-fingerprint" in package_sets.matrix(), "构建矩阵没有包含 piano-fingerprint"
     assert "Fetching remote dependency sources" in build, \
         "build-rpms 不会为带远程 Source 的 spec 拉取依赖源码"
 

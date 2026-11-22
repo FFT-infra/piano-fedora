@@ -27,45 +27,23 @@ import urllib.request
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+import package_sets  # noqa: E402
 
-# 用户态包：COPR 仓库对它们提供升级。
-USERSPACE = (
-    "piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware",
-    "piano-camera", "piano-fingerprint", "piano-libfprint", "piano-libwacom",
-    "piano-bluez",
-    "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
-    "uperf-linux", "libssc", "iio-sensor-proxy-ssc",
-)
-# 内核包：与用户态包一起发布。装到设备上之后由包自己的 %posttrans 重建
-# initramfs 并重打 ESP 的 UKI，所以不需要在仓库层面排除。
-KERNEL_PACKAGES = ("kernel-piano",)
+# 包集合来自 scripts/package-sets.json，这里是唯一的读取点。
+# 矩阵顺序就是 COPR 构建顺序：后者要等前者的 BuildRequires 进项目仓库。
+# 内核包也在矩阵里，它的 %posttrans 会重建 initramfs 并写 ESP 启动项。
+_SETS = package_sets.load()
+KERNEL_PACKAGES = (package_sets.kernel(_SETS),)
+BUILD_ORDER = tuple(package_sets.matrix(_SETS))
+USERSPACE = tuple(name for name in BUILD_ORDER if name not in KERNEL_PACKAGES)
 REQUIRED = USERSPACE + KERNEL_PACKAGES
-
-# 这些包互相依赖，COPR 按顺序构建，后者需要前者的 BuildRequires 已经在
-# 项目里。iio-sensor-proxy-ssc 的 BuildRequires 里有 libssc。
-BUILD_ORDER = (
-    "libssc",
-    "iio-sensor-proxy-ssc",
-    "piano-fedora-configs",
-    "alsa-xiaomi-piano",
-    "xiaomi-piano-firmware",
-    "piano-camera",
-    "piano-fingerprint",
-    "piano-libfprint",
-    "piano-libwacom",
-    "piano-bluez",
-    "piano-pipewire-gstreamer",
-    "xiaomi-piano-thp",
-    "sm8750-video-accel",
-    "uperf-linux",
-    "kernel-piano",
-)
 
 # 设备原生运行时：由 build-device-runtime 从锁定源码编译，与钢琴矩阵共用
 # 同一次 kernel run，但在单独的 artifact 里打包，所以从 --runtime 提交。
 # librevm 的 Requires 里有 piano-crosvm，crosvm 必须先构建。
-RUNTIME_PACKAGES = ("piano-runtime", "piano-crosvm", "librevm")
-RUNTIME_ORDER = ("piano-crosvm", "librevm", "piano-runtime")
+RUNTIME_ORDER = tuple(package_sets.runtime(_SETS))
+RUNTIME_PACKAGES = RUNTIME_ORDER
 RUNTIME_STATUS = "FEDORA_RUNTIME_BUILT_NOT_DEVICE_VERIFIED"
 
 RELEASEVER = json.loads(
@@ -101,21 +79,17 @@ GRAPHICS = {
 }
 # 先发图形栈：设备上 dnf upgrade 要能看见改名后的包，
 # 而矩阵里的包名与它们不重叠，顺序只影响失败时先报哪一个。
-GRAPHICS_ORDER = ("mesa", "ffmpeg")
+GRAPHICS_ORDER = tuple(_SETS["graphics"]["order"])
 
 # 可选 extras 仓库：默认不启用，只放桌面补丁和两个 meta 包。GSD 改名，
 # KWin/GTK3/mutter/gdm 保持同名、release 带 .piano1。GTK3 先编，两个 meta 最后。
-EXTRAS_ORDER = ("gtk3", "kwin", "mutter", "gdm", "gnome-settings-daemon-piano",
-                "gnome-control-center", "piano-gnome-extras", "piano-kde-extras")
+EXTRAS_ORDER = tuple(package_sets.extras(_SETS, "order"))
 EXTRAS_STATUS = "PIANO_EXTRAS_BUILT_NOT_DEVICE_VERIFIED"
 EXTRAS_PROJECT = "xinyang26/piano-fedora-extras"
 # 两个 meta 包只放 Requires，等它们引用的桌面包进了仓库再提交。
-EXTRAS_DEPENDS = {
-    "piano-gnome-extras": tuple(EXTRAS_ORDER[:6]),
-    "piano-kde-extras": tuple(EXTRAS_ORDER[:5]),
-}
-DESKTOP_PACKAGES = ("gnome-settings-daemon-piano", "kwin", "gtk3", "mutter", "gdm",
-                    "gnome-control-center")
+EXTRAS_DEPENDS = {name: tuple(names)
+                  for name, names in _SETS["extras"]["depends"].items()}
+DESKTOP_PACKAGES = tuple(package_sets.extras(_SETS, "desktop"))
 
 
 class PublishError(Exception):
