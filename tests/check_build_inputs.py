@@ -169,6 +169,37 @@ def test_cli_records_the_same_digest():
     assert data["chain"] == "kernel" and data["files"], data
 
 
+def test_chain_covers_its_local_imports():
+    """链的脚本 import 的本地模块必须在同一条链的输入里。
+
+    漏列会静默复用旧产物：改的正是那个模块，摘要却不动。
+    """
+    failures = []
+    for chain, spec in build_inputs.CHAINS.items():
+        declared = set()
+        for relative in spec["paths"]:
+            path = ROOT / relative
+            if path.is_file():
+                declared.add(path.resolve())
+        for relative in spec["paths"]:
+            path = ROOT / relative
+            scripts = [path] if path.is_file() else sorted(path.rglob("*.py"))
+            for script in scripts:
+                if script.suffix != ".py":
+                    continue
+                for line in script.read_text(errors="replace").splitlines():
+                    words = line.split()
+                    if len(words) < 2 or words[0] not in ("import", "from"):
+                        continue
+                    module = words[1].split(".")[0]
+                    local = ROOT / "scripts" / (module + ".py")
+                    if local.is_file() and local.resolve() not in declared:
+                        failures.append(f"{chain}: {script.relative_to(ROOT)} imports "
+                                        f"{local.relative_to(ROOT)} which the chain omits")
+    if failures:
+        raise AssertionError("; ".join(sorted(set(failures))))
+
+
 def test_producers_upload_their_own_chain_digest():
     """每条链的产物必须自带摘要 artifact，发布链才解析得到它。"""
     failures = []
@@ -204,6 +235,7 @@ def main():
                   test_digest_tracks_only_declared_inputs,
                   test_declared_but_missing_input_is_an_error,
                   test_cli_records_the_same_digest,
+                  test_chain_covers_its_local_imports,
                   test_producers_upload_their_own_chain_digest,
                   test_consumers_require_the_upstream_digest):
         check()

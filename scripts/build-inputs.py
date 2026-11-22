@@ -49,6 +49,7 @@ CHAINS = {
         "paths": [
             "product.json",
             "scripts/build-fedora-mesa.py",
+            "scripts/piano_artifacts.py",
             "scripts/checkout-sources.py",
             ".github/workflows/build-mesa.yml",
         ],
@@ -60,6 +61,7 @@ CHAINS = {
         "paths": [
             "product.json",
             "scripts/build-fedora-ffmpeg.py",
+            "scripts/piano_artifacts.py",
             "scripts/checkout-sources.py",
             ".github/workflows/build-ffmpeg.yml",
             ".github/workflows/host-check.yml",
@@ -103,6 +105,10 @@ CHAINS = {
             # 包归属契约：构建时逐条核对，改它等于改产物。
             "runtime/matrix-owned-paths.txt",
             "scripts/build-device-runtime.py",
+            "scripts/piano_artifacts.py",
+            # 运行时的触控与相机增量都在这两个模块里，构建器 import 它们。
+            "scripts/piano_device_integration.py",
+            "scripts/piano_runtime_extras.py",
             "scripts/checkout-sources.py",
             "scripts/prepare-runtime-kernel.py",
             "scripts/seed-kernel-source.py",
