@@ -59,19 +59,37 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 sudo dnf upgrade --refresh
 ```
 
-升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再用 `systemd-ukify` 把新内核、新 initramfs、ESP 里现有 UKI 的 `.dtb` 与 `.cmdline`、新的 `.osrel` 与 `.uname` 组装成新的 `/boot/efi/EFI/Linux/sunuefi.efi`。重启后固件加载新内核。该链路在内核包升级事务中自动执行重建与原子替换（保留 `.bak` 回退）。
+升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再按 ESP 上的布局写启动项。BLS 布局写 `/linux/<release>/` 与 `/loader/entries/linux-<release>.conf`，旧 release 留着给 systemd-boot 菜单回退。UKI 布局用 `systemd-ukify` 把新内核、新 initramfs、ESP 里现有的 `.dtb` 与 `.cmdline`、新的 `.osrel` 与 `.uname` 重打成 PE 文件：有 systemd-boot 时写版本化文件名，没有时原地替换 `/boot/efi/EFI/Linux/sunuefi.efi`，旧文件留成 `.bak`。重启后固件加载新内核。
 
 系统支持从早期 `boot.img` 引导链路及当前 UKI 引导链路平滑升级至最新内核与适配包。
 
-任何一步失败时，旧 UKI 保持原样，设备继续用上一个内核启动。审计记录写在 `/var/lib/piano/kernel-esp/<release>.json`。
+任何一步失败时，旧启动项保持原样，设备继续用上一个内核启动。审计记录写在 `/var/lib/piano/kernel-esp/<release>.json`。
 
-已经装好但起不来的内核没有自动回滚。回滚靠 `sunuefi.efi.bak`：
+已经装好但起不来的内核没有自动回滚。BLS 布局在 systemd-boot 菜单里选旧 release；单 UKI 布局回滚靠 `sunuefi.efi.bak`：
 
 ```sh
 sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi
 ```
 
 `dnf history undo` 只回滚 RPM，不动 ESP。完整语义见 [COPR 软件源](copr-repository.md)。
+
+### 3. 只升级 UEFI 固件与引导助手
+
+`dnf upgrade` 管不到 ESP 里的 `sunuefi.efi` 和 Android 侧的引导助手模块。这两处要单独换。
+
+UEFI 固件在 ESP 里。归档里的 `sunuefi_esp.img` 是整分区镜像，单独刷它就只换固件，不碰 root：
+
+```sh
+fastboot -S 128M flash sunuefi_esp sunuefi_esp.img
+```
+
+第 1 节的 `update-f2fs.py` 会同时换 ESP 与 root，完整替换 Linux 文件。只想换固件时用它代价太大。
+
+ESP 里的内核与 root 里的 `/usr/lib/modules/` 必须同一版。单独刷 ESP 之后，用 `sudo dnf upgrade --refresh` 把 `kernel-piano` 升到与 ESP 一致，再重启。两边版本不同时系统能起来，但驱动一个都加载不了。
+
+引导助手模块装在 Android 的 KernelSU/SukiSU 里，刷 ESP 装不到它。归档里的 `sunuefi-module.zip`（v45.10 起才有）与 `PianoUEFI-product.img` 由同一次构建产出，`module-manifest.json` 的 `same_product.product_sha256` 就是那份产品的摘要，`verify-bundle.py` 在发布前核对。在模块管理器里选中这个 ZIP 安装，重启即生效。
+
+本仓库的固件带 `patches/uefi-ufs` 与 `patches/uefi-dwc3-halt` 两条补丁，上游模块不含它们。装上游模块换不到这两处修复。
 
 ---
 

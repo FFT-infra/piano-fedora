@@ -51,7 +51,9 @@ PIANO_TEST_SUNUEFI=build/test-sources/sunuefi make test
 
 `--check` 在隔离副本里把每个系列真重放一遍，再比对 `targets` 的前像摘要与 `creates`，输出 `CHECKED` 才算过。`--only <系列>` 只应用这一个系列，不套前置系列，靠它判断补丁坏没坏会误报；定位真因时按 `apply-patches.py` 的顺序逐条 `git apply --check` 更准。
 
-`make test` 里有三个检查要真实上游树，没设 `PIANO_TEST_SUNUEFI` 就 SKIP：`check_iris_source.py`、`check_bundle_overlays.py`、`check_installer.py`。CI 总是指向 `build/test-sources/sunuefi`，本机比照。
+`make test` 走 `scripts/run-checks.py`，按 `tests/check_*.py` 自动发现，逐行打印 `PASSED`/`FAILED`/`SKIPPED` 与单文件耗时，最后给一行汇总。`--pattern <子串>` 只跑匹配的文件，`--timeout` 调单文件超时（默认 120 秒）。
+
+要真实上游树的检查在没设 `PIANO_TEST_SUNUEFI` 时打印 SKIP 而不是失败，例如 `check_iris_source.py`、`check_bundle_overlays.py`、`check_installer.py`。CI 总是指向 `build/test-sources/sunuefi`，本机比照。
 
 `tests/check_bundle_overlays.py` 还会把 `build-bundle.yml` 里的 `--dtb-overlay` 列表和上游 `config/release.json` 逐项对齐。少传一个 overlay 不会让构建失败，只会让对应硬件在设备上不工作，这条断言是唯一能提前发现它的地方。
 

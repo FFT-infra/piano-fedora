@@ -57,12 +57,12 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 
 ## 核心分叉与补丁策略
 
-本仓库在 `patches/kernel/` 追加 7 条设备适配补丁，把上游 7.3 序列推到 0161。Fedora 临时重编包的删除条件见 `scripts/fedora-overlays.json`。
+本仓库在 `patches/kernel/` 追加 7 条设备适配补丁，把上游 7.3 序列推到 0296。Fedora 临时重编包的删除条件见 `scripts/fedora-overlays.json`。
 
 ### 1. 内核补丁序列管理
-内核补丁集（`patches/kernel/`）共 157 条补丁，由上游 122 条封存序列与自有 35 条适配补丁组成，最终目标树固化于 `patches/kernel/series.json`（`target_tree: f92d2647d84d`）：
-- **排除内核矩阵解码**：主动排除上游 `0095-input-nt36532e-matrix.patch`。该补丁将触控矩阵解码移入内核且缺乏时域滤波，与本项目的用户态 5 级卡尔曼滤波冲突。同组的笔序列 `0122`–`0124` 建立在它引入的矩阵基础设施上，一并排除；笔路径继续走本仓库的 `device/piano-thp` 用户态实现。`0121-hid-xiaomi-pen-pressure.patch` 不在这组里：它只改 `drivers/hid/`，把 Focus Pen 的私有 Report 5 压感交给 evdev，因此保留。
-- **自有适配序列**：将 35 条自有补丁后移至 `0127`–`0161`，涵盖设备特定的触控平滑、音频与启动约束。
+内核补丁集（`patches/kernel/`）共 297 条补丁，由上游 261 条封存序列与自有 36 条适配补丁组成，最终目标树固化于 `patches/kernel/series.json`（`target_tree: a152a01d87d1`）：
+- **触控矩阵解码**：序列里的 `0197-LOCAL-input-nt36532e-matrix.patch` 把逐帧手指矩阵解码放进内核 IRQ 线程（32 帧参考、中值滤波、基线漂移处理），`/proc/nvt_thp_status` 报 `kernel_input: enabled`；笔序列 `0229`、`0230` 建立在它引入的矩阵基础设施上，笔也从标准固件目录读校准并在内核里上报。内核输入设备与用户态桥接设备同名同 ID，两者不会同时创建：内核接管后 `piano-touch-view` 的 `kernel_hand_input` 判定让用户态手指桥接退出。上游随之删掉 `touch-input` 与 `pen-bluetooth`，`piano-touch.service` 只剩 BlueZ 笔初始化。内核解码用写死的矩阵尺寸，不读本仓库校验并随包分发的原厂逐屏电极校准；这条差异在真机上验收。
+- **自有适配序列**：将 36 条自有补丁后移至 `0261`–`0296`，涵盖设备特定的 DPU/Iris、音频、启动与 UFS MCQ 约束。
 - **构建环境与优化**：采用 LLVM 23.1.5 工具链，启用 `CC_OPTIMIZE_FOR_PERFORMANCE_O3`、`LTO_CLANG_THIN` 与 `CONFIG_ARM64_PIANO_OPTIMIZE`。
 
 ### 2. 充电与电源栈适配
@@ -70,7 +70,7 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 - **TuneD 与 uperf 桥接**：电源模式不直接操作 sysfs 频点（避免与开机接管 CPU/GPU 的 `uperf-linux` 产生冲突），而是通过 `piano-power-mode` 将 GNOME PPD 的三档模式一一桥接到 `uperfctl mode powersave|balance|performance`。
 
 ### 3. 启动载荷与固件交接
-- **单 UKI 引导架构**：[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 固件通过 `PianoApplicationRunFile` 加载单个 UKI 镜像（`/EFI/Linux/sunuefi.efi`），由 `systemd-ukify` 组装 `.linux`、`.initrd`、`.dtb`、`.cmdline` 等节区。
+- **两种启动布局**：[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 新装镜像走标准 UEFI 顺序，systemd-boot 加载 `/linux/<release>/` 下的内核与 `/loader/entries/` 里的启动项。早期单 UKI 固件没有 systemd-boot，通过 `PianoApplicationRunFile` 打开固定的 `/EFI/Linux/sunuefi.efi`，由 `systemd-ukify` 组装 `.linux`、`.initrd`、`.dtb`、`.cmdline` 等节区。
 - **设备树动态修复**：采用 `EFI_DT_FIXUP_PROTOCOL`（`PianoDeviceTreeFixup.c`），在启动时根据设备实际内存布局与保留区改写 `/memory` 节点。
 - **DWC3 停机容错**：在 `patches/uefi-dwc3-halt/` 中加入复位兜底，当等待超时或传输终止失败时回退至 soft reset。
 

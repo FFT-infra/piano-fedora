@@ -20,6 +20,7 @@
 | `scripts/piano_desktop.py` | 桌面差异解释器 | 登录、服务、包集合、电源策略与产物名 |
 | `scripts/release-assets.py` | Release 资产名 | 哪些四档共用、哪些按桌面加 `-<desktop>` |
 | `scripts/profiles/` | 发行版与桌面配方 | base 包、dnf 选项、桌面包组与电源文件 |
+| `scripts/package-sets.json` | 包集合与构建顺序 | 矩阵、运行时、图形栈、extras；各脚本与 workflow 都从这里派生 |
 | `tests/` | 离线检查 | `make test` 跑全部 |
 | `docs/architecture.md` | 组件边界与阶段计划 | 分工、前提、本机约束 |
 | `.github/workflows/` | 主机侧 CI | 不接触设备 |
@@ -37,7 +38,8 @@
 ## 命令
 
 ```sh
-make test                  # 全部离线检查
+make test                  # 全部离线检查（scripts/run-checks.py 自动发现 tests/check_*.py）
+make test-device DEVICE_HOST=piano-usb   # 平板上跑只读冒烟，报告落在 SMOKE_OUTPUT
 make plan RELEASEVER=44    # 打印 Fedora rootfs 构建计划（默认桌面档）
 make plan-desktop DESKTOP=kde RELEASEVER=44   # 另一档的装配计划
 make selinux               # 从 .te 重新生成 piano_hardware.pp

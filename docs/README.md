@@ -11,7 +11,7 @@
 ## 已经在用的人
 
 - [升级与回滚](upgrade.md)：已有分区更新、内核 UKI 升级与回滚、双系统往返
-- [COPR 软件源](copr-repository.md)：18 个包的在线升级、仓库优先级与回滚
+- [COPR 软件源](copr-repository.md)：20 个包的在线升级、仓库优先级与回滚
 - [桌面档位](desktops.md)：GNOME、KDE、niri、Hyprland、Denial 五档配置、电源与可选组件
 - [已知问题](known-issues.md)：未解决与观察中的问题排障记录与硬件细节
 - [Gunyah 虚拟化](virtualization.md)：SM8750 上的虚拟机运行与网络配置

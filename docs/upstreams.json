@@ -11,8 +11,8 @@
       "decision": "consume",
       "lock_key": "dtc",
       "reason": "libfdt 1.6.1 会覆盖触屏关联覆盖层目标节点的既有 phandle；1.8.1 之后仍无新 tag，跟 main",
-      "reference_commit": "54e547173bf0f2a4cc35eba8b5738caf38b9230f",
-      "reference_date": "2026-11-04"
+      "reference_commit": "c954f9dd835764ec69d3d9afb467c4541b47b66d",
+      "reference_date": "2026-11-17"
     },
     {
       "repo": "CodeLinaro-mirror/linux-kernel_gunyah-linux",
@@ -81,8 +81,8 @@
       "role": "LineageOS 设备树与 proprietary-files 清单（原 ALXP-DANIEL/ANDROID_DEVICE_XIAOMI_PIANO，仓库已转移到该组织）",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "3f10fc25273b42d18d0bd533551a0a5c3dda0094",
-      "reference_date": "2026-11-05"
+      "reference_commit": "21b69bc63bb5ba693f533831415f2d61f99a34b8",
+      "reference_date": "2026-11-18"
     },
     {
       "repo": "AnyLaySys/qemu-gunyah",
@@ -101,8 +101,8 @@
       "role": "固件",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "bf5f7a802b8e1998e6bf95daed5ea965441af83d",
-      "reference_date": "2026-11-04"
+      "reference_commit": "db8cc456dad5ad511b04f8a5130acda392cad20b",
+      "reference_date": "2026-11-18"
     },
     {
       "repo": "AviderMin/ofrp_device_xiaomi_piano",
@@ -174,8 +174,8 @@
       "decision": "consume",
       "lock_key": "vendor-kernel",
       "reason": "只作 overlay 与 DT 谱系的审阅基准：scripts/compare-vendor-dt.py 编译 sun.dts 与 piano-sm8750-overlay.dts，逐条核对 SunUEFI overlay 的目标节点。不进任何出货产物，任何出货路径引用它都视为违规",
-      "reference_commit": "737dabf0f6076ee5d80be6b7190f9ee314c6cad7",
-      "reference_date": "2026-11-13"
+      "reference_commit": "0158badc2c1f658dfa9808c5146a9685ea9c05b4",
+      "reference_date": "2026-11-17"
     },
     {
       "repo": "xiaomi-pad-8-pro-development/android_vendor_xiaomi_piano",
@@ -185,8 +185,8 @@
       "decision": "consume",
       "lock_key": "vendor-blobs",
       "reason": "只作固件对照基准：scripts/compare-vendor-blobs.py 用 git blob 摘要比对，不下载内容，不进镜像",
-      "reference_commit": "c1e5a318cfe41b5c7cef74385b376fd0c2527c49",
-      "reference_date": "2026-11-08"
+      "reference_commit": "500ef49e7022628c14d925d2087080513bdf6eb8",
+      "reference_date": "2026-11-17"
     },
     {
       "repo": "blu-sharky/piano-firmware",
@@ -391,8 +391,8 @@
       "role": "上面 `cctv18/oppo_oplus_realme_sm8750` 的 fork",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "e6076f87c51d76685cc7795361a3fde7f8bd1219",
-      "reference_date": "2026-10-18"
+      "reference_commit": "7a3b8c5dc47dbf7451081e2023d6be0f1dc8c4d6",
+      "reference_date": "2026-11-22"
     },
     {
       "repo": "GUF296/xiaomi-pad-8-pro-linux",
@@ -471,8 +471,8 @@
       "role": "虚拟化",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "5f04f51cb6f209071ffc85375137fb9d01bba163",
-      "reference_date": "2026-11-05"
+      "reference_commit": "40602dac39a7a9e7875bc7d3b3c92d0f4b368876",
+      "reference_date": "2026-11-21"
     },
     {
       "repo": "MiCode/kernel_build",
@@ -591,8 +591,8 @@
       "role": "Fedora 发行版配方参考",
       "decision": "reference",
       "reason": "Fedora 后端参考（sheng/SM8550，GPL-3.0）。提供 RPM spec、Actions 参数化、dual(linux) 分区模式。硬件与启动链不可复用",
-      "reference_commit": "520c26766f50f483f0d944ac23b3042fb08a854e",
-      "reference_date": "2026-10-23"
+      "reference_commit": "8a7dcd75f986aa21d238a26abd317d040b19045e",
+      "reference_date": "2026-11-16"
     },
     {
       "repo": "nekoztx/android_device_xiaomi_piano",
@@ -681,8 +681,8 @@
       "role": "UEFI 基础",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "f971025b5f4478425aa9ef30658102a2506e7f59",
-      "reference_date": "2026-11-05"
+      "reference_commit": "cc64daf0e05b7533995e4fd01e0f5043ec26c137",
+      "reference_date": "2026-11-21"
     },
     {
       "repo": "qemu-gunyah/qemu-android-gunyah",
@@ -712,8 +712,8 @@
       "role": "LXC 式容器运行时，★2288；社区设备表明确列 25091RP04C",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "cea978d58037568e7cba26c0c201b1de08f4b210",
-      "reference_date": "2026-11-05"
+      "reference_commit": "cdadb9eb5d0f86aacffff60776333e6f6b73a30a",
+      "reference_date": "2026-11-07"
     },
     {
       "repo": "renhiyama/pagani-linux",
@@ -733,8 +733,8 @@
       "decision": "consume",
       "reason": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
       "lock_key": "sunuefi",
-      "reference_commit": "8b0fc42d8bdeb68c799235c5f14c166f7c5528cf",
-      "reference_date": "2026-11-07"
+      "reference_commit": "edcf272063bfaf9be50f69c85961a5bbe1447b7b",
+      "reference_date": "2026-11-21"
     },
     {
       "repo": "sm8750-mainline/linux",
@@ -783,8 +783,8 @@
       "role": "主线补丁吸收比较",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "05441d697f7f9a927264f4058cbbc6a03dfcac9d",
-      "reference_date": "2026-11-03"
+      "reference_commit": "4843f6873f7c4835e62f2c73ba0fd538e57a2f22",
+      "reference_date": "2026-11-22"
     },
     {
       "repo": "twrpdtgen/android_device_xiaomi_piano",
@@ -833,8 +833,8 @@
       "role": "官方固件发布通道，README 占位",
       "decision": "reference",
       "reason": "登记为研究来源；不自动替换已锁定的构建输入",
-      "reference_commit": "80969635228ee96c9fa2998cf7836df1eb3d5d19",
-      "reference_date": "2025-09-24"
+      "reference_commit": "e12bc01127294c161e9154e6db7e62599886dd0a",
+      "reference_date": "2026-11-20"
     },
     {
       "repo": "Yizhou147/droid-audio-bridge",
@@ -894,8 +894,8 @@
       "decision": "consume",
       "lock_key": "crosvm",
       "reason": "正式 Fedora 运行时按构建锁消费",
-      "reference_commit": "f0880b36b6e3f25ee814222e6bd1cead4151bc85",
-      "reference_date": "2026-11-07"
+      "reference_commit": "c41a3d34c2a0074262ae7f4630a5b45f7cb586ad",
+      "reference_date": "2026-11-22"
     },
     {
       "repo": "radxa-pkg/qcom-va-driver",
@@ -915,8 +915,8 @@
       "role": "固定的手指处理核心、校准提取器和相机 NEON 转换；保留 SunUEFI 的唯一读帧与手写笔所有者",
       "decision": "consume",
       "lock_key": "piano-integration",
-      "reference_commit": "9e3d12777ac8c8ee3b73921790c9381159be577a",
-      "reference_date": "2026-11-07",
+      "reference_commit": "88b83c2250d43925034ef9ff346cb9726de72fb6",
+      "reference_date": "2026-11-20",
       "reason": "正式 Fedora 运行时按固定源码构建并核验安装字节"
     },
     {
@@ -926,8 +926,8 @@
       "role": "piano 主线内核树，独立于 blu-sharky/linux-piano 的另一条开发线",
       "decision": "reference",
       "reason": "面板模块 ID 选择、触控固件选择、geni-qcom 空闲、LLCC 驱动、CPU 热区等改动与当前适配范围重合；只作对照，不替换锁定的内核基线",
-      "reference_commit": "bf42598aceec58fd7392314de233e5fab3835938",
-      "reference_date": "2026-11-03"
+      "reference_commit": "7f8d6bedde479a01f4a05d6d0581b43c7fd20a01",
+      "reference_date": "2026-11-10"
     },
     {
       "repo": "llfzs/sm8750-linux",
@@ -986,8 +986,8 @@
       "role": "piano 的 ROM 补丁集合",
       "decision": "reference",
       "reason": "Android ROM 侧修补，登记备查",
-      "reference_commit": null,
-      "reference_date": "2026-11-08"
+      "reference_commit": "b0a7d736ab08f53290c93fe55faafbf742443042",
+      "reference_date": "2026-11-18"
     },
     {
       "repo": "llfzs/piano-uefi-port",
@@ -996,8 +996,8 @@
       "role": "消费 yzddmr6 的 Release 成品并做 UEFI 化的独立移植层仓库",
       "decision": "reference",
       "reason": "跟二进制发布而非源码 pin 的另一种维护模型，可对照本项目 14 个源码 pin 的成本；状态 PORT_READY_BUILT_NOT_FLASHED",
-      "reference_commit": null,
-      "reference_date": "2026-11-08"
+      "reference_commit": "b848526d81b5c8e1950b1426b9517db031fcab7a",
+      "reference_date": "2026-11-07"
     },
     {
       "repo": "nadelacruz-00/erhai-charging-lab",
@@ -1006,9 +1006,9 @@
       "role": "OnePlus Pad 3（erhai，SM8750）的充电测试台",
       "decision": "reference",
       "reason": "其测试组织方式可参考",
-      "reference_commit": null,
-      "reference_date": "2026-11-08"
+      "reference_commit": "9a511d824abbe5ef7825c930c8b53af6e4027c15",
+      "reference_date": "2026-10-27"
     }
   ],
-  "checked_date": "2026-11-14"
+  "checked_date": "2026-11-22"
 }

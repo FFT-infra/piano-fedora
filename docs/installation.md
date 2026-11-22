@@ -69,7 +69,7 @@ brew install zstd android-platform-tools mtools   # python3 随 Command Line Too
 
 ### 分区用途
 
-* `sunuefi_esp`（512 MiB，FAT32）：SunUEFI EDK2 固件、合并设备树（DTB）、Linux 7.2 适配内核与 initramfs。
+* `sunuefi_esp`（512 MiB，FAT32）：systemd-boot、合并设备树（DTB）、Linux 7.3 适配内核、initramfs 与启动项。
 * `sunuefi_root`（F2FS）：Fedora 45 根文件系统。桌面按档位装配。F2FS 为闪存设计，能发挥 UFS 4.0 的顺序与随机读写性能。
 * `boot_a` 或 `boot_b`：合体 BOOT，随活动槽。Linux 与 Android 都从这里启动。
 
@@ -159,7 +159,7 @@ Windows 上用 7-Zip 打开 `.tar.zst`。分片先合并：`copy /b piano-<tag>-
 
 `root-install/` 里的 sparse 镜像已写入设备配置并恢复 SELinux 标签。没有指定 `root_size_mib` 时，sparse 镜像保持封存容量，首次启动再扩满 `sunuefi_root`。Release 固定使用 Android Slot A（`_a`）。B 槽设备要用同一次 bundle run 自己跑 `prepare-install.yml` 的 `_b`。
 
-Linux 内核不在归档里单独出现。它在 `sunuefi_esp.img` 的 `/EFI/Linux/sunuefi.efi`，由固件直接加载。
+Linux 内核不在归档里单独出现。它在 `sunuefi_esp.img` 里，由固件或 systemd-boot 加载。
 
 镜像里没有 `authorized_keys`。管理公钥在刷写时用 `--ssh-key` 注入，手动路径见[第五节](#五-手动刷写-linux)，脚本路径见[第六节](#六-一键脚本)。
 
@@ -508,7 +508,7 @@ fastboot reboot
 
 每条命令都必须打印 `OKAY`。出现 `FAILED`，立刻停下，不要继续后面的步骤。
 
-活动槽的 boot 分区要写的是 `prepare-device-boot.py` 用本机原厂 BOOT 重打包出的 `device-boot/boot_linux.img`。归档里没有另一个能直接刷的 Linux 内核文件：内核与 initramfs 都在 `sunuefi_esp.img` 的 `/EFI/Linux/sunuefi.efi` 里，由 SunUEFI 固件加载。`sunuefi_esp.img` 是整分区镜像，只能写 `sunuefi_esp`。写进 boot 分区会让 ABL 停在 Fastboot。
+活动槽的 boot 分区要写的是 `prepare-device-boot.py` 用本机原厂 BOOT 重打包出的 `device-boot/boot_linux.img`。归档里没有另一个能直接刷的 Linux 内核文件：内核与 initramfs 都在 `sunuefi_esp.img` 里，由 SunUEFI 固件加载。`sunuefi_esp.img` 是整分区镜像，只能写 `sunuefi_esp`。写进 boot 分区会让 ABL 停在 Fastboot。
 
 合体 BOOT 保持上游的 unsigned AVB NONE 元数据。`prepare-device-boot.py` 不补 `os_version`，也不重新签名。活动槽的 ABL 直接加载这份镜像。同一份未签名镜像已在真机上完成 Android→Linux→Android 往返。不要自行补 `os_version` 或 RSA4096 footer：`piano-boot-repack` 的 probe/request/adopt 会把首块与包装器里保存的原厂头逐字节比较。改了偏移 16，Android 侧的引导助手就认不出当前 BOOT，`switch linux` 会直接失败。
 
@@ -556,9 +556,10 @@ systemctl --failed    # 输出为空
 `uname -r` 的正确值是这一版 ESP 里实际装的内核，不是随便一个 7.2.9。两处可以查到，两边必须一致：
 
 ```sh
-# 1) ESP 镜像里 UKI 的内核版本（刷写前就能查，不需要设备）
-mtype -i sunuefi_esp.img ::/EFI/Linux/sunuefi.efi > sunuefi.efi
-strings -a sunuefi.efi | grep -m1 -oE '[0-9.]+-piano[^ ]*g[0-9a-f]+'
+# 1) ESP 镜像里的内核版本（刷写前就能查，不需要设备）
+mdir -i sunuefi_esp.img ::/linux/          # 只有一个 release 目录
+mtype -i sunuefi_esp.img ::/linux/<release>/linux > Image
+strings -a Image | grep -m1 -oE '[0-9.]+-piano[^ ]*g[0-9a-f]+'
 
 # 2) 设备启动后的实际内核
 uname -r
@@ -664,8 +665,8 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 ### 2. 桌面默认配置
 
-* 120 Hz 与触控：Mesa 硬件加速默认开启。触控服务加载 5 阶自适应卡尔曼滤波与 24 像素死区防抖。
-* 声学保护：内核与 ALSA UCM2 把 FS19xx 四功放截断在 -15 dB。麦克风有 +40 dB 硬件增益。
+* 120 Hz 与触控：Mesa 硬件加速默认开启。手指矩阵与笔解码都由内核驱动完成，`piano-touch-view` 检测到 `kernel_input: enabled` 后不再创建用户态手指设备；`piano-touch.service` 只负责笔的蓝牙初始化。
+* 音频：扬声器走原厂 DAP，拓扑按原厂矩阵把立体声铺到四路；没有 DAP 时回到四声道直连。FS19xx 四功放上限 235，与原厂 FSM_Volume 相同。麦克风有 +40 dB 硬件增益。
 * 电池与电源：`/hypervisor` 节点已软隔离，桌面显示原生双电芯电量，支持合盖与深度挂起：
   * 休眠与混合睡眠默认关闭；
   * `sleep.conf.d/piano.conf` 由 `scripts/finalize-fedora-rootfs.py` 写入；

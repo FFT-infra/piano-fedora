@@ -64,15 +64,19 @@ F2FS 排在分区之前：先验证 F2FS 镜像的挂载式往返机制，再根
 
 ## 启动链
 
-固件从 ESP 的 `\EFI\Linux\sunuefi.efi` 加载 Linux。这个文件是 UKI，`systemd-ukify` 把内核、initramfs、DTB、cmdline、os-release 与 uname 写进同一个 PE 文件，节区是 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname`。ESP 上没有 systemd-boot、BLS 条目或 Android boot 容器。
+固件从 ESP 加载 Linux。载荷有两种布局，以 ESP 上有没有 systemd-boot 区分。
+
+新装镜像走标准 UEFI 启动顺序：`EFI/BOOT/BOOTAA64.EFI`（systemd-boot）是入口，内核、initramfs 与板级 DTB 分放在 `/linux/<release>/`，启动项在 `/loader/entries/linux-<release>.conf`。这是上游 `package_release.py` 的默认布局。
+
+早期单 UKI 固件没有 systemd-boot，只打开固定的 `\EFI\Linux\sunuefi.efi`。这个文件是 UKI，`systemd-ukify` 把内核、initramfs、DTB、cmdline、os-release 与 uname 写进同一个 PE 文件，节区是 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname`。
 
 启动时 DT 由固件改写。`PianoDeviceTreeFixup.c` 实现 `EFI_DT_FIXUP_PROTOCOL`，依次处理内存、面板、蓝牙地址、RTC 偏移与 Gunyah 资源管理器。`systemd-stub` 以 `APPLY_FIXUPS|RESERVE_MEMORY` 调它，载荷 DTB 的 `/memory` 被换成设备本次的布局，并按 `DramBytes` 与固定保留区校验。raw Linux 交接走同一个协议。
 
 切系统仍靠请求页。`PianoBootPolicy.c` 的 `REQUEST_BOOT_STABLE` 与返回 Android 的 token 没有变，和内核载荷格式无关。
 
-内核升级由 `kernel-piano` 的 `%posttrans` 维护。事务收尾时它在设备上重建 initramfs，用 `systemd-ukify`、ESP 上现有的 `.dtb` 和新内核重新组装 `/EFI/Linux/sunuefi.efi`，原子替换旧文件并留一份 `.bak`。细节见 [COPR 软件源](copr-repository.md)。
+内核升级由 `kernel-piano` 的 `%posttrans` 维护，目标按 ESP 上的布局选。BLS 布局写 `/linux/<release>/` 与新的 loader 条目，旧 release 留着给 systemd-boot 菜单回退。UKI 布局重建 PE 文件：有 systemd-boot 时写版本化文件名，没有时原地替换固件读取的 `sunuefi.efi`，旧文件留成 `.bak`。细节见 [COPR 软件源](copr-repository.md)。
 
-`c720568` 及更早的固件读 `\EFI\Piano\stable\boot.img`，要求 Android boot v2 容器。HEAD 删掉了这条路径，ESP 上只留 `/EFI/Linux/sunuefi.efi` 这一份 Linux 载荷。
+`c720568` 及更早的固件读 `\EFI\Piano\stable\boot.img`，要求 Android boot v2 容器。HEAD 删掉了这条路径。
 
 ## 从 nabu_fedora 取什么
 

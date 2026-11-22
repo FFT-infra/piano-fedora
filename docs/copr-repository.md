@@ -2,9 +2,9 @@
 
 设备装好 Fedora 后，配置、固件、相机、触控、传感器、VA-API、调度器和内核都可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
 
-**当前状态：13 个矩阵包、3 个设备运行时包，加上 Mesa 与 FFmpeg 两组图形栈，共 18 个包可以 `dnf upgrade` 升级，内核在内。** 项目是 `xinyang26/piano-fedora`，chroot 跟 `product.json` 的 releasever 走，现在是 `fedora-45-aarch64`。项目存在但缺这个 chroot 时，发布脚本会先 `copr-cli modify --chroot` 补上，否则 `copr-cli build` 会被 COPR 拒掉。仓库里有全部 18 个包：
+**当前状态：15 个矩阵包、3 个设备运行时包，加上 Mesa 与 FFmpeg 两组图形栈，共 20 个包可以 `dnf upgrade` 升级，内核在内。** 项目是 `xinyang26/piano-fedora`，chroot 跟 `product.json` 的 releasever 走，现在是 `fedora-45-aarch64`。项目存在但缺这个 chroot 时，发布脚本会先 `copr-cli modify --chroot` 补上，否则 `copr-cli build` 会被 COPR 拒掉。仓库里有全部 20 个包：
 
-矩阵包：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-camera`、`piano-fedora-configs`、`piano-fingerprint`、`piano-libfprint`、`piano-pipewire-gstreamer`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。
+矩阵包：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-bluez`、`piano-camera`、`piano-fedora-configs`、`piano-fingerprint`、`piano-libfprint`、`piano-libwacom`、`piano-pipewire-gstreamer`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。
 
 运行时包：`piano-runtime`、`piano-crosvm`、`librevm`。
 
@@ -12,13 +12,15 @@
 
 核对方法见下面的[启用仓库](#启用仓库)一节，或在设备上跑 `python3 scripts/verify-copr-device.py`。
 
-**内核怎么升级。** [SunUEFI](https://github.com/slwyts/Project-SunUEFI) 固件从 ESP 的 `/EFI/Linux/sunuefi.efi` 加载 Linux，`PianoProductCore.c` 用 `PianoApplicationRunFile` 直接打开这个文件，没有编译期哈希或 Android boot v2 解析。用户态 `dnf upgrade` 只改 `/usr/lib/modules`，两者本来脱钩。`kernel-piano` 的 `%posttrans` 把这条链接上。事务收尾时，`%posttrans` 先跑 `depmod -a <release>`，再用刚装上的内核重建 initramfs。最后用 `systemd-ukify` 把新内核、新 initramfs、ESP 里现有 UKI 的 `.dtb` 与 `.cmdline`、新的 `.osrel` 与 `.uname` 组装成新的 `/EFI/Linux/sunuefi.efi`。重启之后固件读到的是新内核。
+**内核怎么升级。** [SunUEFI](https://github.com/slwyts/Project-SunUEFI) 固件从 ESP 加载 Linux。新装镜像走标准 UEFI 启动顺序，入口是 `EFI/BOOT/BOOTAA64.EFI`（systemd-boot），内核与启动项分放在 `/linux/<release>/` 与 `/loader/entries/`。早期单 UKI 固件没有 systemd-boot，只打开固定的 `/EFI/Linux/sunuefi.efi`，`PianoProductCore.c` 直接按路径加载，没有编译期哈希或 Android boot v2 解析。
 
-不需要重编固件。固件只按固定路径加载一个 PE 文件，开机校验交给 `systemd-stub` 与内核。换内核不改固件，也不改 ESP 上的路径名。
+用户态 `dnf upgrade` 只改 `/usr/lib/modules`，与 ESP 本来脱钩，`kernel-piano` 的 `%posttrans` 把这条链接上。事务收尾时先跑 `depmod -a <release>`，再用刚装上的内核重建 initramfs，最后按 ESP 现有布局写启动项。BLS 布局写 `/linux/<release>/` 与新的 loader 条目，旧 release 留给 systemd-boot 菜单回退。UKI 布局用 `systemd-ukify` 重打 PE 文件，有 systemd-boot 时写版本化文件名，没有时原地替换 `sunuefi.efi`。
 
-`.dtb` 与 `.cmdline` 沿用 ESP 里现有 UKI 的节区，不是内核包里的 `/boot/dtb/qcom/sm8750-xiaomi-piano.dtb`。板级 overlay 已经在打包 bundle 时合成进那份 DTB。在线升级只复用现有 DTB，换 overlay 要换整个 bundle。
+不需要重编固件。换内核不改固件。
 
-**失败边界。** 任何一步失败，旧 UKI 保持原样，设备继续用上一个内核启动。写入顺序是：先写 `.sunuefi.efi.new` 并 fsync，重新读出六个语义节区与预期比对；通过后把旧文件复制成 `sunuefi.efi.bak`，最后用 `os.replace` 换上去。PE 时间戳每次不同，判断文件有没有变只看 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname` 六段内容。
+板级 DTB 与 cmdline 沿用 ESP 上现有的那一份，不是内核包里的 `/boot/dtb/qcom/sm8750-xiaomi-piano.dtb`。板级 overlay 已经在打包 bundle 时合成进 DTB。在线升级只复用现有 DTB，换 overlay 要换整个 bundle。
+
+**失败边界。** 任何一步失败，旧启动项保持原样，设备继续用上一个内核启动。UKI 布局的写入顺序是：先写 `.new` 并 fsync，重新读出六个语义节区与预期比对；通过后把旧文件复制成 `.bak`，最后用 `os.replace` 换上去。PE 时间戳每次不同，判断文件有没有变只看 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname` 六段内容。
 
 **运行与验证记录。** UKI 升级由 `%posttrans` 重建 initramfs，写出 `sunuefi.efi.bak` 并原子替换 `sunuefi.efi`；重启后进入桌面，`uname -r` 与 UKI 内部 `.uname` 严格一致。升级审计信息同步写入 `/var/lib/piano/kernel-esp/<release>.json`。
 
@@ -28,7 +30,7 @@ manifest 的名字带 NVRA，`%posttrans` 读自己那一版并把文件名传�
 
 `kernel-piano` 不提供 `kernel` / `kernel-core` 这类名字。DNF 的 installonlypkgs 按名字或 provides 匹配，提供它们会把新的 RPM Release 当成“再装一份内核”。模块树目录只由编译期 release 决定（`7.3.3-piano-sunuefi-cachy-optimize`），两个 Release 指向同一批文件，rpm 在安装阶段报 `file ... conflicts with file from package` 并中止整个事务。去掉这些 provides 后，`dnf upgrade` 按普通包替换本包。
 
-已经装好但起不来的内核没有自动回滚。上游没有 boot counter（`PianoNvJournal` 是现成的双槽 NV journal，只是没有人往里写尝试计数），回滚只能手工做：
+已经装好但起不来的内核没有自动回滚。上游没有 boot counter（`PianoNvJournal` 是现成的双槽 NV journal，只是没有人往里写尝试计数），回滚只能手工做。BLS 布局在 systemd-boot 菜单里选旧 release。单 UKI 布局恢复 `.bak`：
 
 ```bash
 # 恢复上一个 UKI，重启即回到旧内核
@@ -75,7 +77,7 @@ sudo dnf makecache
 sudo dnf upgrade --refresh
 ```
 
-内核升级会重写 ESP 的 `/EFI/Linux/sunuefi.efi`。升级前先确认电量充足，不要在升级事务中间断电。
+内核升级会重写 ESP 上的启动项与载荷。升级前先确认电量充足，不要在升级事务中间断电。
 
 ## 可选的 extras 软件源
 
@@ -88,6 +90,7 @@ sudo dnf upgrade --refresh
 | `gtk3` | 同名重建，`Release` 带 `.piano1`，带 XI2 工具原子补丁 |
 | `mutter` | 同名重建，`Release` 带 `.piano1`，带空 KMS gamma LUT 与取消的触摸 grab 两个守卫补丁 |
 | `gdm` | 同名重建，`Release` 带 `.piano1`，登录前等原生 KMS connector；只对 GNOME 档有意义 |
+| `gnome-control-center` | 同名重建，`Release` 带 `.piano1`，指纹录入前等 `fprintd` 的验证动作结束；只对 GNOME 档有意义 |
 | `piano-gnome-extras` | noarch meta，拉入 GSD、GTK3 与 mutter，并写入 `20-piano-ambient` dconf drop-in |
 | `piano-kde-extras` | noarch meta，拉入 KWin 与 GTK3 |
 
@@ -150,7 +153,7 @@ sudo dnf makecache
 
 ## 图形栈为什么换包名
 
-Fedora 的 mesa 与 ffmpeg 版本号一直在往上走，补丁版的版本号永远落后：`26.2.6-1.piano1` 排在 `26.2.7-1` 之下，`dnf upgrade` 会把补丁版换回官方版。
+Fedora 的 mesa 与 ffmpeg 版本号一直在往上走，补丁版的版本号永远落后：本地包是 `26.2.7-1.piano1`，官方一升到 `26.2.8-1` 就排到它上面，`dnf upgrade` 会把补丁版换回官方版。
 
 抬 Epoch 能压住，但 epoch 是单向的。`1:` 一旦发出去就回不到 `0:`，等 A830v1 的 chip id 进了上游、要回到 Fedora 的包时，每台设备都得手工 `dnf distro-sync`。所以改成 RPM Fusion 对同两个包的做法：换包名。
 
@@ -172,8 +175,8 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 
 ## 边界
 
-- COPR 覆盖全部 18 个包（包括内核）：
-  - ESP 上的 `/EFI/Linux/sunuefi.efi` 由 `%posttrans` 维护，`.dtb` 节区沿用现有 UKI；
+- COPR 覆盖全部 20 个包（包括内核）：
+  - ESP 上的启动项与载荷由 `%posttrans` 维护，板级 DTB 沿用 ESP 上现有的那一份；
   - 板级 overlay 不在这条升级路径上更新。
 - 设备的 `.repo` 只指向项目自己的 COPR。Hyprland 与 Denial 两档在构建期另加
   第三方源：Hyprland 用 `lionheartp/Hyprland` COPR，Denial 用官方
@@ -185,6 +188,6 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 
 ## 设备侧验证
 
-`verify-copr-device.py` 在平板上跑。只读模式核对：仓库里的 13 个矩阵包、3 个运行时包和 Mesa/FFmpeg 齐全、图形栈是改名后的 `mesa-piano-*` 与 `ffmpeg-piano` 且仓库里没有同名的 Fedora 包（避免升级时被官方包覆盖）、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。
+`verify-copr-device.py` 在平板上跑。只读模式核对：仓库里的 15 个矩阵包、3 个运行时包和 Mesa/FFmpeg 齐全、图形栈是改名后的 `mesa-piano-*` 与 `ffmpeg-piano` 且仓库里没有同名的 Fedora 包（避免升级时被官方包覆盖）、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。
 
-`--extras` 换到 extras 仓库：核对 GSD/KWin/GTK3/mutter/gdm 与两个 meta 包齐全、五个桌面包的 `Release` 含 `.piano1`、两个 meta 是 noarch、仓库里没有官方的 `gnome-settings-daemon`，报告写到 `copr-extras-device-check.json`。
+`--extras` 换到 extras 仓库：核对 GSD/KWin/GTK3/mutter/gdm/gnome-control-center 与两个 meta 包齐全、六个桌面包的 `Release` 含 `.piano1`、两个 meta 是 noarch、仓库里没有官方的 `gnome-settings-daemon`，报告写到 `copr-extras-device-check.json`。

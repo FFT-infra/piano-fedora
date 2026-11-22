@@ -10,10 +10,10 @@
 |---|---|---|---|---|---|
 | `gnome` | GNOME 51（Workstation 环境） | GDM 自动登录 | dconf（`00-power`） | Mutter 原生处理 | ✅ 桌面就绪，完整支持手势与自动旋转 |
 | `kde` | KDE Plasma | plasma-login-manager 自动登录 | kconfig（`powerdevilrc`） | KWin 原生处理（`qt6-qtsensors`） | ✅ 桌面就绪，支持桌面定制与自动旋转 |
-| `niri` | niri | greetd `[initial_session]` | 仅 logind | 需在 output 声明 `transform` | ⚠️ 桌面就绪，需配置文件声明旋转 |
-| `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | 仅 logind | 需执行 `hyprctl keyword monitor` | ⚠️ 桌面就绪，需通过命令行控制旋转 |
-| `denial` | Denial（第三方 DNF 仓库） | greetd `[initial_session]`，`denial-session --start-locked` | 仅 logind | — | ⚠️ 只在 Fedora 44 上有上游验证记录，Fedora 45 与 SM8750 未验 |
-| `server` | 无 | 无 | 仅 logind | — | 仅用于构建测试装配，不发布镜像 |
+| `niri` | niri | greetd `[initial_session]` | logind：短按挂起，长按关机 | 需在 output 声明 `transform` | ⚠️ 桌面就绪，需配置文件声明旋转 |
+| `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | logind：短按挂起，长按关机 | 需执行 `hyprctl keyword monitor` | ⚠️ 桌面就绪，需通过命令行控制旋转 |
+| `denial` | Denial（第三方 DNF 仓库） | greetd `[initial_session]`，`DENIAL_SHELL_PROFILE=mobile` 与 `denial-session --start-locked` | logind：短按挂起，长按关机 | — | ⚠️ 只在 Fedora 44 上有上游验证记录，Fedora 45 与 SM8750 未验 |
+| `server` | 无 | 无 | logind：短按挂起，长按关机 | — | 仅用于构建测试装配，不发布镜像 |
 
 ## 登录方式
 
@@ -52,8 +52,9 @@
 
 ## 电源行为
 
-电源键和合盖都只关屏并锁屏，不把机器挂起，与出厂系统的动作一致。长按弹出关机
-入口。五档都不开自动挂起。
+GNOME 与 KDE 档的电源键和合盖都只关屏并锁屏，不把机器挂起，与出厂系统的动作
+一致；长按弹出关机入口。niri、Hyprland、Denial 与 server 四档没有桌面侧助手，
+由 logind 自己处理：短按挂起、长按关机、合盖挂起。五档都不开空闲自动挂起。
 
 GNOME 档由 `piano-fedora-configs` 的 `piano-power-button` 用户服务补这段策略。
 它不独占输入设备，按键事件照常流向 compositor；熄屏走 Mutter 的
@@ -76,8 +77,11 @@ PowerDevil 自己的 `Turn Off Screen` 动作，锁屏与 DPMS 还是 PowerDevil
 KDE 系统设置里的「电源按钮」同样可以改。改成具体动作后短按会重复触发一次，
 既关屏又执行用户选的动作。改回「无操作」就恢复。
 
-niri、Hyprland、Denial 与 server 没有桌面侧文件，靠 logind 的 `HandlePowerKey=ignore`、
-`HandleLidSwitch=ignore`、`IdleAction=ignore` 保证它不抢这两个输入。
+niri、Hyprland、Denial 与 server 没有桌面侧文件，按键交回 logind。包里的
+`piano.conf` 那三行 `ignore` 是给 GNOME/KDE 助手让路的，这四个档位在装配时另写
+`etc/systemd/logind.conf.d/zz-piano-login.conf`，按档位声明 `HandlePowerKey`、`HandlePowerKeyLongPress` 与
+`HandleLidSwitch`；文件名排在 `piano.conf` 之后，覆盖那三行里的两项，
+`IdleAction` 仍是 `ignore`。
 
 三种电源策略的落点：
 
@@ -88,8 +92,8 @@ niri、Hyprland、Denial 与 server 没有桌面侧文件，靠 logind 的 `Hand
   AC / Battery / LowBattery 三个 profile 的 `AutoSuspendAction` 与
   `PowerButtonAction` 是 `0`（NoAction），`LidAction` 是 `64`（TurnOffScreen），
   空闲 300 秒关屏并锁屏。
-- **仅 logind**（niri / Hyprland / Denial / server）：没有桌面侧文件，电源键与合盖都不
-  触发动作。
+- **仅 logind**（niri / Hyprland / Denial / server）：没有桌面侧文件，装配时写
+  `etc/systemd/logind.conf.d/zz-piano-login.conf`，短按挂起、长按关机、合盖挂起。
 
 挂起与唤醒（`rtcwake -m mem -s 20`）运行正常，唤醒后平稳恢复至原会话。那是
 用户主动发起的挂起，默认策略里没有任何一条会自动睡下去。
@@ -174,7 +178,8 @@ Hyprland 与 Denial 两档依赖第三方仓库，Fedora 45 官方仓库里没�
   `denial-repo-key.asc` 的 sha256 钉在 profile 里，仓库经 `gpgcheck=1` 校验 RPM
   签名。仓库元数据的 `repo_gpgcheck` 没有开：dnf5 在 `--installroot` 下会把
   本地 gpgkey 路径当成仓库源解析，`repo_gpgcheck=1` 时直接失败；这与 Hyprland
-  COPR 的信任级别一致，覆盖包签名而不覆盖元数据签名。
+  COPR 的信任级别一致，覆盖包签名而不覆盖元数据签名。这个主机按 UA 拒绝
+  `Python-urllib/*`，取公钥的请求带项目自己的 UA，不伪装成浏览器。
 - 其余三档（GNOME、KDE、niri）不启用任何第三方源。
 
 本地未签名的 `piano-local` 仓库单独设 `gpgcheck=0`，不再用全局 `--nogpgcheck`。
@@ -216,11 +221,13 @@ make plan-desktop DESKTOP=niri RELEASEVER=45
   Fedora 45 + SM8750 上装配。2026-11-17 在 KDE 镜像上叠加 0.6.6 实测，
   `denial-session --check` 全部通过，但临时切到 greetd 后 `deniald` 在 GPU
   初始化阶段 SIGABRT，会话没有起来，已回滚到 KDE；详情见
-  [已知问题](known-issues.md#denial-桌面)。构建通过不等于会话可用。构建时用
-  官方默认的 `desktop` shell profile，没有开 `DENIAL_SHELL_PROFILE=mobile`。
+  [已知问题](known-issues.md#denial-桌面)。构建通过不等于会话可用。
+- **Denial 默认走 mobile shell。** `DENIAL_SHELL_PROFILE=mobile` 写在 greetd 的
+  自动登录命令里。桌面 shell 没有屏上键盘，平板卡在 `--start-locked` 的锁屏时
+  没有任何输入手段；mobile shell 带屏上键盘、状态栏与旋转控件。
 - **Denial 合成器不读传感器**，平板上没有自动旋转，与 niri / Hyprland 相同。
 - **Denial 的包不在本仓库的发布链里。** `denial` 与 `denial-flutter-engine`
   直接来自上游仓库，本仓库不镜像、不重新打包，也不进 COPR。
 - **内核在 COPR 里，五档共用。** 装机用归档里的 `kernel-piano`。
   装好之后由 `dnf upgrade` 升级，`kernel-piano` 的 `%posttrans` 重建 initramfs
-  并重打 ESP 的 `/EFI/Linux/sunuefi.efi`。失败与回滚边界见 [COPR 软件源](copr-repository.md)。
+  并按 ESP 现有布局写启动项。失败与回滚边界见 [COPR 软件源](copr-repository.md)。
