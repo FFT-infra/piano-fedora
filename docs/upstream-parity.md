@@ -14,7 +14,7 @@
 | 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成 NV12 | `quad/` 与 v4l2loopback 生产者协商 | 格式协商完整，支持 8160x6120 输出 |
 | 电源策略 | 完成：`tuned-ppd` 三档 profile 桥接到 uperf-linux 模式 | 上游 profile 直接写 cpufreq/devfreq | 避免频点冲突，受 uperf 保护 |
 | 充电、温控与 FFC | 补丁已收：上游 `0093`、`0094`、`0096`–`0104` 共 11 条进封存序列 | 关机充电、皮肤温控、带认证 FFC 与停充退出 | 满电停充、温控降流与关机充电尚无实机记录 |
-| 内核手指解码 | 保持用户态 THP 读取加 5 级卡尔曼滤波与正交锁 | `0095` 把逐帧矩阵解码移入内核，无时域滤波 | 架构分歧：保持当前用户态滤波方案 |
+| 内核手指解码 | 跟进上游：`0197` 把逐帧矩阵解码移入内核 IRQ 线程（32 帧参考、中值滤波、基线漂移处理），用户态桥接在 `kernel_input: enabled` 时退出 | 同一份内核解码 | 内核解码不读原厂逐屏电极校准，上机验收未做 |
 | 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 设 `zh_CN.UTF-8`，默认输入法 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | 桌面预置中文与拼音输入 |
 | mutter 触摸崩溃 | 默认采用发行版 `mutter-51.1-1.fc45`，补丁入 extras 扩展仓 | 补丁在 51.1 源码上可干净套用 | 默认镜像不合入，作为 opt-in 选项 |
 | KDE 桌面默认值 | 完成：KWin 默认值与环境变量落盘，支持缩放与自然滚动 | 类似配置，另设 `QT_SCALE_FACTOR=2` | 架构分歧：避免二次放大，不设 QT 变量 |
@@ -40,10 +40,10 @@
 
 针对上游部分实现方案，本项目基于稳定性、硬件特征与系统协同考虑，作出了明确的架构分歧决策（Architectural Decisions）：
 
-### 1. 触控矩阵滤波：排除内核解码（0095 补丁）
-* **上游做法**：补丁 `0095-input-nt36532e-matrix.patch` 将逐帧触控矩阵解码移入内核空间驱动中执行。
-* **本项目决策**：**主动排除该补丁**。该补丁缺乏时域滤波能力，易受高频电磁杂讯干扰。本项目坚持采用用户态 THP 读取 + 5 级卡尔曼滤波 + 24 像素正交轴向锁，抗抖动表现更平滑稳定。
-* **设备身份与掌托**：用户态 uinput 设备按 `BUS_SPI`、`0603:6532` 与 `piano NT36532 THP touchscreen` 上报，和笔设备共享 `LIBINPUT_DEVICE_GROUP=piano-touchscreen`，与 BSP 的 udev 规则对齐；补报 `ABS_MT_TOUCH_MINOR`，掌托锁存时把上一帧手指以 `MT_TOOL_PALM` 重报，让 libinput 取消接触。这些是用户态路径自己的接口契约，不依赖 0095。
+### 1. 触控矩阵滤波：跟进内核解码（0197 补丁）
+* **上游做法**：`0197-LOCAL-input-nt36532e-matrix.patch` 在既有 IRQ 线程里用整数运算解码互容矩阵，做 32 帧参考、中值滤波与基线漂移处理，按标准多点触控事件上报，并保留掌托分类。
+* **本项目决策**：**跟进该补丁**。序列启用后 `/proc/nvt_thp_status` 报 `kernel_input: enabled`，`piano-touch-view` 据此让用户态手指桥接退出，笔 owner 仍走用户态 `device/piano-thp`。内核解码用写死的矩阵尺寸，不读本仓库校验并随 `xiaomi-piano-thp` 分发的原厂逐屏电极校准；这条差异与触感平滑度在真机上验收，验收前不把它写成已完成。
+* **用户态路径保留的契约**：用户态桥接仍按 `BUS_SPI`、`0603:6532` 与 `piano NT36532 THP touchscreen` 上报，补报 `ABS_MT_TOUCH_MINOR`，掌托锁存时把上一帧手指以 `MT_TOOL_PALM` 重报。内核接管时该设备不创建，避免同名同 ID 的两个输入设备并存。
 
 ### 2. 电源模式调度：禁止外部直接写频点，采用 Uperf 桥接
 * **上游做法**：在 TuneD profile 中直接向 `scaling_max_freq` 与 `3d00000.gpu/max_freq` 写入固定频率。

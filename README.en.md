@@ -26,7 +26,7 @@ Hardware peripheral support status for the current release:
 | Module | Status | Notes |
 |---|---|---|
 | Display | ✅ | 3200×2136 at 120 Hz, Mesa 26.2.6 Turnip (Adreno 830) |
-| Touch | ✅ | Kalman filter, 24 px dead zone, orthogonal axis lock. 97 SYN reports per second over a 45-second continuous drag, full screen reachable, multitouch works |
+| Touch | ⏳ | Finger matrix decode now runs in the kernel (32 reference frames, median filtering, baseline drift handling, palm classification). The user-space Kalman filter and 24 px dead zone path stays and steps aside when the kernel takes over. The new decode does not read the factory per-panel electrode calibration; feel and multitouch behavior await device verification |
 | Video | ✅ | Iris V4L2 M2M works. H.264 and HEVC encode and decode in hardware, 300 frames each. B-frame sources decode too, all at 1080p. Frame-by-frame digests match software decode, and the Iris interrupt count grows. In-browser decode is ready: Chrome and Firefox decode in hardware by default, Fedora's Chromium uses software decode, see [known issues](docs/known-issues.md#触屏网络音频与相机). VP9, 10-bit and 4K60 are pending further testing |
 | Power | ✅ | Dual-cell battery reporting, deep suspend |
 | Boot | ✅ | `qbootctl.service` writes `Successful: 1`, so the ABL counter cannot drop to Fastboot |

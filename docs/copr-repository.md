@@ -2,9 +2,9 @@
 
 设备装好 Fedora 后，配置、固件、相机、触控、传感器、VA-API、调度器和内核都可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
 
-**当前状态：13 个矩阵包、3 个设备运行时包，加上 Mesa 与 FFmpeg 两组图形栈，共 18 个包可以 `dnf upgrade` 升级，内核在内。** 项目是 `xinyang26/piano-fedora`，chroot 跟 `product.json` 的 releasever 走，现在是 `fedora-45-aarch64`。项目存在但缺这个 chroot 时，发布脚本会先 `copr-cli modify --chroot` 补上，否则 `copr-cli build` 会被 COPR 拒掉。仓库里有全部 18 个包：
+**当前状态：15 个矩阵包、3 个设备运行时包，加上 Mesa 与 FFmpeg 两组图形栈，共 20 个包可以 `dnf upgrade` 升级，内核在内。** 项目是 `xinyang26/piano-fedora`，chroot 跟 `product.json` 的 releasever 走，现在是 `fedora-45-aarch64`。项目存在但缺这个 chroot 时，发布脚本会先 `copr-cli modify --chroot` 补上，否则 `copr-cli build` 会被 COPR 拒掉。仓库里有全部 20 个包：
 
-矩阵包：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-camera`、`piano-fedora-configs`、`piano-fingerprint`、`piano-libfprint`、`piano-pipewire-gstreamer`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。
+矩阵包：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-bluez`、`piano-camera`、`piano-fedora-configs`、`piano-fingerprint`、`piano-libfprint`、`piano-libwacom`、`piano-pipewire-gstreamer`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。
 
 运行时包：`piano-runtime`、`piano-crosvm`、`librevm`。
 
@@ -172,7 +172,7 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 
 ## 边界
 
-- COPR 覆盖全部 18 个包（包括内核）：
+- COPR 覆盖全部 20 个包（包括内核）：
   - ESP 上的 `/EFI/Linux/sunuefi.efi` 由 `%posttrans` 维护，`.dtb` 节区沿用现有 UKI；
   - 板级 overlay 不在这条升级路径上更新。
 - 设备的 `.repo` 只指向项目自己的 COPR。Hyprland 与 Denial 两档在构建期另加
@@ -185,6 +185,6 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 
 ## 设备侧验证
 
-`verify-copr-device.py` 在平板上跑。只读模式核对：仓库里的 13 个矩阵包、3 个运行时包和 Mesa/FFmpeg 齐全、图形栈是改名后的 `mesa-piano-*` 与 `ffmpeg-piano` 且仓库里没有同名的 Fedora 包（避免升级时被官方包覆盖）、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。
+`verify-copr-device.py` 在平板上跑。只读模式核对：仓库里的 15 个矩阵包、3 个运行时包和 Mesa/FFmpeg 齐全、图形栈是改名后的 `mesa-piano-*` 与 `ffmpeg-piano` 且仓库里没有同名的 Fedora 包（避免升级时被官方包覆盖）、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。
 
 `--extras` 换到 extras 仓库：核对 GSD/KWin/GTK3/mutter/gdm 与两个 meta 包齐全、五个桌面包的 `Release` 含 `.piano1`、两个 meta 是 noarch、仓库里没有官方的 `gnome-settings-daemon`，报告写到 `copr-extras-device-check.json`。
