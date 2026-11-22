@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        20%{?dist}
+Release:        21%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND BSD-2-Clause-Patent AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -84,7 +84,6 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 # 改成 %config（无 noreplace），升级时把旧文件存成 .rpmorig、装上带正确
 # 标签的新文件，实测标签变回 modules_conf_t。
 %config %{_sysconfdir}/modprobe.d/piano-blacklist-watchdog.conf
-%config %{_sysconfdir}/modprobe.d/dist-alsa.conf
 %config(noreplace) %{_sysconfdir}/udev/rules.d/70-piano-power-button.rules
 %config(noreplace) %{_sysconfdir}/dconf/db/local.d/00-power
 # KDE 的合盖动作在 0.1.0-16 之后从 0 改到 64，已装设备必须收到这份新文件。
@@ -186,6 +185,10 @@ rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 
 %changelog
+* Mon Nov 23 2026 FFT-infra <dev@piano.invalid> - 0.1.0-21
+- 删掉遮住发行版 dist-alsa.conf 的同名文件。内核早就有 CONFIG_SND_SEQUENCER=m，
+  留着它 MIDI 与音序器软件拿不到 /dev/snd/seq
+
 * Mon Nov 23 2026 FFT-infra <dev@piano.invalid> - 0.1.0-20
 - linux-debug.conf 的出厂值从 usb=acm-ncm 改成 usb=off。acm-ncm 让开机时的
   piano-linux-debug 绑 ACM/NCM gadget，USB-C 口切成 device 角色，xHCI 注销，

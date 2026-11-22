@@ -44,6 +44,12 @@ REQUIRED_SESSION = ("desktop_names", "process_names", "session_files", "bins")
 # autologin 的落盘机制。每种机制在 login_files() 里有且只有一个实现。
 AUTOLOGIN_KINDS = ("gdm-custom-conf", "sddm-autologin", "plasmalogin-autologin", "greetd-config")
 POWER_KINDS = ("dconf", "kconfig", "logind-only")
+# logind-only 档没有桌面助手，按键行为只能显式写进档位；留空就会沿用
+# piano.conf 为 GNOME/KDE 助手让路的 ignore。
+LOGIND_ACTIONS = ("ignore", "poweroff", "poweroff-force", "poweroff-ignore-inhibit",
+                  "suspend", "hibernate", "hybrid-sleep", "lock", "kexec", "soft-reboot")
+# 文件名必须排在 piano.conf 之后，logind 按字典序合并 drop-in。
+LOGIND_DROPIN = "etc/systemd/logind.conf.d/zz-piano-login.conf"
 
 
 class DesktopError(Exception):
@@ -95,6 +101,12 @@ def _require(profile, desktop):
                              or "/" in unit or ".." in unit):
         raise DesktopError(
             f"desktop {desktop!r} power_policy.user_unit must be a bare unit name: {unit!r}")
+    if policy["kind"] == "logind-only":
+        for key in ("power_key", "lid_switch"):
+            if policy.get(key) not in LOGIND_ACTIONS:
+                raise DesktopError(
+                    f"desktop {desktop!r} power_policy.{key} must be one of "
+                    f"{LOGIND_ACTIONS}, got {policy.get(key)!r}")
     # 可选项，但写了就要完整：文件必须真的在仓库里，目标不许逃出 home。
     for entry in profile.get("user_config") or []:
         if sorted(entry) != ["source", "target"] or not entry["target"]:
@@ -313,7 +325,9 @@ def power_files(context):
 
     GNOME 的 `00-power` 与 KDE 的 `powerdevilrc` 都由 piano-fedora-configs
     这个 RPM 拥有并安装，构建器再写一份就是同一路径的第二个写者（内容分叉时
-    RPM 校验也发现不了）。配方仍用 `power_required()` 核对安装后的树。
+    RPM 校验也发现不了）。logind-only 档的取值只能在装配时按档位定，由
+    finalize 的 `stage_login_power()` 写，不经过这里。配方仍用
+    `power_required()` 核对安装后的树。
     """
     return {}
 
@@ -325,7 +339,7 @@ def power_required(context):
         return ["etc/dconf/db/local.d/00-power"]
     if policy["kind"] == "kconfig":
         return [policy["target"]]
-    return []
+    return [LOGIND_DROPIN]
 
 
 def dconf_profile_required(context):

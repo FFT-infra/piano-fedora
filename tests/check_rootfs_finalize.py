@@ -214,6 +214,42 @@ def launcher_fixture(root):
     return binary, target
 
 
+def check_login_power_policy_follows_the_profile():
+    """logind-only 档的按键取值写进后置 drop-in，GNOME/KDE 档不写。
+
+    piano.conf 的 ignore 是给桌面助手让路的。drop-in 必须排在它之后才能
+    覆盖，否则 denial/niri/hyprland/server 上电源键和合盖依然没人处理。
+    """
+    package = ROOT / "packages" / "piano-fedora-configs"
+    denial = finalizer.piano_desktop.load("denial", "44")
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        for name in POWER_FILES:
+            target = root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((package / name).read_bytes())
+        wants = root / "usr/lib/systemd/user/graphical-session.target.wants"
+        wants.mkdir(parents=True, exist_ok=True)
+        for unit in POWER_HELPER_UNITS:
+            (wants / unit).symlink_to("/usr/lib/systemd/user/" + unit)
+        written = finalizer.stage_login_power(root, denial)
+        assert written == [finalizer.piano_desktop.LOGIND_DROPIN], written
+        assert written[0].rsplit("/", 1)[-1] > "piano.conf", written
+        finalizer.verify_power_overlay(root, denial)
+        (root / written[0]).write_text("[Login]\nHandlePowerKey=ignore\n")
+        try:
+            finalizer.verify_power_overlay(root, denial)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(
+                "a logind drop-in that still ignores the power key was accepted")
+    for desktop in ("gnome", "kde"):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = finalizer.piano_desktop.load(desktop, "44")
+            assert finalizer.stage_login_power(Path(temporary), context) == [], desktop
+
+
 def check_debug_handoff(root, staged):
     """debug 交接只建两个 enable 链接；配置与 NM profile 由包安装。"""
     # 配置、NM profile 与串口 drop-in 属于 piano-fedora-configs 的 %files，
@@ -523,6 +559,7 @@ def check_first_boot_ssh_key(root):
 def main():
     check_power_overlay_owner()
     check_kde_power_overlay_requires_its_helper()
+    check_login_power_policy_follows_the_profile()
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         alternatives, man = fixture(root)
