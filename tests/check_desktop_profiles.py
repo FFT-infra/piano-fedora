@@ -235,6 +235,55 @@ def check_gpgkeys_are_pinned():
             DESKTOPS.write_text(original, encoding="utf-8")
 
 
+def check_gpgkey_fetch_identifies_itself():
+    """取 key 的请求要带项目自己的 UA，不能用 urllib 默认值。
+
+    denial 的仓库按 UA 拒绝 `Python-urllib/*`（403），而 dnf 自己的 UA 能取。
+    默认 UA 会让 rootfs 在下载 key 这一步失败，失败信息只有一句 403。
+    """
+    import urllib.request
+
+    captured = []
+    original = urllib.request.urlopen
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return b"piano fixture key"
+
+    def fake(request, timeout=None):
+        captured.append(request)
+        return Response()
+
+    urllib.request.urlopen = fake
+    try:
+        with tempfile.TemporaryDirectory() as temporary:
+            key = Path(temporary) / "key.gpg"
+            key.write_bytes(b"piano fixture key")
+            data = json.loads(DESKTOPS.read_text(encoding="utf-8"))
+            repo = data["hyprland"]["repos"][0]
+            repo["gpgkey"] = key.as_uri()
+            repo["gpgkey_sha256"] = __import__("hashlib").sha256(
+                key.read_bytes()).hexdigest()
+            original_text = DESKTOPS.read_text(encoding="utf-8")
+            try:
+                DESKTOPS.write_text(json.dumps(data), encoding="utf-8")
+                piano_desktop.fetch_gpgkeys(
+                    piano_desktop.load("hyprland", "44"), Path(temporary) / "out")
+            finally:
+                DESKTOPS.write_text(original_text, encoding="utf-8")
+    finally:
+        urllib.request.urlopen = original
+    assert captured, "fetch_gpgkeys made no request"
+    agent = captured[0].get_header("User-agent")
+    assert agent and "python-urllib" not in agent.lower(), agent
+
+
 def check_excluded_packages_leave_the_install_set():
     """被自有包替换的原装名从安装列表去掉，而不是 --exclude。"""
     context = piano_desktop.load("gnome", "44")
@@ -627,6 +676,7 @@ def main():
     check_vulkan_desktops_install_the_driver()
     check_repo_args()
     check_gpgkeys_are_pinned()
+    check_gpgkey_fetch_identifies_itself()
     check_greetd_desktops_stage_a_config_toml()
     check_greetd_validation_checks_the_session_command()
     check_excluded_packages_leave_the_install_set()
