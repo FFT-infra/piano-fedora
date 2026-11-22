@@ -342,6 +342,32 @@ def power_required(context):
     return [LOGIND_DROPIN]
 
 
+def login_power_files(context):
+    """logind-only 档的按键取值，写进后置 drop-in。"""
+    policy = context["profile"]["power_policy"]
+    if policy["kind"] != "logind-only":
+        return {}
+    return {LOGIND_DROPIN: ("[Login]\n"
+                            f"HandlePowerKey={policy['power_key']}\n"
+                            f"HandlePowerKeyLongPress={policy['long_press']}\n"
+                            f"HandleLidSwitch={policy['lid_switch']}\n")}
+
+
+def stage_login_power(root, context, sudo_aware=True):
+    """把 login_power_files() 写进 rootfs，返回写过的相对路径。"""
+    root = Path(root)
+    files = login_power_files(context)
+    for name, text in files.items():
+        target = root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if sudo_aware and os.geteuid() != 0 and _is_root_owned(target.parent):
+            subprocess.run(["sudo", "tee", str(target)], input=text,
+                           text=True, check=True, stdout=subprocess.DEVNULL)
+        else:
+            target.write_text(text, encoding="utf-8")
+    return sorted(files)
+
+
 def dconf_profile_required(context):
     """只有 iio/dconf 那一档才需要 /etc/dconf/profile/user 里的 system-db:local。"""
     return context["profile"]["power_policy"]["kind"] == "dconf"

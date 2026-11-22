@@ -646,6 +646,8 @@ def execute(plan_data):
     # 每用户配置（KDE 的 KWin 输出/输入/锁屏）必须在 useradd 之后落盘，
     # 属主跟随 home 目录；finalize 会用同一份声明再写一次。
     piano_desktop.stage_user_config(root, context, DEFAULT_USER, sudo_aware=False)
+    # logind-only 档的按键取值只在装配时定，clean rootfs 与 finalize 各写一次。
+    piano_desktop.stage_login_power(root, context, sudo_aware=False)
 
     # 4. 屏蔽未适配的磁盘休眠目标，锁定为 deep 挂起
     for unit in ("hibernate.target", "hybrid-sleep.target", "suspend-then-hibernate.target"):
