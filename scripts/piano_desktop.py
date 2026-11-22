@@ -456,7 +456,12 @@ def fetch_gpgkeys(context, directory):
     paths = {}
     for name, url, expected in gpgkey_pins(context):
         target = directory / f"{name}.gpg"
-        with urllib.request.urlopen(url, timeout=60) as response:
+        # 至少 denial 的仓库会按 UA 拒绝 `Python-urllib/*`（403），而 dnf 自己
+        # 的 UA 能取。带上仓库名与项目地址，让对端看到是谁在取这把 key。
+        request = urllib.request.Request(
+            url, headers={"User-Agent": "piano-fedora-build/1 "
+                                        "(+https://github.com/FFT-infra/piano-fedora)"})
+        with urllib.request.urlopen(request, timeout=60) as response:
             body = response.read()
         actual = hashlib.sha256(body).hexdigest()
         if actual != expected:

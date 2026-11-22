@@ -29,7 +29,7 @@ SSC_NEEDED = re.compile(r"\(NEEDED\)\s+Shared library: \[(libssc\.so\.[0-9]+)\]"
 # 运行时 RPM 的版本号。载荷每变一次就要换 NEVRA，已装设备才看得见这次替换；
 # 增量路径（scripts/package-device-integration.py）也从这里取，两处不各写一份。
 RUNTIME_VERSION = "0.2.0"
-RUNTIME_RELEASE = "9"
+RUNTIME_RELEASE = "10"
 
 
 def run(command, **kw):
@@ -202,15 +202,26 @@ def build(args):
     compiler = shutil.which("gcc")
     flags = [compiler, "-O2", "-Wall", "-Wextra", "-Werror"]
     touch, touch_proof = runtime.derive_touch_source(public, build)
-    # piano-camerad is built by packages/piano-camera: its local changes are
-    # maintained directly in that package's src/, no separate Fedora patches.
-    # Building a second copy here produced a same-path, different-bytes RPM
-    # and DNF refused the transaction. The proof records the build inputs.
+    # piano-camerad 只由 packages/piano-camera 产出：这里再编一份同名二进制
+    # 会得到同路径不同字节的 RPM，DNF 拒绝该事务。源码在构建期从 SunUEFI pin
+    # 取，本地增量只有 spec 与静态拍摄补丁，证明就记这两份。
     camera_proof = {"built_by": "packages/piano-camera",
                     "sources": {name: sha256(ROOT / "packages/piano-camera" / name)
-                                for name in ("piano-camera.spec", "src/Makefile",
-                                             "src/piano-camerad.c")}}
-    pen_files, pen_proof = runtime.build_pen_core(build, flags)
+                                for name in ("piano-camera.spec",
+                                             "patches/0001-still-capture-and-ancillary-lens.patch")}}
+    # 笔工具只接受「能解码笔的内核」：源码里的 pen 驱动、模块配置、导出符号
+    # 与固件校准都要对得上，否则内核和用户态会各报一份笔事件。源码树与 ABI
+    # 的一致性由 prepare-runtime-kernel.py 在宿主侧用上游 kernel_identity 验过
+    # （那一步要读生成的 Makefile，里面是宿主绝对路径，容器里不成立）。清单
+    # 只记相对 SunUEFI 根的两条路径，这里拼回容器内路径再交给上游查文件级
+    # 前置条件。
+    sealed = json.loads((args.uapi.parent / "manifest.json").read_text())["kernel_identity"]
+    if (sealed["release"], sealed["commit"]) != (record["kernel_release"], record["source_commit"]):
+        raise ValueError("kernel identity belongs to a different sealed kernel")
+    identity = {"commit": sealed["commit"], "release": sealed["release"],
+                "source": str(sun / sealed["source"]), "build": str(sun / sealed["build"])}
+    pen_files, pen_proof = runtime.build_pen_core(
+        build, flags, kernel=identity, firmware_root=sun / "linux/bsp/common")
     helpers = dict(pen_files)
     bsp_sources = getattr(runtime, "BSP_SOURCES", {})
     for name, (relative, pin, destination) in (runtime.PUBLIC_SOURCES | bsp_sources).items():
@@ -391,9 +402,14 @@ def build(args):
     # LIBINPUT_DEVICE_GROUP；补 ABS_MT_TOUCH_MINOR；掌托按槽上报 MT_TOOL_PALM。
     # Release 9：跟到 SunUEFI edcf272，扬声器拓扑改由原厂 ACDB 派生的 DAP 配置
     # 生成，tplg 与 speaker-dap-config.bin 的字节都变了，必须换 NEVRA。
+    # Release 10：手指矩阵与笔解码改由内核 0197／0230 完成，上游删掉
+    # touch-input 与 pen-bluetooth，piano-touch.service 只剩 BlueZ 笔初始化。
+    # 载荷里少两个启动器与 piano-pen-offline 以外的笔工具，必须换 NEVRA。
     rpm_package("piano-runtime", payload, output,
                 version=RUNTIME_VERSION, release=RUNTIME_RELEASE,
-                requires=("python3", "python3-evdev", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
+                # pen-control.py talks to BlueZ over Gio/GLib; without python3-gobject
+                # piano-touch.service exits on import and the pen never initializes.
+                requires=("python3", "python3-evdev", "python3-gobject", "busybox", "kmod", "util-linux", "fastrpc >= 1.0.8",
                           "libadsp_default_listener.so.1()(64bit)", "qrtr", "rmtfs", "tqftpserv", "alsa-utils",
                           # piano-sensors-import reads the Android odm/vendor EROFS
                           # images with dump.erofs; without it the import fails and

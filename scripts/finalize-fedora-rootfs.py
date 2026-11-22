@@ -451,7 +451,7 @@ def verify_device_integration(root, runtime_meta):
     integration = runtime_meta.get("integration", {})
     if not integration:
         return
-    required = {"usr/bin/piano-touch-view", "usr/lib/piano/touch-input",
+    required = {"usr/bin/piano-touch-view", "usr/lib/piano/pen-control.py",
                 "usr/share/piano/touch/piano-csot.json", "usr/share/piano/touch/piano-boe.json"}
     if not required <= set(integration.get("files", {})):
         raise ValueError("incomplete device integration payload proof")

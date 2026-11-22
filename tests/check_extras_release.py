@@ -80,6 +80,10 @@ def test_release_workflow():
     assert "extras-archive-name" in text
     assert "extras-sidecar-name" in text
     assert "README-extras.txt" in text
+    # 包集合只认 publish-copr.py 的 EXTRAS_ORDER。release.yml 里再抄一份名单，
+    # 加包时就会有一处漏改，发布停在一个假失败上。
+    assert "publish_copr.EXTRAS_ORDER" in text
+    assert "publish_copr.DESKTOP_PACKAGES" in text
     # extras 的 sidecar 必须在总清单上传与 attestation 之前记账。
     extras = text.index("Add the optional extras archive")
     checksums = text.index("Upload the release checksums")

@@ -95,6 +95,7 @@ def main():
     # SunUEFI 把 tools/host/ 改名成 tools/desktop/，模块本身没动。
     sys.path.insert(0, str(sun / "tools"))
     from desktop import prepare_kernel_llvm
+    import build_piano_runtime_helpers as runtime
     kernel_env = prepare_kernel_llvm.environment()
     build = sun / "build/kernels/fedora-runtime"
     build.mkdir(parents=True)
@@ -114,6 +115,17 @@ def main():
         if rebuilt != record["kernel_release"]:
             raise ValueError(
                 f"module build kernel release {rebuilt!r} != sealed {record['kernel_release']!r}")
+    # 上游的笔工具只接受带提交与 release 的内核身份：它要核对源码、ABI、
+    # 导出符号和固件校准，缺一项就拒绝。身份按上游 kernel_identity 生成，
+    # 同时验证源码与编译目录都在 build/ 下、Makefile 指向同一棵树。
+    #
+    # 这一步跑在 runner 上，笔工具跑在 podman 里，两边看到的绝对路径不同。
+    # 身份里只留相对 SunUEFI 根的两条路径，由容器侧按自己的工作区拼回去；
+    # `inputs` 是宿主路径的摘要，容器里既读不到也不该复用，丢弃。
+    identity = runtime.kernel_identity(
+        build, prepared["worktree"], record["source_commit"], record["kernel_release"])
+    identity = {key: identity[key] for key in ("commit", "release")} | {
+        name: Path(identity[name]).relative_to(sun).as_posix() for name in ("source", "build")}
     after_config = (build / ".config").read_text()
     if comparable_config(after_config) != comparable_config(sealed_config):
         # syncconfig 会重写 .config；把差异打出来，否则只能看到一条哈希不符。
@@ -138,6 +150,7 @@ def main():
             f"differs from the selected kernel {record['kernel_release']!r}")
     proof = {"kernel_manifest_sha256": kernel_hash,
              "kernel_release": record["kernel_release"], "kernel_commit": record["source_commit"],
+             "kernel_identity": identity,
              "module_sha256": sha256(module), "vermagic": release.strip(),
              "v4l2loopback_patches": patches,
              "sdk_config_sha256": sha256(build / ".config"),

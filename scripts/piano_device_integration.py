@@ -117,20 +117,17 @@ def stage_payload(source, pin, payload, touch_proof, camera_proof, put, sha256, 
             raise ValueError("matrix finger calibration differs from the factory INI: "
                              + shipped.name + "; " + describe_difference(shipped.read_text(), generated))
         calibration[shipped.relative_to(ROOT / "packages/xiaomi-piano-thp").as_posix()] = sha256(shipped)
-    wrapper = payload / "usr/lib/piano/touch-input"
-    text = wrapper.read_text()
-    needle = 'esac\nif [ -n "$calibration" ]'
-    if needle not in text:
-        raise ValueError("pinned touch-input LCD selection changed")
-    text = text.replace(needle, '''esac
-case "$lcd_id" in
-  0) export PIANO_FINGER_CALIBRATION=/usr/share/piano/touch/piano-csot.json ;;
-  1) export PIANO_FINGER_CALIBRATION=/usr/share/piano/touch/piano-boe.json ;;
-  *) echo 'piano-touch: unsupported LCD; calibrated finger input refused' >&2; exit 1 ;;
-esac
-if [ -n "$calibration" ]''', 1)
-    wrapper.write_text(text)
-    proven.append(wrapper.relative_to(payload).as_posix())
+    # 手指矩阵与笔解码都在内核里（上游 0197／0230 在封存序列内），
+    # piano-touch.service 只剩 BlueZ 笔初始化，不再有 touch-input 启动器。
+    # piano-touch-view 因此是开发者手动运行的工具：手指路径要显式给出
+    # PIANO_FINGER_CALIBRATION，服务不再替它挑面板。
+    pen_control = payload / "usr/lib/piano/pen-control.py"
+    if not pen_control.is_file():
+        # 增量路径从旧 RPM 解包后再叠这份载荷；早于内核笔解码的基包没有
+        # pen-control.py，只能整包重建，不能按增量升上去。
+        raise ValueError("payload has no pen Bluetooth initializer; rebuild the runtime "
+                         "instead of incrementally patching a pre-edcf272 base RPM")
+    proven.append(pen_control.relative_to(payload).as_posix())
     docs = payload / "usr/share/licenses/piano-runtime/piano-integration"
     docs.mkdir(parents=True, exist_ok=True)
     for name in ("NOTICE", "LICENSE"):

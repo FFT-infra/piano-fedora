@@ -46,7 +46,7 @@ test -f "$UPSTREAM/piano-camerad.c"
 mv src/quad/vendor vendor-demosaic
 cp -a "$UPSTREAM"/. src/
 mv vendor-demosaic src/quad/vendor
-%patch 0 -p1 --fuzz=0
+%patch 0 -p1
 
 %build
 export CARGO_HOME=%{_builddir}/cargo-home

@@ -13,12 +13,15 @@
 这里只读源码，不编译、不碰设备。
 """
 
+import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PATCH = (ROOT / "runtime/touch/uinput-physical.patch").read_text()
 BRIDGE = (ROOT / "runtime/touch/piano-finger-bridge.cpp").read_text()
+# 与研究仓库同级；不存在时跳过需要真实 SunUEFI 的逐字节比对。
+UPSTREAM = Path(os.environ.get("PIANO_TEST_SUNUEFI", ROOT / "build/test-sources/sunuefi"))
 
 
 def fail(message):
@@ -76,3 +79,23 @@ require(added.index("palm_active_ = false;") < added.index("sink_({});"),
 
 print("OK: uinput identity matches the BSP udev rule, minor axis is reported, "
       "and a palm cancels contacts with MT_TOOL_PALM")
+
+# 触控服务的起点随上游换过：edcf272 起手指与笔都由内核解码，piano-touch.service
+# 只做 BlueZ 笔初始化，touch-input 与 pen-bluetooth 已删除。本包拥有这份 unit，
+# 内容必须与 pin 的 BSP 副本逐字节一致，否则装配时 runtime 被 prune 掉的那份
+# 与这里装上的不同字节会分叉，设备上跑的是一个指向不存在脚本的 unit。
+UNIT = ROOT / "packages/xiaomi-piano-thp/usr/lib/systemd/system/piano-touch.service"
+unit = UNIT.read_text()
+require("ExecStart=/usr/lib/piano/pen-control.py --follow" in unit,
+        "piano-touch.service no longer starts the pen Bluetooth initializer")
+require("touch-input" not in unit and "piano-touch-view" not in unit,
+        "piano-touch.service still starts a userspace THP reader")
+require("Description=Initialize the Piano pen over Bluetooth" in unit,
+        "piano-touch.service description does not match the kernel-decoded design")
+if UPSTREAM.is_dir():
+    pinned = UPSTREAM / "linux/bsp/common/usr/lib/systemd/system/piano-touch.service"
+    require(pinned.is_file(), "pinned BSP has no piano-touch.service")
+    require(pinned.read_bytes() == UNIT.read_bytes(),
+            "packaged piano-touch.service differs from the pinned BSP copy")
+else:
+    print("SKIP: 与 pin 的逐字节比对需要 PIANO_TEST_SUNUEFI")

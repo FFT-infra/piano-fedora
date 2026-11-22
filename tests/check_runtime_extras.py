@@ -83,7 +83,7 @@ with tempfile.TemporaryDirectory() as tmp:
 print("runtime extras: pinned sources, installed bytes, missing files and alias checked")
 with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp)
-    names = ["usr/bin/piano-touch-view", "usr/lib/piano/touch-input",
+    names = ["usr/bin/piano-touch-view", "usr/lib/piano/pen-control.py",
              "usr/share/piano/touch/piano-csot.json", "usr/share/piano/touch/piano-boe.json"]
     for name in names:
         target = root / name

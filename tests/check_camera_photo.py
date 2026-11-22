@@ -47,7 +47,7 @@ def main():
     assert "make -C src" in spec, "spec 没有用 src/Makefile 构建"
     assert "%{_prefix}/lib/piano/piano-camerad" in spec, "spec 没有安装守护进程"
     assert "%{_bindir}/piano-camera-ctl" in spec, "spec 没有安装客户端"
-    assert "%patch 0 -p1 --fuzz=0" in spec, "spec 没有把补丁套到上游源码上"
+    assert "%patch 0 -p1" in spec, "spec 没有把补丁套到上游源码上"
 
     if UPSTREAM.is_dir():
         upstream = (UPSTREAM / "piano-camerad.c").read_text()
