@@ -235,6 +235,9 @@ def check_login_power_policy_follows_the_profile():
         written = finalizer.stage_login_power(root, denial)
         assert written == [finalizer.piano_desktop.LOGIND_DROPIN], written
         assert written[0].rsplit("/", 1)[-1] > "piano.conf", written
+        text = (root / written[0]).read_text()
+        assert "HandlePowerKey=suspend" in text, text
+        assert "HandlePowerKeyLongPress=poweroff" in text, text
         finalizer.verify_power_overlay(root, denial)
         (root / written[0]).write_text("[Login]\nHandlePowerKey=ignore\n")
         try:

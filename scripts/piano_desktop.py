@@ -102,7 +102,7 @@ def _require(profile, desktop):
         raise DesktopError(
             f"desktop {desktop!r} power_policy.user_unit must be a bare unit name: {unit!r}")
     if policy["kind"] == "logind-only":
-        for key in ("power_key", "lid_switch"):
+        for key in ("power_key", "long_press", "lid_switch"):
             if policy.get(key) not in LOGIND_ACTIONS:
                 raise DesktopError(
                     f"desktop {desktop!r} power_policy.{key} must be one of "

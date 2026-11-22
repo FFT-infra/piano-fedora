@@ -140,7 +140,8 @@
     },
     "power_policy": {
       "kind": "logind-only",
-      "power_key": "poweroff",
+      "power_key": "suspend",
+      "long_press": "poweroff",
       "lid_switch": "suspend"
     }
   },
@@ -195,7 +196,8 @@
     },
     "power_policy": {
       "kind": "logind-only",
-      "power_key": "poweroff",
+      "power_key": "suspend",
+      "long_press": "poweroff",
       "lid_switch": "suspend"
     }
   },
@@ -247,7 +249,8 @@
     },
     "power_policy": {
       "kind": "logind-only",
-      "power_key": "poweroff",
+      "power_key": "suspend",
+      "long_press": "poweroff",
       "lid_switch": "suspend"
     }
   },
@@ -268,7 +271,8 @@
     },
     "power_policy": {
       "kind": "logind-only",
-      "power_key": "poweroff",
+      "power_key": "suspend",
+      "long_press": "poweroff",
       "lid_switch": "suspend"
     }
   }
