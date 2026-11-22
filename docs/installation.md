@@ -665,7 +665,7 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 ### 2. 桌面默认配置
 
 * 120 Hz 与触控：Mesa 硬件加速默认开启。手指矩阵与笔解码都由内核驱动完成，`piano-touch-view` 检测到 `kernel_input: enabled` 后不再创建用户态手指设备；`piano-touch.service` 只负责笔的蓝牙初始化。
-* 音频：扬声器走原厂 DAP，拓扑按原厂矩阵把立体声铺到四路；没有 DAP 时回到四声道直连。内核与 ALSA UCM2 把 FS19xx 四功放截断在 235（-7.5 dB），与原厂 FSM_Volume 相同，这一上限没有实测的炸音保护依据。麦克风有 +40 dB 硬件增益。
+* 音频：扬声器走原厂 DAP，拓扑按原厂矩阵把立体声铺到四路；没有 DAP 时回到四声道直连。FS19xx 四功放上限 235，与原厂 FSM_Volume 相同。麦克风有 +40 dB 硬件增益。
 * 电池与电源：`/hypervisor` 节点已软隔离，桌面显示原生双电芯电量，支持合盖与深度挂起：
   * 休眠与混合睡眠默认关闭；
   * `sleep.conf.d/piano.conf` 由 `scripts/finalize-fedora-rootfs.py` 写入；

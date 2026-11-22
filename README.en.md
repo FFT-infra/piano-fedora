@@ -31,7 +31,7 @@ Hardware peripheral support status for the current release:
 | Power | ✅ | Dual-cell battery reporting, deep suspend |
 | Boot | ✅ | `qbootctl.service` writes `Successful: 1`, so the ABL counter cannot drop to Fastboot |
 | Camera | ✅ | `piano-camerad` streams NV12 straight from the ISP. Both the front and the rear camera image normally. The first frames after streaming starts are black. Auto-exposure takes a few frames to converge. See [known issues](docs/known-issues.md#触屏网络音频与相机) |
-| Audio | ⏳ | The four speakers run through the stock DAP, and the topology spreads a stereo stream across all four paths with the stock matrix. The amplifier cap is 235 (-7.5 dB), the stock FSM_Volume, so there is no measured protection against driver damage. DAP loading and the four-speaker crossover await device verification; 120 seconds of playback with no xrun and 130 seconds of recording with signal came from the earlier direct path |
+| Audio | ⏳ | The four speakers run through the stock DAP, and the topology spreads a stereo stream across all four paths with the stock matrix. The amplifier cap is 235, the stock FSM_Volume. DAP loading and the four-speaker crossover await device verification |
 | Scheduling | ✅ | `uperf-linux` raises frequency on touch |
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
 | Sensors | ✅ | SSC backend (`libssc` + `iio-sensor-proxy-ssc` over QRTR/MHI). The accelerometer, ambient light and proximity sensors all report data. Auto-rotate supported: screen rotates 90° when orientation changes |
