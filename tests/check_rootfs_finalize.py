@@ -244,17 +244,21 @@ def check_debug_handoff(root, staged):
     assert str(getty_link.readlink()) == "/usr/lib/systemd/system/serial-getty@.service"
 
     # 0600 来自 spec 的 %attr，不是检出的文件位；fixture 与 spec 两边都要对。
+    # linux-debug.conf 不带 noreplace：usb= 的出厂值必须能在升级时换掉。
     spec_text = (ROOT / "packages/piano-fedora-configs"
                  "/piano-fedora-configs.spec").read_text()
-    for path in ("%{_sysconfdir}/piano/linux-debug.conf",
-                 "%{_sysconfdir}/NetworkManager/system-connections/"
-                 "piano-debug-ncm.nmconnection"):
-        assert f"%attr(0600,root,root) %config(noreplace) {path}" in spec_text, path
+    assert (f"%attr(0600,root,root) %config "
+            "%{_sysconfdir}/piano/linux-debug.conf") in spec_text
+    assert (f"%attr(0600,root,root) %config(noreplace) "
+            "%{_sysconfdir}/NetworkManager/system-connections/"
+            "piano-debug-ncm.nmconnection") in spec_text
 
-    # linux-debug.conf：上游 opt-in acm-ncm、shell=0、固定 ipv4、recovery=0、权限 600。
+    # linux-debug.conf：出厂 usb=off，shell=0、固定 ipv4、recovery=0、权限 600。
+    # usb=acm-ncm 会把 USB-C 口绑成 device 角色并注销 xHCI，插上的键盘不枚举。
     config = root / "etc/piano/linux-debug.conf"
     body = config.read_text()
-    assert "usb=acm-ncm" in body and "shell=0" in body
+    assert "usb=off" in body and "usb=acm-ncm" not in body
+    assert "shell=0" in body
     assert "ipv4=192.168.77.1/30" in body and "recovery_seconds=0" in body
     assert config.stat().st_mode & 0o777 == 0o600, oct(config.stat().st_mode & 0o777)
 
