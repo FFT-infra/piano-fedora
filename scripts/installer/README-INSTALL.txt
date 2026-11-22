@@ -52,6 +52,8 @@ Required Files in this Folder:
 - make-device-boot.sh              (builds device-boot/ from this tablet's boot_a image)
 - sunuefi_esp.img                  (SunUEFI EFI System Partition holding the Linux UKI)
 - PianoUEFI-product.img            (SunUEFI product firmware; first-install check)
+- sunuefi-module.zip               (Android-side boot assistant, same firmware as above)
+- module-manifest.json             (binds the module ZIP to PianoUEFI-product.img)
 - uefi-source.json                 (UEFI source pin and patch digests)
 - SHA256SUMS                       (checksums of everything in this folder)
 - bundle-manifest.json             (binds root-install/ to this bundle)
@@ -184,6 +186,14 @@ Step 5 - Verify after reboot:
 
 To return to Android, press the volume keys during the 3-second chooser, or run
 "piano-next-boot android --reboot" from Linux.
+
+Installing the Android-side module:
+Flash sunuefi-module.zip from KernelSU/SukiSU as a module, then reboot. It is
+built from the same product firmware as PianoUEFI-product.img, so the Android
+side and the ESP agree. Flashing the ESP or the root does not install it: an
+installed tablet that only takes a new release needs this ZIP, not a reinstall.
+The module carries the UFS and DWC3 fixes this release needs; a module from
+upstream lacks them.
 
 WARNING - never run these:
    * Erasing dtbo_a (or dtbo_b): ABL then rejects the whole boot chain with

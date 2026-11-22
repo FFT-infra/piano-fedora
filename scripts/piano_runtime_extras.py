@@ -44,7 +44,9 @@ def build(sources, output, package, put, sha256, run):
     put(source / "LICENSE", payload / "usr/share/licenses/piano-crosvm/LICENSE")
     put(ROOT / "runtime/crosvm/piano-crosvm.conf", payload / "usr/lib/tmpfiles.d/piano-crosvm.conf")
     run([build / "release/crosvm", "run", "--help"], timeout=15)
-    package("piano-crosvm", payload, output, license_expression="BSD-3-Clause")
+    # Release 2：跟到 crosvm c41a3d34，载荷里的二进制字节变了。不换 NEVRA
+    # 的话，设备上 dnf upgrade 会把 0.1.0-1 当成已是最新，新 crosvm 装不上去。
+    package("piano-crosvm", payload, output, release="2", license_expression="BSD-3-Clause")
     proofs["crosvm"] = {"commit": pin["commit"], "features": ["gunyah", "net", "balloon"],
                          "binary_sha256": sha256(build / "release/crosvm")}
 
@@ -83,7 +85,11 @@ def package_librevm(source, build, output, pin, patch, package, put, sha256):
     sysusers = payload / "usr/lib/sysusers.d/librevm.conf"
     sysusers.parent.mkdir(parents=True, exist_ok=True)
     sysusers.write_text("g librevm -\n")
-    package("librevm", payload, output, version="0.2.0", requires=("piano-crosvm", "iproute", "util-linux", "e2fsprogs"),
+    # Rust 二进制不是可复现构建：同 commit、同 Cargo.lock 在不同机器上编出的
+    # 字节不同。Release 停在 1 时，设备上从 piano-local 装的那份与 COPR 的
+    # 那份同 NEVRA，dnf upgrade 认为已是最新，永远换不到 COPR 版本。
+    package("librevm", payload, output, version="0.2.0", release="2",
+            requires=("piano-crosvm", "iproute", "util-linux", "e2fsprogs"),
             license_expression="GPL-3.0-or-later")
     return {"commit": pin["commit"], "adapter_sha256": sha256(patch),
                           "cargo_lock_sha256": sha256(source / "Cargo.lock"),

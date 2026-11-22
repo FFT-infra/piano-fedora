@@ -124,6 +124,20 @@ def test_digest_tracks_only_declared_inputs():
             (root / "sources.lock.json").write_text(json.dumps(lock))
             assert build_inputs.digest("kernel", root) != kernel
             assert build_inputs.digest("rpms", root) != rpms
+            kernel, rpms = build_inputs.digest("kernel", root), build_inputs.digest("rpms", root)
+
+            # 只改说明文字与核对日期：检出结果不变，摘要也不能变。否则改一句
+            # role 就要重编一次内核。
+            lock["sources"]["sunuefi"]["role"] = "改写过的说明"
+            lock["sources"]["sunuefi"]["checked_date"] = "2026-11-22"
+            (root / "sources.lock.json").write_text(json.dumps(lock))
+            assert build_inputs.digest("kernel", root) == kernel
+            assert build_inputs.digest("rpms", root) == rpms
+
+            # url 变了取到的就不是同一份源，摘要必须变。
+            lock["sources"]["sunuefi"]["url"] = "https://example.invalid/other"
+            (root / "sources.lock.json").write_text(json.dumps(lock))
+            assert build_inputs.digest("kernel", root) != kernel
         finally:
             build_inputs.CHAINS = saved
 

@@ -167,6 +167,12 @@ def expand(root, relative):
     raise InputError(f"declared input is missing: {relative}")
 
 
+# 摘要只认决定产物的字段。checkout-sources.py 只按 url 取源、按 commit
+# 检出；role 是说明文字，checked_date 是核对日期。把它们算进摘要，改一句
+# 注释就会让整条内核链作废，得重编一次内核。
+LOCKED_FIELDS = ("url", "commit")
+
+
 def lock_entries(root, keys):
     lockfile = Path(root) / "sources.lock.json"
     try:
@@ -177,7 +183,7 @@ def lock_entries(root, keys):
     for key in keys:
         if key not in sources:
             raise InputError(f"unknown lock entry: {key}")
-        entries[key] = sources[key]
+        entries[key] = {field: sources[key].get(field) for field in LOCKED_FIELDS}
     return entries
 
 

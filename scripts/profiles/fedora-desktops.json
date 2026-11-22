@@ -138,7 +138,11 @@
       "session_files": ["/usr/share/wayland-sessions/niri.desktop"],
       "bins": ["/usr/bin/niri", "/usr/bin/niri-session"]
     },
-    "power_policy": {"kind": "logind-only"}
+    "power_policy": {
+      "kind": "logind-only",
+      "power_key": "poweroff",
+      "lid_switch": "suspend"
+    }
   },
   "hyprland": {
     "label": "Hyprland",
@@ -189,7 +193,11 @@
       "session_files": ["/usr/share/wayland-sessions/hyprland.desktop"],
       "bins": ["/usr/bin/Hyprland", "/usr/bin/start-hyprland", "/usr/bin/hyprctl"]
     },
-    "power_policy": {"kind": "logind-only"}
+    "power_policy": {
+      "kind": "logind-only",
+      "power_key": "poweroff",
+      "lid_switch": "suspend"
+    }
   },
   "denial": {
     "label": "Denial",
@@ -229,7 +237,7 @@
     "display_manager": {
       "unit": "greetd.service",
       "package": "greetd",
-      "autologin": {"kind": "greetd-config", "command": "env DENIAL_RENDER_DEVICE=/dev/dri/by-path/platform-3d00000.gpu-render denial-session --start-locked"}
+      "autologin": {"kind": "greetd-config", "command": "env DENIAL_RENDER_DEVICE=/dev/dri/by-path/platform-3d00000.gpu-render DENIAL_SHELL_PROFILE=mobile denial-session --start-locked"}
     },
     "session": {
       "desktop_names": ["Denial"],
@@ -237,7 +245,11 @@
       "session_files": ["/usr/share/wayland-sessions/denial.desktop"],
       "bins": ["/usr/bin/denial-session", "/usr/bin/deniald", "/usr/bin/denialctl"]
     },
-    "power_policy": {"kind": "logind-only"}
+    "power_policy": {
+      "kind": "logind-only",
+      "power_key": "poweroff",
+      "lid_switch": "suspend"
+    }
   },
   "server": {
     "label": "Server (no desktop)",
@@ -254,6 +266,10 @@
       "session_files": [],
       "bins": []
     },
-    "power_policy": {"kind": "logind-only"}
+    "power_policy": {
+      "kind": "logind-only",
+      "power_key": "poweroff",
+      "lid_switch": "suspend"
+    }
   }
 }

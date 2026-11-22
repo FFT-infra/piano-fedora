@@ -81,6 +81,11 @@ jobs:
               pip install --quiet -r requirements-build.txt
               ./build.sh sources
               ./build.sh uefi
+              # 模块 ZIP 装的是同一份 artifacts/product 的 fd/app/shim。已装设备
+              # 换固件只走这条通道：它保留 Android 内核、BOOT 头尾与启动选择。
+              # 只发 uefi 产物的话，用户只能装上游模块，我们的 UFS 与 DWC3 补丁
+              # 就丢了。
+              ./build.sh module
             '
 
       - name: Inspect UEFI artifacts
@@ -88,8 +93,24 @@ jobs:
         run: |
           set -euo pipefail
           # 容器以 root 写入产物，检查与打包都要 sudo。
-          sudo ls -lh artifacts/product/
+          sudo ls -lh artifacts/product/ artifacts/android/
           sudo cat artifacts/product/manifest.json 2>/dev/null || true
+          # 模块与产品必须同源：ZIP 里的 fd/app/shim 要等于这份 product。
+          sudo python3 - <<'PY'
+          import json, sys, zipfile
+          from pathlib import Path
+          record = json.loads(Path("artifacts/android/manifest.json").read_text())
+          package = Path("artifacts/android") / Path(record["zip"]).name
+          assert package.is_file(), package
+          product = json.loads(Path("artifacts/product/manifest.json").read_text())
+          # files 里的每项是 {bytes, sha256}，不是裸摘要。
+          image_sha = product["files"]["PianoUEFI-product.img"]["sha256"]
+          assert record["same_product"]["product_sha256"] == image_sha, (
+              "module belongs to another product")
+          with zipfile.ZipFile(package) as archive:
+              assert archive.testzip() is None, "module ZIP is corrupt"
+          print("module", package.name, record["zip_sha256"])
+          PY
 
       - name: Package UEFI artifacts
         working-directory: sunuefi
@@ -97,12 +118,23 @@ jobs:
           set -euo pipefail
           sudo tar -I 'zstd -10 -T0' -cf "$GITHUB_WORKSPACE/uefi-product.tar.zst" \
             -C artifacts/product .
-          sudo chown "$(id -u):$(id -g)" "$GITHUB_WORKSPACE/uefi-product.tar.zst"
-          ls -lh "$GITHUB_WORKSPACE"/uefi-product.tar.zst
+          # 模块单独一个 artifact：release 归档与装机脚本都按文件名取它。
+          sudo tar -I 'zstd -10 -T0' -cf "$GITHUB_WORKSPACE/uefi-module.tar.zst" \
+            -C artifacts/android .
+          sudo chown "$(id -u):$(id -g)" "$GITHUB_WORKSPACE/uefi-product.tar.zst" \
+            "$GITHUB_WORKSPACE/uefi-module.tar.zst"
+          ls -lh "$GITHUB_WORKSPACE"/uefi-*.tar.zst
 
       - uses: actions/upload-artifact@v4
         with:
           name: uefi-product
           path: uefi-product.tar.zst
+          retention-days: 14
+          compression-level: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uefi-module
+          path: uefi-module.tar.zst
           retention-days: 14
           compression-level: 1

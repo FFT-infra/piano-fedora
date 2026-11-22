@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import subprocess
+import zipfile
 from pathlib import Path
 
 from piano_artifacts import sha256, verify_uefi_source
@@ -16,9 +17,36 @@ REQUIRED = {"sunuefi_esp.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst"
             "pianoroot.f2fs.sparse.img", "initramfs.tar.zst",
             "root-image-manifest.json", "kernel-manifest.json", "initramfs-manifest.json",
             "esp-manifest.json", "runtime-manifest.json", "mesa-manifest.json",
-            "ffmpeg-manifest.json", "rootfs-manifest.json", "source-runs.json", "uefi-source.json"}
+            "ffmpeg-manifest.json", "rootfs-manifest.json", "source-runs.json", "uefi-source.json",
+            "sunuefi-module.zip", "module-manifest.json"}
 ASSETS = {"sunuefi_esp.img": "esp.img",
           "PianoUEFI-product.img": "PianoUEFI-product.img"}
+
+
+def verify_module(root):
+    """模块 ZIP 与 bundle 里的产品镜像必须同源。
+
+    ESP 刷写装不进 Android 侧模块，已装设备换固件只能装这个 ZIP。它带着
+    fd/app/shim，装的必须是 ESP 里那份产品；来源清单里没有绑定的话，两个
+    run 的产品可以混在一起，设备上 Android 与 Linux 两侧的固件就不一致了。
+    """
+    record = json.loads((root / "module-manifest.json").read_text())
+    if record.get("artifact_kind") != "android-product-module":
+        raise ValueError("module manifest is not an Android product module")
+    package = root / "sunuefi-module.zip"
+    if sha256(package) != record.get("zip_sha256"):
+        raise ValueError("module ZIP differs from its manifest")
+    if record.get("same_product", {}).get("product_sha256") != sha256(root / "PianoUEFI-product.img"):
+        raise ValueError("module was built from another product image")
+    with zipfile.ZipFile(package) as archive:
+        if archive.testzip() is not None:
+            raise ValueError("module ZIP is corrupt")
+        names = set(archive.namelist())
+    for name in ("payload/selector.bin", "payload/fd.bin", "payload/app.bin",
+                 "payload/shim.bin", "module.prop"):
+        if name not in names:
+            raise ValueError("module ZIP lacks " + name)
+    return record
 
 
 def verify(root):
@@ -28,6 +56,7 @@ def verify(root):
     read = lambda name: json.loads((root / name).read_text())
     source_runs = read("source-runs.json")
     verify_uefi_source(PROJECT, root / "PianoUEFI-product.img", read("uefi-source.json"), source_runs.get("uefi_run"))
+    verify_module(root)
     kernel = read("kernel-manifest.json")
     kernel_hash = sha256(root / "kernel-manifest.json")
     for name in ("initramfs-manifest.json", "runtime-manifest.json", "rootfs-manifest.json"):

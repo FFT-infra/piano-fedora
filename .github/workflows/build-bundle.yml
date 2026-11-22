@@ -79,7 +79,11 @@ jobs:
           python3 scripts/resolve-artifact-run.py --workflow build-image.yml --artifact "$ROOT_IMAGE" --output-key root_run "${args[@]}"
           uefi_args=()
           if [ -n "$UEFI_RUN" ]; then uefi_args+=(--run-id "$UEFI_RUN"); fi
-          python3 scripts/resolve-artifact-run.py --workflow build-uefi.yml --artifact "$UEFI_ARTIFACT" --output-key uefi_run "${uefi_args[@]}"
+          # 模块与产品必须来自同一次 UEFI 构建：模块 ZIP 里的 fd/app/shim 就是
+          # 这份产品的，混用别的 run 会让 Android 侧装的固件和 ESP 里的不一致。
+          python3 scripts/resolve-artifact-run.py --workflow build-uefi.yml \
+            --artifact "$UEFI_ARTIFACT" --artifact uefi-module \
+            --output-key uefi_run "${uefi_args[@]}"
 
       - uses: actions/download-artifact@v4
         with:
@@ -120,6 +124,15 @@ jobs:
           run-id: ${{ steps.src.outputs.uefi_run }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # 模块与产品来自同一次 UEFI run，上面那一步已核对 run 里两份 artifact
+      # 都在，这里分别取回来。
+      - uses: actions/download-artifact@v4
+        with:
+          name: uefi-module
+          path: build/in/uefi
+          run-id: ${{ steps.src.outputs.uefi_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Resolve the exact integrated kernel
         id: kernel
         env:
@@ -150,10 +163,13 @@ jobs:
           KERNEL_ARTIFACT: ${{ steps.kernel.outputs.kernel_artifact }}
         run: |
           set -euo pipefail
-          mkdir -p build/kernel build/uefi build/initramfs build/device-root
+          mkdir -p build/kernel build/uefi build/uefi-module build/initramfs build/device-root
           # 精确选择记录里的内核归档。
           tar -I zstd -xf "build/in/kernel/$KERNEL_ARTIFACT.tar.zst" -C build/kernel
-          tar -I zstd -xf build/in/uefi/*.tar.zst -C build/uefi
+          # 两个 UEFI artifact 各解各的目录。写成通配会同时展开模块包，
+          # 两份 manifest.json 落进同一个目录，先到的被后来的覆盖。
+          tar -I zstd -xf build/in/uefi/uefi-product.tar.zst -C build/uefi
+          tar -I zstd -xf build/in/uefi/uefi-module.tar.zst -C build/uefi-module
           tar -I zstd -xf build/in/image/initramfs.tar.zst -C build/initramfs
           sudo tar -I zstd --numeric-owner --xattrs --xattrs-include='*' --acls --selinux -xf build/in/image/device-root.tar.zst -C build/device-root
           (cd build/in/image && sha256sum -c image-SHA256SUMS)
@@ -168,6 +184,38 @@ jobs:
           set -euo pipefail
           python3 scripts/seal-uefi-source.py --run-id "$UEFI_RUN" \
             --image build/uefi/PianoUEFI-product.img --output build/uefi-source.json
+
+      - name: Bind the Android module to this product
+        run: |
+          set -euo pipefail
+          # 模块 ZIP 是已装设备换固件的唯一通道，必须与 ESP 里那份产品同源。
+          # 归档用固定文件名，安装指南与用户都不需要记上游的版本号。
+          python3 - <<'PY'
+          import hashlib, json, shutil, zipfile
+          from pathlib import Path
+
+          def sha(path):
+              return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+          record = json.loads(Path("build/uefi-module/manifest.json").read_text())
+          assert record.get("artifact_kind") == "android-product-module", record.get("artifact_kind")
+          package = Path("build/uefi-module") / Path(record["zip"]).name
+          assert package.is_file(), package
+          assert sha(package) == record["zip_sha256"], "module ZIP differs from its manifest"
+          product = Path("build/uefi/PianoUEFI-product.img")
+          assert record["same_product"]["product_sha256"] == sha(product), (
+              "module was built from another product image")
+          with zipfile.ZipFile(package) as archive:
+              assert archive.testzip() is None, "module ZIP is corrupt"
+              names = set(archive.namelist())
+          for name in ("payload/selector.bin", "payload/fd.bin", "payload/app.bin",
+                       "payload/shim.bin", "module.prop"):
+              assert name in names, "module ZIP lacks " + name
+          Path("build/module").mkdir(exist_ok=True)
+          shutil.copy2(package, "build/module/sunuefi-module.zip")
+          shutil.copy2("build/uefi-module/manifest.json", "build/module/module-manifest.json")
+          print("module", package.name, record["zip_sha256"])
+          PY
 
       - name: Read the ESP capacity from product.json
         id: product
@@ -271,6 +319,9 @@ jobs:
           cp build/in/image/mesa-manifest.json build/in/image/ffmpeg-manifest.json build/in/image/rootfs-manifest.json bundle/
           cp build/kernel/manifest.json bundle/kernel-manifest.json
           cp build/uefi-source.json bundle/
+          # Android 侧换固件只认这份模块 ZIP；ESP 刷写装不到它。
+          cp build/module/sunuefi-module.zip bundle/
+          cp build/module/module-manifest.json bundle/
           python3 - <<'PY'
           import json, os
           from pathlib import Path

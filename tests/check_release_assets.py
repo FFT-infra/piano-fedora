@@ -74,6 +74,9 @@ def test_bundle_members_and_exclusions_are_disjoint():
     # 两份镜像必须进归档：一份交给 Android boot，一份刷进 ESP。
     for name in ("sunuefi_esp.img", "PianoUEFI-product.img"):
         assert name in bundled, name
+    # 模块 ZIP 只能从归档里拿到：ESP 刷写装不到 Android 侧。
+    for name in ("sunuefi-module.zip", "module-manifest.json"):
+        assert name in bundled, name
     # 两份 root 与两个构建中间件不进归档。
     for name in ("pianoroot.f2fs.img.zst", "pianoroot.f2fs.sparse.img",
                  "initramfs.tar.zst", "diagnostic-abl-storage.tar.zst"):

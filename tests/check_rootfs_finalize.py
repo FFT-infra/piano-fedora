@@ -214,6 +214,42 @@ def launcher_fixture(root):
     return binary, target
 
 
+def check_login_power_policy_follows_the_profile():
+    """logind-only 档的按键取值写进后置 drop-in，GNOME/KDE 档不写。
+
+    piano.conf 的 ignore 是给桌面助手让路的。drop-in 必须排在它之后才能
+    覆盖，否则 denial/niri/hyprland/server 上电源键和合盖依然没人处理。
+    """
+    package = ROOT / "packages" / "piano-fedora-configs"
+    denial = finalizer.piano_desktop.load("denial", "44")
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        for name in POWER_FILES:
+            target = root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((package / name).read_bytes())
+        wants = root / "usr/lib/systemd/user/graphical-session.target.wants"
+        wants.mkdir(parents=True, exist_ok=True)
+        for unit in POWER_HELPER_UNITS:
+            (wants / unit).symlink_to("/usr/lib/systemd/user/" + unit)
+        written = finalizer.stage_login_power(root, denial)
+        assert written == [finalizer.piano_desktop.LOGIND_DROPIN], written
+        assert written[0].rsplit("/", 1)[-1] > "piano.conf", written
+        finalizer.verify_power_overlay(root, denial)
+        (root / written[0]).write_text("[Login]\nHandlePowerKey=ignore\n")
+        try:
+            finalizer.verify_power_overlay(root, denial)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(
+                "a logind drop-in that still ignores the power key was accepted")
+    for desktop in ("gnome", "kde"):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = finalizer.piano_desktop.load(desktop, "44")
+            assert finalizer.stage_login_power(Path(temporary), context) == [], desktop
+
+
 def check_debug_handoff(root, staged):
     """debug 交接只建两个 enable 链接；配置与 NM profile 由包安装。"""
     # 配置、NM profile 与串口 drop-in 属于 piano-fedora-configs 的 %files，
@@ -244,17 +280,21 @@ def check_debug_handoff(root, staged):
     assert str(getty_link.readlink()) == "/usr/lib/systemd/system/serial-getty@.service"
 
     # 0600 来自 spec 的 %attr，不是检出的文件位；fixture 与 spec 两边都要对。
+    # linux-debug.conf 不带 noreplace：usb= 的出厂值必须能在升级时换掉。
     spec_text = (ROOT / "packages/piano-fedora-configs"
                  "/piano-fedora-configs.spec").read_text()
-    for path in ("%{_sysconfdir}/piano/linux-debug.conf",
-                 "%{_sysconfdir}/NetworkManager/system-connections/"
-                 "piano-debug-ncm.nmconnection"):
-        assert f"%attr(0600,root,root) %config(noreplace) {path}" in spec_text, path
+    assert (f"%attr(0600,root,root) %config "
+            "%{_sysconfdir}/piano/linux-debug.conf") in spec_text
+    assert (f"%attr(0600,root,root) %config(noreplace) "
+            "%{_sysconfdir}/NetworkManager/system-connections/"
+            "piano-debug-ncm.nmconnection") in spec_text
 
-    # linux-debug.conf：上游 opt-in acm-ncm、shell=0、固定 ipv4、recovery=0、权限 600。
+    # linux-debug.conf：出厂 usb=off，shell=0、固定 ipv4、recovery=0、权限 600。
+    # usb=acm-ncm 会把 USB-C 口绑成 device 角色并注销 xHCI，插上的键盘不枚举。
     config = root / "etc/piano/linux-debug.conf"
     body = config.read_text()
-    assert "usb=acm-ncm" in body and "shell=0" in body
+    assert "usb=off" in body and "usb=acm-ncm" not in body
+    assert "shell=0" in body
     assert "ipv4=192.168.77.1/30" in body and "recovery_seconds=0" in body
     assert config.stat().st_mode & 0o777 == 0o600, oct(config.stat().st_mode & 0o777)
 
@@ -519,6 +559,7 @@ def check_first_boot_ssh_key(root):
 def main():
     check_power_overlay_owner()
     check_kde_power_overlay_requires_its_helper()
+    check_login_power_policy_follows_the_profile()
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         alternatives, man = fixture(root)

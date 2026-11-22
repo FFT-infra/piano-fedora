@@ -58,6 +58,8 @@ def check_schema_is_enforced():
         (lambda row: row.update(power_policy={"kind": "gnome-shell"}), "unknown power_policy"),
         (lambda row: row.update(dnf_packages=None), "buildable but has dnf_packages=null"),
         (lambda row: row.update(power_policy={"kind": "kconfig"}), "needs a source file"),
+        (lambda row: row.update(power_policy={"kind": "logind-only"}),
+         "power_policy.power_key must be one of"),
         (lambda row: row["display_manager"]["autologin"].update(kind="greetd-config"),
          "without a session command"),
         (lambda row: row["display_manager"]["autologin"].pop("session"),
@@ -90,7 +92,8 @@ def check_schema_is_enforced():
         "label": "Placeholder", "buildable": False, "dnf_packages": None,
         "repos": [], "exclude_packages": [], "required_packages": [],
         "root_size_mib": 8192, "display_manager": None,
-        "power_policy": {"kind": "logind-only"},
+        "power_policy": {"kind": "logind-only",
+                         "power_key": "poweroff", "lid_switch": "suspend"},
         "session": {"desktop_names": [], "process_names": [],
                     "session_files": [], "bins": []},
     }
@@ -336,7 +339,8 @@ def check_power_files_match_the_declared_kind():
             assert files == {}, (desktop, files)
             assert required == ["etc/xdg/powerdevilrc"], (desktop, required)
         else:
-            assert files == {} and required == [], (desktop, files, required)
+            assert files == {}, (desktop, files)
+            assert required == [piano_desktop.LOGIND_DROPIN], (desktop, required)
         assert piano_desktop.dconf_profile_required(context) == (kind == "dconf"), desktop
     assert kinds == {"gnome": "dconf", "kde": "kconfig", "niri": "logind-only",
                      "hyprland": "logind-only", "denial": "logind-only",
@@ -573,10 +577,12 @@ def check_greetd_desktops_stage_a_config_toml():
     # piano 的显示控制器是 msm_dpu（card2），GPU 是独立的 adreno 渲染节点。
     # 只给显示卡时 EGL 选到 renderD128，与请求的 card2 不符，deniald 直接
     # abort（"EGL selected ... instead of requested scene GPU"），所以命令
-    # 必须点名渲染节点。
+    # 必须点名渲染节点。DENIAL_SHELL_PROFILE=mobile 才带屏上键盘，平板没有
+    # 别的输入手段去解 --start-locked 的锁屏。
     expected = {"niri": "niri-session", "hyprland": "start-hyprland",
                 "denial": "env DENIAL_RENDER_DEVICE=/dev/dri/by-path/"
-                          "platform-3d00000.gpu-render denial-session --start-locked"}
+                          "platform-3d00000.gpu-render DENIAL_SHELL_PROFILE=mobile "
+                          "denial-session --start-locked"}
     for desktop, command in expected.items():
         context = piano_desktop.load(desktop, "44")
         manager = context["profile"]["display_manager"]
@@ -622,6 +628,10 @@ def check_greetd_validation_checks_the_session_command():
         # greetd 自己的二进制也必须在树里（display_manager.package）。
         (root / "usr" / "bin" / "greetd").write_text("#!/bin/sh\n")
         (root / "usr" / "bin" / "greetd").chmod(0o755)
+        # logind-only 档的按键取值由 finalize 写进这份 drop-in。
+        dropin = root / piano_desktop.LOGIND_DROPIN
+        dropin.parent.mkdir(parents=True, exist_ok=True)
+        dropin.write_text("[Login]\nHandlePowerKey=poweroff\nHandleLidSwitch=suspend\n")
         # inspect 阶段（enable 之前）
         try:
             piano_desktop.validate_against_rootfs(root, context, require_enabled=False)
