@@ -321,13 +321,31 @@ def check_esp_layout(failures):
         if again["changed"].get("payload") is not False:
             failures.append("update_bls rewrites an unchanged payload")
     # ESP 若被改成可选 UKI 布局，检测也认它，不当成“不可启动的系统”。
+    # 带 systemd-boot 时它枚举版本化文件。
     with tempfile.TemporaryDirectory() as tmp:
         esp = Path(tmp)
         (esp / "EFI" / "Linux").mkdir(parents=True)
+        (esp / "EFI" / "BOOT").mkdir(parents=True)
+        (esp / "EFI" / "BOOT" / "BOOTAA64.EFI").write_bytes(b"boot")
         (esp / "EFI" / "Linux" / "linux-7.3.3.efi").write_bytes(b"uke")
         layout, entry, _ = updater.current_boot(esp)
         if layout != "uki" or entry.name != "linux-7.3.3.efi":
             failures.append("current_boot does not fall back to the optional UKI layout")
+        if updater.uki_target(esp, "7.3.4").name != "linux-7.3.4.efi":
+            failures.append("uki_target does not use the versioned name under systemd-boot")
+    # 早期单 UKI 固件没有 systemd-boot，只打开固定的 sunuefi.efi。同目录里
+    # 版本化文件是旧脚本写下的，固件从不读它；升级必须原地替换固定路径。
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp)
+        (esp / "EFI" / "Linux").mkdir(parents=True)
+        fixed = esp / "EFI" / "Linux" / "sunuefi.efi"
+        fixed.write_bytes(b"uke")
+        (esp / "EFI" / "Linux" / "linux-7.3.3.efi").write_bytes(b"stray")
+        layout, entry, _ = updater.current_boot(esp)
+        if layout != "uki" or entry != fixed:
+            failures.append("current_boot picks a versioned UKI the single-UKI firmware never opens")
+        if updater.uki_target(esp, "7.3.4") != fixed:
+            failures.append("uki_target does not replace the firmware's fixed sunuefi.efi")
 
 
 def main():

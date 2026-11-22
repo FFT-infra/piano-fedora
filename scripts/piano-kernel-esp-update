@@ -4,8 +4,12 @@
 新固件走标准 UEFI 启动顺序：ESP 的 `/EFI/BOOT/BOOTAA64.EFI`（systemd-boot）
 是入口，Linux 载荷由它加载。SunUEFI 出厂默认是 BLS 布局：内核、initramfs
 与板级 DTB 分放在 `/linux/<release>/`，启动项写在
-`/loader/entries/linux-<release>.conf`。上游也支持可选的 UKI 布局
-（`/EFI/Linux/linux-<release>.efi`），这里两种都认，以 ESP 上现有条目为准。
+`/loader/entries/linux-<release>.conf`。
+
+UKI 布局分两种，以 ESP 上有没有 systemd-boot 区分。有 systemd-boot 时它枚举
+`/EFI/Linux/` 下的版本化文件（`linux-<release>.efi`），旧文件留给菜单回退。
+没有 systemd-boot 的是早期单 UKI 固件，它只打开固定的
+`/EFI/Linux/sunuefi.efi`，这个文件名就是契约，只能原文件替换。
 
 内核升级不需要重编固件：在设备上取出现有条目里的 cmdline 与板级 DTB，
 配上新内核与重建的 initramfs，写成新 release 的条目，旧 release 原样留着，
@@ -52,6 +56,10 @@ ENTRY_DIR = "loader/entries"
 ENTRY_PREFIX = "linux-"
 UKI_PAYLOAD = "EFI/Linux"
 UKI_PREFIX = "linux-"
+# 没有 systemd-boot 的 ESP 属于早期单 UKI 固件，它只打开这一个固定路径。
+# 文件名是固件契约，升级只能原地替换。
+SINGLE_UKI = "EFI/Linux/sunuefi.efi"
+SYSTEMD_BOOT = ("EFI/BOOT/BOOTAA64.EFI", "EFI/systemd/systemd-bootaa64.efi")
 # ukify 与 aa64 stub 由 systemd-ukify、systemd-boot-unsigned 提供，RPM 依赖
 # 已声明。只有 UKI 布局用得到；BLS 布局不碰这两个工具。
 UKIFY = Path(os.environ.get("PIANO_UKIFY", "/usr/lib/systemd/ukify"))
@@ -122,6 +130,17 @@ def esp_relative(esp, path):
     return esp / path.lstrip("/")
 
 
+def has_systemd_boot(esp):
+    return any((esp / path).is_file() for path in SYSTEMD_BOOT)
+
+
+def uki_target(esp, release):
+    """systemd-boot 枚举版本化文件；单 UKI 固件只认固定路径。"""
+    if has_systemd_boot(esp):
+        return esp / UKI_PAYLOAD / f"{UKI_PREFIX}{release}.efi"
+    return esp / SINGLE_UKI
+
+
 def current_boot(esp):
     """返回 (布局, 现有启动项, 条目字段)，以 ESP 上实际存在的为准。"""
     entries = sorted((esp / ENTRY_DIR).glob(ENTRY_PREFIX + "*.conf"))
@@ -134,6 +153,12 @@ def current_boot(esp):
     if usable:
         _, _, entry, fields = max(usable)
         return "bls", entry, fields
+    # 没有 systemd-boot 时只有固件固定的那个文件算启动项。同目录里别的 UKI
+    # 是之前按版本化名字写下的，固件从不读它。
+    if not has_systemd_boot(esp):
+        fixed = esp / SINGLE_UKI
+        if fixed.is_file():
+            return "uki", fixed, {}
     ukis = sorted((esp / UKI_PAYLOAD).glob("*.efi"))
     if ukis:
         return "uki", max(ukis, key=lambda p: (p.stat().st_mtime, p.name)), {}
@@ -280,12 +305,16 @@ def update_bls(esp, fields, image, initramfs, dtb, release, dry_run, record):
 
 
 def update_uki(esp, current, image, initramfs, dtb, release, dry_run, record):
-    """可选 UKI 布局：重建单个 PE 文件，版本化文件名，旧 UKI 留着回退。"""
+    """UKI 布局：重建单个 PE 文件。
+
+    有 systemd-boot 时写版本化文件名，旧 UKI 留着给菜单回退。没有时写固件
+    固定读取的 `sunuefi.efi`，原地替换，旧文件留在 `.bak`。
+    """
     existing = uki_sections(current)
     missing = [name for name in (".cmdline", ".osrel") if name not in existing]
     if missing:
         raise EspUpdateError("existing ESP UKI lacks " + ", ".join(missing))
-    target = esp / UKI_PAYLOAD / f"{UKI_PREFIX}{release}.efi"
+    target = uki_target(esp, release)
     record["layout"] = "uki"
     record["uki"] = {"path": str(target)}
     with tempfile.TemporaryDirectory(prefix="piano-esp-") as scratch:
