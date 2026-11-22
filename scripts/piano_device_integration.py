@@ -123,7 +123,10 @@ def stage_payload(source, pin, payload, touch_proof, camera_proof, put, sha256, 
     # PIANO_FINGER_CALIBRATION，服务不再替它挑面板。
     pen_control = payload / "usr/lib/piano/pen-control.py"
     if not pen_control.is_file():
-        raise ValueError("BSP did not stage the pen Bluetooth initializer")
+        # 增量路径从旧 RPM 解包后再叠这份载荷；早于内核笔解码的基包没有
+        # pen-control.py，只能整包重建，不能按增量升上去。
+        raise ValueError("payload has no pen Bluetooth initializer; rebuild the runtime "
+                         "instead of incrementally patching a pre-edcf272 base RPM")
     proven.append(pen_control.relative_to(payload).as_posix())
     docs = payload / "usr/share/licenses/piano-runtime/piano-integration"
     docs.mkdir(parents=True, exist_ok=True)
