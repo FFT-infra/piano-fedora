@@ -198,19 +198,9 @@ def stage_login_power(root, context):
 
     piano.conf 的 ignore 是给 GNOME/KDE 的按键助手让路的，这份 drop-in
     文件名排在它之后，把取值覆盖回来；只覆盖这三项，IdleAction 仍是 ignore。
+    内容与落盘由 piano_desktop 定义，clean rootfs 与 finalize 用同一份。
     """
-    policy = context["profile"]["power_policy"]
-    if policy["kind"] != "logind-only":
-        return []
-    name = piano_desktop.LOGIND_DROPIN
-    text = ("[Login]\n"
-            f"HandlePowerKey={policy['power_key']}\n"
-            f"HandlePowerKeyLongPress={policy['long_press']}\n"
-            f"HandleLidSwitch={policy['lid_switch']}\n")
-    target = safe_destination(root, name)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text)
-    return [name]
+    return piano_desktop.stage_login_power(root, context, sudo_aware=False)
 
 
 def remove_legacy_power_overrides(root):
