@@ -224,4 +224,4 @@ make plan-desktop DESKTOP=niri RELEASEVER=45
   直接来自上游仓库，本仓库不镜像、不重新打包，也不进 COPR。
 - **内核在 COPR 里，五档共用。** 装机用归档里的 `kernel-piano`。
   装好之后由 `dnf upgrade` 升级，`kernel-piano` 的 `%posttrans` 重建 initramfs
-  并重打 ESP 的 `/EFI/Linux/sunuefi.efi`。失败与回滚边界见 [COPR 软件源](copr-repository.md)。
+  并按 ESP 现有布局写启动项。失败与回滚边界见 [COPR 软件源](copr-repository.md)。

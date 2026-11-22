@@ -70,7 +70,7 @@ python3 scripts/audit-upstreams.py --execute --record-baseline --output build/up
 - **TuneD 与 uperf 桥接**：电源模式不直接操作 sysfs 频点（避免与开机接管 CPU/GPU 的 `uperf-linux` 产生冲突），而是通过 `piano-power-mode` 将 GNOME PPD 的三档模式一一桥接到 `uperfctl mode powersave|balance|performance`。
 
 ### 3. 启动载荷与固件交接
-- **单 UKI 引导架构**：[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 固件通过 `PianoApplicationRunFile` 加载单个 UKI 镜像（`/EFI/Linux/sunuefi.efi`），由 `systemd-ukify` 组装 `.linux`、`.initrd`、`.dtb`、`.cmdline` 等节区。
+- **两种启动布局**：[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 新装镜像走标准 UEFI 顺序，systemd-boot 加载 `/linux/<release>/` 下的内核与 `/loader/entries/` 里的启动项。早期单 UKI 固件没有 systemd-boot，通过 `PianoApplicationRunFile` 打开固定的 `/EFI/Linux/sunuefi.efi`，由 `systemd-ukify` 组装 `.linux`、`.initrd`、`.dtb`、`.cmdline` 等节区。
 - **设备树动态修复**：采用 `EFI_DT_FIXUP_PROTOCOL`（`PianoDeviceTreeFixup.c`），在启动时根据设备实际内存布局与保留区改写 `/memory` 节点。
 - **DWC3 停机容错**：在 `patches/uefi-dwc3-halt/` 中加入复位兜底，当等待超时或传输终止失败时回退至 soft reset。
 

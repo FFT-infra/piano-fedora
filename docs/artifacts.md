@@ -48,11 +48,11 @@ clean root 文件系统的 `kernel-piano` 与内核压缩包必须来自同一�
 
 deploy-bundle 自带 sparse。Release 归档里带的是 `prepare-install` 产出的 prepared root，两者内容相同，prepared root 带着设备配置与 SELinux 标签。
 
-上游 `esp-manifest.json` 用 `esp.img` 指代 ESP 镜像，`esp_files` 只列 `/EFI/Linux/sunuefi.efi`，UKI 的节区、`ukify` 与 stub 摘要记在 `uki` 字段。`verify-bundle.py` 把 `esp.img` 映射成 `sunuefi_esp.img`，不要求归档保留第二套文件名。它还流式展开压缩 root 文件系统，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
+上游 `esp-manifest.json` 用 `esp.img` 指代 ESP 镜像，`boot_layout` 记录布局，`esp_files` 列出镜像里的全部文件。BLS 布局列 `/linux/<release>/` 三个文件、`/loader/entries/linux-<release>.conf` 与 systemd-boot；UKI 布局列 `/EFI/Linux/linux-<release>.efi` 与 systemd-boot，节区、`ukify` 与 stub 摘要另记在 `uki` 字段。`verify-bundle.py` 把 `esp.img` 映射成 `sunuefi_esp.img`，按 `boot_layout` 核对文件集合，未知布局直接拒绝。它还流式展开压缩 root 文件系统，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
 
-ESP 上只有 `/EFI/Linux/sunuefi.efi` 一个 Linux 载荷。它是 UKI，内核、initramfs、板级 DTB 与 cmdline 都在 PE 节区里。合体 BOOT 含当前 Android 内核，必须用本机当前 stock BOOT、活动槽和 generation 另行包装。通用构建产物不包含这些个人设备输入。
+ESP 上的 Linux 载荷随布局不同。BLS 布局是 `/linux/<release>/` 下的内核、initramfs 与板级 DTB 三个文件，加一条 loader 条目；UKI 布局是一个 PE 文件，内核、initramfs、DTB 与 cmdline 都在节区里。合体 BOOT 含当前 Android 内核，必须用本机当前 stock BOOT、活动槽和 generation 另行包装。通用构建产物不包含这些个人设备输入。
 
-已装系统升级内核不需要 deploy-bundle。`kernel-piano` 按普通包升级。`dnf upgrade` 装上之后，`%posttrans` 重建 initramfs，并重打 ESP 上的 UKI。语义与回滚见 [COPR 软件源](copr-repository.md)。
+已装系统升级内核不需要 deploy-bundle。`kernel-piano` 按普通包升级。`dnf upgrade` 装上之后，`%posttrans` 重建 initramfs，并按 ESP 现有布局写启动项。语义与回滚见 [COPR 软件源](copr-repository.md)。
 
 ## 参考来源
 

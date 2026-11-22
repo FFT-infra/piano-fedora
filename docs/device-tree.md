@@ -106,16 +106,15 @@ techpack 目录包含显示、音频、摄像头、WLAN、BT 的板级片段（�
 
 没有 overlay，对应的内核代码合了也不生效。这些项的真机验收还没做完：`piano-cma`、`piano-ufs-mcq` 一旦不合，表现为开不了机，回退是刷回上一版 bundle 里的 `sunuefi_esp.img`。
 
-## 启动读的是 UKI 里的 DT
+## 启动读的是 ESP 上的 DT
 
-板级 DTB 由厂商 `board.dtb` 与 `config/release.json` 里的 overlay 合成，打进 `/EFI/Linux/sunuefi.efi` 的 `.dtb` 节区。`/EFI/Piano/stable/` 与单独的 `board.dtb` 不再是启动输入。
+板级 DTB 由厂商 `board.dtb` 与 `config/release.json` 里的 overlay 合成。BLS 布局下它在 `/linux/<release>/board.dtb`，启动项用 `devicetree` 指向它；UKI 布局下它打在 PE 的 `.dtb` 节区。`/EFI/Piano/stable/` 与单独的 `board.dtb` 不再是启动输入。
 
-- 固件只打开 `\EFI\Linux\sunuefi.efi`，按 PE 节区取内核、initramfs、DTB 与 cmdline。
 - 内置 `EFI_DT_FIXUP_PROTOCOL` 每次启动时动态改写这份 DTB：
   - 将 `/memory` 替换为实际 RAM 布局；
   - 动态更新面板 `compatible`、蓝牙地址、RTC 偏移与 Gunyah RM 属性。
 
-改 DT 要重打 UKI。只换 ESP 上某一个文件不会生效。`kernel-piano` 的 `%posttrans` 用 ESP 里现有 UKI 的 `.dtb` 重新组装，板级 overlay 保持不变；换 overlay 要重新构建 bundle 或手工重打 UKI。
+`kernel-piano` 的 `%posttrans` 复用 ESP 上现有的 DTB，板级 overlay 保持不变。换 overlay 要重新构建 bundle。
 
 ## oracle 校验
 
