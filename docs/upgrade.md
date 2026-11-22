@@ -87,7 +87,7 @@ fastboot -S 128M flash sunuefi_esp sunuefi_esp.img
 
 ESP 里的内核与 root 里的 `/usr/lib/modules/` 必须同一版。单独刷 ESP 之后，用 `sudo dnf upgrade --refresh` 把 `kernel-piano` 升到与 ESP 一致，再重启。两边版本不同时系统能起来，但驱动一个都加载不了。
 
-引导助手模块装在 Android 的 KernelSU/SukiSU 里，刷 ESP 装不到它。归档里的 `sunuefi-module.zip` 与 `PianoUEFI-product.img` 由同一次构建产出，`module-manifest.json` 的 `same_product.product_sha256` 就是那份产品的摘要，`verify-bundle.py` 在发布前核对。在模块管理器里选中这个 ZIP 安装，重启即生效。
+引导助手模块装在 Android 的 KernelSU/SukiSU 里，刷 ESP 装不到它。归档里的 `sunuefi-module.zip`（v45.10 起才有）与 `PianoUEFI-product.img` 由同一次构建产出，`module-manifest.json` 的 `same_product.product_sha256` 就是那份产品的摘要，`verify-bundle.py` 在发布前核对。在模块管理器里选中这个 ZIP 安装，重启即生效。
 
 本仓库的固件带 `patches/uefi-ufs` 与 `patches/uefi-dwc3-halt` 两条补丁，上游模块不含它们。装上游模块换不到这两处修复。
 
