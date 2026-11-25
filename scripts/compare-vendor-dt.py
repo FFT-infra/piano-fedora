@@ -298,7 +298,7 @@ def main():
             dtsi = args.sunuefi / "linux/dts"
             # 上游新增的 overlay 可能引用主线 dt-bindings（例如 CSI2 PHY），
             # 厂商 include 树里没有这些头；先查主线稀疏检出的 include。
-            kernel_include = args.sunuefi / "upstream/linux-piano/include"
+            kernel_include = args.kernel_include or (args.sunuefi / "upstream/linux-piano/include")
             include_dirs = [dtsi, dts, args.vendor / "include"]
             if kernel_include.is_dir():
                 include_dirs.insert(1, kernel_include)
