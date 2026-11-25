@@ -256,7 +256,7 @@
   - 内核解码用写死的矩阵尺寸，不读原厂逐屏电极校准（本仓库把校准校验后随 `xiaomi-piano-thp` 分发，只供用户态路径使用）；
   - 设备身份、分组与能力位已核对，掌托识别、双指以上的手感与新解码的跟手程度还没有真机验收记录。
 - **扬声器 DAP**：
-  - 上游 `cc26198`、`4eaadb3`、`edcf272` 把扬声器交给原厂 DAP：构建期从厂商树取 `Mi_acdb_cal.acdb`，核对 `config/release.json` 列出的 sha256，派生 `speaker-dap-config.bin` 随 `piano-runtime` 装到 tplg 同目录；
+  - 上游 `cc26198`、`4eaadb3`、`edcf272` 把扬声器交给原厂 DAP，v1.0.0 的 `a6c321d` 继续沿用：构建期从厂商树取 `Mi_acdb_cal.acdb`，核对 `config/release.json` 列出的 sha256，派生 `speaker-dap-config.bin` 随 `piano-runtime` 装到 tplg 同目录；
   - 拓扑按原厂矩阵把立体声铺到四路，UCM 在 `SECONDARY_TDM_RX_0 Audio Mixer MultiMedia4` 存在时走 DAP 的两声道路径，否则回到 `MultiMedia1` 的四声道直连；
   - 功放上限 235 与原厂 FSM_Volume 相同。原厂在这个电平上还有 DSP 扬声器保护，这里没有；
   - 上游作者称在 Piano 上验过；本仓库这一版镜像的 DAP 加载与四扬声器分频还没有真机记录。

@@ -402,9 +402,11 @@ def build(args):
     # LIBINPUT_DEVICE_GROUP；补 ABS_MT_TOUCH_MINOR；掌托按槽上报 MT_TOOL_PALM。
     # Release 9：跟到 SunUEFI edcf272，扬声器拓扑改由原厂 ACDB 派生的 DAP 配置
     # 生成，tplg 与 speaker-dap-config.bin 的字节都变了，必须换 NEVRA。
-    # Release 10：手指矩阵与笔解码改由内核 0197／0230 完成，上游删掉
+    # Release 10：手指矩阵与笔解码改由内核 0399／0432 完成，上游删掉
     # touch-input 与 pen-bluetooth，piano-touch.service 只剩 BlueZ 笔初始化。
     # 载荷里少两个启动器与 piano-pen-offline 以外的笔工具，必须换 NEVRA。
+    # Release 11：跟到 SunUEFI v1.0.0，内核 abi_epoch 变化让 provenance 的
+    # kernel_release 与 camera spec 摘要都变了，必须换 NEVRA。
     rpm_package("piano-runtime", payload, output,
                 version=RUNTIME_VERSION, release=RUNTIME_RELEASE,
                 # pen-control.py talks to BlueZ over Gio/GLib; without python3-gobject

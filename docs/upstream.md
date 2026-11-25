@@ -6,6 +6,17 @@
 
 构建消费的上游以 `sources.lock.json` 为准，当前 pin 的 commit 写在 `sources.lock.json` 里。其他消费源的 commit 也记在 `sources.lock.json`。研究与对照仓库登记在 `upstreams.json`，不参与构建。本页的引用链接按当前 pin 固定到具体提交。
 
+SunUEFI 现在锁在上游的正式版 tag `v1.0.0`（`a6c321d`）。上游把 GitHub Release 叫「正式发布」、把 Actions 的 Build products 叫「开发版」，所以跟版本时锁 tag 对应的提交，不跟 main 头；`sources.lock.json` 的 `ref` 仍留 `main`，让周报能看见 main 又往前走了多少。
+
+### 下游与上游的文档分工
+
+上游 `docs/` 只写它自己的四套发行版（Debian/Nyarch/SteamOS/Arch）与它的构建方式，没有给下游项目的文档规范。本仓库的文档边界按下面几条：
+
+- 上游怎么实现、为什么这样实现，写进 `docs/upstream-parity.md` 的对照表，不复制上游正文。
+- 我们在 Fedora 上怎么做、哪些没做、为什么不做，写进本仓库的 `docs/`。
+- 上游仓库的状态页是它的设备状态页，不能当成我们的验收记录；我们的状态一律以本仓库的 `known-issues.md` 与 manifest 里的 `device_boot_performed` 为准。
+- 上游改了什么功能，只在本仓库的 `docs/upstream-parity.md` 记一行差异，不复述它的发布说明。
+
 ### 对照基准
 
 `sources.lock.json` 里有两条 pin 只进对照任务、不进产物：
