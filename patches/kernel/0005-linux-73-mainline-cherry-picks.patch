@@ -1,4 +1,49 @@
-diff --git a/patches/linux/7.3/0274-soc-qcom-apr-install-the-GPR-callback-before-probing-the-ser.patch b/patches/linux/7.3/0274-soc-qcom-apr-install-the-GPR-callback-before-probing-the-ser.patch
+From 1da50b713116fd9545fe61ec083dfcc1e79ddc35 Mon Sep 17 00:00:00 2001
+From: piano-fedora <dev@piano.invalid>
+Date: Wed, 25 Nov 2026 12:21:37 +0800
+Subject: [PATCH] kernel: append 18 Piano adaptation(s)
+
+---
+ ...-GPR-callback-before-probing-the-ser.patch | Bin 0 -> 1517 bytes
+ ...ritical-health-event-where-it-is-ref.patch | Bin 0 -> 2770 bytes
+ ...SS_QDSS_CFG_MISS_V01-for-the-WCN7860.patch | Bin 0 -> 1871 bytes
+ ...m-msm-a6xx-Fix-RPMH-dependency-votes.patch | Bin 0 -> 2112 bytes
+ ...revent-scan-during-firmware-recovery.patch | Bin 0 -> 2874 bytes
+ .../0483-mptcp-fix-msk-timer_ival-reset.patch | Bin 0 -> 1316 bytes
+ ...CRTC-bandwidth-from-the-state-being-.patch | Bin 0 -> 3539 bytes
+ ...-a-NULL-hfi_sys_ops-in-the-interrupt.patch | Bin 0 -> 1761 bytes
+ ...cel-sys-error-work-on-driver-removal.patch | Bin 0 -> 1465 bytes
+ ...ris-use-disable_irq-during-power-off.patch | Bin 0 -> 1505 bytes
+ ...kernel-doc-attached-to-its-structure.patch | Bin 0 -> 1563 bytes
+ ...y-msm-use-a-valid-REGDMA-conditional.patch | Bin 0 -> 1221 bytes
+ ...connector-before-enabling-notificati.patch | Bin 0 -> 2765 bytes
+ ...link-training-success-after-a-reinit.patch | Bin 0 -> 1597 bytes
+ ...m-msm-dp-Serialize-HPD-state-updates.patch | Bin 0 -> 2205 bytes
+ ...DO_ONCE_SLEEPABLE-in-qcom_tzmem_enab.patch | Bin 0 -> 2671 bytes
+ ...ed-clocks-are-enabled-before-reparen.patch | Bin 0 -> 1973 bytes
+ ...-whether-the-cached-typec_mux-mode-w.patch | Bin 0 -> 4504 bytes
+ patches/linux/7.3/series.json                 | 238 +++++++++++++++++-
+ 19 files changed, 236 insertions(+), 2 deletions(-)
+ create mode 100644 patches/linux/7.3/0478-soc-qcom-apr-install-the-GPR-callback-before-probing-the-ser.patch
+ create mode 100644 patches/linux/7.3/0479-scsi-ufs-core-skip-the-critical-health-event-where-it-is-ref.patch
+ create mode 100644 patches/linux/7.3/0480-wifi-ath12k-disable-CNSS_QDSS_CFG_MISS_V01-for-the-WCN7860.patch
+ create mode 100644 patches/linux/7.3/0481-drm-msm-a6xx-Fix-RPMH-dependency-votes.patch
+ create mode 100644 patches/linux/7.3/0482-FROMLIST-wifi-ath12k-prevent-scan-during-firmware-recovery.patch
+ create mode 100644 patches/linux/7.3/0483-mptcp-fix-msk-timer_ival-reset.patch
+ create mode 100644 patches/linux/7.3/0484-drm-msm-dpu-compute-the-CRTC-bandwidth-from-the-state-being-.patch
+ create mode 100644 patches/linux/7.3/0485-media-iris-guard-against-a-NULL-hfi_sys_ops-in-the-interrupt.patch
+ create mode 100644 patches/linux/7.3/0486-media-iris-cancel-sys-error-work-on-driver-removal.patch
+ create mode 100644 patches/linux/7.3/0487-Revert-media-qcom-iris-use-disable_irq-during-power-off.patch
+ create mode 100644 patches/linux/7.3/0488-drm-msm-dpu-keep-MDSS-kernel-doc-attached-to-its-structure.patch
+ create mode 100644 patches/linux/7.3/0489-dt-bindings-display-msm-use-a-valid-REGDMA-conditional.patch
+ create mode 100644 patches/linux/7.3/0490-usb-typec-ucsi-Set-ucsi-connector-before-enabling-notificati.patch
+ create mode 100644 patches/linux/7.3/0491-drm-msm-dp-don-t-report-link-training-success-after-a-reinit.patch
+ create mode 100644 patches/linux/7.3/0492-drm-msm-dp-Serialize-HPD-state-updates.patch
+ create mode 100644 patches/linux/7.3/0493-firmware-qcom-tzmem-Use-DO_ONCE_SLEEPABLE-in-qcom_tzmem_enab.patch
+ create mode 100644 patches/linux/7.3/0494-clk-Ensure-all-RPM-enabled-clocks-are-enabled-before-reparen.patch
+ create mode 100644 patches/linux/7.3/0495-phy-qcom-qmp-combo-track-whether-the-cached-typec_mux-mode-w.patch
+
+diff --git a/patches/linux/7.3/0478-soc-qcom-apr-install-the-GPR-callback-before-probing-the-ser.patch b/patches/linux/7.3/0478-soc-qcom-apr-install-the-GPR-callback-before-probing-the-ser.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..599eac7f93261e68c5edb5ca62cc5201b0ded9d7
 GIT binary patch
@@ -27,7 +72,7 @@ JM9+YW3jiKU<Fo((
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0275-scsi-ufs-core-skip-the-critical-health-event-where-it-is-ref.patch b/patches/linux/7.3/0275-scsi-ufs-core-skip-the-critical-health-event-where-it-is-ref.patch
+diff --git a/patches/linux/7.3/0479-scsi-ufs-core-skip-the-critical-health-event-where-it-is-ref.patch b/patches/linux/7.3/0479-scsi-ufs-core-skip-the-critical-health-event-where-it-is-ref.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..4b979ac542e0054de932ad7771363633d83c93a6
 GIT binary patch
@@ -69,7 +114,7 @@ PT?H;9JyR1s11>HAKwort
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0276-wifi-ath12k-disable-CNSS_QDSS_CFG_MISS_V01-for-the-WCN7860.patch b/patches/linux/7.3/0276-wifi-ath12k-disable-CNSS_QDSS_CFG_MISS_V01-for-the-WCN7860.patch
+diff --git a/patches/linux/7.3/0480-wifi-ath12k-disable-CNSS_QDSS_CFG_MISS_V01-for-the-WCN7860.patch b/patches/linux/7.3/0480-wifi-ath12k-disable-CNSS_QDSS_CFG_MISS_V01-for-the-WCN7860.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..13a8d52360b6d72ab3a8f50f7b4c7c5368e29e06
 GIT binary patch
@@ -104,7 +149,7 @@ GxVQj97Ey5k
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0277-drm-msm-a6xx-Fix-RPMH-dependency-votes.patch b/patches/linux/7.3/0277-drm-msm-a6xx-Fix-RPMH-dependency-votes.patch
+diff --git a/patches/linux/7.3/0481-drm-msm-a6xx-Fix-RPMH-dependency-votes.patch b/patches/linux/7.3/0481-drm-msm-a6xx-Fix-RPMH-dependency-votes.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..ba8a34ea1d059c7a5c83449bfc78f7fede8dd89d
 GIT binary patch
@@ -137,7 +182,7 @@ Z1(2cOz|pkk($!VqGSV|O(KF!U0swXzz%&2=
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0278-FROMLIST-wifi-ath12k-prevent-scan-during-firmware-recovery.patch b/patches/linux/7.3/0278-FROMLIST-wifi-ath12k-prevent-scan-during-firmware-recovery.patch
+diff --git a/patches/linux/7.3/0482-FROMLIST-wifi-ath12k-prevent-scan-during-firmware-recovery.patch b/patches/linux/7.3/0482-FROMLIST-wifi-ath12k-prevent-scan-during-firmware-recovery.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..2e702e205c8284a72904c49c7212f72b8cc83e03
 GIT binary patch
@@ -184,7 +229,7 @@ vFE1V>k(ZiN4015oNs1s5upydU3Y-X={QP}geXY54brrab^h{0k47j)e(c7v*
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0279-mptcp-fix-msk-timer_ival-reset.patch b/patches/linux/7.3/0279-mptcp-fix-msk-timer_ival-reset.patch
+diff --git a/patches/linux/7.3/0483-mptcp-fix-msk-timer_ival-reset.patch b/patches/linux/7.3/0483-mptcp-fix-msk-timer_ival-reset.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..043f4bb9f93cd8fcdb709d379296e4868e8d7321
 GIT binary patch
@@ -212,7 +257,7 @@ Bu15d>
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0280-drm-msm-dpu-compute-the-CRTC-bandwidth-from-the-state-being-.patch b/patches/linux/7.3/0280-drm-msm-dpu-compute-the-CRTC-bandwidth-from-the-state-being-.patch
+diff --git a/patches/linux/7.3/0484-drm-msm-dpu-compute-the-CRTC-bandwidth-from-the-state-being-.patch b/patches/linux/7.3/0484-drm-msm-dpu-compute-the-CRTC-bandwidth-from-the-state-being-.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..513bc7e361fbd9e93ce6785be6b3064989b95d98
 GIT binary patch
@@ -262,7 +307,7 @@ m#WKhommuGG7gwiH_jtz;e_u~$4K7_>1ui2!QxiP{E-nCcnW%68
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0281-media-iris-guard-against-a-NULL-hfi_sys_ops-in-the-interrupt.patch b/patches/linux/7.3/0281-media-iris-guard-against-a-NULL-hfi_sys_ops-in-the-interrupt.patch
+diff --git a/patches/linux/7.3/0485-media-iris-guard-against-a-NULL-hfi_sys_ops-in-the-interrupt.patch b/patches/linux/7.3/0485-media-iris-guard-against-a-NULL-hfi_sys_ops-in-the-interrupt.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..705303c5ba7c653b4844e004d129a00dac1a9c09
 GIT binary patch
@@ -294,7 +339,7 @@ Hz{Ldsa>-g(
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0282-media-iris-cancel-sys-error-work-on-driver-removal.patch b/patches/linux/7.3/0282-media-iris-cancel-sys-error-work-on-driver-removal.patch
+diff --git a/patches/linux/7.3/0486-media-iris-cancel-sys-error-work-on-driver-removal.patch b/patches/linux/7.3/0486-media-iris-cancel-sys-error-work-on-driver-removal.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..fff298c869dfa4900d34dabbcdeccb905b1415da
 GIT binary patch
@@ -323,7 +368,7 @@ qMXBkT#U-glQ0IV^=-QQ~q?W~}q$X=xbLr|Ta2e^Dn&=sDaRC6!tn2vz
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0283-Revert-media-qcom-iris-use-disable_irq-during-power-off.patch b/patches/linux/7.3/0283-Revert-media-qcom-iris-use-disable_irq-during-power-off.patch
+diff --git a/patches/linux/7.3/0487-Revert-media-qcom-iris-use-disable_irq-during-power-off.patch b/patches/linux/7.3/0487-Revert-media-qcom-iris-use-disable_irq-during-power-off.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..0806d5eaf2310e2c4aa196c3d1587fe9b03241ec
 GIT binary patch
@@ -351,7 +396,7 @@ hALPX+=jW9a<>%z27HQz}i>|H$myw>SiJk!$7XVzH`UC&~
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0284-drm-msm-dpu-keep-MDSS-kernel-doc-attached-to-its-structure.patch b/patches/linux/7.3/0284-drm-msm-dpu-keep-MDSS-kernel-doc-attached-to-its-structure.patch
+diff --git a/patches/linux/7.3/0488-drm-msm-dpu-keep-MDSS-kernel-doc-attached-to-its-structure.patch b/patches/linux/7.3/0488-drm-msm-dpu-keep-MDSS-kernel-doc-attached-to-its-structure.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..6be13d25d39d0fd500b274eac293f56eac7e85e6
 GIT binary patch
@@ -378,7 +423,7 @@ h6_;ShLer0e7FcarY7r>S>FO$Q8R?mt=oxTv0RTTP{b&FH
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0285-dt-bindings-display-msm-use-a-valid-REGDMA-conditional.patch b/patches/linux/7.3/0285-dt-bindings-display-msm-use-a-valid-REGDMA-conditional.patch
+diff --git a/patches/linux/7.3/0489-dt-bindings-display-msm-use-a-valid-REGDMA-conditional.patch b/patches/linux/7.3/0489-dt-bindings-display-msm-use-a-valid-REGDMA-conditional.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..473f1f2ab261a8f6d7dfe050dfae3a240040de9c
 GIT binary patch
@@ -402,7 +447,7 @@ E05L{(OaK4?
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0286-usb-typec-ucsi-Set-ucsi-connector-before-enabling-notificati.patch b/patches/linux/7.3/0286-usb-typec-ucsi-Set-ucsi-connector-before-enabling-notificati.patch
+diff --git a/patches/linux/7.3/0490-usb-typec-ucsi-Set-ucsi-connector-before-enabling-notificati.patch b/patches/linux/7.3/0490-usb-typec-ucsi-Set-ucsi-connector-before-enabling-notificati.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..2a35190545d38c9eeb5112e5a85b4f6f5d461e8c
 GIT binary patch
@@ -443,7 +488,7 @@ fPAt&NE6qhD)naRfOptN9x(ZxIdZs3N23%YK5o4B9
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0287-drm-msm-dp-don-t-report-link-training-success-after-a-reinit.patch b/patches/linux/7.3/0287-drm-msm-dp-don-t-report-link-training-success-after-a-reinit.patch
+diff --git a/patches/linux/7.3/0491-drm-msm-dp-don-t-report-link-training-success-after-a-reinit.patch b/patches/linux/7.3/0491-drm-msm-dp-don-t-report-link-training-success-after-a-reinit.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..47f51884075b5be200803db2049d2fdaf530655c
 GIT binary patch
@@ -474,7 +519,7 @@ WLPly)DwnRV0+*4VsfnHe7Z(5}HwwZ4
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0288-drm-msm-dp-Serialize-HPD-state-updates.patch b/patches/linux/7.3/0288-drm-msm-dp-Serialize-HPD-state-updates.patch
+diff --git a/patches/linux/7.3/0492-drm-msm-dp-Serialize-HPD-state-updates.patch b/patches/linux/7.3/0492-drm-msm-dp-Serialize-HPD-state-updates.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..16b26a5f0679f147aa1c70ba1fe78675820842b9
 GIT binary patch
@@ -510,7 +555,7 @@ QbafTDjPy)R^bEMT0Ad;7j{pDw
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0289-firmware-qcom-tzmem-Use-DO_ONCE_SLEEPABLE-in-qcom_tzmem_enab.patch b/patches/linux/7.3/0289-firmware-qcom-tzmem-Use-DO_ONCE_SLEEPABLE-in-qcom_tzmem_enab.patch
+diff --git a/patches/linux/7.3/0493-firmware-qcom-tzmem-Use-DO_ONCE_SLEEPABLE-in-qcom_tzmem_enab.patch b/patches/linux/7.3/0493-firmware-qcom-tzmem-Use-DO_ONCE_SLEEPABLE-in-qcom_tzmem_enab.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..3de35323c2e34701e78246619d54af977160bffd
 GIT binary patch
@@ -553,7 +598,7 @@ bft17$XF+NSO=~V)T?H;9JyR1s11>HAPR4Y)
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0290-clk-Ensure-all-RPM-enabled-clocks-are-enabled-before-reparen.patch b/patches/linux/7.3/0290-clk-Ensure-all-RPM-enabled-clocks-are-enabled-before-reparen.patch
+diff --git a/patches/linux/7.3/0494-clk-Ensure-all-RPM-enabled-clocks-are-enabled-before-reparen.patch b/patches/linux/7.3/0494-clk-Ensure-all-RPM-enabled-clocks-are-enabled-before-reparen.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..22e7bb099eea1fbf66c25c4eb6c02c5f3311f8b5
 GIT binary patch
@@ -584,7 +629,7 @@ y0go#oabRu<i31CB9jtMXQI7B&6{8_LJ_D)X8jTQ88r0QQ;4;!PHPJKR;sOALsf%U+
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0291-phy-qcom-qmp-combo-track-whether-the-cached-typec_mux-mode-w.patch b/patches/linux/7.3/0291-phy-qcom-qmp-combo-track-whether-the-cached-typec_mux-mode-w.patch
+diff --git a/patches/linux/7.3/0495-phy-qcom-qmp-combo-track-whether-the-cached-typec_mux-mode-w.patch b/patches/linux/7.3/0495-phy-qcom-qmp-combo-track-whether-the-cached-typec_mux-mode-w.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..03fe1bb4b2124975efbc60d2fe552ae7b195ec5f
 GIT binary patch
@@ -644,32 +689,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 2ad0485..1d8d7af 100644
+index c5dfc41..b54981f 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -11,8 +11,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "11c12f6159086cceb8e0d7e03f2df1a183eabd9f",
--  "original_target_commit": "632627ae4314293684d64ae2865aac51308ddd2e",
-+  "target_tree": "a7c4d50974a895609d2204a08b04f83b75b1b6a0",
-+  "original_target_commit": "38d20c8fb8d42219857e1acbf33694051324a152",
+-  "target_tree": "1a9e7c1115217ea4becd04770e3ffb5a81b40ba9",
+-  "original_target_commit": "fd5a8df0e11b4fbc7e05952861911091c614cd75",
++  "target_tree": "a62ca06b077442efd6e5986d1881369216dc0cf4",
++  "original_target_commit": "923294aef9d4ae0f44fda6f02daea3f7c0f585a5",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -3601,6 +3601,240 @@
+@@ -3988,6 +3988,240 @@
          "url": "https://github.com/slwyts/Project-SunUEFI",
          "drop_when": "This Piano device adaptation is not part of the upstream sealed series; remove it when the corresponding subsystem fix is accepted upstream and the sealed series carries it."
        }
 +    },
 +    {
-+      "file": "0274-soc-qcom-apr-install-the-GPR-callback-before-probing-the-ser.patch",
++      "file": "0478-soc-qcom-apr-install-the-GPR-callback-before-probing-the-ser.patch",
 +      "sha256": "d594be0a32ebf0b6b687e7f0371f45908d1f679f28d837027fe8a00342807e7a",
-+      "original_commit": "3f38c1ea7cebe98a3113690e8e5d9f11f43a0ba4",
-+      "original_parent": "632627ae4314293684d64ae2865aac51308ddd2e",
-+      "committer_date": "2026-11-21T17:05:09+08:00",
-+      "tree": "dbdfbf0247ed4ad3b67822072acbd32f13b13c42",
++      "original_commit": "5647c7a225451af12cc5f3fbde171979e8a10655",
++      "original_parent": "fd5a8df0e11b4fbc7e05952861911091c614cd75",
++      "committer_date": "2026-11-25T12:19:26+08:00",
++      "tree": "a81dd7e08cdfcca665dc726d07a334a316f2ebc0",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -677,12 +722,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0275-scsi-ufs-core-skip-the-critical-health-event-where-it-is-ref.patch",
++      "file": "0479-scsi-ufs-core-skip-the-critical-health-event-where-it-is-ref.patch",
 +      "sha256": "fcd5b3ded6b88735f491cad7f77542f7e267327baff587b7df14eba4a7f3d5bf",
-+      "original_commit": "7e237b03b0f7cabeab3ec67ed9fb1712ac578a33",
-+      "original_parent": "3f38c1ea7cebe98a3113690e8e5d9f11f43a0ba4",
-+      "committer_date": "2026-11-21T17:05:09+08:00",
-+      "tree": "3feddb8aa70167d99ae495c80a935d7c47db22d2",
++      "original_commit": "78daf8d9311810122e0f949c2268c9d59c7421d5",
++      "original_parent": "5647c7a225451af12cc5f3fbde171979e8a10655",
++      "committer_date": "2026-11-25T12:19:27+08:00",
++      "tree": "53a90510fbf011083f6fbe15ccda420435d0efec",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -690,12 +735,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0276-wifi-ath12k-disable-CNSS_QDSS_CFG_MISS_V01-for-the-WCN7860.patch",
++      "file": "0480-wifi-ath12k-disable-CNSS_QDSS_CFG_MISS_V01-for-the-WCN7860.patch",
 +      "sha256": "af58f813dab2c1097ffab17658a3e1d456bd508f11fb81342522a02f3f5ae90e",
-+      "original_commit": "f60e29345af02f01e4ed2e5889c994a512f422f8",
-+      "original_parent": "7e237b03b0f7cabeab3ec67ed9fb1712ac578a33",
-+      "committer_date": "2026-11-21T17:05:09+08:00",
-+      "tree": "f0163b590b7f8d52077c7f4ce1de9f20bbe31bf8",
++      "original_commit": "437aab5961ca44d49bbf8d60413065d6273c62be",
++      "original_parent": "78daf8d9311810122e0f949c2268c9d59c7421d5",
++      "committer_date": "2026-11-25T12:19:27+08:00",
++      "tree": "0378015f31b836163afccf166ecf7d315a0af254",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -703,12 +748,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0277-drm-msm-a6xx-Fix-RPMH-dependency-votes.patch",
++      "file": "0481-drm-msm-a6xx-Fix-RPMH-dependency-votes.patch",
 +      "sha256": "1b5aaa6c07364666ce21de0dc012df0a2c22b2c45b748e950be6b5d989545091",
-+      "original_commit": "38a8fb1dffcc67f9f7be5b60523bdc60c9e0ae5b",
-+      "original_parent": "f60e29345af02f01e4ed2e5889c994a512f422f8",
-+      "committer_date": "2026-11-21T17:05:09+08:00",
-+      "tree": "0663266d07561475d84c84b6bd771bea07696198",
++      "original_commit": "e30521191b8201963231dddd8bf2a75e686b21ad",
++      "original_parent": "437aab5961ca44d49bbf8d60413065d6273c62be",
++      "committer_date": "2026-11-25T12:19:27+08:00",
++      "tree": "de69f28ecbac003ca29378ccfbe5331f1e9aed62",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -716,12 +761,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0278-FROMLIST-wifi-ath12k-prevent-scan-during-firmware-recovery.patch",
++      "file": "0482-FROMLIST-wifi-ath12k-prevent-scan-during-firmware-recovery.patch",
 +      "sha256": "f9624e33a2c9547f89f70a4603b342c1776b6ca570eb0350ff4e8069eaec1669",
-+      "original_commit": "777377a716e51fc69233133167a300268ad19161",
-+      "original_parent": "38a8fb1dffcc67f9f7be5b60523bdc60c9e0ae5b",
-+      "committer_date": "2026-11-21T17:05:09+08:00",
-+      "tree": "2016291651f27867132a4a71598c881ad5705446",
++      "original_commit": "20bfa335e4005e432fe5e0885f2adfe0d27aba54",
++      "original_parent": "e30521191b8201963231dddd8bf2a75e686b21ad",
++      "committer_date": "2026-11-25T12:19:27+08:00",
++      "tree": "421384b67701656ed337f4b0aabb68d17f4fb1cb",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -729,12 +774,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0279-mptcp-fix-msk-timer_ival-reset.patch",
++      "file": "0483-mptcp-fix-msk-timer_ival-reset.patch",
 +      "sha256": "00fc7ce636c6d8cc025be96c8509ace59f509a8735de3ae4e3d155ad26cec63c",
-+      "original_commit": "eeab529d6aa0f881118bab0ece8d6225477d1680",
-+      "original_parent": "777377a716e51fc69233133167a300268ad19161",
-+      "committer_date": "2026-11-21T17:05:10+08:00",
-+      "tree": "3ce9b38b2150c0f624850b52bacef60f963aeeac",
++      "original_commit": "766bd31c7f09aa365fb6c17ad819890ffa90faf0",
++      "original_parent": "20bfa335e4005e432fe5e0885f2adfe0d27aba54",
++      "committer_date": "2026-11-25T12:19:27+08:00",
++      "tree": "12f341b6817459a99200a50c15b7b4970b00ae15",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -742,12 +787,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0280-drm-msm-dpu-compute-the-CRTC-bandwidth-from-the-state-being-.patch",
++      "file": "0484-drm-msm-dpu-compute-the-CRTC-bandwidth-from-the-state-being-.patch",
 +      "sha256": "819d69208b44353eb72d293fbe02bea46fdaf646c31cbd5b7af9e38fc97f3bef",
-+      "original_commit": "e0dbaa32dddb7ffcf3ce4072a4e3744663858974",
-+      "original_parent": "eeab529d6aa0f881118bab0ece8d6225477d1680",
-+      "committer_date": "2026-11-21T17:05:10+08:00",
-+      "tree": "e18f03afd3e943b494dbe4d8cccdd853983ec686",
++      "original_commit": "5cf9c48b47b9e84f99d90e5434b36eb8a8ccfbfb",
++      "original_parent": "766bd31c7f09aa365fb6c17ad819890ffa90faf0",
++      "committer_date": "2026-11-25T12:19:28+08:00",
++      "tree": "26039e0f0483ab1f6246f02f2b2a1ba8f71e96db",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -755,12 +800,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0281-media-iris-guard-against-a-NULL-hfi_sys_ops-in-the-interrupt.patch",
++      "file": "0485-media-iris-guard-against-a-NULL-hfi_sys_ops-in-the-interrupt.patch",
 +      "sha256": "2435eeee125d3893b74af2240720b6526f4700c13f32c7b502ef503aaad7d4f2",
-+      "original_commit": "b7d99fcb8ff113f951f8e7f6de35a428b47d3158",
-+      "original_parent": "e0dbaa32dddb7ffcf3ce4072a4e3744663858974",
-+      "committer_date": "2026-11-21T17:05:10+08:00",
-+      "tree": "1f8bd3a1f9d6b825b09b2ca43656e1b26d15876b",
++      "original_commit": "aad4c22095b502f12619cd4da6cd9391007516d8",
++      "original_parent": "5cf9c48b47b9e84f99d90e5434b36eb8a8ccfbfb",
++      "committer_date": "2026-11-25T12:19:28+08:00",
++      "tree": "d1d9092bceec05a59f67ac40dfd43b0da6c96365",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -768,12 +813,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0282-media-iris-cancel-sys-error-work-on-driver-removal.patch",
++      "file": "0486-media-iris-cancel-sys-error-work-on-driver-removal.patch",
 +      "sha256": "388a651b4f41435271451da10d0efc1ff14ab9db5d7c52932554453d8086f10d",
-+      "original_commit": "a0dfce22feb10e74ae46accb570c23d05c2ecc0c",
-+      "original_parent": "b7d99fcb8ff113f951f8e7f6de35a428b47d3158",
-+      "committer_date": "2026-11-21T17:05:10+08:00",
-+      "tree": "076ee97ef3e62b8f8a3d521903c849563362826b",
++      "original_commit": "0ed650bfab53b9353ae6ede8c82ac649e963dda3",
++      "original_parent": "aad4c22095b502f12619cd4da6cd9391007516d8",
++      "committer_date": "2026-11-25T12:19:28+08:00",
++      "tree": "337b44e229eb0e730527baa04d7ce1d45b4d99af",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -781,12 +826,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0283-Revert-media-qcom-iris-use-disable_irq-during-power-off.patch",
++      "file": "0487-Revert-media-qcom-iris-use-disable_irq-during-power-off.patch",
 +      "sha256": "3d6268abe032e4a94d3eb9cb17b5cb8abf90c9c7161be68feb7fe9944370055b",
-+      "original_commit": "318cab58dfa8c73fc3ebc42f8067259f62311118",
-+      "original_parent": "a0dfce22feb10e74ae46accb570c23d05c2ecc0c",
-+      "committer_date": "2026-11-21T17:05:10+08:00",
-+      "tree": "2d954b72feaebbc4744bb98f3110ca9f1f7c3129",
++      "original_commit": "1e10da4a9b48caf6073f1c5f42fdea4003eda4df",
++      "original_parent": "0ed650bfab53b9353ae6ede8c82ac649e963dda3",
++      "committer_date": "2026-11-25T12:19:28+08:00",
++      "tree": "edb7189b7206187114e83c2fbfe8d5279c84e72b",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -794,12 +839,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0284-drm-msm-dpu-keep-MDSS-kernel-doc-attached-to-its-structure.patch",
++      "file": "0488-drm-msm-dpu-keep-MDSS-kernel-doc-attached-to-its-structure.patch",
 +      "sha256": "b0ffdbed686d2ef1a41b0b80c27b53a4b21812560afc949d03bd7c8369109441",
-+      "original_commit": "d510f858b81e83e5e1fdef583d72289c17181986",
-+      "original_parent": "318cab58dfa8c73fc3ebc42f8067259f62311118",
-+      "committer_date": "2026-11-21T17:05:11+08:00",
-+      "tree": "bf6a9aa63d0c354b01f74c640ce20f923f0e3a2d",
++      "original_commit": "4ebc02d89d52bf19417f459430b46b0a4cfcc876",
++      "original_parent": "1e10da4a9b48caf6073f1c5f42fdea4003eda4df",
++      "committer_date": "2026-11-25T12:19:28+08:00",
++      "tree": "85e4c971aba2bccb5ae3e54269a390e7355ed4e6",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -807,12 +852,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0285-dt-bindings-display-msm-use-a-valid-REGDMA-conditional.patch",
++      "file": "0489-dt-bindings-display-msm-use-a-valid-REGDMA-conditional.patch",
 +      "sha256": "54bbf9db5ec516cf16822d91d959da95aef368b366e79be3f0a878e8316d0529",
-+      "original_commit": "d1b3ab409fa66c45c6838384a8dfd6b78f78804d",
-+      "original_parent": "d510f858b81e83e5e1fdef583d72289c17181986",
-+      "committer_date": "2026-11-21T17:05:11+08:00",
-+      "tree": "05b9e849dddb85150d4a5009a957968c4c324270",
++      "original_commit": "afeecb8e74e1f35baf7ded19bc5902a0c7b1bdaa",
++      "original_parent": "4ebc02d89d52bf19417f459430b46b0a4cfcc876",
++      "committer_date": "2026-11-25T12:19:28+08:00",
++      "tree": "997ab267cf2f7f934816b0aa6125cf98716191e7",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -820,12 +865,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0286-usb-typec-ucsi-Set-ucsi-connector-before-enabling-notificati.patch",
++      "file": "0490-usb-typec-ucsi-Set-ucsi-connector-before-enabling-notificati.patch",
 +      "sha256": "0f6602fbb2d78b6fe72146553320bba5e71787c85cdf75f920177570d875ee58",
-+      "original_commit": "f9fa98ecdb19fe48938e3c0d9afeab97018a857a",
-+      "original_parent": "d1b3ab409fa66c45c6838384a8dfd6b78f78804d",
-+      "committer_date": "2026-11-21T17:05:11+08:00",
-+      "tree": "45247131574d3dc9c96f72bc7cf5419be2ab3e8d",
++      "original_commit": "085d2c1c59fed27fe354846c759155643a818968",
++      "original_parent": "afeecb8e74e1f35baf7ded19bc5902a0c7b1bdaa",
++      "committer_date": "2026-11-25T12:19:29+08:00",
++      "tree": "f89da19700f67557736094a5d5f50de874018dda",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -833,12 +878,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0287-drm-msm-dp-don-t-report-link-training-success-after-a-reinit.patch",
++      "file": "0491-drm-msm-dp-don-t-report-link-training-success-after-a-reinit.patch",
 +      "sha256": "02bf1ff52cd208ee3e9f0874ccc12dd4a265af74437c879624d9cc54e0688d3b",
-+      "original_commit": "7b198f381224c3b66e5a7c50db5fe3d9c716455f",
-+      "original_parent": "f9fa98ecdb19fe48938e3c0d9afeab97018a857a",
-+      "committer_date": "2026-11-21T17:05:11+08:00",
-+      "tree": "36bd91b047f10592a18f5984eacc612a6ea124e0",
++      "original_commit": "deda835338f892c28c4d100703570cd13ffb23e0",
++      "original_parent": "085d2c1c59fed27fe354846c759155643a818968",
++      "committer_date": "2026-11-25T12:19:29+08:00",
++      "tree": "eac1c6de88f3fc25ce04e6534925c80eb9f717d6",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -846,12 +891,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0288-drm-msm-dp-Serialize-HPD-state-updates.patch",
++      "file": "0492-drm-msm-dp-Serialize-HPD-state-updates.patch",
 +      "sha256": "ba0cc73285e64daff8e5fb660a485480a6e8e219a0121186bb2e5b61f7ecffe2",
-+      "original_commit": "0fc33a0dbca12ecfa429a6dfcb83f05dbd7f9e1c",
-+      "original_parent": "7b198f381224c3b66e5a7c50db5fe3d9c716455f",
-+      "committer_date": "2026-11-21T17:05:11+08:00",
-+      "tree": "fcb1739b950e481426dfd7ae743a6635ac491dda",
++      "original_commit": "230f0774b0b5ab22552b9016762b8611ae02c9ee",
++      "original_parent": "deda835338f892c28c4d100703570cd13ffb23e0",
++      "committer_date": "2026-11-25T12:19:29+08:00",
++      "tree": "1512125081cf6dca41f428f63a697f19067518be",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -859,12 +904,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0289-firmware-qcom-tzmem-Use-DO_ONCE_SLEEPABLE-in-qcom_tzmem_enab.patch",
++      "file": "0493-firmware-qcom-tzmem-Use-DO_ONCE_SLEEPABLE-in-qcom_tzmem_enab.patch",
 +      "sha256": "2ca6747dbf743b604caaf5441355b4cc0740050724f33276952002b162f890e4",
-+      "original_commit": "3451c86d0750bd2d88aa77ade7fceb462a64beac",
-+      "original_parent": "0fc33a0dbca12ecfa429a6dfcb83f05dbd7f9e1c",
-+      "committer_date": "2026-11-21T17:05:11+08:00",
-+      "tree": "ad6c1418195e56c1373dd838bec84520972bfbe5",
++      "original_commit": "7280ab9abbedfdaf485aa9eb12c95f640a0d55ed",
++      "original_parent": "230f0774b0b5ab22552b9016762b8611ae02c9ee",
++      "committer_date": "2026-11-25T12:19:29+08:00",
++      "tree": "6ec30741eb44466395021607e171ed2ffd0ecbba",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -872,12 +917,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0290-clk-Ensure-all-RPM-enabled-clocks-are-enabled-before-reparen.patch",
++      "file": "0494-clk-Ensure-all-RPM-enabled-clocks-are-enabled-before-reparen.patch",
 +      "sha256": "a1bd4604f571b589b6962a93dd39f11e34a97ef996c201966c2038aa6c475149",
-+      "original_commit": "41dcacb74f9c678860a54d5eaa9c50eead3ae542",
-+      "original_parent": "3451c86d0750bd2d88aa77ade7fceb462a64beac",
-+      "committer_date": "2026-11-21T17:05:11+08:00",
-+      "tree": "69b30078007311d24b06485037ef7e8fe3680443",
++      "original_commit": "d19e4f78dfbe92e101b69df3aef2d3615892a84d",
++      "original_parent": "7280ab9abbedfdaf485aa9eb12c95f640a0d55ed",
++      "committer_date": "2026-11-25T12:19:29+08:00",
++      "tree": "9dc5226e652e43916906f8637e47f87f544e73bc",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -885,12 +930,12 @@ index 2ad0485..1d8d7af 100644
 +      }
 +    },
 +    {
-+      "file": "0291-phy-qcom-qmp-combo-track-whether-the-cached-typec_mux-mode-w.patch",
++      "file": "0495-phy-qcom-qmp-combo-track-whether-the-cached-typec_mux-mode-w.patch",
 +      "sha256": "cf37c0d8a87a51daa74392e21708d8d68ea9f2e38bc96a379b3fc07c0aa2adaa",
-+      "original_commit": "38d20c8fb8d42219857e1acbf33694051324a152",
-+      "original_parent": "41dcacb74f9c678860a54d5eaa9c50eead3ae542",
-+      "committer_date": "2026-11-21T17:05:11+08:00",
-+      "tree": "a7c4d50974a895609d2204a08b04f83b75b1b6a0",
++      "original_commit": "923294aef9d4ae0f44fda6f02daea3f7c0f585a5",
++      "original_parent": "d19e4f78dfbe92e101b69df3aef2d3615892a84d",
++      "committer_date": "2026-11-25T12:19:29+08:00",
++      "tree": "a62ca06b077442efd6e5986d1881369216dc0cf4",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",

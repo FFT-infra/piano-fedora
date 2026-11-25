@@ -1,8 +1,26 @@
+From 757859f62990985688809e0e0fec77b4ee445253 Mon Sep 17 00:00:00 2001
+From: piano-fedora <dev@piano.invalid>
+Date: Wed, 25 Nov 2026 12:21:37 +0800
+Subject: [PATCH] kernel: append 4 Piano adaptation(s)
+
+---
+ config/release.json                           |   2 +-
+ ...-mode-slave-down-after-both-timing-e.patch | Bin 0 -> 4194 bytes
+ ...-order-output-and-deblocking-control.patch | Bin 0 -> 16490 bytes
+ ...cap-the-piano-speaker-amplifier-gain.patch | Bin 0 -> 3084 bytes
+ ...e-panel-vendor-and-the-THP-stream-as.patch | Bin 0 -> 5043 bytes
+ patches/linux/7.3/series.json                 |  56 +++++++++++++++++-
+ 6 files changed, 55 insertions(+), 3 deletions(-)
+ create mode 100644 patches/linux/7.3/0465-drm-msm-dpu-tear-a-video-mode-slave-down-after-both-timing-e.patch
+ create mode 100644 patches/linux/7.3/0466-media-iris-expose-decode-order-output-and-deblocking-control.patch
+ create mode 100644 patches/linux/7.3/0467-ASoC-qcom-sc8280xp-cap-the-piano-speaker-amplifier-gain.patch
+ create mode 100644 patches/linux/7.3/0468-Input-nt36532e-expose-the-panel-vendor-and-the-THP-stream-as.patch
+
 diff --git a/config/release.json b/config/release.json
-index 9aa18ea..74153c5 100644
+index 6fa0a41..669ac9a 100644
 --- a/config/release.json
 +++ b/config/release.json
-@@ -79,7 +79,7 @@
+@@ -80,7 +80,7 @@
        "linux/dts/piano-tsens.dtso"
      ],
      "root_policy": "LABEL=PIANOROOT",
@@ -11,7 +29,7 @@ index 9aa18ea..74153c5 100644
      "preferred_display_mode": {
        "board_compatible": "xiaomi,piano",
        "refresh_hz": 120,
-diff --git a/patches/linux/7.3/0261-drm-msm-dpu-tear-a-video-mode-slave-down-after-both-timing-e.patch b/patches/linux/7.3/0261-drm-msm-dpu-tear-a-video-mode-slave-down-after-both-timing-e.patch
+diff --git a/patches/linux/7.3/0465-drm-msm-dpu-tear-a-video-mode-slave-down-after-both-timing-e.patch b/patches/linux/7.3/0465-drm-msm-dpu-tear-a-video-mode-slave-down-after-both-timing-e.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..decdaf6072873e59245021028cb967dd518974b0
 GIT binary patch
@@ -64,7 +82,7 @@ h9;DHx0B#8+DuAUxCW4x3T)MgnTt<4PCVB>3Tma!`a25an
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0262-media-iris-expose-decode-order-output-and-deblocking-control.patch b/patches/linux/7.3/0262-media-iris-expose-decode-order-output-and-deblocking-control.patch
+diff --git a/patches/linux/7.3/0466-media-iris-expose-decode-order-output-and-deblocking-control.patch b/patches/linux/7.3/0466-media-iris-expose-decode-order-output-and-deblocking-control.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..82dda2993afb856fa112ddfbe90e50788fcfe0d9
 GIT binary patch
@@ -163,7 +181,7 @@ Mk)ElEo&gsZ0LaUQg8%>k
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0263-ASoC-qcom-sc8280xp-cap-the-piano-speaker-amplifier-gain.patch b/patches/linux/7.3/0263-ASoC-qcom-sc8280xp-cap-the-piano-speaker-amplifier-gain.patch
+diff --git a/patches/linux/7.3/0467-ASoC-qcom-sc8280xp-cap-the-piano-speaker-amplifier-gain.patch b/patches/linux/7.3/0467-ASoC-qcom-sc8280xp-cap-the-piano-speaker-amplifier-gain.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..5d00ace7a079b5e8e1c2ec98f63e028cd06974a5
 GIT binary patch
@@ -207,7 +225,7 @@ Yml6+^(t(!$y1EKnMtY_udInrv0N17Y9smFU
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0264-Input-nt36532e-expose-the-panel-vendor-and-the-THP-stream-as.patch b/patches/linux/7.3/0264-Input-nt36532e-expose-the-panel-vendor-and-the-THP-stream-as.patch
+diff --git a/patches/linux/7.3/0468-Input-nt36532e-expose-the-panel-vendor-and-the-THP-stream-as.patch b/patches/linux/7.3/0468-Input-nt36532e-expose-the-panel-vendor-and-the-THP-stream-as.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..19cd7885f2c4c7d3bd9a0cf51213f2a630f82b7f
 GIT binary patch
@@ -268,32 +286,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 4f05a92..5eaa4a5 100644
+index 70f4a56..b5cf579 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -11,8 +11,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "b2107541f2e746fe12cc78acc7ffeb8d042537c6",
--  "original_target_commit": "0fcc6edcfa2e057eaacea081ad8df9815327ea31",
-+  "target_tree": "e996b79fd52999fb0ac88b5d0596e78617923be0",
-+  "original_target_commit": "f52bb0df3c9e15b07bbc08c08948e309932c42b4",
+-  "target_tree": "e08cdb7d7004e4d7712f837e001fbcb140210865",
+-  "original_target_commit": "4fa107def5f72a6f31720c07997bb8695be3fad7",
++  "target_tree": "d5989f3a861c857a6c0432eac5e9e70f1ea4d123",
++  "original_target_commit": "e6ed21602ae72b26c548b6d53315e3cf5861de99",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -3432,6 +3432,58 @@
-         "url": "https://github.com/slwyts/Project-SunUEFI",
-         "drop_when": "The Linux AudioReach driver applies the stock DAP calibration in DSP transport-sized batches."
-       }
+@@ -3819,6 +3819,58 @@
+       "original_parent": "a962751efce7470c665f67217a50f65066de2e75",
+       "tree": "e08cdb7d7004e4d7712f837e001fbcb140210865",
+       "committer_date": "2026-11-24T17:22:58+08:00"
 +    },
 +    {
-+      "file": "0261-drm-msm-dpu-tear-a-video-mode-slave-down-after-both-timing-e.patch",
++      "file": "0465-drm-msm-dpu-tear-a-video-mode-slave-down-after-both-timing-e.patch",
 +      "sha256": "4b9a48f21c4caa369f95657c379909ff2cf3bd07de17d63a48d43c621809b9e5",
-+      "original_commit": "94f35146c225d7702ba3d1a9cafa35179e6b3d49",
-+      "original_parent": "0fcc6edcfa2e057eaacea081ad8df9815327ea31",
-+      "committer_date": "2026-11-21T17:05:07+08:00",
-+      "tree": "743b7a64f02b6974af7cf8ef3cf0e785e9205346",
++      "original_commit": "e95fac0a500533db85f1536c08caa096bd16a8cd",
++      "original_parent": "4fa107def5f72a6f31720c07997bb8695be3fad7",
++      "committer_date": "2026-11-25T12:19:24+08:00",
++      "tree": "4e9a7e4d733c378f12b014ba06e10c93e8fdecc0",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -301,12 +319,12 @@ index 4f05a92..5eaa4a5 100644
 +      }
 +    },
 +    {
-+      "file": "0262-media-iris-expose-decode-order-output-and-deblocking-control.patch",
++      "file": "0466-media-iris-expose-decode-order-output-and-deblocking-control.patch",
 +      "sha256": "1b734a3700d292e45cd512e05b5f3973174c2d336f3bca15dd0aafb1f72c599b",
-+      "original_commit": "5c09c1ee6e33f26fd654903b8d42ad6376cc39a0",
-+      "original_parent": "94f35146c225d7702ba3d1a9cafa35179e6b3d49",
-+      "committer_date": "2026-11-21T17:05:07+08:00",
-+      "tree": "7bd4238f2a392068a370d2080d10de7fbdb8cd5e",
++      "original_commit": "7d0b31de8331e12e1f77adb5f51a5b84d6113c1d",
++      "original_parent": "e95fac0a500533db85f1536c08caa096bd16a8cd",
++      "committer_date": "2026-11-25T12:19:24+08:00",
++      "tree": "7ecb46f445b9c773f01c2a88c1204a8d8f6fec60",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -314,12 +332,12 @@ index 4f05a92..5eaa4a5 100644
 +      }
 +    },
 +    {
-+      "file": "0263-ASoC-qcom-sc8280xp-cap-the-piano-speaker-amplifier-gain.patch",
++      "file": "0467-ASoC-qcom-sc8280xp-cap-the-piano-speaker-amplifier-gain.patch",
 +      "sha256": "fdbe94cc2839e47acc01362fa02d74b71173b48b463e28ad02c2b84bdb03c338",
-+      "original_commit": "52ce6f53cdf0fb3e65668df9917c6a89bd66ac47",
-+      "original_parent": "5c09c1ee6e33f26fd654903b8d42ad6376cc39a0",
-+      "committer_date": "2026-11-21T17:05:07+08:00",
-+      "tree": "bc77bce4b156890ac241f73d68f5fba60ef9ebc9",
++      "original_commit": "636fc0971f1dd6e294e91684e796d4f861214c82",
++      "original_parent": "7d0b31de8331e12e1f77adb5f51a5b84d6113c1d",
++      "committer_date": "2026-11-25T12:19:24+08:00",
++      "tree": "1c25bda23a7043bb57cd0b2121232808d55d1049",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -327,12 +345,12 @@ index 4f05a92..5eaa4a5 100644
 +      }
 +    },
 +    {
-+      "file": "0264-Input-nt36532e-expose-the-panel-vendor-and-the-THP-stream-as.patch",
++      "file": "0468-Input-nt36532e-expose-the-panel-vendor-and-the-THP-stream-as.patch",
 +      "sha256": "8ac1d9fee65d87d338d197d38e8f9e2d7ba7b6353dbcb44d3da681b5bb11cfbc",
-+      "original_commit": "f52bb0df3c9e15b07bbc08c08948e309932c42b4",
-+      "original_parent": "52ce6f53cdf0fb3e65668df9917c6a89bd66ac47",
-+      "committer_date": "2026-11-21T17:05:07+08:00",
-+      "tree": "e996b79fd52999fb0ac88b5d0596e78617923be0",
++      "original_commit": "e6ed21602ae72b26c548b6d53315e3cf5861de99",
++      "original_parent": "636fc0971f1dd6e294e91684e796d4f861214c82",
++      "committer_date": "2026-11-25T12:19:25+08:00",
++      "tree": "d5989f3a861c857a6c0432eac5e9e70f1ea4d123",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",

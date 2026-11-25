@@ -224,8 +224,11 @@ def check_bsp_port(sunuefi):
             if Path(row["path"]).name == name:
                 row["sha256"] = hashlib.sha256(target_file.read_bytes()).hexdigest()
         (folder / ffmpeg.BSP_SERIES_FILE).write_text(json.dumps(fresh))
-        assert fresh["series"][0]["sha256"] != json.loads(
-            (series / ffmpeg.BSP_SERIES_FILE).read_text())["series"][0]["sha256"]
+        original = json.loads((series / ffmpeg.BSP_SERIES_FILE).read_text())
+        def digest_of(document, wanted):
+            return next(row["sha256"] for row in document["series"]
+                        if Path(row["path"]).name == wanted)
+        assert digest_of(fresh, name) != digest_of(original, name), name
         try:
             ffmpeg.port_series(work / "fresh")
         except ValueError:

@@ -4,7 +4,7 @@
 # minkipc。QCBOR 仍按上游 config/fingerprint.json 的提交取用。
 %global qcbor_commit 590a23daf65af068cee81555c597063150e23539
 # 与 sources.lock.json 的 sunuefi pin 相同；tests/check_fingerprint_package.py 守住。
-%global sunuefi_commit edcf272063bfaf9be50f69c85961a5bbe1447b7b
+%global sunuefi_commit a6c321d0b3c8bf9ad2b1168904904909c1beee31
 
 Name:           piano-fingerprint
 Version:        0.2.0

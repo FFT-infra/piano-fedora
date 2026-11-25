@@ -5,7 +5,7 @@
 # 每份都带 manifest.json，逐个文件记 bytes 与 sha256，由 firmware-overlays.py
 # 在写盘前核对。提交号与 sources.lock.json 的 sunuefi pin 相同，
 # 由 tests/check_firmware_overlays.py 守住。
-%global sunuefi_commit edcf272063bfaf9be50f69c85961a5bbe1447b7b
+%global sunuefi_commit a6c321d0b3c8bf9ad2b1168904904909c1beee31
 
 Name:           xiaomi-piano-firmware
 Version:        20261113

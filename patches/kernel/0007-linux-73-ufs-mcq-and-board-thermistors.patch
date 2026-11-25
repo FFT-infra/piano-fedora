@@ -1,4 +1,21 @@
-diff --git a/patches/linux/7.3/0293-arm64-dts-qcom-sm8750-Enable-MCQ-support-for-UFS-controller.patch b/patches/linux/7.3/0293-arm64-dts-qcom-sm8750-Enable-MCQ-support-for-UFS-controller.patch
+From b1d729d3c73a5612a8327420da433add93f0d2e6 Mon Sep 17 00:00:00 2001
+From: piano-fedora <dev@piano.invalid>
+Date: Wed, 25 Nov 2026 12:21:37 +0800
+Subject: [PATCH] kernel: append 4 Piano adaptation(s)
+
+---
+ ...nable-MCQ-support-for-UFS-controller.patch | Bin 0 -> 1696 bytes
+ ...mit-the-UFS-MCQ-window-to-its-regist.patch | Bin 0 -> 1862 bytes
+ ...m8750-pmics-describe-the-PMK8550-ADC.patch | Bin 0 -> 1390 bytes
+ ...expose-board-thermistor-temperatures.patch | Bin 0 -> 8015 bytes
+ patches/linux/7.3/series.json                 |  56 +++++++++++++++++-
+ 5 files changed, 54 insertions(+), 2 deletions(-)
+ create mode 100644 patches/linux/7.3/0497-arm64-dts-qcom-sm8750-Enable-MCQ-support-for-UFS-controller.patch
+ create mode 100644 patches/linux/7.3/0498-arm64-dts-qcom-sm8750-Limit-the-UFS-MCQ-window-to-its-regist.patch
+ create mode 100644 patches/linux/7.3/0499-arm64-dts-qcom-sm8750-pmics-describe-the-PMK8550-ADC.patch
+ create mode 100644 patches/linux/7.3/0500-arm64-dts-qcom-piano-expose-board-thermistor-temperatures.patch
+
+diff --git a/patches/linux/7.3/0497-arm64-dts-qcom-sm8750-Enable-MCQ-support-for-UFS-controller.patch b/patches/linux/7.3/0497-arm64-dts-qcom-sm8750-Enable-MCQ-support-for-UFS-controller.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..5844a22b5af5ccfe1ca8eb78b85819c17181131e
 GIT binary patch
@@ -30,7 +47,7 @@ AF8}}l
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0294-arm64-dts-qcom-sm8750-Limit-the-UFS-MCQ-window-to-its-regist.patch b/patches/linux/7.3/0294-arm64-dts-qcom-sm8750-Limit-the-UFS-MCQ-window-to-its-regist.patch
+diff --git a/patches/linux/7.3/0498-arm64-dts-qcom-sm8750-Limit-the-UFS-MCQ-window-to-its-regist.patch b/patches/linux/7.3/0498-arm64-dts-qcom-sm8750-Limit-the-UFS-MCQ-window-to-its-regist.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..42259854e2f22fff98a301e3ec306651b0069fe8
 GIT binary patch
@@ -65,7 +82,7 @@ lP5~)40vQTcP>@jxu@;tU3Nk7|&ev7oGSV|O(KF!U0svH{Dq8>m
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0295-arm64-dts-qcom-sm8750-pmics-describe-the-PMK8550-ADC.patch b/patches/linux/7.3/0295-arm64-dts-qcom-sm8750-pmics-describe-the-PMK8550-ADC.patch
+diff --git a/patches/linux/7.3/0499-arm64-dts-qcom-sm8750-pmics-describe-the-PMK8550-ADC.patch b/patches/linux/7.3/0499-arm64-dts-qcom-sm8750-pmics-describe-the-PMK8550-ADC.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..a19b77ba9d915ad06a7da2bc5de5eadc4859ca7c
 GIT binary patch
@@ -92,7 +109,7 @@ otAdt3mjY)&E{Io_8lPgN04j$Zj1{W6bafTDjPy)R^bEMT05DabiU0rr
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0296-arm64-dts-qcom-piano-expose-board-thermistor-temperatures.patch b/patches/linux/7.3/0296-arm64-dts-qcom-piano-expose-board-thermistor-temperatures.patch
+diff --git a/patches/linux/7.3/0500-arm64-dts-qcom-piano-expose-board-thermistor-temperatures.patch b/patches/linux/7.3/0500-arm64-dts-qcom-piano-expose-board-thermistor-temperatures.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..79428ad6666e39264ae0455ddbf8089b57a9bbf3
 GIT binary patch
@@ -147,32 +164,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 751b2b3..c77abf1 100644
+index c3aea84..84f5f67 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -11,8 +11,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "93120432311a16ca79709faa1de6047041eb10b4",
--  "original_target_commit": "fb18137a90011478a660a93813308f1f04211303",
-+  "target_tree": "a152a01d87d13150d5145b24ce0a6cecf30aa3ef",
-+  "original_target_commit": "5c9c8c6e1b78858e60c87dc2bda1056ab554cfd9",
+-  "target_tree": "7ebe5d8955e454e86dd00cc89834237520cacd17",
+-  "original_target_commit": "4466e9358a87d498125ac19c2b285fbe66419e39",
++  "target_tree": "5a404cc57cc24a8575f50345e1094afebf8f20c2",
++  "original_target_commit": "1ef02acaf4853ca2cc842dc9d812e55173693334",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -3848,6 +3848,58 @@
+@@ -4235,6 +4235,58 @@
          "url": "https://github.com/slwyts/Project-SunUEFI",
          "drop_when": "This Piano device adaptation is not part of the upstream sealed series; remove it when the corresponding subsystem fix is accepted upstream and the sealed series carries it."
        }
 +    },
 +    {
-+      "file": "0293-arm64-dts-qcom-sm8750-Enable-MCQ-support-for-UFS-controller.patch",
++      "file": "0497-arm64-dts-qcom-sm8750-Enable-MCQ-support-for-UFS-controller.patch",
 +      "sha256": "75262a99fa7f9ebce9437e2bb2c9bca2c5133304e788fc5611bfa5ef5a8a004c",
-+      "original_commit": "e849f79cd516deb04a740fb8356855a047c5aff1",
-+      "original_parent": "fb18137a90011478a660a93813308f1f04211303",
-+      "committer_date": "2026-11-21T17:05:12+08:00",
-+      "tree": "323c8ebab9ff3f4770dc884c2d2566b43e456054",
++      "original_commit": "1c2a62cffbe140fda9d404a6ffd582fb3a2a6b74",
++      "original_parent": "4466e9358a87d498125ac19c2b285fbe66419e39",
++      "committer_date": "2026-11-25T12:19:30+08:00",
++      "tree": "f916ff8d85bf1b91618c12813cb169df3f0dba7c",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -180,12 +197,12 @@ index 751b2b3..c77abf1 100644
 +      }
 +    },
 +    {
-+      "file": "0294-arm64-dts-qcom-sm8750-Limit-the-UFS-MCQ-window-to-its-regist.patch",
++      "file": "0498-arm64-dts-qcom-sm8750-Limit-the-UFS-MCQ-window-to-its-regist.patch",
 +      "sha256": "d5f476a20080e884933b7dbfd01fceff9bdc95ddc82ab2d45c645491b47cea34",
-+      "original_commit": "bea6a41fa67710addc1801ba1a3734be6e781a0e",
-+      "original_parent": "e849f79cd516deb04a740fb8356855a047c5aff1",
-+      "committer_date": "2026-11-21T17:05:12+08:00",
-+      "tree": "7a823ab5f2f9b6d9dd02d655b174f287edcc7f78",
++      "original_commit": "5a35553514d4977ba883bfdc1071572dddf32229",
++      "original_parent": "1c2a62cffbe140fda9d404a6ffd582fb3a2a6b74",
++      "committer_date": "2026-11-25T12:19:30+08:00",
++      "tree": "81bb7b66992392b3c3d04bc290752c5c2676f47f",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -193,12 +210,12 @@ index 751b2b3..c77abf1 100644
 +      }
 +    },
 +    {
-+      "file": "0295-arm64-dts-qcom-sm8750-pmics-describe-the-PMK8550-ADC.patch",
++      "file": "0499-arm64-dts-qcom-sm8750-pmics-describe-the-PMK8550-ADC.patch",
 +      "sha256": "1a9b39807aadda2c06e1776b47bf86a637bd1523d3496172b4a71dcacb700461",
-+      "original_commit": "aeffa08bb728af995726b363501b5835169aba25",
-+      "original_parent": "bea6a41fa67710addc1801ba1a3734be6e781a0e",
-+      "committer_date": "2026-11-21T17:05:12+08:00",
-+      "tree": "98afa1a718bc10494e4c4d3c97540aaa9106e647",
++      "original_commit": "251528dac53516a0bde8846b7d2324f37c6f0cff",
++      "original_parent": "5a35553514d4977ba883bfdc1071572dddf32229",
++      "committer_date": "2026-11-25T12:19:30+08:00",
++      "tree": "6e29c91503afc6dc9ce62c7785e2c4b64d1b24d4",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -206,12 +223,12 @@ index 751b2b3..c77abf1 100644
 +      }
 +    },
 +    {
-+      "file": "0296-arm64-dts-qcom-piano-expose-board-thermistor-temperatures.patch",
++      "file": "0500-arm64-dts-qcom-piano-expose-board-thermistor-temperatures.patch",
 +      "sha256": "53922532042eac612182f946d152aa51a76250f7891ffe0777aa002aaa17cfc2",
-+      "original_commit": "5c9c8c6e1b78858e60c87dc2bda1056ab554cfd9",
-+      "original_parent": "aeffa08bb728af995726b363501b5835169aba25",
-+      "committer_date": "2026-11-21T17:05:12+08:00",
-+      "tree": "a152a01d87d13150d5145b24ce0a6cecf30aa3ef",
++      "original_commit": "1ef02acaf4853ca2cc842dc9d812e55173693334",
++      "original_parent": "251528dac53516a0bde8846b7d2324f37c6f0cff",
++      "committer_date": "2026-11-25T12:19:30+08:00",
++      "tree": "5a404cc57cc24a8575f50345e1094afebf8f20c2",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",

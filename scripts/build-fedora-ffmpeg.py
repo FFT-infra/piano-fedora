@@ -76,8 +76,10 @@ PORT_MAIL_HEADER = "From: slwyts <slwyts@foxmail.com>\n"
 # 每一条的 sha256 与 series.json 记录的一致。单独钉一份是为了在 upstream
 # 原地改写同一版本号时仍然失败，而不是安静地跟着换补丁。
 PORT_SHA256 = {
+    "0000-v4l2m2m-count-buffer-once.patch":
+        "27372b91dd892ec50903dd140837bdf0cce37b46345f7492cd2c1e435349a5ae",
     "0004-v4l2m2m-ffmpeg9-stateful.patch":
-        "ad7b86872378f38fbbdf8a24e31726f62a765869b6f910322be6a8d8695b1a3c",
+        "acb643fd2d3d00662b213cbec5813d097da8d1a1e0d5e3a903c11f847f3b8a2a",
     "0005-v4l2m2m-orphan-capture-ffmpeg9.patch":
         "b35c619d8467a15144db5ba58b4015884de71167f32b0c31fdb6f3b834e29bb3",
     "0006-v4l2m2m-p010-capture.patch":

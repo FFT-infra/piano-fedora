@@ -1,7 +1,7 @@
 %global _annotated_build 0
 %global debug_package %{nil}
 # 与 sources.lock.json 的 sunuefi pin 相同；tests/check_camera_package.py 守住。
-%global sunuefi_commit edcf272063bfaf9be50f69c85961a5bbe1447b7b
+%global sunuefi_commit a6c321d0b3c8bf9ad2b1168904904909c1beee31
 
 Name:           piano-camera
 Version:        0.1.0

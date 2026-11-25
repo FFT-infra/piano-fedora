@@ -2,7 +2,7 @@
 
 Name:           iio-sensor-proxy-ssc
 Version:        3.9
-Release:        3%{?dist}
+Release:        4%{?dist}
 Provides:       iio-sensor-proxy = %{version}-%{release}
 Provides:       iio-sensor-proxy%{?_isa} = %{version}-%{release}
 Obsoletes:      iio-sensor-proxy < %{version}-%{release}
@@ -15,6 +15,9 @@ Source1:        49-iio-sensor-proxy.rules
 # service restarts. The device runtime always applied it; the matrix did not,
 # so the two producers shipped different binaries under the same NEVRA.
 Patch0:         ssc-claim-race.patch
+# Upstream 5/series.json: report a failed SSC start to pending D-Bus clients
+# and let them claim the sensor again instead of polling forever.
+Patch1:         ssc-report-polling-failure.patch
 
 ExclusiveArch:  aarch64
 
@@ -77,6 +80,10 @@ systemctl enable iio-sensor-proxy.service || :
 %systemd_postun_with_restart iio-sensor-proxy.service
 
 %changelog
+* Tue Nov 25 2026 FFT-infra <dev@piano.invalid> - 3.9-4
+- 跟到 SunUEFI v1.0.0：SSC 启动失败会回给等待中的 D-Bus 客户端，
+  客户端可重新 claim，不再让 SensorProxy 占满一个 CPU 核
+
 * Mon Oct 19 2026 FFT-infra <dev@piano.invalid> - 3.9-3
 - Apply the SSC claim-race fix so the matrix matches the device runtime build
 
