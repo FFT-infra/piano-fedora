@@ -74,6 +74,22 @@ KNOWN_MISSING = {
 } | {("piano-cdsp-fastrpc.dtso",
        f"/soc/remoteproc-cdsp@32300000/glink-edge/qcom,fastrpc/compute-cb@{index}")
       for index in range(1, 13)}
+# v1.0.0 把 CAMSS 内置的 CSIPHY 拆成独立的 qcom,sm8750-csi2-phy 节点。厂商
+# DT 仍是老结构（CSIPHY 在 CAMSS 里），也没有主线新增的 CSI2 PHY regulator、
+# ISP 端口 endpoint 和 cci/qupv3 下的 camera@10 endpoint；这些目标只在主线
+# 侧存在，属于两条血缘的正常差异。
+KNOWN_MISSING |= {
+    ("piano-camera-csi2-phys.dtso", "/soc/rsc@16500000/regulators-1"),
+    ("piano-camera-csi2-phys.dtso", "/soc/rsc@16500000/regulators-7"),
+    ("piano-camera-csi2-phys.dtso", "/soc/rsc@16500000/regulators-6/ldo3"),
+    ("piano-camera-csi2-phys.dtso", "/soc/cci-ml@ac7b000/i2c-bus@1/camera@10/port/endpoint"),
+    ("piano-camera-csi2-phys.dtso", "/soc/qcom,qupv3_2_geni_se@8c0000/i2c@884000/camera@10/port/endpoint"),
+    ("piano-camera-csi2-phys.dtso", "/soc/isp-ml@ad27000"),
+    ("piano-camera-csi2-phys.dtso", "/soc/isp-ml@ad27000/ports/port@1/endpoint"),
+    ("piano-camera-csi2-phys.dtso", "/soc/isp-ml@ad27000/ports/port@4/endpoint"),
+    ("piano-camera-csi2-phys.dtso", "/soc/qcom,csiphy1@adab000"),
+    ("piano-camera-csi2-phys.dtso", "/soc/qcom,csiphy4@adb1000"),
+}
 
 
 def classify_missing(overlays):
@@ -241,6 +257,8 @@ def main():
     ap.add_argument("--vendor", type=Path, required=True)
     ap.add_argument("--sunuefi", type=Path, required=True)
     ap.add_argument("--dtc", type=Path)
+    ap.add_argument("--kernel-include", type=Path,
+                    help="mainline kernel include/ for overlays that use dt-bindings")
     ap.add_argument("--dtb", type=Path)
     ap.add_argument("--output", type=Path, required=True)
     args = ap.parse_args()
@@ -278,8 +296,14 @@ def main():
             work = Path(directory)
             dts = args.vendor / "arch/arm64/boot/dts/vendor/qcom"
             dtsi = args.sunuefi / "linux/dts"
+            # 上游新增的 overlay 可能引用主线 dt-bindings（例如 CSI2 PHY），
+            # 厂商 include 树里没有这些头；先查主线稀疏检出的 include。
+            kernel_include = args.sunuefi / "upstream/linux-piano/include"
+            include_dirs = [dtsi, dts, args.vendor / "include"]
+            if kernel_include.is_dir():
+                include_dirs.insert(1, kernel_include)
             compiled = compile_dtb(tool, preprocess(
-                tool["cpp"], source, [dtsi, dts, args.vendor / "include"], work / "in.pp"),
+                tool["cpp"], source, include_dirs, work / "in.pp"),
                 work / "out.dtbo")
             data = compiled.read_bytes()
         entry = {"overlay": source.name, "targets": []}
