@@ -36,6 +36,7 @@
 | DisplayPort 音频 | topology 与 UCM 都含 `DISPLAY_PORT_RX_0`，`SectionDevice."HDMI"` 走 `hw:${CardId},1` | 同一份 BSP m4 与 UCM | 链路已接通，未实机验收 |
 | exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编入内核 | 文件系统读写 | 外置存储挂载未验证 |
 | 10-bit 与 144 Hz | 面板与驱动支持，未量测色深与刷新率 | 面板 10bpc，144 Hz 可选 | 保持默认稳定档（KDE 120Hz，GNOME 可选 144Hz） |
+| 低分辨率源模式 | 完成：内核提供 2400×1602、1280×854 等源模式，DPU 硬件缩放到全屏；Mesa 侧补 renderonly 高度对齐 | 同一份 Mesa 补丁（`patches/mesa/0002`） | 设备上切这两种模式未验 |
 
 ---
 
@@ -113,7 +114,6 @@ rpm -q mutter libfprint fprintd tuned glibc-langpack-zh
 | 项 | 上游做法 | Fedora 现状 | 触发与计划 |
 | --- | --- | --- | --- |
 | 启动项保留 | `tools/package/95-piano-boot-history.install` 在 kernel-install 后只留最新版与一套回退 | 已实现：`piano-kernel-esp-update` 只留当前、更新前那一代与正在运行的内核；非 piano 条目与固定 `sunuefi.efi` 不动 | 主机侧单测覆盖（含「新内核起不来、运行旧内核」）；设备上验 ESP 空间与回退启动未做 |
-| Mesa renderonly 高度对齐 | `patches/mesa/27.0/0001-freedreno-renderonly-height-alignment.patch`，修 2400×1602/1280×854 资源导入 | Fedora Mesa 26.2.7 只带 A830v1 chip-id；已核实 26.2.7 的 `freedreno_resource.c` 与上游补丁上下文一致但缺高度对齐，缺陷在当前产品中存在 | 已知问题已登记在 `known-issues.md`；Fedora Mesa 26.3 进稳定库后评估移植 |
 | PipeWire v4l2/libcamera | `patches/pipewire/1.6.11/0009`–`0015` | 只发 `piano-pipewire-gstreamer`，`pipewire-libs` 用 Fedora 的 | 先在设备上验证 GNOME Snapshot / Plasma Camera 是否受影响；有具体失败再考虑替换 `pipewire-libs` 或等 Fedora |
 | Droidloom | `config/droidloom.json` 与原生包，Debian 已实机 | Fedora 侧没有 droidloom/waydroid | 产品方向决策；要做就单独做 RPM 化或 Waydroid，不塞进内核 pin |
 | SteamOS / Proton / FEX | SteamOS 镜像与预装 | 不复制 SteamOS 镜像 | N/A；Fedora 侧由用户自行安装 Steam/Proton/FEX，若要预装另立产品决策 |

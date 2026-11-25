@@ -230,7 +230,7 @@
 
 - **现象**：KDE 切到 2400×1602 或 1280×854 时，Freedreno 可能拒绝导入显示缓冲，画面不切换。
 - **原因**：Fedora Mesa 26.2.7 的 `freedreno_resource.c` 只对齐扫描输出宽度，没有把高度对齐到 4 行；上游 v1.0.0 的 `patches/mesa/27.0/0001-freedreno-renderonly-height-alignment.patch` 修的是 Mesa 27.0，不能直接套到 Fedora 26.2.7。
-- **现状**：未移植，按 `docs/upstream-parity.md` 第五节等 Fedora Mesa 26.3 进稳定库后再评估。KDE 默认 120 Hz 与 GNOME 不受影响。
+- **现状**：已修。`patches/mesa/0002-freedreno-renderonly-height-alignment.patch` 取自上游 v1.0.0，补丁正文与 Fedora Mesa 26.2.7 的 `freedreno_resource.c` 上下文一致（hunk 偏移 21 行，`is_a6xx()` 该文件本来就在用），由 `scripts/build-fedora-mesa.py` 随 A830v1 chip-id 一起应用。KDE 默认 120 Hz 与 GNOME 不受影响。
 
 ### 设备树 binding 与驱动 compatible 不一致（仅 dtbs_check）
 

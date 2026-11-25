@@ -21,6 +21,12 @@ SPEC_SHA256 = "b1eac36637faf250b66c5ab24c59697d59f67f2e27fc40be08102c911cd30999"
 TARBALL_SHA256 = "04294f75d22e9f61cd1e050206bc48b3d39366e788f1803a3368e3d5a872ce18"
 PATCH = "0001-freedreno-Add-chip-id-support-for-A830v1.patch"
 PATCH_SHA256 = "01bc8e6b35019f7d6b84bc2d919a60686ffb1742d4df04467a89d3aac22a7380"
+# 上游 v1.0.0 把这条从 SteamOS 专用提到三个发行版共用：非四行对齐的高度
+# 会让 Freedreno 拒绝导入线性显示缓冲，2400×1602 与 1280×854 切不过去。
+# 补丁正文与 Fedora Mesa 26.2.7 的 freedreno_resource.c 上下文一致，
+# hunk 偏移 21 行，is_a6xx() 在该文件里本来就在用。
+RENDERONLY_PATCH = "0002-freedreno-renderonly-height-alignment.patch"
+RENDERONLY_SHA256 = "c5ff27aeabca500a8cf095cee1cdd5b47ed0bfee3d96c537117320bfae854976"
 # 官方 Mesa 的版本号会一直往上走，26.2.7-1.piano1 永远可能落后一档。
 # 抬 epoch 能压住，但 epoch 卸不掉：补丁进了上游之后，回到 Fedora 的 mesa
 # 要每台设备手工 distro-sync。这里改用 RPM Fusion 对同一个包的做法：换包名，
@@ -93,7 +99,9 @@ def adapt_spec(raw):
             f"Obsoletes:      {fedora} < %{{version}}-%{{release}}\n"
             f"Conflicts:      {fedora}%{{?_isa}}\n"), 1)
     return text.replace(SPEC_DESCRIPTION,
-                        "\nPatch999:       piano-a830v1.patch\n\n%description\n", 1)
+                        "\nPatch999:       piano-a830v1.patch\n"
+                        "Patch998:       piano-renderonly-height.patch\n"
+                        "\n%description\n", 1)
 
 
 def driver_proof(root):
@@ -122,6 +130,9 @@ def build(sun, output):
     patch = source / "patches" / PATCH
     if sha256(patch) != PATCH_SHA256:
         raise ValueError("piano Mesa patch changed")
+    renderonly = ROOT / "patches" / "mesa" / RENDERONLY_PATCH
+    if sha256(renderonly) != RENDERONLY_SHA256:
+        raise ValueError("renderonly height alignment patch changed")
     output.mkdir(parents=True)
     srpm = output / "mesa.src.rpm"
     with urllib.request.urlopen(SOURCE_URL, timeout=60) as incoming, srpm.open("xb") as stream:
@@ -139,6 +150,7 @@ def build(sun, output):
         raise ValueError("Mesa source tarball differs from the official release")
     spec.write_text(effective)
     shutil.copyfile(patch, top / "SOURCES/piano-a830v1.patch")
+    shutil.copyfile(renderonly, top / "SOURCES/piano-renderonly-height.patch")
     # 复用 Fedora 的完整依赖和打包配方，不手列 Mesa 的大量构建依赖。
     install_build_dependencies(spec, srpm, top)
     # -ba 同时产出二进制与源包。COPR 公开实例没有二进制上传入口，发布走
