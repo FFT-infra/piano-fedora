@@ -356,6 +356,35 @@ def check_esp_layout(failures):
             failures.append("history retention removed a non-piano boot entry")
         if sorted(record.get("history", {}).get("removed", [])) != ["7.3.1", "7.3.2"]:
             failures.append(f"history record removed {record.get('history')}")
+    # 新内核已写入但起不来时，启动项里最新的是坏内核，正在运行的旧内核
+    # 必须留在 keep 里。
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp)
+        entries = esp / "loader" / "entries"
+        entries.mkdir(parents=True)
+        image = esp / "image.src"; image.write_bytes(b"new-image")
+        initramfs = esp / "initramfs.src"; initramfs.write_bytes(b"new-initrd")
+        dtb_src = esp / "board.src"; dtb_src.write_bytes(b"board-dtb")
+        for version in ("7.3.1", "7.3.2", "7.3.3", "7.3.4"):
+            (esp / "linux" / version).mkdir(parents=True)
+            for name in ("linux", "initrd", "board.dtb"):
+                (esp / "linux" / version / name).write_bytes(b"old")
+            (entries / f"linux-{version}.conf").write_text(
+                f"title Linux\nversion {version}\nlinux /linux/{version}/linux\n"
+                f"initrd /linux/{version}/initrd\ndevicetree /linux/{version}/board.dtb\n"
+                f"options root=LABEL=PIANOROOT rw\n", encoding="utf-8")
+        fields = {"options": "root=LABEL=PIANOROOT rw", "version": "7.3.4"}
+        record = {"changed": {}}
+        # 7.3.5 已写入但起不来，运行中的是 7.3.3，启动项最新的是坏掉的 7.3.4。
+        # 7.3.4（previous）与 7.3.3（running）都在 keep 里；只剩 7.3.1/7.3.2 被清掉。
+        record = {"changed": {}}
+        updater.update_bls(esp, fields, image, initramfs, dtb_src, "7.3.5", False, record,
+                           running="7.3.3")
+        kept = sorted(p.name for p in (esp / "linux").iterdir())
+        if kept != ["7.3.3", "7.3.4", "7.3.5"]:
+            failures.append(f"history retention kept {kept}, expected running 7.3.3 kept")
+        if sorted(record.get("history", {}).get("removed", [])) != ["7.3.1", "7.3.2"]:
+            failures.append(f"running-kernel retention removed {record.get('history')}")
     # 版本化 UKI 同样只留两代；固定 sunuefi.efi 是固件契约，不能被当历史删掉。
     with tempfile.TemporaryDirectory() as tmp:
         esp = Path(tmp)

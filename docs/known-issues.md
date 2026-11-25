@@ -224,6 +224,20 @@
 
 ---
 
+## 显示与关屏
+
+### KDE 切 2400×1602 / 1280×854 可能失败
+
+- **现象**：KDE 切到 2400×1602 或 1280×854 时，Freedreno 可能拒绝导入显示缓冲，画面不切换。
+- **原因**：Fedora Mesa 26.2.7 的 `freedreno_resource.c` 只对齐扫描输出宽度，没有把高度对齐到 4 行；上游 v1.0.0 的 `patches/mesa/27.0/0001-freedreno-renderonly-height-alignment.patch` 修的是 Mesa 27.0，不能直接套到 Fedora 26.2.7。
+- **现状**：未移植，按 `docs/upstream-parity.md` 第五节等 Fedora Mesa 26.3 进稳定库后再评估。KDE 默认 120 Hz 与 GNOME 不受影响。
+
+### 设备树 binding 与驱动 compatible 不一致（仅 dtbs_check）
+
+- **现象**：`novatek,nt36532.yaml` 的 compatible 枚举与 `panel-novatek-nt36532.c` 的匹配表不一致，树内也没有 DTS 使用这些 compatible。
+- **影响**：只影响 `make dtbs_check` 一类的文档/绑定校验；Piano 的 DTS 走 `novatek,nt37801`，当前编译、DTB 与运行不受影响。
+- **现状**：来自上游封存序列的 0470，未在本仓库改写；等上游修正或下次重放时一并处理。
+
 ## 触屏、网络、音频与相机 <a id="触屏网络音频与相机"></a>
 
 - **浏览器硬件解码差异**：

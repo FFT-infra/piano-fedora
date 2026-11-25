@@ -26,7 +26,7 @@ on:
         required: true
         default: ""
       ffmpeg_run_id:
-        description: "提供 piano-fedora-ffmpeg 的成功 run；发布构建必填"
+        description: "提供带 build_ffmpeg=true 的 host-check 成功 run（build-ffmpeg 单独的 run 不被接受）；发布构建必填"
         required: true
         default: ""
 
