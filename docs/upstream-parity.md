@@ -101,3 +101,18 @@ rpm -q mutter libfprint fprintd tuned glibc-langpack-zh
 ```
 
 上游基线对照源文件位于 `build/test-sources/sunuefi`（`a6c321d`，tag `v1.0.0`）的 `tools/build_piano_fingerprint.py`、`linux/userspace/camera/`、`linux/desktops/`、`patches/libfprint/` 与 `docs/status.md`。
+
+---
+
+## 五、未适配与延后
+
+以下能力上游 v1.0.0 有、Fedora 侧暂未实现，均已登记触发条件，不按「已完成」计。另有 10-bit/144 Hz、DP 音频、外接存储、IR/RGB、充电温控等属于「代码在、设备未验收」，与本表分开记账。
+
+| 项 | 上游做法 | Fedora 现状 | 触发与计划 |
+| --- | --- | --- | --- |
+| 启动项保留 | `tools/package/95-piano-boot-history.install` 在 kernel-install 后只留最新版与一套回退 | `piano-kernel-esp-update` 保留所有旧 release，512 MiB ESP 会持续累积 | 下一次内核包改动时实现：只留当前与一套回退；先补主机侧单测，再在设备上验证 ESP 空间与回退启动 |
+| Mesa renderonly 高度对齐 | `patches/mesa/27.0/0001-freedreno-renderonly-height-alignment.patch`，修 2400×1602/1280×854 资源导入 | Fedora Mesa 26.2.7 只带 A830v1 chip-id | Fedora 26.3 进稳定库后测这条补丁是否适用于 26.3/27.0；适用则加进 `build-fedora-mesa.py`，不适用记 N/A |
+| PipeWire v4l2/libcamera | `patches/pipewire/1.6.11/0009`–`0015` | 只发 `piano-pipewire-gstreamer`，`pipewire-libs` 用 Fedora 的 | 先在设备上验证 GNOME Snapshot / Plasma Camera 是否受影响；有具体失败再考虑替换 `pipewire-libs` 或等 Fedora |
+| Droidloom | `config/droidloom.json` 与原生包，Debian 已实机 | Fedora 侧没有 droidloom/waydroid | 产品方向决策；要做就单独做 RPM 化或 Waydroid，不塞进内核 pin |
+| SteamOS / Proton / FEX | SteamOS 镜像与预装 | 不复制 SteamOS 镜像 | N/A；Fedora 侧由用户自行安装 Steam/Proton/FEX，若要预装另立产品决策 |
+| ACPI / Windows | `uefi/components/acpi` 随产品固件编入 | UEFI 产物已带；Linux 走 DTB，不受影响 | Windows 镜像不在本仓库范围；ACPI 只随 UEFI 产物交付 |
