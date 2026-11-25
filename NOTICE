@@ -31,6 +31,10 @@ Copyright (c) 2026 phxinyang
 上游仓库、锁定 commit 与各自角色见 `sources.lock.json`。各组件按自身许可
 取用，不复制进本仓库。`piano-firmware` 许可不明，只在构建时取用，不入库。
 
+本仓库的启动链、内核打包、设备树 overlay 与 UEFI 补丁引用或移植自
+[Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)（作者 slwyts 与
+其贡献者）。引用、移植或再分发这些内容时请保留本署名，并链接回该仓库。
+
 SunUEFI 的来源、文件级许可与第三方材料见
 [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI) 的
 `LICENSE.md`、`THIRD_PARTY.md` 与各文件 SPDX 声明。

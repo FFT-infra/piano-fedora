@@ -87,6 +87,10 @@ ARCHIVE_FILES = BUNDLE_MEMBERS + (
     "flash-linux.bat",
     "flash-linux.sh",
     "make-device-boot.sh",
+    # SunUEFI 的 README 要求基于它的项目在发布页或说明页注明来源；归档
+    # 脱离 GitHub 单独传播，所以随归档带一份归属说明与许可正文。
+    "NOTICE",
+    "LICENSE",
 )
 
 _NAME = re.compile(r"[a-z0-9][a-z0-9.-]*")
