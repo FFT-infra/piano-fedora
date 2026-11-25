@@ -1,6 +1,8 @@
 # 与上游的功能差距
 
 > **说明**：本文档对照上游 [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)（首次核对 2026-11-11，当前构建 pin 见 `sources.lock.json`）及相关生态组件，汇总当前支持矩阵、架构设计分歧与基线复核指引。
+>
+> 表中标「完成」的桌面补丁（KDE HDR 背光恢复、夜灯 mutter gamma、自动亮度、键盘背光热插拔、GDM 重认证、GCC 指纹等待、GTK3 XI2、mutter 触摸取消）位于 `piano-fedora-extras` 可选包；默认镜像使用 Fedora 原版组件，装 extras 后对应能力才生效。
 
 ---
 
@@ -115,4 +117,5 @@ rpm -q mutter libfprint fprintd tuned glibc-langpack-zh
 | PipeWire v4l2/libcamera | `patches/pipewire/1.6.11/0009`–`0015` | 只发 `piano-pipewire-gstreamer`，`pipewire-libs` 用 Fedora 的 | 先在设备上验证 GNOME Snapshot / Plasma Camera 是否受影响；有具体失败再考虑替换 `pipewire-libs` 或等 Fedora |
 | Droidloom | `config/droidloom.json` 与原生包，Debian 已实机 | Fedora 侧没有 droidloom/waydroid | 产品方向决策；要做就单独做 RPM 化或 Waydroid，不塞进内核 pin |
 | SteamOS / Proton / FEX | SteamOS 镜像与预装 | 不复制 SteamOS 镜像 | N/A；Fedora 侧由用户自行安装 Steam/Proton/FEX，若要预装另立产品决策 |
+| Denial 桌面 | `linux/desktops` 的 Denial 配方 | 仓库有 `denial` 档，但 `packages.denialwm.org` 目前只有 `fedora/44` 仓库，Fedora 45 镜像未验证 | 等 Denial 提供 `fedora/45`，或在 F45 上验证 F44 仓库与精确 pin 后再纳入发布 |
 | ACPI / Windows | `uefi/components/acpi` 随产品固件编入 | UEFI 产物已带；Linux 走 DTB，不受影响 | Windows 镜像不在本仓库范围；ACPI 只随 UEFI 产物交付 |
