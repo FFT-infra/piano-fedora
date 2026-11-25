@@ -118,4 +118,7 @@ rpm -q mutter libfprint fprintd tuned glibc-langpack-zh
 | Droidloom | `config/droidloom.json` 与原生包，Debian 已实机 | Fedora 侧没有 droidloom/waydroid | 产品方向决策；要做就单独做 RPM 化或 Waydroid，不塞进内核 pin |
 | SteamOS / Proton / FEX | SteamOS 镜像与预装 | 不复制 SteamOS 镜像 | N/A；Fedora 侧由用户自行安装 Steam/Proton/FEX，若要预装另立产品决策 |
 | Denial 桌面 | `linux/desktops` 的 Denial 配方 | 仓库有 `denial` 档，但 `packages.denialwm.org` 目前只有 `fedora/44` 仓库，Fedora 45 镜像未验证 | 等 Denial 提供 `fedora/45`，或在 F45 上验证 F44 仓库与精确 pin 后再纳入发布 |
+| FFmpeg 9.1 系列 | `patches/ffmpeg/9.1/series.json` | Fedora 45 仍是 FFmpeg 9.0.2，当前 port 钉在 9.0.2 的 `0000`/`0004`–`0010` | Fedora 升到 9.1 后按新 SRPM 重 port；不提前套 9.1 补丁 |
+
+Debian/KDE 相机栈的 `libcamera/0.8.0`、`plasma-camera`、`qt6-multimedia`、`demosaic` 补丁对应上游 Debian/Arch 的相机路径；Fedora 默认走 `piano-camerad` + v4l2loopback（WirePlumber 明确关闭 `monitor.libcamera`），这些补丁不适用。`patches/v4l2loopback/0.15.4` 则由 `prepare-runtime-kernel.py` 消费。
 | ACPI / Windows | `uefi/components/acpi` 随产品固件编入 | UEFI 产物已带；Linux 走 DTB，不受影响 | Windows 镜像不在本仓库范围；ACPI 只随 UEFI 产物交付 |
