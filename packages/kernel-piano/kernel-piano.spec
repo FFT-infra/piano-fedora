@@ -164,7 +164,7 @@ depmod -a "$RELEASE" || exit 1
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
-* Tue Nov 25 2026 FFT-infra <dev@piano.invalid> - 7.3.3-9.piano
+* Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 7.3.3-9.piano
 - 封存序列跟到 SunUEFI v1.0.0（a6c321d）：上游 290 条，自有 36 条后移到
   0465–0500，末端树 e08cdb7d → 5a404cc5。上游新增相机 CSI2 PHY 重构、
   触屏关屏不阻塞显示管线（0464）与关屏充电查询修复；0464 与自有 0468

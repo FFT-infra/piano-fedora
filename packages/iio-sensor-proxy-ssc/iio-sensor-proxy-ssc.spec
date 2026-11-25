@@ -80,7 +80,7 @@ systemctl enable iio-sensor-proxy.service || :
 %systemd_postun_with_restart iio-sensor-proxy.service
 
 %changelog
-* Tue Nov 25 2026 FFT-infra <dev@piano.invalid> - 3.9-4
+* Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 3.9-4
 - 跟到 SunUEFI v1.0.0：SSC 启动失败会回给等待中的 D-Bus 客户端，
   客户端可重新 claim，不再让 SensorProxy 占满一个 CPU 核
 

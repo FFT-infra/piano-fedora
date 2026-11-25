@@ -5,7 +5,7 @@
 
 Name:           piano-camera
 Version:        0.1.0
-Release:        9%{?dist}
+Release:        10%{?dist}
 Summary:        Camera pipeline and v4l2loopback daemon for Xiaomi Pad 8 Pro (piano)
 License:        MIT
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -95,6 +95,10 @@ systemctl enable piano-camerad.service piano-camera.service || :
 %systemd_postun_with_restart piano-camerad.service piano-camera.service
 
 %changelog
+* Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 0.1.0-10
+- 跟到 SunUEFI v1.0.0（a6c321d）：源码归档 URL 随 pin 变，
+  用户态源码本身未改
+
 * Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-9
 - 源码不再入库维护：构建期从 SunUEFI edcf272 的 linux/userspace/camera 取，
   静态拍摄与 ancillary link 找镜头改成 patches/0001 一份补丁；quad/vendor/

@@ -13,7 +13,7 @@
 | 相机 JPEG 直出 | 完成：`piano-camera-ctl capture --output FILE` 直出 JPEG | `photo/jpeg.c` | 工具链完整 |
 | 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成 NV12 | `quad/` 与 v4l2loopback 生产者协商 | 格式协商完整，支持 8160x6120 输出 |
 | 电源策略 | 完成：`tuned-ppd` 三档 profile 桥接到 uperf-linux 模式 | 上游 profile 直接写 cpufreq/devfreq | 避免频点冲突，受 uperf 保护 |
-| 充电、温控与 FFC | 补丁已收：上游 `0093`、`0094`、`0096`–`0104` 共 11 条进封存序列 | 关机充电、皮肤温控、带认证 FFC 与停充退出 | 满电停充、温控降流与关机充电尚无实机记录 |
+| 充电、温控与 FFC | 补丁已收：上游 `0414`–`0422` 与 `0385`–`0398` 共 11 条进封存序列 | 关机充电、皮肤温控、带认证 FFC 与停充退出 | 满电停充、温控降流与关机充电尚无实机记录 |
 | 内核手指解码 | 跟进上游：`0399` 把逐帧矩阵解码移入内核 IRQ 线程（32 帧参考、中值滤波、基线漂移处理），用户态桥接在 `kernel_input: enabled` 时退出 | 同一份内核解码 | 内核解码不读原厂逐屏电极校准，上机验收未做 |
 | 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 设 `zh_CN.UTF-8`，默认输入法 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | 桌面预置中文与拼音输入 |
 | mutter 触摸崩溃 | 默认采用发行版 `mutter-51.1-1.fc45`，补丁入 extras 扩展仓 | 补丁在 51.1 源码上可干净套用 | 默认镜像不合入，作为 opt-in 选项 |
@@ -100,4 +100,4 @@ zcat /proc/config.gz | grep -E 'CONFIG_LIRC|CONFIG_IR_SPI|CONFIG_UIO_PIANO|CONFI
 rpm -q mutter libfprint fprintd tuned glibc-langpack-zh
 ```
 
-上游基线对照源文件位于 `build/test-sources/sunuefi`（`18274377`）的 `tools/build_piano_fingerprint.py`、`linux/userspace/camera/`、`linux/desktops/`、`patches/libfprint/` 与 `docs/status.md`。
+上游基线对照源文件位于 `build/test-sources/sunuefi`（`a6c321d`，tag `v1.0.0`）的 `tools/build_piano_fingerprint.py`、`linux/userspace/camera/`、`linux/desktops/`、`patches/libfprint/` 与 `docs/status.md`。

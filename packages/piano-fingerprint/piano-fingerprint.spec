@@ -8,7 +8,7 @@
 
 Name:           piano-fingerprint
 Version:        0.2.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Goodix under-display fingerprint client for Xiaomi Pad 8 Pro (piano)
 License:        BSD-3-Clause AND BSD-3-Clause-Clear AND (GPL-2.0-only WITH Linux-syscall-note)
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -84,6 +84,10 @@ install -Dm0644 /usr/include/linux/tee.h %{buildroot}%{_licensedir}/%{name}/linu
 %license %{_licensedir}/%{name}/*
 
 %changelog
+* Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 0.2.0-3
+- 跟到 SunUEFI v1.0.0（a6c321d）：源码归档 URL 随 pin 变，
+  用户态源码本身未改
+
 * Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.2.0-2
 - 源码不再入库维护：构建期从 SunUEFI edcf272 的 linux/userspace/fingerprint 取，
   拿到 1cb8216 的等旧存储服务注销修复，录入不再立即失败

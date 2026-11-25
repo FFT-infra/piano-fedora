@@ -85,8 +85,8 @@ techpack 目录包含显示、音频、摄像头、WLAN、BT 的板级片段（�
 | `piano-camera-interconnects` | camera | 相机路径的互连带宽投票 |
 | `piano-camera-flash` | camera | 闪光灯 |
 | `piano-camera-privacy-led` | camera | 隐私指示灯 |
+| `piano-camera-csi2-phys` | camera | 独立 CSI2 PHY：两颗 SM8750 CPHY/DPHY、供电与 graph |
 | `piano-touch-panel` | 触控 / 面板 | 触控与面板关联 |
-| `piano-pen-dock` | `/soc/pen-dock` | 笔的霍尔与 pinctrl |
 | `piano-pen-charger` | 充电 | 笔的充电 |
 | `piano-cma` | `/reserved-memory/linux,cma` | CMA 改 256 MiB（`0x10000000`） |
 | `piano-pcie-interrupt-map` | `/soc/pcie@1c00000` | INT A-D 用 SPI 149-152，折叠 GIC 的地址单元差异 |

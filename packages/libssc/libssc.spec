@@ -73,8 +73,8 @@ retry support to guarantee sensor enumeration without stalling boot.
 %exclude %{_libdir}/girepository-1.0/SSC-2.typelib
 
 %changelog
-* Tue Nov 25 2026 FFT-infra <dev@piano.invalid> - 0.4.4-4
-- 跟到 SunUEFI v1.0.0：带上 0005-bound-sensor-open，传感器启动等待有界，
+* Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 0.4.4-4
+- 跟到 SunUEFI v1.0.0：带上 0004-bound-sensor-open，传感器启动等待有界，
   不再轮询，超时或取消的流请求只完成一次
 
 * Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 0.4.4-3

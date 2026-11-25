@@ -117,7 +117,7 @@ def stage_payload(source, pin, payload, touch_proof, camera_proof, put, sha256, 
             raise ValueError("matrix finger calibration differs from the factory INI: "
                              + shipped.name + "; " + describe_difference(shipped.read_text(), generated))
         calibration[shipped.relative_to(ROOT / "packages/xiaomi-piano-thp").as_posix()] = sha256(shipped)
-    # 手指矩阵与笔解码都在内核里（上游 0197／0230 在封存序列内），
+    # 手指矩阵与笔解码都在内核里（上游 0399／0432 在封存序列内），
     # piano-touch.service 只剩 BlueZ 笔初始化，不再有 touch-input 启动器。
     # piano-touch-view 因此是开发者手动运行的工具：手指路径要显式给出
     # PIANO_FINGER_CALIBRATION，服务不再替它挑面板。

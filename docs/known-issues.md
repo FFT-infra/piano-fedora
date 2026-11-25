@@ -236,7 +236,7 @@
 - **硬件通信边界**：
   - 触控走高频 SPI 通信，DMA 优化延迟控制在 2.5ms 内；音频子系统连续播放与录音保持稳定无 xrun 欠载。
 - **触控设备身份与掌托**：
-  - 手指矩阵解码在内核 IRQ 线程里完成（上游 `0197`），`/proc/nvt_thp_status` 报 `kernel_input: enabled` 时用户态手指桥接不创建设备；
+  - 手指矩阵解码在内核 IRQ 线程里完成（上游 `0399`），`/proc/nvt_thp_status` 报 `kernel_input: enabled` 时用户态手指桥接不创建设备；
   - 两条路径上报同一身份：`BUS_SPI`、vendor `0x0603`、product `0x6532`、名字 `piano NT36532 THP touchscreen`，与 BSP udev 规则和笔设备落在同一个 `LIBINPUT_DEVICE_GROUP=piano-touchscreen` 组里，所以接管前后 libinput 看到的是同一台设备；
   - 都上报 `ABS_MT_TOUCH_MINOR`，并按槽位上报 `MT_TOOL_PALM`：掌托锁存时清空接触，再把上一帧手指作为 `MT_TOOL_PALM` 重报，让 libinput 取消接触而不是把它们保持住；
   - 内核解码用写死的矩阵尺寸，不读原厂逐屏电极校准（本仓库把校准校验后随 `xiaomi-piano-thp` 分发，只供用户态路径使用）；
