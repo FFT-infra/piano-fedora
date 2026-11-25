@@ -320,6 +320,64 @@ def check_esp_layout(failures):
         updater.update_bls(esp, fields, image, initramfs, dtb, "7.3.4", False, again)
         if again["changed"].get("payload") is not False:
             failures.append("update_bls rewrites an unchanged payload")
+    # 只留当前与一套回退：更早的 release 的条目与载荷要清掉。
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp)
+        entries = esp / "loader" / "entries"
+        entries.mkdir(parents=True)
+        image = esp / "image.src"; image.write_bytes(b"new-image")
+        initramfs = esp / "initramfs.src"; initramfs.write_bytes(b"new-initrd")
+        dtb_src = esp / "board.src"; dtb_src.write_bytes(b"board-dtb")
+        for version in ("7.3.1", "7.3.2", "7.3.3"):
+            (esp / "linux" / version).mkdir(parents=True)
+            (esp / "linux" / version / "linux").write_bytes(b"old")
+            (esp / "linux" / version / "initrd").write_bytes(b"old")
+            (esp / "linux" / version / "board.dtb").write_bytes(b"old")
+            (entries / f"linux-{version}.conf").write_text(
+                f"title Linux\nversion {version}\nlinux /linux/{version}/linux\n"
+                f"initrd /linux/{version}/initrd\ndevicetree /linux/{version}/board.dtb\n"
+                f"options root=LABEL=PIANOROOT rw\n", encoding="utf-8")
+        # 非 piano 的条目不该被删：linux 路径不在 /linux/<version>/ 下。
+        (entries / "linux-foreign.conf").write_text(
+            "title Other\nversion other\nlinux /EFI/other/vmlinuz\n"
+            "initrd /EFI/other/initrd\ndevicetree /EFI/other/dtb\n"
+            "options root=/dev/sda1 rw\n", encoding="utf-8")
+        fields = {"options": "root=LABEL=PIANOROOT rw", "version": "7.3.3"}
+        record = {"changed": {}}
+        updater.update_bls(esp, fields, image, initramfs, dtb_src, "7.3.4", False, record)
+        kept = sorted(p.name for p in (esp / "linux").iterdir())
+        if kept != ["7.3.3", "7.3.4"]:
+            failures.append(f"history retention kept {kept}, expected 7.3.3 and 7.3.4")
+        if not (entries / "linux-7.3.3.conf").is_file():
+            failures.append("history retention removed the rollback entry")
+        if (entries / "linux-7.3.1.conf").exists():
+            failures.append("history retention kept an entry older than one generation")
+        if not (entries / "linux-foreign.conf").is_file():
+            failures.append("history retention removed a non-piano boot entry")
+        if sorted(record.get("history", {}).get("removed", [])) != ["7.3.1", "7.3.2"]:
+            failures.append(f"history record removed {record.get('history')}")
+    # 版本化 UKI 同样只留两代；固定 sunuefi.efi 是固件契约，不能被当历史删掉。
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp)
+        (esp / "EFI" / "Linux").mkdir(parents=True)
+        (esp / "EFI" / "BOOT").mkdir(parents=True)
+        (esp / "EFI" / "BOOT" / "BOOTAA64.EFI").write_bytes(b"boot")
+        for version in ("7.3.2", "7.3.3", "7.3.4"):
+            (esp / "EFI" / "Linux" / f"linux-{version}.efi").write_bytes(version.encode())
+        record = {"changed": {}}
+        updater.retain_history(esp, "uki", "7.3.4", "7.3.3", False, record)
+        left = sorted(p.name for p in (esp / "EFI" / "Linux").iterdir())
+        if left != ["linux-7.3.3.efi", "linux-7.3.4.efi"]:
+            failures.append(f"UKI history retention left {left}")
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp)
+        (esp / "EFI" / "Linux").mkdir(parents=True)
+        fixed = esp / "EFI" / "Linux" / "sunuefi.efi"
+        fixed.write_bytes(b"uke")
+        record = {"changed": {}}
+        updater.retain_history(esp, "uki", "7.3.4", None, False, record)
+        if not fixed.is_file():
+            failures.append("history retention deleted the fixed sunuefi.efi")
     # ESP 若被改成可选 UKI 布局，检测也认它，不当成“不可启动的系统”。
     # 带 systemd-boot 时它枚举版本化文件。
     with tempfile.TemporaryDirectory() as tmp:

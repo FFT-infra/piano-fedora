@@ -20,6 +20,8 @@
 
 板级 DTB 与 cmdline 沿用 ESP 上现有的那一份，不是内核包里的 `/boot/dtb/qcom/sm8750-xiaomi-piano.dtb`。板级 overlay 已经在打包 bundle 时合成进 DTB。在线升级只复用现有 DTB，换 overlay 要换整个 bundle。
 
+**回退保留。** 写新条目时会清掉更早的 piano 条目与载荷，只留当前 release 和更新前正在用的那一个；非 piano 的启动项（`linux` 路径不在 `/linux/<version>/` 下的）不动。清理失败只记进审计记录的 `history.errors`，不影响本次更新。单 UKI 固件的固定 `sunuefi.efi` 不参与清理。
+
 **失败边界。** 任何一步失败，旧启动项保持原样，设备继续用上一个内核启动。UKI 布局的写入顺序是：先写 `.new` 并 fsync，重新读出六个语义节区与预期比对；通过后把旧文件复制成 `.bak`，最后用 `os.replace` 换上去。PE 时间戳每次不同，判断文件有没有变只看 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname` 六段内容。
 
 **运行与验证记录。** UKI 升级由 `%posttrans` 重建 initramfs，写出 `sunuefi.efi.bak` 并原子替换 `sunuefi.efi`；重启后进入桌面，`uname -r` 与 UKI 内部 `.uname` 严格一致。升级审计信息同步写入 `/var/lib/piano/kernel-esp/<release>.json`。

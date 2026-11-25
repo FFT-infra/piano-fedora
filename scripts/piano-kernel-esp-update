@@ -166,6 +166,56 @@ def current_boot(esp):
         f"no boot entry or UKI under {esp}; this is not a bootable piano install")
 
 
+def retain_history(esp, layout, release, previous, dry_run, record):
+    """只留当前版本与一套回退，清掉更早的启动项与载荷。
+
+    回退项取更新前正在用的那个 release（BLS 的 version 行，或版本化 UKI 的
+    文件名），不按 mtime 猜。只处理能确认属于 piano 的条目：BLS 的 linux
+    路径必须正好是 /linux/<version>/linux，UKI 文件名必须是 linux-*.efi。
+    """
+    history = {"kept": [], "removed": [], "errors": []}
+    record["history"] = history
+    keep = {release}
+    if previous:
+        keep.add(previous)
+    if layout == "bls":
+        for entry in sorted((esp / ENTRY_DIR).glob(ENTRY_PREFIX + "*.conf")):
+            fields = read_entry(entry)
+            version = fields.get("version")
+            if not version or fields.get("linux") != f"/{BLS_PAYLOAD}/{version}/linux":
+                continue
+            payload = esp / BLS_PAYLOAD / version
+            if version in keep:
+                history["kept"].append(version)
+                continue
+            if not payload.is_dir():
+                continue
+            if dry_run:
+                history["removed"].append(version)
+                continue
+            try:
+                entry.unlink()
+                shutil.rmtree(payload)
+                history["removed"].append(version)
+            except OSError as exc:
+                history["errors"].append(f"{version}: {exc}")
+    elif layout == "uki":
+        for uki in sorted((esp / UKI_PAYLOAD).glob(UKI_PREFIX + "*.efi")):
+            version = uki.name[len(UKI_PREFIX):-len(".efi")]
+            if version in keep:
+                history["kept"].append(version)
+                continue
+            if dry_run:
+                history["removed"].append(version)
+                continue
+            try:
+                uki.unlink()
+                history["removed"].append(version)
+            except OSError as exc:
+                history["errors"].append(f"{version}: {exc}")
+    return history
+
+
 def uki_sections(path):
     """按 VirtualSize 读 PE 段，与上游 package_release.py 的校验方式一致。"""
     import pefile
@@ -264,6 +314,7 @@ def update_bls(esp, fields, image, initramfs, dtb, release, dry_run, record):
         for name, source in payload.items():
             record["payload"]["files"][name] = {"sha256": sha256(source),
                                                 "bytes": source.stat().st_size}
+        retain_history(esp, "bls", release, fields.get("version"), dry_run, record)
         return record
     needed = sum(source.stat().st_size for source in payload.values())
     if free_bytes(esp) < needed:
@@ -301,6 +352,7 @@ def update_bls(esp, fields, image, initramfs, dtb, release, dry_run, record):
     for name, source in payload.items():
         record["payload"]["files"][name] = {"sha256": sha256(target_dir / name),
                                             "bytes": source.stat().st_size}
+    retain_history(esp, "bls", release, fields.get("version"), dry_run, record)
     return record
 
 
@@ -330,6 +382,10 @@ def update_uki(esp, current, image, initramfs, dtb, release, dry_run, record):
         if not changed or dry_run:
             if dry_run:
                 record["dry_run"] = True
+            if target != esp / SINGLE_UKI:
+                previous = (current.name[len(UKI_PREFIX):-len(".efi")]
+                            if current.name.startswith(UKI_PREFIX) else None)
+                retain_history(esp, "uki", release, previous, dry_run, record)
             return record
         # 替换峰值是新 UKI 与它的 .bak 两份同时存在。
         needed = target.stat().st_size * 2 if target.exists() else built_uki.stat().st_size
@@ -339,6 +395,10 @@ def update_uki(esp, current, image, initramfs, dtb, release, dry_run, record):
         staged = target.with_name("." + target.name + ".new")
         shutil.copyfile(built_uki, staged)
         replace_atomically(staged, target, target.with_name(target.name + ".bak"))
+    if target != esp / SINGLE_UKI:
+        previous = (current.name[len(UKI_PREFIX):-len(".efi")]
+                    if current.name.startswith(UKI_PREFIX) else None)
+        retain_history(esp, "uki", release, previous, dry_run, record)
     return record
 
 
