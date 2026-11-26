@@ -18,12 +18,39 @@
 | `product.json` | 要构建什么 | 发行版、文件系统、尺寸、分区标签 |
 | `scripts/build-clean-rootfs.py` | Fedora 装配后端 | plan / execute / audit 三条路径 |
 | `scripts/piano_desktop.py` | 桌面差异解释器 | 登录、服务、包集合、电源策略与产物名 |
-| `scripts/release-assets.py` | Release 资产名 | 哪些四档共用、哪些按桌面加 `-<desktop>` |
+| `scripts/release-assets.py` | Release 资产名 | 哪些共用、哪些按桌面加 `-<desktop>` |
 | `scripts/profiles/` | 发行版与桌面配方 | base 包、dnf 选项、桌面包组与电源文件 |
 | `scripts/package-sets.json` | 包集合与构建顺序 | 矩阵、运行时、图形栈、extras；各脚本与 workflow 都从这里派生 |
 | `tests/` | 离线检查 | `make test` 跑全部 |
-| `docs/architecture.md` | 组件边界与阶段计划 | 分工、前提、本机约束 |
+| `docs/README.md` | 文档索引 | 用户文档与维护参考的入口 |
 | `.github/workflows/` | 主机侧 CI | 不接触设备 |
+
+## 文档边界与写法
+
+改文档前先查下表，只在拥有该主题的文档里写一次，其他文档用相对链接引用，不跨文件整段复写操作步骤。
+
+| 文档 | 唯一负责的内容 | 不要往里塞的内容 |
+| --- | --- | --- |
+| `README.md` / `README.en.md` | 硬件支持表、桌面概览、快速安装入口、文档索引 | 详细分区算术、整套 CI 内部参数、长篇硬件调试日记 |
+| `docs/installation.md` | 从零分区、手动与一键刷写、首次登录与安装排障 | 日常 `dnf upgrade` 流程、CI 内部 PR 验收细节 |
+| `docs/upgrade.md` | `update-f2fs.py` 覆盖升级、内核升级与回滚、UEFI 模块更新、双系统切换 | 首次分区完整步骤 |
+| `docs/desktops.md` | 五档桌面配置、登录管理器、电源策略、自动旋转、`extras` 概览 | COPR 发布流程与具体启用/降级命令行 |
+| `docs/copr-repository.md` | `xinyang26/piano-fedora` 与 `extras` 的启用、装卸、包清单、内核 `%posttrans` | 桌面外观、旋转与电源行为细节 |
+| `docs/known-issues.md` | 当前未解决的问题、硬件限制、明确边界与无害日志噪声 | 已真机验证修复的历史问题、固定八股模板 |
+| `docs/artifacts.md` | 各阶段产物、manifest 绑定、`deploy-bundle` 与 Release 资产布局 | 刷机步骤、历史“待某步验证”占位话术 |
+| `docs/architecture.md` | SunUEFI 与仓库分工、阶段规划、CI 工作流清单、系统约束 | 重复展开 `artifacts.md` 或 `installation.md` 细节 |
+| `docs/build.md` | 本地取源、补丁校验、`make test`、CI 触发顺序、换 pin 步骤 | 用户装机指引 |
+| `docs/internals.md` | CI 约束、真机取证脚本、SELinux 策略与 PR 验收门槛 | 再次抄写一遍 `installation.md` 的首次安装步骤 |
+| `docs/device-tree.md` | 三条 DT 血缘、24 个 overlay、`compare-vendor-dt.py` oracle 检查 | 面板与内存策略全文 |
+| `docs/upstream.md` / `docs/upstream-parity.md` | 上游跟踪规则、核心分叉决策、与 SunUEFI 的功能差距 | 已经进默认文档的常规用法教程 |
+| `docs/virtualization.md` | Gunyah 内核构建、crosvm/librevm 用户态、RM capability 交接与验收结果 | 非虚拟化驱动细节 |
+
+写文档按 GitHub 工程项目风格走：
+
+- **面向用户的文档**（`README*`、`installation`、`upgrade`、`desktops`、`known-issues`）：只写读者动手或排错需要知道的事，注意事项紧跟在对应动作后面。不要套用死板模板（例如每节机械拆成“现象 / 影响 / 技术根因 / 应对方法 / 状态”或“怎么做 / 为什么这样限制”），问题直接说清现象、影响或绕过方式与当前状态即可。
+- **工程参考文档**（`architecture`、`artifacts`、`build`、`internals`、`device-tree`、`upstream*`、`virtualization`）：多用短表格、命令块和精准路径，少写铺垫段落和修辞。
+- **硬限制**：正文禁用全角/半角破折号（U+2014 与 U+2013）；不在现行文档里写版本流水账（如“此前某版本曾……后来改为……”）；声称“已真机验证”时必须写清实际验过的范围，未在真机跑过的只写构建或静态检查状态；不要在 `docs/known-issues.md` 写出补丁 `0001` 的 `deferred_probe_timeout` 具体数字（`tests/check_boot_cmdline.py` 会拦截）。
+- **测试约束**：修改 `README.md` 与 `README.en.md` 须保持 H1-H3 标题层级和 `docs/` 下文档的链接顺序一致（`tests/check_readme_parity.py`）；修改 `docs/installation.md` 不得破坏手动分区与手动刷写的命令块及测试锚点（`tests/check_manual_partition.py`、`tests/check_manual_flash_flow.py`、`tests/check_flash_script_guard.py`）。`docs/` 下所有 Markdown 文件须从根 README 两击内可达（`tests/check_links.py`）。
 
 ## 硬规则
 
@@ -47,14 +74,11 @@ make selinux               # 从 .te 重新生成 piano_hardware.pp
 
 ## 长构建
 
-编译类 workflow（内核、UEFI、镜像、rootfs）动辄几十分钟到几小时，失败一次
-的代价是整轮重跑。因此**首次运行前必须先把该 workflow 完整审一遍**：
+编译类 workflow（内核、UEFI、镜像、rootfs）动辄几十分钟到几小时，失败一次的代价是整轮重跑。因此**首次运行前必须先把该 workflow 完整审一遍**：
 
 - 逐个核对它调用的每个外部命令在 runner 上是否存在，不靠运行时才发现缺项。
-- 上游若自带构建容器或依赖清单（如 `containers/Dockerfile`、
-  `requirements-build.txt`），优先用它，不手工逐条补包。
-- 核对产物路径、权限（容器以 root 写入时需要 sudo）、以及跨 run 取
-  artifact 的 `run-id`。
+- 上游若自带构建容器或依赖清单（如 `containers/Dockerfile`、`requirements-build.txt`），优先用它，不手工逐条补包。
+- 核对产物路径、权限（容器以 root 写入时需要 sudo）、以及跨 run 取 artifact 的 `run-id`。
 - 核对每个输入是否真的在仓库或上游里可取，特别是 vendor 目录与子模块。
 
 审完再触发，并把审查发现写进提交信息。
@@ -65,7 +89,7 @@ make selinux               # 从 .te 重新生成 piano_hardware.pp
 | --- | --- |
 | `scripts/` | `make test` |
 | `product.json`、`sources.lock.json` | `make test` |
-| `docs/`、`README.md` | `make test`（含链接检查） |
+| `docs/`、`README.md`、`README.en.md` | `make test`（含链接、README 对齐与手册命令检查） |
 | `.github/workflows/` | `make test` |
 
 声称某件事通过时，附上本轮的命令与输出。没跑的检查标为未跑，不写成通过。
@@ -86,8 +110,7 @@ make selinux               # 从 .te 重新生成 piano_hardware.pp
 
 ## 表达
 
-仓库文档用中文。`README.en.md` 是 README 的英文版，两版由
-`tests/check_readme_parity.py` 锁定同一骨架，改一版就要同步另一版。
+仓库文档用中文。`README.en.md` 是 README 的英文版，两版由 `tests/check_readme_parity.py` 锁定同一骨架，改一版就要同步另一版。
 
 - 先写结论，再写做法。
 - 不加粗打光，一段最多一个粗体。

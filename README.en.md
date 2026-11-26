@@ -1,8 +1,5 @@
-> **Experimental project.** This repository targets driver work and hardware bring-up. It is not a stable system for daily use.
->
-> Flashing unlocks the bootloader and rewrites the GPT. It replaces the combined BOOT in the active slot's `boot` partition and rewrites the Linux partition. A careless step can brick the tablet or destroy all data. Back up every partition and your personal data before you start.
->
-> This project ships under the [MIT license](LICENSE) as is. The authors and contributors take no responsibility for damaged hardware, lost data, or a voided warranty.
+> **Experimental project.** Built for driver bring-up and hardware debugging, not as a stable daily driver.
+> Flashing unlocks the bootloader, modifies the GPT, and overwrites the active `boot` slot and Linux partitions. Back up your tablet and data first. Provided as is under the [MIT license](LICENSE).
 
 # Fedora 45 for Xiaomi Pad 8 Pro (piano)
 
@@ -10,76 +7,63 @@ English | [简体中文](README.md)
 
 [![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
 
-Fedora 45 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 Elite SM8750), with GNOME as the default desktop. The kernel is a mainline Linux 7.3 port. The root filesystem is F2FS. The tablet dual-boots Linux and the stock HyperOS. A 3-second chooser in the combined BOOT and the Android boot-assistant module handle both directions without a host.
+Native Fedora 45 (F2FS root, Linux 7.3 mainline port) on the Xiaomi Pad 8 Pro (`piano`, Snapdragon 8 Elite SM8750), dual-booted alongside stock HyperOS via [SunUEFI](https://github.com/slwyts/Project-SunUEFI). Switching works in both directions without a host PC.
 
-[SunUEFI](https://github.com/slwyts/Project-SunUEFI) (EDK2) provides the boot chain and kernel packaging. This repository adds a Fedora backend, the F2FS path end to end, first-time partitioning and UEFI boot patches. [Architecture](docs/architecture.md) has the split by layer.
+Project SunUEFI supplies the boot chain, kernel packaging, DT overlays, and base UEFI patches. This repository adds the Fedora backend, end-to-end F2FS support, first-time partitioning, and boot patches. See [Architecture](docs/architecture.md) for the layer split and [NOTICE](NOTICE) for full license attribution.
 
-The boot chain, kernel packaging, device-tree overlays and some UEFI patches are referenced from or ported from Project SunUEFI. Each file keeps its original copyright and license notices; [NOTICE](NOTICE) lists the sources item by item.
+## Hardware Support
 
-## Hardware status
+Legend: ✅ Verified on device | ⚠️ Partially working (see notes) | ❌ Not implemented or unverified
 
-Legend:
-- ✅ Verified on device
-- ⚠️ Partially working (gaps noted in description)
-- ❌ Not implemented or unverified
-
-Hardware peripheral support status for the current release:
-
-| Module | Status | Notes |
-|---|---|---|
-| Display | ✅ | 3200×2136 at 120 Hz, Mesa 26.2.7 Turnip (Adreno 830) |
-| Touch | ⏳ | Finger matrix decode now runs in the kernel (32 reference frames, median filtering, baseline drift handling, palm classification). The user-space Kalman filter and 24 px dead zone path stays and steps aside when the kernel takes over. The new decode does not read the factory per-panel electrode calibration; feel and multitouch behavior await device verification |
-| Video | ✅ | Iris V4L2 M2M works. H.264 and HEVC encode and decode in hardware, 300 frames each. B-frame sources decode too, all at 1080p. Frame-by-frame digests match software decode, and the Iris interrupt count grows. In-browser decode is ready: Chrome and Firefox decode in hardware by default, Fedora's Chromium uses software decode, see [known issues](docs/known-issues.md#触屏网络音频与相机). VP9, 10-bit and 4K60 are pending further testing |
-| Power | ✅ | Dual-cell battery reporting, deep suspend |
-| Boot | ✅ | `qbootctl.service` writes `Successful: 1`, so the ABL counter cannot drop to Fastboot |
-| Camera | ✅ | `piano-camerad` streams NV12 straight from the ISP. Both the front and the rear camera image normally. The first frames after streaming starts are black. Auto-exposure takes a few frames to converge. See [known issues](docs/known-issues.md#触屏网络音频与相机) |
-| Audio | ⏳ | The four speakers run through the stock DAP, and the topology spreads a stereo stream across all four paths with the stock matrix. The amplifier cap is 235, the stock FSM_Volume. DAP loading and the four-speaker crossover await device verification |
-| Scheduling | ✅ | `uperf-linux` raises frequency on touch |
+| Subsystem | Status | Notes |
+| --- | --- | --- |
+| Display | ✅ | 3200×2136 @ 120 Hz, Mesa 26.2.7 Turnip (Adreno 830) hardware acceleration |
+| Touch | ⚠️ | In-kernel finger matrix decode enabled in IRQ thread; user-space Kalman bridge kept as fallback. Kernel path does not read per-panel factory electrode calibration; long-term multitouch feel awaits testing |
+| Video | ✅ | Iris V4L2 M2M 1080p H.264/HEVC encode and decode; Chrome and Firefox decode in hardware, Fedora Chromium falls back to software decode, see [known issues](docs/known-issues.md#触屏网络音频与相机) |
+| Power | ✅ | Dual-cell battery reporting, deep suspend and resume working |
+| Boot stability | ✅ | `qbootctl.service` marks `Successful: 1` so ABL will not drop to Fastboot |
+| Camera | ✅ | `piano-camerad` streams NV12 from front and rear ISPs; first-frame black drop and AE convergence notes in [known issues](docs/known-issues.md#触屏网络音频与相机) |
+| Audio | ⚠️ | Four-speaker DAP matrix topology (amp cap 235) and glitch-free playback/capture; DAP loading and crossover await full device sign-off |
+| Scheduling | ✅ | `uperf-linux` touch boost, bridged to `tuned-ppd` profiles |
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
-| Sensors | ✅ | SSC backend (`libssc` + `iio-sensor-proxy-ssc` over QRTR/MHI). The accelerometer, ambient light and proximity sensors all report data. Auto-rotate supported: screen rotates 90° when orientation changes |
-| Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk and virtio-net, single-vCPU guest boot. SMP, graphics and GUI operation are not verified yet |
-| Dual boot | ✅ | The combined BOOT lives in the active slot's `boot` partition (`boot_a` or `boot_b`). Linux→Android uses `piano-next-boot android --reboot`. Android→Linux uses the SunUEFI boot-assistant module or the 3-second chooser. Two-way boot switching is functional, see [known issues](docs/known-issues.md#双系统切换) |
-| Stylus | ✅ | Type 29 protocol, pressure 0–1, position and tilt behave normally. Axis events, proximity detection and tip response are functional, see [known issues](docs/known-issues.md#手写笔) |
-| Fingerprint | ✅ | Side-mounted capacitive (Goodix), `piano-fingerprint` and `piano-libfprint` ship in the default image. Enrolment and lock-screen unlock verified; current status and boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
-| IR | ✅ | Consumer IR blaster, `/dev/lirc0` node and `ir-spi` driver ready, supports `ir-ctl` transmission. Testing boundary see [known issues](docs/known-issues.md#指纹红外与-hdr) |
-| HDR | ✅ | Panel supports HDR10. When enabled, DSI-1 submits PQ metadata and BT.2020, and the DPU converts through the panel-calibrated IGC, Gamut and GC stages; control-word readback matches the upstream record. Extras patched KWin on KDE Plasma supports toggle and backlight restore; colour accuracy and peak luminance are not instrument-measured, see [known issues](docs/known-issues.md#指纹红外与-hdr) |
+| Sensors | ✅ | SSC backend (`libssc` + `iio-sensor-proxy-ssc`) exposing accelerometer, ambient light, proximity, and auto-rotate |
+| Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk/net, single-vCPU guest boot verified; SMP and GUI guests unverified |
+| Dual boot | ✅ | Hybrid BOOT in active `boot` slot switches between Linux and Android; see [dual-boot notes](docs/known-issues.md#双系统切换) |
+| Stylus | ⚠️ | Type 29 pressure (0-1), tilt, and coordinates work; side buttons and magnetic attachment unimplemented, see [stylus notes](docs/known-issues.md#手写笔) |
+| Fingerprint | ⚠️ | Ships `piano-fingerprint` / `piano-libfprint` (Goodix TEE path), isolated from Android templates; enrolment and unlock unverified on current image, see [fingerprint notes](docs/known-issues.md#指纹红外与-hdr) |
+| IR blaster | ✅ | `/dev/lirc0` and `ir-spi` ready for `ir-ctl` transmission |
+| HDR | ⚠️ | HDR10 and BT.2020 DPU output active; patched KWin restores backlight on exit; colour accuracy not instrument-measured, see [HDR notes](docs/known-issues.md#hdr) |
 
 ## Desktops
 
-Images are built per profile from the same release chain. They differ only in the root filesystem and `root-install/`. The kernel, ESP, one-step script and flash scripts are shared.
+All five profiles share the kernel, ESP, and installer scripts, differing only in rootfs and `root-install/`. Login managers, power policies, and profile quirks are covered in [Desktops](docs/desktops.md).
 
-| Profile | Session | Login | Auto-rotate | Acceptance |
-|---|---|---|---|---|
-| `gnome` | GNOME 51 (Workstation environment) | GDM autologin | Mutter | Desktop reached. Rotation verified on device |
-| `kde` | KDE Plasma | plasma-login-manager autologin | KWin, needs `qt6-qtsensors` | Desktop reached. Rotation verified |
-| `niri` | niri | greetd + tuigreet | None, manual `transform` | Desktop reached |
-| `hyprland` | Hyprland (third-party COPR) | greetd + tuigreet | None, manual rotate | Desktop reached |
-| `denial` | Denial (third-party DNF repository) | greetd + tuigreet | None | Not validated on Fedora 45 hardware |
-
-Each profile ships as one archive. Download only the profile you install. Login, power behavior, rotation and known gaps per profile are in [Desktops](docs/desktops.md).
+| Profile | Session | Login | Auto-rotate | Status |
+| --- | --- | --- | --- | --- |
+| `gnome` | GNOME 51 (default) | GDM autologin | Mutter | Booted to desktop, rotation verified on device |
+| `kde` | KDE Plasma | `plasma-login-manager` | KWin (`qt6-qtsensors`) | Booted to desktop, rotation verified on device |
+| `niri` | niri | greetd + tuigreet | None (manual `transform`) | Booted to desktop |
+| `hyprland` | Hyprland (3rd-party COPR) | greetd + tuigreet | None (manual monitor rule) | Booted to desktop |
+| `denial` | Denial (3rd-party DNF repo) | greetd + tuigreet | None (no SensorProxy) | `0.6.10-1` cold boot and GPUI/Vulkan `denial-settings` verified on device |
 
 ### Optional extras
 
-Default images use stock Fedora desktop components and work out of the box. The extras repository is a separate, default-disabled source that adds these:
+Default images ship stock Fedora desktop packages. For ambient-light auto-brightness, KWin HDR backlight restore, and related desktop patches, enable the opt-in `xinyang26/piano-fedora-extras` repo documented in [COPR repository](docs/copr-repository.md#可选的-extras-软件源):
 
-| What you get | Profile | What the patch does |
-|---|---|---|
-| Screen brightness follows ambient light | GNOME | GSD converts target brightness with the stock lux-to-nits curve |
-| Keyboard backlight works after plugging the folio keyboard | GNOME | GSD refreshes the keyboard backlight device |
-| Stylus works in X11 applications | All five | GTK3 looks up XI2 tool atoms on the device's own display |
-| Touch does not crash GNOME | GNOME | mutter guards against an empty KMS gamma LUT and a cancelled touch grab |
-| Backlight falls back when HDR is turned off | KDE | KWin restores the previous brightness on HDR exit |
-| GNOME waits for the display before login | GNOME | gdm waits for the KMS connector before starting a session |
-
-Commands to enable it, install, and remove it, plus the full package list, are in [COPR repository](docs/copr-repository.md#可选的-extras-软件源).
+| Feature | Profiles | Package & change |
+| --- | --- | --- |
+| Ambient auto-brightness & keyboard backlight hotplug | GNOME | `gnome-settings-daemon-piano` applies stock lux curve and refreshes keyboard backlight |
+| Stylus input in X11 apps | All five | `gtk3` fixes XI2 tool atom lookup |
+| GNOME touch/KMS crash & startup guards | GNOME | `mutter` guards empty gamma LUT/touch grabs; `gdm` waits for KMS connector; `gnome-control-center` waits for `fprintd` verify |
+| Backlight restore after exiting HDR | KDE | `kwin` resets brightness after HDR disable |
 
 ## Install
 
-There are two paths. The manual path is the primary one: it lists each command, so you can check every step. The one-step script performs the same writes and is optional. Both paths are in the [installation guide](docs/installation.md).
+Full walkthrough and troubleshooting live in the [installation guide](docs/installation.md). The manual path gives you every command explicitly; the one-step script runs the exact same flashes.
 
-1. Unlock the bootloader and set up `fastboot`.
-2. On a device with the stock GPT, follow [First install from the stock GPT/UFS](docs/installation.md#四-从原始-gptufs-开始的首次安装): create the partitions, erase `userdata`, and let Android boot once. **The one-step script does not work without this step.**
-3. Download `piano-<tag>-<profile>.sha256` and every piece of `piano-<tag>-<profile>.tar.zst` from [Releases](https://github.com/FFT-infra/piano-fedora/releases). Put them in one empty directory and run:
+1. Unlock the bootloader and make sure `adb` and `fastboot` work on your host.
+2. **Stock-GPT devices must partition first**: follow [First install from stock GPT/UFS](docs/installation.md#四-从原始-gptufs-开始的首次安装) to shrink `userdata`, create the Linux partitions, erase `userdata`, and boot Android once. **The one-step script cannot run without this step.**
+3. Download `piano-<tag>-<profile>.sha256` and all `.part-*` files for your chosen profile from [Releases](https://github.com/FFT-infra/piano-fedora/releases) into an empty directory, verify, and extract (or run `bash scripts/unpack-release.sh --tag <tag> --desktop <profile>`):
 
    ```sh
    sha256sum -c piano-<tag>-<profile>.sha256
@@ -87,46 +71,39 @@ There are two paths. The manual path is the primary one: it lists each command, 
    sha256sum -c SHA256SUMS
    ```
 
-   The other profiles are separate archives and are not needed. The unpacked directory is the staging directory. It holds the flash scripts, `root-install/` and the component manifests. Run `bash scripts/unpack-release.sh --tag <tag> --desktop <profile>` to perform these three steps. When you build from source, use the `deploy-bundle-<profile>` from one successful `build-bundle` run and the `root-install-<profile>` that `prepare-install` produced from that same run. Do not mix assets from different runs.
-4. Run `./make-device-boot.sh` in the staging directory. `make-device-boot.sh` repacks this tablet's own stock BOOT into `device-boot/boot_linux.img`. The archived ESP image cannot replace `boot_linux.img`.
-5. Power off the device. Hold `Power + Volume Down` until Fastboot appears. Verify that `fastboot getvar current-slot` returns `a` or `b`. Then follow [Manual flashing](docs/installation.md#五-手动刷写-linux). Check both `SHA256SUMS` files and confirm the device identity. Write the active slot's `boot` partition (`boot_a` or `boot_b`), `sunuefi_esp` and `sunuefi_root` in that order, then run `fastboot reboot`.
+   When building from source, pair `deploy-bundle-<profile>` from a `build-bundle` run with `root-install-<profile>` generated by `prepare-install` from that same run. Never mix assets across runs.
+4. Run `./make-device-boot.sh` in the staging directory to repack your tablet's own stock BOOT into `device-boot/boot_linux.img`.
+5. Power off, hold `Power + Volume Down` for Fastboot, and verify `fastboot getvar current-slot` returns `a` or `b`. Follow [Manual flashing](docs/installation.md#五-手动刷写-linux) to verify manifests and flash active `boot`, `sunuefi_esp`, and `sunuefi_root`, or run the one-step script:
 
-   To do it in one run, execute `./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub` from the staging directory (Linux / macOS), or double-click `flash-linux.bat` (Windows, which does not inject a key). The one-step script performs the same writes and adds a few checks before writing.
+   ```sh
+   ./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub   # Windows: flash-linux.bat (no SSH key injection)
+   ```
 
-6. The tablet reboots into the chosen desktop. The user is `piano` and the default password is `piano123456`. Run `passwd` after the first login.
+6. The tablet reboots into your chosen desktop. Log in as `piano` (default password `piano123456`) and change the password immediately with `passwd`.
 
-**Never erase `dtbo_a` or `dtbo_b`**: the ABL rejects the whole boot chain when the active slot's DTBO is missing. The rollback steps are in [the manual flashing rollback section](docs/installation.md#4-回滚到-android).
+**Never erase `dtbo_a` or `dtbo_b`**: ABL refuses to boot if the active slot's DTBO is missing. Rollback instructions are in [Rollback to Android](docs/installation.md#4-回滚到-android).
 
 ### Switching between systems
 
-- Linux to Android: click "Return to Android" in the app grid, or run `piano-next-boot android --reboot`.
-- Android to Linux: use the SunUEFI boot-assistant module, or press a volume key within 3 seconds at boot.
-- Both directions write the active-slot BOOT request page without switching slots or altering the GPT.
+- **Linux to Android**: click "Return to Android" in the app launcher, or run `piano-next-boot android --reboot`.
+- **Android to Linux**: switch via the "SunUEFI boot-assistant" KernelSU/SukiSU module, or press a volume key within 3 seconds at power-on.
 
-## Release artifacts
+Once installed, `sudo dnf upgrade --refresh` updates the kernel and platform packages directly without reflashing; see [Upgrade guide](docs/upgrade.md).
 
-A maintainer dispatches the release workflow with a tag. A tag push does not start a release. A release ships only verified artifacts from the same `build-bundle` run and the `prepare-install` run derived from that run. Nothing is rebuilt. One release carries five profiles, each as one archive `piano-<tag>-<profile>.tar.zst`, split into `.part-NN` pieces above 2 GiB.
+## Documentation & Release Artifacts
 
-An archive holds the platform images, that profile's `root-install/`, the component manifests, the one-step script and the boot tools. An install downloads one profile: about 2.1 GiB for GNOME, about 1 GiB for niri. The archive's own `SHA256SUMS` lists only the files it holds, so both verification commands run clean. For the purpose of each file, see [Artifacts and pipeline](docs/artifacts.md#release-发布).
+Maintainers trigger releases manually per tag. Each desktop ships as a single self-contained archive `piano-<tag>-<profile>.tar.zst` (split at 1900 MiB if over 2 GiB; GNOME ~2.1 GiB, niri ~1 GiB). See [Artifacts & pipeline](docs/artifacts.md#release-发布) for exact archive contents.
 
-## Documentation
+- [Documentation Hub](docs/README.md): full index for users, desktops, and maintainers
+- [Maintainer & Verification Reference](docs/internals.md): CI pipeline gates, device smoke/media scripts, and PR checklist
+- [Contributing](CONTRIBUTING.md): local tests, patch validation, and PR conventions
+- [Security Policy](SECURITY.md): vulnerability reporting and scope
 
-- [Documentation Hub](docs/README.md): index for installation, upgrades, daily use, and maintenance
-- [Contributing](CONTRIBUTING.md): local checks, commit format, and the PR gate
-- [Security policy](SECURITY.md): how to report a vulnerability and what is in scope
+## Build and Test
 
-
-## Build and check
-
-```bash
-make test                  # offline suite: GPT math, image and metadata checks
-make plan RELEASEVER=45    # print the Fedora 45 root filesystem plan
+```sh
+make test                  # full offline suite (GPT math, image contracts, patches, doc links)
+make plan RELEASEVER=45    # print the Fedora 45 default rootfs assembly plan
 ```
 
-The pipeline lives in `.github/workflows/`. The main chain is `host-check` (with `build_piano_rpms=true`) → `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`. Every stage takes explicit run ids for its inputs. `build-rootfs` needs the RPM matrix, runtime, Mesa and FFmpeg. `build-image` adds the kernel. `build-bundle` needs the image and UEFI. `prepare-install` needs the bundle. The chain is not a plain linear hand-off.
-
-Each stage accepts only artifacts from successful runs. The pipeline rejects assets from mixed runs. See [docs/internals.md](docs/internals.md).
-
-## License
-
-Our own code is MIT, see [LICENSE](LICENSE). Third-party upstream components and kernel patches keep their own licenses, see [sources.lock.json](sources.lock.json) and [NOTICE](NOTICE).
+Original code is [MIT](LICENSE) licensed; third-party upstream sources and kernel patches retain their own licenses in [sources.lock.json](sources.lock.json) and [NOTICE](NOTICE).

@@ -1,184 +1,50 @@
-# 构建与交付产物
+# 交付物与流水线产物
 
-目标是 Fedora 45（五档桌面）+ F2FS 的主机构建集合。构建阶段停在写入设备之前。平板启动、首次分区和本机 BOOT 包装另行验收。
+所有构建阶段均在 CI 主机端完成。跨 run 装配严格按 manifest SHA256 绑定：仅核对 `kernel release` 字符串不足以保证模块与内核一致，所有中间环节混用不同 run 产物均会被校验脚本拒绝。
 
-| 产物 | 生产入口 | 集成关系 |
+## 主机构建产物清单
+
+| 产物 | 产生入口 | 说明与绑定规则 |
 | --- | --- | --- |
-| UEFI 产品 | build-uefi.yml | 使用固定 [SunUEFI](https://github.com/slwyts/Project-SunUEFI) 配方。保留原始 manifest |
-| Image、完整模块、SDK | build-kernel.yml | 内建 F2FS/SELinux/Gunyah，强制 rootfstype=f2fs。SDK 绑定同一配置和 Module.symvers |
-| Fedora 矩阵 RPM | host-check 调用的 build-piano-rpms.yml | 构建九类硬件/运行时 RPM 和匹配内核的 kernel-piano。同一 job 产出对应 SRPM，供 COPR 从源码重建。workflow_call 复用件由已注册的 host-check 启动，artifact 仍由 piano-rpms job 产出 |
-| Fedora 基础树 | build-rootfs.yml | 原生 DNF installroot，记录容器 ID 和实际 RPM，排除发行版 kernel |
-| A830v1 Mesa RPM | build-mesa.yml | 固定 Fedora 源 RPM 与 piano 补丁，复用 Fedora 配方。从实际 RPM 核对 Gallium/Turnip 芯片表 |
-| FFmpeg RPM | host-check 调用的 build-ffmpeg.yml | 固定 Fedora 源 RPM，沿用 SunUEFI BSP 补丁启用 H.264/HEVC v4l2m2m 解码器。build-ffmpeg 是 workflow_call 复用件，实际 run 的 workflow_id 是 host-check。原生构建及设备解码仍待验证 |
-| 设备运行时 RPM | build-device-runtime.yml | Fedora 原生触控/笔、相机程序、传感器、BOOT 请求工具、拓扑与设备配置。另含 VA-API、crosvm、LibreVM 和平台配置 RPM。ABI 匹配的 `v4l2loopback` 不在这一侧，由 `build-piano-rpms.yml` 编进 `kernel-piano` |
-| 设备 rootfs、initramfs、F2FS raw 镜像 | build-image.yml | 同一 job 安装设备、Mesa 与 FFmpeg RPM，核对已安装包及解码器注册。随后运行上游完整 rootfs 检查，配置服务，清理身份，设置 SELinux 标签，最后完整读回验证 |
-| ESP（含 UKI）、交付集合 | build-bundle.yml | 从集成记录取得准确内核，调用上游 DTB/ukify/ESP 包装，核对全部文件和展开 root 镜像 |
+| UEFI 产品 | `build-uefi.yml` | 锁定 SunUEFI 配方输出 `PianoUEFI-product.img` 与原始 manifest |
+| 内核与 SDK | `build-kernel.yml` | 内建 F2FS/SELinux/Gunyah，仅出 `kernel-release-7.3.0` 与绑定的 `kernel-sdk-7.3.0` |
+| 矩阵 RPM 与 SRPM | `host-check.yml` (`build-piano-rpms.yml`) | 编译 15 个硬件/运行时包与匹配内核的 `kernel-piano`（供 COPR 源码重建） |
+| 图形栈 RPM | `build-mesa.yml` / `build-ffmpeg.yml` | `mesa-piano-*`（Adreno A830v1）与启用 v4l2m2m 的 `ffmpeg-piano` |
+| 运行时 RPM | `build-device-runtime.yml` | `piano-runtime`、`piano-crosvm`、`librevm`（`v4l2loopback` 在矩阵内核包中编译） |
+| 基础 rootfs | `build-rootfs.yml` | 按 `desktop=all` 展开五档，记录容器 ID 与实际 RPM 列表 |
+| F2FS 镜像与 initramfs | `build-image.yml` | 装入各组 RPM，比对 `/usr/lib/modules/<release>` 与内核 manifest 逐字节匹配后写入 F2FS |
+| 交付 Bundle | `build-bundle.yml` | 汇总 `sunuefi_esp.img`、`PianoUEFI-product.img`、引导助手、sparse 镜像与校验清单 |
+| 扩容与安装工具 | `prepare-install.yml` | 产出 `root-install-<desktop>`、`boot-tools` 与 `host-boot-tool` |
 
-## 一致性要求
+F2FS 镜像写入时通过 GNU tar 完整保留 xattr、ACL、capability 与 SELinux 标签；随后卸载执行 `fsck.f2fs -f --dry-run` 并以 `ro,norecovery` 挂回比对每一项文件属性，全部一致才生成最终镜像 SHA256。
 
-每份 initramfs、运行时和最终 root 文件系统 manifest 都引用完整 kernel manifest 的 SHA256。kernel release 相同不足以证明配置相同，最终组合必须匹配这份 manifest 的摘要。
+`product.json` 的 `root_size_mib`（8192 MiB）决定封存镜像体积，可刷入任意容量设备（首启由 initramfs 自动撑满 `sunuefi_root`）。`prepare-install.yml` 默认产出的 prepared root 保持 8 GiB 封存尺寸，仅在显式填写目标容量时离线扩容并读回校验。
 
-F2FS 镜像同时绑定 rootfs、内核、运行时、Mesa、FFmpeg 和 initramfs 六份清单的 SHA256。root 文件系统清单引用实际消费的运行时、Mesa 与 FFmpeg 清单，并记录实际 RPM 清单的摘要。
+## deploy-bundle 结构
 
-组件分目录解包。基础树、内核、UEFI、运行时、Mesa、FFmpeg 和 initramfs 不共享 manifest 路径。跨 run 查找只接受成功且未过期的 artifact。内核只允许标准 `kernel-release-7.3.0`。SDK 是独立 artifact；SDK 与内核必须取自同一次成功 run。
+每档拥有独立的 `deploy-bundle-<desktop>` artifact，但内部文件名统一不带档位后缀，由 `scripts/release-assets.py` 唯一定义成员表：
 
-镜像和 bundle 只解包准确命名的内核 archive，拒绝旧 `kernel-experimental-gunyah` 与 `piano-fedora-runtime-gunyah` 产物。Gunyah 已由标准内核和标准 runtime 消费，SDK 内携带源码派生证明。`source-runs.json` 记录 `kernel_run` 与 `kernel_artifact`，bundle 按记录下载并要求内核为标准档。
-
-clean root 文件系统的 `kernel-piano` 与内核压缩包必须来自同一次 kernel run。DNF 事务先安装 `kernel-piano`，所以 rootfs 本来就有唯一的 `/usr/lib/modules/<release>`。build-image 不要求该目录为空，而是要求恰好一个 release、归属 `kernel-piano`，并逐文件比对封存内核 manifest。release 字符串相同但模块字节不同仍会失败，避免 ESP 与 rootfs 跨 run 混装。
-
-所有 `workflow_dispatch` 入口都必须先在 `main` 注册。`build-piano-rpms.yml` 是 `workflow_call` 复用件，由已注册的 `host-check` 启动。`build-rootfs` 按 `host-check.yml` 解析 host-check run 的 `piano-rpms` artifact，不能再直接查询一个只在 PR 分支存在的 workflow。
-
-## F2FS 验证
-
-导入使用 GNU tar 的 pax、全部 xattr namespace、ACL、numeric owner 与 SELinux 恢复选项。逐条核对文件内容、UID/GID、mode、mtime、软链接目标、硬链接关系、全部 xattr、capability 与目标 SELinux 标签。属性读取出错时检查失败。目录大小不参与跨文件系统比较。
-
-镜像先卸载，再运行 `fsck.f2fs -f --dry-run`，核对检查前后镜像摘要不变。随后以 `ro,norecovery` 挂载读回。卸载后才生成最终镜像摘要。fsck 退出 0 或小 fixture 通过，不证明完整交付通过。
-
-封存镜像与设备无关，同一份镜像能装到任何容量的设备上。文件系统在首次启动时由 initramfs 长满本机分区。设备容量一律从实时 GPT 计算，`product.json` 的 `root_size_mib` 只是封存镜像的容量。
-
-`prepare-install.yml` 是可选步骤。填了容量，该步骤把镜像离线扩到指定 MiB 数并完整读回。留空则直接用封存镜像。扩容副本只对该容量成立，Release 发布的始终是封存镜像。
-
-## 交付内容
-
-每档各有一个 `build-bundle` run，artifact 名是 `deploy-bundle-<档位>`。`verify-bundle.py`、`prepare-root-capacity.py` 与 `flash-linux.sh` 只认规范名，bundle 内部文件名不随档位变化。档位维度只出现在 artifact 名与归档名上。
-
-最终 deploy-bundle 包含 `sunuefi_esp.img`、`PianoUEFI-product.img`、`sunuefi-module.zip`、`module-manifest.json`、`pianoroot.f2fs.img.zst`、与封存镜像同内容的 `pianoroot.f2fs.sparse.img`、`initramfs.tar.zst`、`diagnostic-abl-storage.tar.zst`、对应 manifest、`source-runs.json` 与 `SHA256SUMS`。
-
-`sunuefi-module.zip` 是 Android 侧的引导助手模块，装的是同一份 `PianoUEFI-product.img` 里的 fd/app/shim。`module-manifest.json` 记着 ZIP 摘要与 `same_product.product_sha256`，`verify-bundle.py` 核对它与 bundle 里的产品镜像一致。ESP 与 root 刷写装不到这份模块，已装设备只换 UEFI 固件时用它。这两个文件从 v45.10 起进归档，更早的发布没有。
-
-`initramfs.tar.zst` 由 build-image 用固定时间戳与 owner 打出，五档逐字节相同。`initramfs.tar.zst` 是 `build-bundle` 解包后重新打进 UKI `.initrd` 节区的中间产物，不进 Release 归档。
-
-deploy-bundle 自带 sparse。Release 归档里带的是 `prepare-install` 产出的 prepared root，两者内容相同，prepared root 带着设备配置与 SELinux 标签。
-
-上游 `esp-manifest.json` 用 `esp.img` 指代 ESP 镜像，`boot_layout` 记录布局，`esp_files` 列出镜像里的全部文件。BLS 布局列 `/linux/<release>/` 三个文件、`/loader/entries/linux-<release>.conf` 与 systemd-boot；UKI 布局列 `/EFI/Linux/linux-<release>.efi` 与 systemd-boot，节区、`ukify` 与 stub 摘要另记在 `uki` 字段。`verify-bundle.py` 把 `esp.img` 映射成 `sunuefi_esp.img`，按 `boot_layout` 核对文件集合，未知布局直接拒绝。它还流式展开压缩 root 文件系统，核对实际 raw 大小和摘要，再记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
-
-ESP 上的 Linux 载荷随布局不同。BLS 布局是 `/linux/<release>/` 下的内核、initramfs 与板级 DTB 三个文件，加一条 loader 条目；UKI 布局是一个 PE 文件，内核、initramfs、DTB 与 cmdline 都在节区里。合体 BOOT 含当前 Android 内核，必须用本机当前 stock BOOT、活动槽和 generation 另行包装。通用构建产物不包含这些个人设备输入。
-
-已装系统升级内核不需要 deploy-bundle。`kernel-piano` 按普通包升级。`dnf upgrade` 装上之后，`%posttrans` 重建 initramfs，并按 ESP 现有布局写启动项。语义与回滚见 [COPR 软件源](copr-repository.md)。
-
-## 参考来源
-
-`docs/upstreams.json` 登记研究与对照仓库，只用来限定实现范围。源码直接依赖以 `sources.lock.json` 为准，参考文档不会自动进入生产依赖。下载和生成的文件放在被忽略的 `build/`、`out/`。固件、校准和密钥不进代码仓库。
-
-## 发布链基线
-
-当前基线是 `sources.lock.json` 锁定的那组上游的一次完整链，每一阶段都 success：
-
-| 阶段 | 关键产物 |
-| --- | --- |
-| build-kernel | `kernel-release-7.3.0`、`kernel-sdk-7.3.0` |
-| host-check（FFmpeg + RPM） | `piano-fedora-ffmpeg`、`piano-rpms` |
-| build-device-runtime | `piano-fedora-runtime` |
-| build-rootfs | `rootfs-<rel>-<档位>` |
-| build-image | `root-image-<releasever>-<档位>` |
-| build-bundle | `deploy-bundle-<档位>` |
-| prepare-install | `root-install-<档位>`、`boot-tools`、`host-boot-tool` |
-
-每一轮的 run id、产物摘要与验收结论记在对应 Release 的说明和会话记录里，文档不逐轮记录。
-
-封存镜像的容量由 `product.json` 的 `root_size_mib` 固定，与设备无关。首次启动由 initramfs 长满 `sunuefi_root`。
-
-首装不需要先跑 `prepare-install`，bundle 自带的 sparse 就是首装材料。`prepare-install` 仍会跑，因为 `flash-linux.sh` 的更新路径要求 `root-install/`。Release 直接带上这份产物。
-
-`verify-bundle.py` 解码 `pianoroot.f2fs.sparse.img`，与 `pianoroot.f2fs.img.zst` 展开后的字节和摘要比对。initramfs manifest 的 `f2fs_tools_verified` 为 `true`，归档里有 `usr/sbin/fsck.f2fs` 与指向它的 `resize.f2fs`。ABL 诊断链的 manifest 是 `false`，那条链不做扩容。
+- `sunuefi_esp.img`：512 MiB FAT32 分区镜像，按 `esp-manifest.json` 含 systemd-boot、内核/initramfs/合成 `board.dtb`（BLS 布局）或 UKI PE 文件；由 `verify-bundle.py` 流式展开并校验，记录 `HOST_VERIFIED_FEDORA_F2FS_BUNDLE_NOT_DEVICE_VERIFIED`。
+- `PianoUEFI-product.img`：纯 UEFI 产品镜像（合体 BOOT 仍需用户在本地运行 `make-device-boot.sh` 基于本机 96 MiB stock BOOT 生成，不进通用构建包）。
+- `sunuefi-module.zip` 与 `module-manifest.json`：Android 侧引导助手模块（v45.10 起内置，`same_product.product_sha256` 绑定同一次构建的 `PianoUEFI-product.img`）。
+- `pianoroot.f2fs.img.zst` 与 `pianoroot.f2fs.sparse.img`：完整压缩镜像及等价的 sparse 传输镜像（sparse 仅含 `RAW` 与零值 `FILL` 块，不用 `DONT_CARE`）。
+- `initramfs.tar.zst`：`build-image` 用确定性时间戳打出的 initramfs 中间包（五档逐字节一致，仅在 `build-bundle` 中打包进 ESP，不进入最终 Release 归档）。
+- `diagnostic-abl-storage.tar.zst`、`source-runs.json`、组件 manifest 与 `SHA256SUMS`。
 
 ## Release 发布
 
-`.github/workflows/release.yml` 只搬运已验证的构建，不重新编译。tag 指向的 commit 必须同时有成功的 `build-bundle` 与 `prepare-install` run，每档一对。缺一个就在写入任何发布资产之前失败。
+`.github/workflows/release.yml` 不触发编译，由维护者对打好的 tag 手工 dispatch 执行（自动按 tag commit 解析并逐档核对 `head_sha`，也可用 `desktop_runs` 单独发布部分档位）。发布前依次校验 `deploy-bundle` 与 `root-install` 清单、`verify-bundle.py`、`release-assets.py check-bundle`、`boot-tools` 摘要以及 `source_bundle_manifest_sha256` / `source_root_manifest_sha256` 绑定关系（仅收 `android_slot == "_a"`）。
 
-发布不由 tag push 触发。手工 dispatch 并填 tag，内容与 tag 指向的 commit 绑定。
-
-默认不填 run id：`desktop` 留 `all`，五档的 run 都按 tag commit 解析。某个档位缺 run 时，用 `desktop_runs` 只发其余档（`gnome=<bundle>:<prepare>,kde=<bundle>:<prepare>`）。没写 run id 的条目仍按 commit 解析。
-
-build-bundle 与 prepare-install 的 artifact 都带档位：`deploy-bundle-<档位>` 与 `root-install-<档位>`。`boot-tools` 与 `host-boot-tool` 五档同源，只取第一档的，其余各档与它逐字节比对。
-
-### 每档一个归档
-
-每档打成一个归档。解到空目录就是安装指南的暂存目录，不需要再从别处拼第二个。
+每个桌面档打成一个自包含归档（超过 2 GiB 自动按 1900 MiB 切片以适配 GitHub 资产上限，使用确定性 tar 参数并在打包后回解比对）：
 
 ```text
-piano-<tag>-<档位>.tar.zst            单文件，小于 2 GiB 时
-piano-<tag>-<档位>.tar.zst.part-NN    超过 2 GiB 时按 1900 MiB 切片
-piano-<tag>-<档位>.sha256             这一档已上传文件的摘要
+piano-<tag>-<档位>.tar.zst[.part-NN]   # 桌面自包含归档（GNOME/KDE 约 2.1-2.8 GiB，其余约 1 GiB）
+piano-<tag>-<档位>.sha256             # 对应分片校验文件
+RELEASE-SHA256SUMS                    # 全量资产汇总哈希（供 actions/attest-build-provenance 认证）
 ```
 
-归档里：
+常规五档全发布共包含 7 个归档分片、5 份 `.sha256` sidecar 与 `RELEASE-SHA256SUMS` 共 13 个基础资产（随 extras 归档一起发布时为 15 个）。用 `gh attestation verify <任一分片>` 可验证 provenance（`RELEASE-SHA256SUMS` 自身不作为 attestation subject）。
 
-- 平台镜像 `sunuefi_esp.img`、`PianoUEFI-product.img`。
-- Android 侧引导助手 `sunuefi-module.zip` 与绑定它的 `module-manifest.json`。
-- 这一档的 `root-install/`，含 sparse root、清单与摘要。
-- 组件 manifest 与 bundle manifest。
-- `flash-linux.sh`、`flash-linux.bat`、`README-INSTALL.txt`、`make-device-boot.sh`。
-- `boot-tools/`、`host-boot-tool/`、`scripts/`。
-- `SHA256SUMS`。
+归档解压后即是一键/手动安装所需的暂存目录，内含平台镜像（保持未二次压缩以便脚本直接读取）、当前档 `root-install/`、`flash-linux.{sh,bat}`、`README-INSTALL.txt`、`make-device-boot.sh`、`boot-tools/`、`host-boot-tool/`、组件清单与精确匹配现有文件的 `SHA256SUMS`。不放入通用归档的三类文件（raw zst 镜像、根目录 duplicate sparse、`initramfs.tar.zst`、以及未做真机认证的 `diagnostic-abl-storage.tar.zst`）均可按需直接从 Actions artifact 下载。
 
-`SHA256SUMS` 在装配完之后按目录里的实际内容生成。`SHA256SUMS` 只列真实存在的文件，所以 `sha256sum -c SHA256SUMS` 在归档里与手动路径下都能直接过。清单里混进未发布的成员时，手动路径恒返回 1。
-
-打包固定 `--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`，同一档位重跑产出相同字节。归档打完后先解回来与打包前的暂存目录比对，不一致就停下。
-
-成员表只有一处定义：`scripts/release-assets.py` 的 `BUNDLE_MEMBERS`、`EXCLUDED_BUNDLE_FILES` 与 `ARCHIVE_FILES`/`ARCHIVE_DIRS`。`release.yml` 按它装配，`check-bundle` 拒绝成员表不认识的 bundle 文件。
-
-### 不进归档的文件
-
-deploy-bundle 里有三类文件不进归档。
-
-- 完整镜像 `pianoroot.f2fs.img.zst` 与封存镜像 `pianoroot.f2fs.sparse.img`：
-  - 内容与 `root-install` 相同且无法直接刷写，避免混淆并缩减发布包体积。
-- `initramfs.tar.zst` 是 `build-bundle` 解包用的中间产物，内容与 UKI `.initrd` 节区里那份逐字节相同。
-- `diagnostic-abl-storage.tar.zst` 是 ABL 只读探针的调试件，manifest 自标 `device_tested: false`，装机脚本不读它的内容。
-
-这三类文件都能从对应的 workflow artifact 取。
-
-`device-boot/boot_linux.img` 也不进归档。`boot_linux.img` 由 `make-device-boot.sh` 用每台平板自己的 96 MiB stock BOOT 生成。
-
-### 资产清单
-
-体积数据取自五档发布构建基准，随内核与套件更新有所浮动。
-
-| 资产 | 数量 | 体积 | 用途 |
-| --- | --- | --- | --- |
-| `piano-<tag>-<档位>.tar.zst[.part-NN]` | 7 个分片 | 合计约 7.7 GiB | 每档一个归档，gnome 与 kde 各 2 个分片，niri、hyprland 与 denial 各 1 个 |
-| `piano-<tag>-<档位>.sha256` | 5 份 | 每份 1–2 行 | 这一档的分片摘要，`sha256sum -c` 直接喂 |
-| `RELEASE-SHA256SUMS` | 1 份 | 几 KiB | 全部资产的哈希，`actions/attest-build-provenance` 的输入 |
-
-五档归档加 extras 归档与各自 sidecar、`RELEASE-SHA256SUMS`，合计 15 个资产。装 gnome 下 2 个分片加 1 份 sidecar，合计 2.1 GiB；kde 约 2.8 GiB，niri、hyprland 与 denial 各约 1 GiB。
-
-归档总量比扁平布局多出的部分是平台镜像与 boot-tools 在五档里各存一份。用户只下载自己那一档，下载量不变。
-
-### 平台镜像压缩
-
-归档里的三份镜像保持原样，压缩由外层 `.tar.zst` 完成。模块 ZIP 本身已压缩，外层再压不改变它的字节。ESP 是 512 MiB 的 FAT32，绝大部分扇区是零，归档整体压缩比因此很高。不做内层压缩，一键脚本读的就是规范名，不需要再解一次。
-
-### 校验与 provenance
-
-发布前按顺序校验五项：
-
-1. bundle 的 `SHA256SUMS`。
-2. `verify-bundle.py`。
-3. `release-assets.py check-bundle`，确认 bundle 只有成员表认识的文件。
-4. root-install 的 `SHA256SUMS`。
-5. boot-tools 的 `installer/SHA256SUMS`。
-
-另外核对 root-install manifest 里 `source_bundle_manifest_sha256` 与 `source_root_manifest_sha256` 确实指当前 deploy-bundle 与其 root 镜像。Release 只收 `android_slot == "_a"`。Slot B 设备的 root-install 由设备自己生成。
-
-`RELEASE-SHA256SUMS` 覆盖实际发布的全部资产，一份覆盖所有档位。每档的 sidecar 从 `RELEASE-SHA256SUMS` 切出来。
-
-发布前用 `actions/attest-build-provenance` 以 `RELEASE-SHA256SUMS` 为输入生成 provenance。这个 action 把该文件列出的每个资产都记成一条 subject，所以 `gh attestation verify <任一分片>` 都能验。`RELEASE-SHA256SUMS` 本身不在 subject 列表里，用它去验会得到 404。
-
-GitHub 的单个 release asset 必须小于 2 GiB，所以归档超限时按 1900 MiB 切片。sidecar 覆盖每个分片，缺一个分片在解开之前就会失败。
-
-## 尚需验证
-
-主机构建验收已通过，覆盖组件清单摘要、压缩 root 展开后的 8 GiB 大小与 SHA256，以及 ESP 载荷与 UKI 节区。设备上的 Fedora 已启动过一次。首次分区、恢复材料及 Android 往返仍需各自的设备证明；未完成项见[已知问题](known-issues.md)。
-
-上游安装器保留 ext4 合同。piano-fedora 新增独立的 F2FS 初装入口和本机 BOOT 文件准备入口。工具路径、Actions 材料、破坏性操作门禁和真机验收边界见[维护与验收](internals.md)与[首次安装](installation.md)。新增实现的构建、包装和设备验收状态分别以对应 manifest 与会话记录为准。
-
-## 容量与 sparse 传输
-
-执行器从实时、双副本 CRC 合格的完整 GPT 重算容量，镜像不能大于该容量。原 userdata 会被清空重建。GPT/BOOT 恢复文件不含 Android 用户数据。分区容量的分配规则见[安装指南的分区架构](installation.md#二-存储与分区架构原理)。
-
-封存镜像（8 GiB F2FS）保持封存。`prepare-root-capacity.py` 在私有工作副本里设置本机启动配置与传感器槽位，恢复匹配的 Fedora SELinux 标签，然后离线扩容。镜像不写任何 SSH 公钥，manifest 用 `ssh_public_key_in_image: false` 记录。
-
-源树与扩容副本的文件、所有权、权限、链接、mtime、全部 xattr 逐项比较。只读 fsck 与 sparse 解码摘要必须通过。
-
-sparse 文件用 RAW 与显式零 FILL，不用 DONT_CARE。展开后的完整字节与验证过的 F2FS 镜像一致。文件系统仍是 F2FS，sparse 只负责 Fastboot 传输。
+> 参考仓库列表登记在 `docs/upstreams.json`，实际编译与打包消费的提交仅以 `sources.lock.json` 为准，下载或临时输出均放入 `.gitignore` 覆盖的 `build/`、`out/` 目录。

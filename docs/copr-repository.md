@@ -1,194 +1,112 @@
 # COPR 软件源
 
-设备装好 Fedora 后，配置、固件、相机、触控、传感器、VA-API、调度器和内核都可以通过 COPR 升级，不必每次手动下载 RPM 再 `rpm -Uvh`。
+设备装好 Fedora 后，内核、固件、相机、触控、传感器、调度器与图形栈全部通过 COPR `xinyang26/piano-fedora`（`fedora-45-aarch64`）在线升级，不必手工下载安装 RPM。
 
-**当前状态：15 个矩阵包、3 个设备运行时包，加上 Mesa 与 FFmpeg 两组图形栈，共 20 个包可以 `dnf upgrade` 升级，内核在内。** 项目是 `xinyang26/piano-fedora`，chroot 跟 `product.json` 的 releasever 走，现在是 `fedora-45-aarch64`。项目存在但缺这个 chroot 时，发布脚本会先 `copr-cli modify --chroot` 补上，否则 `copr-cli build` 会被 COPR 拒掉。仓库里有全部 20 个包：
+## 默认维护的 20 个包
 
-矩阵包：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-bluez`、`piano-camera`、`piano-fedora-configs`、`piano-fingerprint`、`piano-libfprint`、`piano-libwacom`、`piano-pipewire-gstreamer`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`。
+- **矩阵包（15 个）**：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-bluez`、`piano-camera`、`piano-fedora-configs`、`piano-fingerprint`、`piano-libfprint`、`piano-libwacom`、`piano-pipewire-gstreamer`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`
+- **设备运行时（3 个）**：`piano-runtime`、`piano-crosvm`、`librevm`
+- **图形栈（2 组）**：`mesa-piano-*`、`ffmpeg-piano`
 
-运行时包：`piano-runtime`、`piano-crosvm`、`librevm`。
+### 启用与日常操作
 
-图形栈：`mesa-piano-*` 与 `ffmpeg-piano`。
+系统默认已预置 `/etc/yum.repos.d/piano-fedora-copr.repo`，装机后直接更新：
 
-核对方法见下面的[启用仓库](#启用仓库)一节，或在设备上跑 `python3 scripts/verify-copr-device.py`。
-
-**内核怎么升级。** [SunUEFI](https://github.com/slwyts/Project-SunUEFI) 固件从 ESP 加载 Linux。新装镜像走标准 UEFI 启动顺序，入口是 `EFI/BOOT/BOOTAA64.EFI`（systemd-boot），内核与启动项分放在 `/linux/<release>/` 与 `/loader/entries/`。早期单 UKI 固件没有 systemd-boot，只打开固定的 `/EFI/Linux/sunuefi.efi`，`PianoProductCore.c` 直接按路径加载，没有编译期哈希或 Android boot v2 解析。
-
-用户态 `dnf upgrade` 只改 `/usr/lib/modules`，与 ESP 本来脱钩，`kernel-piano` 的 `%posttrans` 把这条链接上。事务收尾时先跑 `depmod -a <release>`，再用刚装上的内核重建 initramfs，最后按 ESP 现有布局写启动项。BLS 布局写 `/linux/<release>/` 与新的 loader 条目。UKI 布局用 `systemd-ukify` 重打 PE 文件，有 systemd-boot 时写版本化文件名，没有时原地替换 `sunuefi.efi`。
-
-不需要重编固件。换内核不改固件。
-
-板级 DTB 随 `kernel-piano` 发布，装在 `/usr/lib/piano/board.dtb`。它与内核出自同一个 SunUEFI pin，板级 overlay 已经合成在里面，和 bundle 的 ESP 镜像里那一份逐字节相同。`%posttrans` 先核对它的摘要与 FDT 头，再和内核一起写进 ESP。cmdline 沿用 ESP 上现有的那一份。
-
-**启动项保留。** 写新条目时清掉更早的 piano 条目与载荷，留下当前 release、更新前在用的那一个和正在运行的内核。非 piano 的启动项（`linux` 路径不在 `/linux/<version>/` 下的）不动。清理失败只记进审计记录的 `history.errors`，不影响本次更新。单 UKI 固件的固定 `sunuefi.efi` 不参与清理。同一个 release 重写时就地替换文件，不新增一代。
-
-**失败边界。** 写 ESP 之前的任何一步失败，ESP 不动。BLS 布局先写载荷再落条目，同一个 release 重写时逐个文件原子替换，条目引用的文件始终齐全。UKI 布局的写入顺序是：先写 `.new` 并 fsync，重新读出六个语义节区与预期比对；通过后把旧文件复制成 `.bak`，最后用 `os.replace` 换上去。PE 时间戳每次不同，判断文件有没有变只看 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname` 六段内容。
-
-**运行与验证记录。** UKI 升级由 `%posttrans` 重建 initramfs，写出 `sunuefi.efi.bak` 并原子替换 `sunuefi.efi`；重启后进入桌面，`uname -r` 与 UKI 内部 `.uname` 严格一致。升级审计信息同步写入 `/var/lib/piano/kernel-esp/<release>.json`。
-
-挂起与唤醒测试中系统可正常恢复会话，`systemctl --failed` 保持为空。挂起路径打出 4 条 `qdss already disabled/unprepared` 时钟警告（`amba_pm_runtime_suspend` 重复 disable coresight qdss），属于无害内核日志，不影响唤醒与使用。
-
-manifest 的名字带 NVRA，`%posttrans` 读自己那一版并把文件名传给 `piano-kernel-esp-update`；盘上留下多份时，工具不猜用哪一份。
-
-`kernel-piano` 不提供 `kernel` / `kernel-core` 这类名字。DNF 的 installonlypkgs 按名字或 provides 匹配，提供它们会把新的 RPM Release 当成“再装一份内核”。模块树目录只由编译期 release 决定（`7.3.3-piano-sunuefi-cachy-optimize`），两个 Release 指向同一批文件，rpm 在安装阶段报 `file ... conflicts with file from package` 并中止整个事务。去掉这些 provides 后，`dnf upgrade` 按普通包替换本包。
-
-已经装好但起不来的内核没有自动回滚。上游没有 boot counter（`PianoNvJournal` 是现成的双槽 NV journal，只是没有人往里写尝试计数），回滚只能手工做。BLS 布局的旧条目还在，但旧内核的模块树已被新包替换，要先 `dnf downgrade kernel-piano` 把它装回来，再在 systemd-boot 菜单里选旧 release。新内核起不来、只能从旧条目启动时，系统没有模块树，这条路径没有在设备上验过。单 UKI 布局恢复 `.bak`：
-
-```bash
-# 恢复上一个 UKI，重启即回到旧内核
-sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi
-```
-
-`dnf history undo` 只回滚 RPM，不动 ESP，所以单跑它不会让设备回到旧内核。内核按普通包升级，旧模块树在事务里被新包替换，`.bak` 里的旧内核没有可用的模块树。回滚要先 `dnf downgrade kernel-piano` 把旧模块树装回来，再把 `.bak` 复制回 ESP 重打。
-
-## 为什么是 COPR 重建，而不是上传二进制
-
-Fedora 官方 COPR 实例没有启用二进制 RPM 上传。运行中实例的 API 描述里没有 `/build/create/rpm-upload`，只有 `/build/create/upload`（SRPM）。源码里这条路由由 `DIRECT_RPM_UPLOAD` 控制，默认关闭，公开实例没打开。`copr-cli` 2.4 也没有 `uploadrpm` 子命令。
-
-发布链因此改成：矩阵构建同时产出 SRPM，COPR 在干净的 `fedora-45-aarch64` chroot 里从 SRPM 重建。仓库因此能从源码复现，不会留下一堆来路不明的二进制。
-
-## 发布流程（维护者）
-
-发布走 `publish-copr.yml`，需要仓库 secrets `COPR_LOGIN` 与 `COPR_TOKEN`。先在 `main` 上跑一次带 `build_piano_rpms=true` 的 `host-check`，拿到 `piano-rpms` artifact；图形栈走 `build-mesa.yml` 与 `build-ffmpeg.yml`。再用这些 run id 触发 `publish-copr.yml`：
-
-```bash
-gh workflow run publish-copr.yml --ref main \
-  -f rpms_run_id=<host-check run> -f kernel_run_id=<同一个内核 run> \
-  -f mesa_run_id=<build-mesa run> -f ffmpeg_run_id=<host-check run> \
-  -f execute=false
-```
-
-`execute=false` 是 dry-run：核对 run 状态、每个 RPM 与 SRPM 的大小和摘要、清单里的包是否齐全，以及源包名与二进制包名。Mesa 的源包名是 `mesa-piano`；FFmpeg 的配方把变体放在 `pkg_suffix` 里，源包仍叫 `ffmpeg`，所以按 release 认这一版。两者的二进制包必须全部带 `-piano`。通过后把 `execute` 换成 `true` 真实提交。脚本幂等创建项目，按依赖顺序提交构建，轮询到全部 `succeeded` 才写 `copr-publication.json`。
-
-CI 的 RPM 矩阵、COPR 的重建产物与 bundle 里的 RPM 版本号相同，但构建环境不同，不是逐字节同一份。要完全一致的二进制，就用 bundle 里的 RPM。
-
-## 启用仓库
-
-`piano-fedora-configs` 已经带上 `/etc/yum.repos.d/piano-fedora-copr.repo`：
-
-```ini
-[copr:copr.fedorainfracloud.org:xinyang26:piano-fedora]
-gpgcheck=1
-repo_gpgcheck=0
-```
-
-装好系统后直接跑：
-
-```bash
+```sh
 sudo dnf makecache
 sudo dnf upgrade --refresh
 ```
 
-内核升级会重写 ESP 上的启动项与载荷。升级前先确认电量充足，不要在升级事务中间断电。
+日常检查与回滚：
 
-## 可选的 extras 软件源
-
-默认镜像与上面的默认仓库都不带补丁版桌面组件。需要 GNOME 自动亮度、键盘背光热插拔、GNOME 触摸崩溃修复、GNOME 登录前等 DRM connector 或 KDE HDR 退出后背光恢复时，再单独启用 `xinyang26/piano-fedora-extras`。这个项目默认关闭，不装它时五档桌面仍用 Fedora 原版 GSD、KWin、GTK3、mutter 与 gdm。
-
-| 包 | 内容 |
-| --- | --- |
-| `gnome-settings-daemon-piano` | 官方 GSD 改名重建，带自动亮度设备 profile、键盘背光热插拔与启动时锁屏状态同步三个补丁 |
-| `kwin` | 同名重建，`Release` 带 `.piano1`，带 HDR 背光恢复补丁 |
-| `gtk3` | 同名重建，`Release` 带 `.piano1`，带 XI2 工具原子补丁 |
-| `mutter` | 同名重建，`Release` 带 `.piano1`，带空 KMS gamma LUT 与取消的触摸 grab 两个守卫补丁 |
-| `gdm` | 同名重建，`Release` 带 `.piano1`，登录前等原生 KMS connector；只对 GNOME 档有意义 |
-| `gnome-control-center` | 同名重建，`Release` 带 `.piano1`，指纹录入前等 `fprintd` 的验证动作结束；只对 GNOME 档有意义 |
-| `piano-gnome-extras` | noarch meta，拉入 GSD、GTK3 与 mutter，并写入 `20-piano-ambient` dconf drop-in |
-| `piano-kde-extras` | noarch meta，拉入 KWin 与 GTK3 |
-
-启用并安装：
-
-```bash
-sudo dnf copr enable -y xinyang26/piano-fedora-extras
-sudo dnf config-manager setopt \
-  'copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras'.priority=1
-sudo dnf upgrade kwin gtk3 mutter gdm
-sudo dnf install --allowerasing piano-gnome-extras   # 或 piano-kde-extras
-sudo dconf update
+```sh
+dnf repolist --enabled | grep piano                        # 确认源启用
+rpm -q gpg-pubkey --qf '%{SUMMARY}\n' | grep -i copr       # 确认公钥
+dnf list --showduplicates kernel-piano                     # 查询内核可用版本
+cat /var/lib/piano/kernel-esp/*.json                       # 查看上次内核 ESP 更新审计
+sudo dnf downgrade --repo fedora piano-fedora-configs      # 单个包回退 Fedora 原版
 ```
 
-`priority=1` 让 extras 的数字小于 Fedora 仓库，DNF5 因此优先用 `.piano1` 的 KWin、GTK3、mutter 与 gdm，哪怕 Fedora 后来发了更高版本。代价是 Fedora 对这几个包的更新会被遮住，直到 extras 按新 SRPM 重编。gdm 是登录管理器，mutter 是 GNOME 合成器，这两条被遮住的更新比 KWin/GTK3 更值得盯。手动 `dnf copr enable` 不会自动写这个优先级，要自己补上。
+## 内核在线升级与回滚细节
 
-meta 包只写裸 `Requires`，原版已装时依赖就算满足，所以装 meta 前先 `dnf upgrade kwin gtk3 mutter gdm`，否则只装 meta 不换组件。gdm 不进 meta 的硬依赖：在非 GNOME 档装 `piano-gnome-extras` 不该顺带拉进一个登录管理器，GNOME 用户手动升级它。
+`kernel-piano` 故意不声明 `Provides: kernel` / `kernel-core`，使其按普通包原地替换（若作为 installonly 包，同一编译期模块目录会产生文件冲突）。
 
-卸载回退：
+事务末尾的 `%posttrans` 会运行 `depmod -a <release>`、用新内核重建 initramfs，并同步 `/usr/lib/piano/board.dtb` 与新载荷到 ESP：
 
-```bash
-sudo dnf remove piano-gnome-extras piano-kde-extras
-sudo dnf config-manager setopt \
-  'copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras'.enabled=0
-sudo dconf update
-sudo dnf distro-sync --repo fedora
+- **BLS 布局**（带 `systemd-boot`）：写 `/linux/<release>/` 与 `/loader/entries/linux-<release>.conf`，仅保留当前、更新前与正在运行的内核条目，不动非 piano 启动项。
+- **UKI 布局**：重打包含 `.linux` / `.initrd` / `.dtb` / `.cmdline` / `.osrel` / `.uname` 的 PE 文件（先写 `.new` 并核对六个节区，再备份旧文件为 `.bak` 后原子替换 `sunuefi.efi`）。
+
+写 ESP 前任一步出错即中止且不修改 ESP。因为旧模块目录在 RPM 升级时已被移除，`dnf history undo` 或仅还原 `.bak` 都不足以让旧内核完整工作，回滚须先降级包：
+
+```sh
+sudo dnf downgrade kernel-piano
+# 若 ESP 为单 UKI 布局：
+sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi
 ```
 
-`distro-sync` 把同名的 KWin、GTK3、mutter 与 gdm 换回 Fedora 版本。GSD 用 `sudo dnf swap gnome-settings-daemon-piano gnome-settings-daemon --repo fedora`。先加 `--assumeno` 看清楚要动的包。
+## 图形栈改名规则
 
-增量安装、KDE HDR 与自动亮度均已纳入支持，结果见[桌面档](desktops.md#extras-可选组件)与[已知问题](known-issues.md#hdr)。`mutter` 与 `gdm` 作为 opt-in extras 提供：GSD 正常加载 ambient profile。触摸手势与键盘背光需要外设配件配合，作为后续验收项推进。
+为了避免 Fedora 官方 `mesa` / `ffmpeg-free` 随时升小版本把补丁包覆盖回去（又不想锁死单向 `Epoch: 1`），图形栈效仿 RPM Fusion 对齐命名：
 
-## 核对与回滚
+- `mesa*` → `mesa-piano*`（含 `mesa-piano-libGL`、`mesa-piano-libEGL`、`mesa-piano-libgbm`、`mesa-piano-dri-drivers`、`mesa-piano-vulkan-drivers`、`mesa-piano-filesystem`）
+- `ffmpeg-free` / `libavcodec-free` 等 8 个 → `ffmpeg-piano` / `libavcodec-piano` 等
 
-```bash
-# 确认仓库和签名可用
-dnf repolist --enabled | grep piano
-rpm -q gpg-pubkey --qf '%{SUMMARY}\n' | grep -i copr
-
-# 确认内核在这条源里、升级会带上它
-dnf list --showduplicates kernel-piano
-dnf upgrade --assumeno | grep kernel-piano
-
-# 看上次内核升级做了什么（重建的 initramfs 摘要、模块数、容器摘要）
-cat /var/lib/piano/kernel-esp/*.json
-
-# 停用仓库
-sudo dnf config-manager setopt copr:copr.fedorainfracloud.org:xinyang26:piano-fedora.enabled=0
-
-# 回滚单个包到发行版版本
-sudo dnf downgrade --repo fedora piano-fedora-configs
-```
-
-移除仓库：
-
-```bash
-sudo rm /etc/yum.repos.d/piano-fedora-copr.repo
-sudo dnf makecache
-```
-
-## 图形栈为什么换包名
-
-Fedora 的 mesa 与 ffmpeg 版本号一直在往上走，补丁版的版本号永远落后：本地包是 `26.2.7-1.piano1`，官方一升到 `26.2.8-1` 就排到它上面，`dnf upgrade` 会把补丁版换回官方版。
-
-抬 Epoch 能压住，但 epoch 是单向的。`1:` 一旦发出去就回不到 `0:`，等 A830v1 的 chip id 进了上游、要回到 Fedora 的包时，每台设备都得手工 `dnf distro-sync`。所以改成 RPM Fusion 对同两个包的做法：换包名。
-
-| 上游包 | 本地包 |
-| --- | --- |
-| `mesa`、`mesa-libGL`、`mesa-libEGL`、`mesa-libgbm`、`mesa-dri-drivers`、`mesa-vulkan-drivers`、`mesa-filesystem` | `mesa-piano`、`mesa-piano-libGL`、`mesa-piano-libEGL`、`mesa-piano-libgbm`、`mesa-piano-dri-drivers`、`mesa-piano-vulkan-drivers`、`mesa-piano-filesystem` |
-| `ffmpeg-free`、`libavcodec-free` 等 8 个 | `ffmpeg-piano`、`libavcodec-piano` 等 8 个 |
-
-每个本地子包声明 `Provides: <上游名> = <版本>-<发布号>`、`Obsoletes: <上游名> < <版本>-<发布号>` 和 `Conflicts: <上游名>`。依赖上游名字的包照旧能被满足；按名字提的安装请求（comps 组、桌面 environment 的成员）落到本地包上，`Obsoletes` 那一行就是为它写的——dnf 解析明确的包名只认名字，`Provides` 压不过同名的官方包；两个版本不会同时装进一台设备。上游版本号超过本地包时 `Obsoletes` 的区间盖不住，构建会直接报冲突，需要跟着新 SRPM 重做。
-
-已经装着 Fedora 图形栈的设备要换一次名字，`dnf upgrade` 不会主动安装新名字的包：
+本地包均带 `Provides`/`Obsoletes`/`Conflicts` 接管官方包请求。如果设备装过未改名前的官方图形栈，执行一次切换：
 
 ```sh
 sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
   mesa-piano-libEGL ffmpeg-piano
 ```
 
-从带这套包的新镜像装起的设备不需要这一步。
+## 可选的 extras 软件源
 
-## 边界
+`xinyang26/piano-fedora-extras` 提供打过桌面补丁的 opt-in 包，默认关闭。不启用它时，桌面保持 Fedora 原版包。
 
-- COPR 覆盖全部 20 个包（包括内核）：
-  - ESP 上的启动项与载荷由 `%posttrans` 维护，板级 DTB 随 `kernel-piano` 一起更新。
-- 设备的 `.repo` 只指向项目自己的 COPR。Hyprland 与 Denial 两档在构建期另加
-  第三方源：Hyprland 用 `lionheartp/Hyprland` COPR，Denial 用官方
-  `packages.denialwm.org` 的 Fedora 44 仓库（Fedora 45 官方仓库没有这两个桌面）。
-  仓库都以 `--repofrompath` 临时加入并校验公钥，不写进镜像的持久配置。其余三档
-  只连官方仓库。细节见[桌面档](desktops.md)。
-- 重建产物和 CI 矩阵产物环境不同，版本号相同但非逐字节一致：
-  - 需要完全一致二进制时直接使用 bundle 内的 RPM，不使用 COPR。
+| 包名 | 说明 |
+| --- | --- |
+| `gnome-settings-daemon-piano` | 改名重建，带原厂自动亮度曲线、键盘背光热插拔与启动锁屏同步补丁 |
+| `kwin` | `Release` 带 `.piano1`，修复退出 HDR/广色域后背光不回落 |
+| `gtk3` | `Release` 带 `.piano1`，修复 X11 应用下的 XI2 手写笔工具原子查询 |
+| `mutter` | `Release` 带 `.piano1`，增加空 KMS gamma LUT 与取消触摸 grab 守卫 |
+| `gdm` | `Release` 带 `.piano1`，登录前等待 KMS connector 就绪（仅 GNOME） |
+| `gnome-control-center` | `Release` 带 `.piano1`，指纹录入前等待 `fprintd` 验证动作结束（仅 GNOME） |
+| `piano-gnome-extras` | noarch meta，拉入 GSD/GTK3/mutter 并写入 `20-piano-ambient` 开启自动亮度 |
+| `piano-kde-extras` | noarch meta，拉入 KWin 与 GTK3 |
 
-## 设备侧验证
+启用并安装（`priority=1` 确保同名包优先于 Fedora 官方更高小版本；升级原有同名包后再装 meta）：
 
-`verify-copr-device.py` 在平板上跑。只读模式核对：仓库里的 15 个矩阵包、3 个运行时包和 Mesa/FFmpeg 齐全、图形栈是改名后的 `mesa-piano-*` 与 `ffmpeg-piano` 且仓库里没有同名的 Fedora 包（避免升级时被官方包覆盖）、公钥可下载、`.repo` 里没有 `exclude=kernel-piano`、`dnf repoquery` 能查到内核包。`--install-test` 再跑一次 `dnf upgrade --assumeno`，确认升级计划里带着 `kernel-piano`，且仍然要求确认。
+```sh
+sudo dnf copr enable -y xinyang26/piano-fedora-extras
+sudo dnf config-manager setopt \
+  'copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras'.priority=1
+sudo dnf upgrade kwin gtk3 mutter gdm gnome-control-center
+sudo dnf install --allowerasing piano-gnome-extras   # KDE 用户改为 piano-kde-extras
+sudo dconf update
+```
 
-`--extras` 换到 extras 仓库：核对 GSD/KWin/GTK3/mutter/gdm/gnome-control-center 与两个 meta 包齐全、六个桌面包的 `Release` 含 `.piano1`、两个 meta 是 noarch、仓库里没有官方的 `gnome-settings-daemon`，报告写到 `copr-extras-device-check.json`。
+注意设了 `priority=1` 后，Fedora 官方对 `kwin`/`gtk3`/`mutter`/`gdm`/`gnome-control-center` 的上游更新会被遮住，需等 extras 按新 SRPM 重建。卸载回退：
+
+```sh
+sudo dnf remove piano-gnome-extras piano-kde-extras
+sudo dnf config-manager setopt \
+  'copr:copr.fedorainfracloud.org:xinyang26:piano-fedora-extras'.enabled=0
+sudo dconf update
+sudo dnf distro-sync --repo fedora
+# 若要还原原版 GSD：
+sudo dnf swap gnome-settings-daemon-piano gnome-settings-daemon --repo fedora
+```
+
+## 维护者发布与验证
+
+Fedora COPR 公开实例未开启二进制 RPM 直接上传（无 `DIRECT_RPM_UPLOAD`），因此 CI 矩阵同时生成 SRPM，由 `publish-copr.yml` 提交到 COPR 在 `fedora-45-aarch64` chroot 内从源码重建（缺 chroot 时先自动 `copr-cli modify --chroot` 补齐）。因此 COPR 包与 bundle 内的 RPM 版本一致但并非逐字节同一二进制。
+
+触发发布先跑一次 dry-run（`execute=false`）校验 run 状态、清单摘要及 `-piano` 命名，通过再置为 `true`：
+
+```sh
+gh workflow run publish-copr.yml --ref main \
+  -f rpms_run_id=<host-check run> -f kernel_run_id=<kernel run> \
+  -f mesa_run_id=<build-mesa run> -f ffmpeg_run_id=<host-check run> \
+  -f execute=false
+```
+
+在平板上验证仓库状态：`python3 scripts/verify-copr-device.py`（检查 20 个包齐全、图形栈已切 `mesa-piano-*`/`ffmpeg-piano`、无 `exclude=kernel-piano`），加 `--install-test` 确认 `dnf upgrade --assumeno` 可选到内核，加 `--extras` 检查 extras 源包状态。
