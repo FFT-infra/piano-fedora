@@ -1,4 +1,27 @@
-diff --git a/patches/linux/7.3/0266-docs-dt-bindings-piano.patch b/patches/linux/7.3/0266-docs-dt-bindings-piano.patch
+From b92e157108260a4b2b5c613eeeacf077cfcc338a Mon Sep 17 00:00:00 2001
+From: piano-fedora <dev@piano.invalid>
+Date: Wed, 25 Nov 2026 12:21:37 +0800
+Subject: [PATCH] kernel: append 7 Piano adaptation(s)
+
+---
+ .../7.3/0470-docs-dt-bindings-piano.patch     | Bin 0 -> 26041 bytes
+ ...71-clk-driver-core-iommu-SM8750-MDSS.patch | Bin 0 -> 18805 bytes
+ .../7.3/0472-drm-msm-REGDMA-DSI-FIFO.patch    | Bin 0 -> 11571 bytes
+ ...p-metadata-that-matches-no-queued-bu.patch | Bin 0 -> 1523 bytes
+ ...-HWEN-timing-and-report-register-fau.patch | Bin 0 -> 5153 bytes
+ ...-power-soc-usb-WCN7860-PMIC-GLINK-DP.patch | Bin 0 -> 50780 bytes
+ .../linux/7.3/0476-ASoC-tx-macro-215.patch    | Bin 0 -> 32034 bytes
+ patches/linux/7.3/series.json                 |  95 +++++++++++++++++-
+ 8 files changed, 93 insertions(+), 2 deletions(-)
+ create mode 100644 patches/linux/7.3/0470-docs-dt-bindings-piano.patch
+ create mode 100644 patches/linux/7.3/0471-clk-driver-core-iommu-SM8750-MDSS.patch
+ create mode 100644 patches/linux/7.3/0472-drm-msm-REGDMA-DSI-FIFO.patch
+ create mode 100644 patches/linux/7.3/0473-media-iris-drop-timestamp-metadata-that-matches-no-queued-bu.patch
+ create mode 100644 patches/linux/7.3/0474-backlight-ktz8866-honour-HWEN-timing-and-report-register-fau.patch
+ create mode 100644 patches/linux/7.3/0475-net-power-soc-usb-WCN7860-PMIC-GLINK-DP.patch
+ create mode 100644 patches/linux/7.3/0476-ASoC-tx-macro-215.patch
+
+diff --git a/patches/linux/7.3/0470-docs-dt-bindings-piano.patch b/patches/linux/7.3/0470-docs-dt-bindings-piano.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..7b7a8a061a7593c292fd466c1274bf99232c37b1
 GIT binary patch
@@ -183,7 +206,7 @@ BZ_fY#
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0267-clk-driver-core-iommu-SM8750-MDSS.patch b/patches/linux/7.3/0267-clk-driver-core-iommu-SM8750-MDSS.patch
+diff --git a/patches/linux/7.3/0471-clk-driver-core-iommu-SM8750-MDSS.patch b/patches/linux/7.3/0471-clk-driver-core-iommu-SM8750-MDSS.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..04b6f18ec5b27b4c9de3fc9d79f6a3bf39e792a6
 GIT binary patch
@@ -331,7 +354,7 @@ kAiah}SPRjbp9=M=B@tR+fgi)AtE<3eq-ScPXTZe;052nN*Z=?k
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0268-drm-msm-REGDMA-DSI-FIFO.patch b/patches/linux/7.3/0268-drm-msm-REGDMA-DSI-FIFO.patch
+diff --git a/patches/linux/7.3/0472-drm-msm-REGDMA-DSI-FIFO.patch b/patches/linux/7.3/0472-drm-msm-REGDMA-DSI-FIFO.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..6df852594ab931a070cadfbfa564ed939042c585
 GIT binary patch
@@ -455,7 +478,7 @@ e{f)(3G>tm2{+q3-CYP?R0+*4VsfnHe7Z(6TY3VKi
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0269-media-iris-drop-timestamp-metadata-that-matches-no-queued-bu.patch b/patches/linux/7.3/0269-media-iris-drop-timestamp-metadata-that-matches-no-queued-bu.patch
+diff --git a/patches/linux/7.3/0473-media-iris-drop-timestamp-metadata-that-matches-no-queued-bu.patch b/patches/linux/7.3/0473-media-iris-drop-timestamp-metadata-that-matches-no-queued-bu.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..c33c86641097b92959e5bb34ad1712e17f2e197c
 GIT binary patch
@@ -483,7 +506,7 @@ MjPy)R^bEMT02a^uNB{r;
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0270-backlight-ktz8866-honour-HWEN-timing-and-report-register-fau.patch b/patches/linux/7.3/0270-backlight-ktz8866-honour-HWEN-timing-and-report-register-fau.patch
+diff --git a/patches/linux/7.3/0474-backlight-ktz8866-honour-HWEN-timing-and-report-register-fau.patch b/patches/linux/7.3/0474-backlight-ktz8866-honour-HWEN-timing-and-report-register-fau.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..17d4e7bce8c1fdd40118e8aa2a725d108426eacb
 GIT binary patch
@@ -542,7 +565,7 @@ F1pr?kLpA^a
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0271-net-power-soc-usb-WCN7860-PMIC-GLINK-DP.patch b/patches/linux/7.3/0271-net-power-soc-usb-WCN7860-PMIC-GLINK-DP.patch
+diff --git a/patches/linux/7.3/0475-net-power-soc-usb-WCN7860-PMIC-GLINK-DP.patch b/patches/linux/7.3/0475-net-power-soc-usb-WCN7860-PMIC-GLINK-DP.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..7c42d80186f19199d84c4793c7491b14c7b50de5
 GIT binary patch
@@ -904,7 +927,7 @@ cWztY`5AabaGXj~dtE<3eq-ScPXTZe;0Qwu7c>n+a
 literal 0
 HcmV?d00001
 
-diff --git a/patches/linux/7.3/0272-ASoC-tx-macro-215.patch b/patches/linux/7.3/0272-ASoC-tx-macro-215.patch
+diff --git a/patches/linux/7.3/0476-ASoC-tx-macro-215.patch b/patches/linux/7.3/0476-ASoC-tx-macro-215.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..8ed6297e65ad6eab1561d48d267353d3572b5096
 GIT binary patch
@@ -1149,32 +1172,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index f13be28..dad576a 100644
+index ad02bcc..d3ac67b 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -11,8 +11,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "e3472308945c97317fee3f734b945dcccf1ca905",
--  "original_target_commit": "d0d6d0de3ae63d2ec10cf0a97ace074c64817c99",
-+  "target_tree": "0629489009040b4eaaa6a8b33bb106ba475605a7",
-+  "original_target_commit": "0f7687cfde86b9045a4c03645dda4f69b5094014",
+-  "target_tree": "2c2c5c11d149b1aa5c76e9cc1e08477257be117e",
+-  "original_target_commit": "7340fafefe920416634557e07326c509f482b06b",
++  "target_tree": "45df08f0806afa037d85952d4b4cd9ac6b0b12e0",
++  "original_target_commit": "ef6114379378e88d6dcf5d2f532b4226e170a665",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -3497,6 +3497,97 @@
+@@ -3884,6 +3884,97 @@
          "url": "https://github.com/slwyts/Project-SunUEFI",
          "drop_when": "This Piano device adaptation is not part of the upstream sealed series; remove it when the corresponding subsystem fix is accepted upstream and the sealed series carries it."
        }
 +    },
 +    {
-+      "file": "0266-docs-dt-bindings-piano.patch",
++      "file": "0470-docs-dt-bindings-piano.patch",
 +      "sha256": "3c3fb3fec31432f598d40da9c95d3c33283f132da93a104de8bcf399336440f3",
-+      "original_commit": "6158f22fcaa84b5e3244b42afc2ab25f82429e7c",
-+      "original_parent": "d0d6d0de3ae63d2ec10cf0a97ace074c64817c99",
-+      "committer_date": "2026-11-21T17:05:07+08:00",
-+      "tree": "cde2b9952ae1e4f4d3de423c786cf6babf3bfe0d",
++      "original_commit": "3bbf36fd62f538c5ad025cdb32b5800749eda99f",
++      "original_parent": "7340fafefe920416634557e07326c509f482b06b",
++      "committer_date": "2026-11-25T12:19:25+08:00",
++      "tree": "723ddfa657a390f0bd4026ef1a7f1e4e1af1206b",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -1182,12 +1205,12 @@ index f13be28..dad576a 100644
 +      }
 +    },
 +    {
-+      "file": "0267-clk-driver-core-iommu-SM8750-MDSS.patch",
++      "file": "0471-clk-driver-core-iommu-SM8750-MDSS.patch",
 +      "sha256": "db047cbdc74bcf7e281c0a486bd46509813d3352d576c7feb39e1305a5f29dd9",
-+      "original_commit": "db11d4b015dc9c31004e5fdeb470d666196d28e2",
-+      "original_parent": "6158f22fcaa84b5e3244b42afc2ab25f82429e7c",
-+      "committer_date": "2026-11-21T17:05:07+08:00",
-+      "tree": "0837dd8a94c04647fddc8db38c4615d05c74b327",
++      "original_commit": "2f088f17b41aa3cc8de71407d54328ede52abba5",
++      "original_parent": "3bbf36fd62f538c5ad025cdb32b5800749eda99f",
++      "committer_date": "2026-11-25T12:19:25+08:00",
++      "tree": "3a324dd176208bde709c52b68780d8c2c20cb368",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -1195,12 +1218,12 @@ index f13be28..dad576a 100644
 +      }
 +    },
 +    {
-+      "file": "0268-drm-msm-REGDMA-DSI-FIFO.patch",
++      "file": "0472-drm-msm-REGDMA-DSI-FIFO.patch",
 +      "sha256": "08a2f77308b4504667247ea0489a7fa7a9a2f48426ec2bb5f1bd0e9e3ff465a9",
-+      "original_commit": "01014c992017fdc9b4a9741b4373775889bf0ceb",
-+      "original_parent": "db11d4b015dc9c31004e5fdeb470d666196d28e2",
-+      "committer_date": "2026-11-21T17:05:07+08:00",
-+      "tree": "cfb7e82569a2c1c88af79e28986c2e211d739a46",
++      "original_commit": "49d2e253a6c00dd3078748e54a7186cec81db708",
++      "original_parent": "2f088f17b41aa3cc8de71407d54328ede52abba5",
++      "committer_date": "2026-11-25T12:19:25+08:00",
++      "tree": "975e2fa61a0be99afbca7e5b3a6422c4819a93db",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -1208,12 +1231,12 @@ index f13be28..dad576a 100644
 +      }
 +    },
 +    {
-+      "file": "0269-media-iris-drop-timestamp-metadata-that-matches-no-queued-bu.patch",
++      "file": "0473-media-iris-drop-timestamp-metadata-that-matches-no-queued-bu.patch",
 +      "sha256": "4266496ae96a4b75d85c7a0ae12661a033b82b3e18e43fac6400f937ac80a10d",
-+      "original_commit": "7734edfcb89c44af5eadb343d0cc9d6e5f45f7a9",
-+      "original_parent": "01014c992017fdc9b4a9741b4373775889bf0ceb",
-+      "committer_date": "2026-11-21T17:05:08+08:00",
-+      "tree": "d687ce795f5f4b214b0035be08a5aeeb0739213c",
++      "original_commit": "a8e8380d134a68d932590b0a731bb78e2134f260",
++      "original_parent": "49d2e253a6c00dd3078748e54a7186cec81db708",
++      "committer_date": "2026-11-25T12:19:26+08:00",
++      "tree": "6c5277889fca4e295301864fa3fbdff01b4ab47c",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -1221,12 +1244,12 @@ index f13be28..dad576a 100644
 +      }
 +    },
 +    {
-+      "file": "0270-backlight-ktz8866-honour-HWEN-timing-and-report-register-fau.patch",
++      "file": "0474-backlight-ktz8866-honour-HWEN-timing-and-report-register-fau.patch",
 +      "sha256": "3fe2e80f3297eb98a11b4086b242c84dae43cf9ddcca61c69c5adfa20c11bf78",
-+      "original_commit": "fdb445af7c497a3679afc6cf6f1196be2f553fcd",
-+      "original_parent": "7734edfcb89c44af5eadb343d0cc9d6e5f45f7a9",
-+      "committer_date": "2026-11-21T17:05:08+08:00",
-+      "tree": "86554679cb3ebffb7530d0ea59463f8454bf169a",
++      "original_commit": "7374b86865c4a6da792130f27c7025aabc4884c8",
++      "original_parent": "a8e8380d134a68d932590b0a731bb78e2134f260",
++      "committer_date": "2026-11-25T12:19:26+08:00",
++      "tree": "f92cda7e0e9503ca04620058c9ec74f9df0911cd",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -1234,12 +1257,12 @@ index f13be28..dad576a 100644
 +      }
 +    },
 +    {
-+      "file": "0271-net-power-soc-usb-WCN7860-PMIC-GLINK-DP.patch",
++      "file": "0475-net-power-soc-usb-WCN7860-PMIC-GLINK-DP.patch",
 +      "sha256": "70b30fc8fb9e35be989dd47af99c8e93bb304334456523f0d8cd8cce37ceb09e",
-+      "original_commit": "aedf5371b7acb238674914a10a42f3a7a150d15a",
-+      "original_parent": "fdb445af7c497a3679afc6cf6f1196be2f553fcd",
-+      "committer_date": "2026-11-21T17:05:08+08:00",
-+      "tree": "219b998fe33ae3c4537801eb3ee457ef9cfb8ba0",
++      "original_commit": "f6fd65a0fdf57027e245bc56cfecac9e26ce969b",
++      "original_parent": "7374b86865c4a6da792130f27c7025aabc4884c8",
++      "committer_date": "2026-11-25T12:19:26+08:00",
++      "tree": "31c43990d2e1db28af969a869a846051f41ac3b6",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",
@@ -1247,12 +1270,12 @@ index f13be28..dad576a 100644
 +      }
 +    },
 +    {
-+      "file": "0272-ASoC-tx-macro-215.patch",
++      "file": "0476-ASoC-tx-macro-215.patch",
 +      "sha256": "2a59eb19ad5389376514a18a0045f5e0c496439f4404c30ebdfc89b834750b0e",
-+      "original_commit": "0f7687cfde86b9045a4c03645dda4f69b5094014",
-+      "original_parent": "aedf5371b7acb238674914a10a42f3a7a150d15a",
-+      "committer_date": "2026-11-21T17:05:08+08:00",
-+      "tree": "0629489009040b4eaaa6a8b33bb106ba475605a7",
++      "original_commit": "ef6114379378e88d6dcf5d2f532b4226e170a665",
++      "original_parent": "f6fd65a0fdf57027e245bc56cfecac9e26ce969b",
++      "committer_date": "2026-11-25T12:19:26+08:00",
++      "tree": "45df08f0806afa037d85952d4b4cd9ac6b0b12e0",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",

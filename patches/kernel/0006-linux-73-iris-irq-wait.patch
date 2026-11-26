@@ -1,4 +1,15 @@
-diff --git a/patches/linux/7.3/0292-media-qcom-iris-IRQ.patch b/patches/linux/7.3/0292-media-qcom-iris-IRQ.patch
+From 344caf09fe7d0069b1682dbc4b219a8bffccab3e Mon Sep 17 00:00:00 2001
+From: piano-fedora <dev@piano.invalid>
+Date: Wed, 25 Nov 2026 12:21:37 +0800
+Subject: [PATCH] kernel: append 1 Piano adaptation(s)
+
+---
+ .../linux/7.3/0496-media-qcom-iris-IRQ.patch   | Bin 0 -> 8739 bytes
+ patches/linux/7.3/series.json                  |  17 +++++++++++++++--
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+ create mode 100644 patches/linux/7.3/0496-media-qcom-iris-IRQ.patch
+
+diff --git a/patches/linux/7.3/0496-media-qcom-iris-IRQ.patch b/patches/linux/7.3/0496-media-qcom-iris-IRQ.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..25b7ca074949027d60f35e87ad3811c8d6ab2814
 GIT binary patch
@@ -81,32 +92,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 1d8d7af..751b2b3 100644
+index b54981f..c3aea84 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -11,8 +11,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "a7c4d50974a895609d2204a08b04f83b75b1b6a0",
--  "original_target_commit": "38d20c8fb8d42219857e1acbf33694051324a152",
-+  "target_tree": "93120432311a16ca79709faa1de6047041eb10b4",
-+  "original_target_commit": "fb18137a90011478a660a93813308f1f04211303",
+-  "target_tree": "a62ca06b077442efd6e5986d1881369216dc0cf4",
+-  "original_target_commit": "923294aef9d4ae0f44fda6f02daea3f7c0f585a5",
++  "target_tree": "7ebe5d8955e454e86dd00cc89834237520cacd17",
++  "original_target_commit": "4466e9358a87d498125ac19c2b285fbe66419e39",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -3835,6 +3835,19 @@
+@@ -4222,6 +4222,19 @@
          "url": "https://github.com/slwyts/Project-SunUEFI",
          "drop_when": "This Piano device adaptation is not part of the upstream sealed series; remove it when the corresponding subsystem fix is accepted upstream and the sealed series carries it."
        }
 +    },
 +    {
-+      "file": "0292-media-qcom-iris-IRQ.patch",
++      "file": "0496-media-qcom-iris-IRQ.patch",
 +      "sha256": "177d3028116a8b731a90b20279d0e108cacaa3524f832612cb5a10d757c511f3",
-+      "original_commit": "fb18137a90011478a660a93813308f1f04211303",
-+      "original_parent": "38d20c8fb8d42219857e1acbf33694051324a152",
-+      "committer_date": "2026-11-21T17:05:12+08:00",
-+      "tree": "93120432311a16ca79709faa1de6047041eb10b4",
++      "original_commit": "4466e9358a87d498125ac19c2b285fbe66419e39",
++      "original_parent": "923294aef9d4ae0f44fda6f02daea3f7c0f585a5",
++      "committer_date": "2026-11-25T12:19:30+08:00",
++      "tree": "7ebe5d8955e454e86dd00cc89834237520cacd17",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",

@@ -30,10 +30,10 @@ SPEC_SHA256 = "5084f940338c1b874e06ea5c4400f06710c1f38866c13af86bf03fb5a43eb7a7"
 TARBALL_SHA256 = "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
 ENABLE_DECODERS_SHA256 = "84ee7d0501f5c9d501f9518f5f9d2458f529ae519b51df0bd9751c66dfaa03b6"
 SPEC_RELEASE_OLD = "Release:        4%{?dist}\n"
-SPEC_RELEASE_NEW = "Release:        4.piano1%{?dist}\n"
+SPEC_RELEASE_NEW = "Release:        4.piano2%{?dist}\n"
 SPEC_PATCH_ANCHOR = "Patch1002:      ffmpeg-chromium.patch\n"
-RELEASE = "4.piano1.fc45"
-# 官方版本号一旦走到 9.0.3，release 后缀的 piano1 就压不住了。抬 epoch 能压住，
+RELEASE = "4.piano2.fc45"
+# 官方版本号一旦走到 9.0.3，release 后缀的 pianoN 就压不住了。抬 epoch 能压住，
 # 但 epoch 卸不掉：补丁进了上游之后回不到 Fedora 的包。这里改用 RPM Fusion
 # 对同一个包的做法：换包名，声明它提供原名并与原名冲突。
 # Fedora 的配方只让变体走 `pkg_suffix`，`Name:` 仍是 ffmpeg，源包名因此还是
@@ -76,8 +76,10 @@ PORT_MAIL_HEADER = "From: slwyts <slwyts@foxmail.com>\n"
 # 每一条的 sha256 与 series.json 记录的一致。单独钉一份是为了在 upstream
 # 原地改写同一版本号时仍然失败，而不是安静地跟着换补丁。
 PORT_SHA256 = {
+    "0000-v4l2m2m-count-buffer-once.patch":
+        "27372b91dd892ec50903dd140837bdf0cce37b46345f7492cd2c1e435349a5ae",
     "0004-v4l2m2m-ffmpeg9-stateful.patch":
-        "ad7b86872378f38fbbdf8a24e31726f62a765869b6f910322be6a8d8695b1a3c",
+        "acb643fd2d3d00662b213cbec5813d097da8d1a1e0d5e3a903c11f847f3b8a2a",
     "0005-v4l2m2m-orphan-capture-ffmpeg9.patch":
         "b35c619d8467a15144db5ba58b4015884de71167f32b0c31fdb6f3b834e29bb3",
     "0006-v4l2m2m-p010-capture.patch":

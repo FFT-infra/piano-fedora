@@ -1,7 +1,7 @@
 # Fedora 45 自带 libwacom 2.19.0。SunUEFI 的 SPI 笔支持补丁按 2.20.0 的源码
 # 编排（patches/libwacom/2.20/series.json），这里取同一个源码，套同一个补丁，
 # 产出 libwacom、libwacom-data、libwacom-utils、libwacom-devel 四个替代包。
-# 内核 0225 把笔报成 BUS_SPI/0603/6532 的 "Novatek Focus Pen"，2.20.0 的
+# 内核 0432 把笔报成 BUS_SPI/0603/6532 的 "Novatek Focus Pen"，2.20.0 的
 # libwacom 不认识 SPI，桌面设置里就找不到这支笔。
 %global debug_package %{nil}
 

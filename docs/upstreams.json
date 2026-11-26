@@ -733,8 +733,8 @@
       "decision": "consume",
       "reason": "启动整合：UEFI、内核编排、rootfs 组装、打包、安装器",
       "lock_key": "sunuefi",
-      "reference_commit": "edcf272063bfaf9be50f69c85961a5bbe1447b7b",
-      "reference_date": "2026-11-21"
+      "reference_commit": "a6c321d0b3c8bf9ad2b1168904904909c1beee31",
+      "reference_date": "2026-11-24"
     },
     {
       "repo": "sm8750-mainline/linux",

@@ -41,7 +41,7 @@ on:
         required: false
         default: ""
       ffmpeg_run_id:
-        description: "固定 FFmpeg 的成功 run（发布构建必填）"
+        description: "固定带 build_ffmpeg=true 的 host-check 成功 run（发布构建必填）"
         required: false
         default: ""
       release_mode:
@@ -155,8 +155,9 @@ jobs:
           python3 scripts/resolve-artifact-run.py --workflow build-kernel.yml "${kernel_artifacts[@]}" --output-key kernel_run "${kernel_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-device-runtime.yml --artifact "$RUNTIME_ARTIFACT" --output-key runtime_run "${runtime_args[@]}"
           python3 scripts/resolve-artifact-run.py --workflow build-mesa.yml --artifact piano-fedora-mesa --output-key mesa_run "${mesa_args[@]}"
-          # build-ffmpeg.yml 是 workflow_call 复用件，未单独注册；实际 run 的 workflow_id
-          # 是 host-check。按已注册的 host-check 解析，artifact 名仍是 piano-fedora-ffmpeg。
+          # 发布链固定用 host-check 的 build_ffmpeg=true run：artifact 名是
+          # piano-fedora-ffmpeg，但 run 归属 host-check；单独的 build-ffmpeg run
+          # 不被这里接受，和 build-rootfs 的契约一致。
           python3 scripts/resolve-artifact-run.py --workflow host-check.yml --artifact piano-fedora-ffmpeg --output-key ffmpeg_run "${ffmpeg_args[@]}"
 
       - uses: actions/download-artifact@v4

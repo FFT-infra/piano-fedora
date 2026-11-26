@@ -82,7 +82,7 @@ def check_diagnostics_paths():
 def manifest():
     names = ("ffmpeg-piano", "libavcodec-piano", "libavdevice-piano", "libavfilter-piano",
              "libavformat-piano", "libavutil-piano", "libswresample-piano", "libswscale-piano")
-    packages = {name: {"file": name + ".rpm", "nevra": f"{name}-9.0.2-4.piano1.fc45.aarch64"}
+    packages = {name: {"file": name + ".rpm", "nevra": f"{name}-9.0.2-4.piano2.fc45.aarch64"}
                 for name in names}
     return {"status": "FEDORA_FFMPEG_BUILT_NOT_DEVICE_VERIFIED", "releasever": "45",
             "arch": "aarch64",
@@ -96,7 +96,7 @@ def fake_chroot(decoders="h264_v4l2m2m hevc_v4l2m2m", nevra_override=None):
     def chroot(root, *command):
         if command[0] == "rpm":
             name = command[-1]
-            return (nevra_override or {}).get(name, f"{name}-9.0.2-4.piano1.fc45.aarch64")
+            return (nevra_override or {}).get(name, f"{name}-9.0.2-4.piano2.fc45.aarch64")
         assert command[0].endswith("ffmpeg"), command
         return "\n".join(f" V..... {name}          wrapper" for name in decoders.split())
     return chroot
@@ -116,7 +116,7 @@ def check_install_verification():
                 assert "package set" in str(error), error
             else:
                 raise AssertionError("an incomplete FFmpeg package set was accepted")
-    # 官方未改包（release 不是 piano1）必须停。
+    # 官方未改包（release 不带 piano 后缀）必须停。
     with patch.object(finalizer, "chroot",
                       fake_chroot(nevra_override={"ffmpeg-piano": "ffmpeg-piano-9.0.2-3.fc45.aarch64"})):
         try:
