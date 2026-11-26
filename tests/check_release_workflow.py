@@ -306,8 +306,12 @@ def test_workflow_contract():
     assert "push:" not in text, "release.yml still triggers on tag pushes"
     assert "tags: [" not in text, "release.yml still triggers on tag pushes"
     assert "GITHUB_REF_NAME" not in text
-    # 转公开必须显式传参，默认停在 draft。
-    assert 'default: "false"' in text, "publish/prerelease 输入必须有 false 默认值"
+    # 转公开必须显式传参，默认停在 draft；默认标 pre-release，正式版要显式关掉。
+    inputs = text[text.index("    inputs:"):text.index("\npermissions:")]
+    publish_input = inputs[inputs.index("      publish:"):inputs.index("      prerelease:")]
+    prerelease_input = inputs[inputs.index("      prerelease:"):]
+    assert 'default: "false"' in publish_input, "publish 输入必须默认 false"
+    assert 'default: "true"' in prerelease_input, "prerelease 输入必须默认 true"
     publish_block = text[text.index("name: Publish the release"):]
     publish_block = publish_block[:publish_block.index("name: Leave the release as a draft")]
     assert "if: inputs.publish == 'true'" in publish_block, (
