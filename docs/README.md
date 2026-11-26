@@ -20,6 +20,7 @@
 - [上游跟踪](upstream.md)：`sources.lock.json` 规则、`upstream-watch` 看板、补丁分叉与 16 GB/24 GB 内存边界
 - [与上游的功能差距](upstream-parity.md)：与 Project SunUEFI 的子系统对比、架构分歧决策与基线核对命令
 - [Gunyah 虚拟化](virtualization.md)：SM8750 Gunyah 内核、crosvm/librevm、RM capability 交接与实机验收范围
+- [文档编写与分工约定](AGENTS.md)：文档唯一职责表、写作风格边界与文档自动化门槛
 
 ## 上游与署名
 
