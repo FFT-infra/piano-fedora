@@ -17,10 +17,13 @@ Copyright (c) 2026 phxinyang
 | 目录 | 目标 | 许可 |
 | --- | --- | --- |
 | `patches/kernel/` | Linux 内核源码（`drivers/`、`sound/`、`Documentation/`） | GPL-2.0 |
-| `patches/kernel-f2fs/`、`patches/kernel-gunyah/` | SunUEFI 的构建工具与 initramfs 脚本 | 按被改文件的声明 |
-| `patches/kernel-iris/`、`patches/kernel-stability/` | SunUEFI 的 `tools/prepare_release_kernel.py`，并生成内核补丁 | 工具按文件声明，生成的补丁沿用 GPL-2.0 |
+| `patches/kernel-f2fs/`、`patches/kernel-gunyah/`、`patches/kernel-snd-seq/` | SunUEFI 的内核构建工具、设备侧脚本与 `uefi/handoff/bootselect/BootSelect.ld` | 按被改文件的声明 |
 | `patches/packaging-overlays/` | SunUEFI 的 `tools/package_release.py` | 按被改文件的声明 |
-| `patches/uefi-ufs/`、`patches/uefi-live-memory/`、`patches/uefi-live-rm/` | SunUEFI 的 `uefi/core/*.c`、`uefi/handoff/bootselect/BootSelect.ld` | BSD-2-Clause-Patent |
+| `patches/android-module/` | SunUEFI 的 `android/module/` | 按被改文件的声明 |
+| `patches/uefi-ufs/`、`patches/uefi-dwc3-halt/` | SunUEFI 的 `uefi/core/*.c` | BSD-2-Clause-Patent |
+| `patches/piano-sensors/` | SunUEFI 子模块里的 `piano-sensors` 导入脚本 | 按被改文件的声明 |
+| `patches/mesa/` | Mesa 的 `src/gallium/drivers/freedreno/` | 按被改文件的声明 |
+| `patches/gnome-settings-daemon/` | gnome-settings-daemon 源码 | 按被改文件的声明 |
 
 `patches/kernel/` 保留原作者与 `Signed-off-by`，新增代码带
 `SPDX-License-Identifier`。SunUEFI 是文件级许可，被修改的 C 文件与链接脚本

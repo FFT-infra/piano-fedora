@@ -75,17 +75,17 @@ sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi
 
 ### 3. 只升级 UEFI 固件与引导助手
 
-`dnf upgrade` 管不到 ESP 里的 `sunuefi.efi` 和 Android 侧的引导助手模块。这两处要单独换。
+`dnf upgrade` 管不到 UEFI 固件。固件在活动槽的合体 BOOT 里，由 Android 侧的引导助手模块更换。ESP 里是 systemd-boot、内核、initramfs 与板级 DTB，没有固件。
 
-UEFI 固件在 ESP 里。归档里的 `sunuefi_esp.img` 是整分区镜像，单独刷它就只换固件，不碰 root：
+归档里的 `sunuefi_esp.img` 是 ESP 的整分区镜像。单独刷它会把这四样换成归档里的版本，不碰 root，也不换固件：
 
 ```sh
 fastboot -S 128M flash sunuefi_esp sunuefi_esp.img
 ```
 
-第 1 节的 `update-f2fs.py` 会同时换 ESP 与 root，完整替换 Linux 文件。只想换固件时用它代价太大。
+第 1 节的 `update-f2fs.py` 会同时换 ESP 与 root，完整替换 Linux 文件。
 
-ESP 里的内核与 root 里的 `/usr/lib/modules/` 必须同一版。单独刷 ESP 之后，用 `sudo dnf upgrade --refresh` 把 `kernel-piano` 升到与 ESP 一致，再重启。两边版本不同时系统能起来，但驱动一个都加载不了。
+ESP 里的内核与 root 里的 `/usr/lib/modules/` 必须同一版。单独刷 ESP 之前，先用 `sudo dnf upgrade --refresh` 把 `kernel-piano` 升到与归档一致。root 里没有对应的模块目录时，initramfs 停在救援环境，不进系统。
 
 引导助手模块装在 Android 的 KernelSU/SukiSU 里，刷 ESP 装不到它。归档里的 `sunuefi-module.zip`（v45.10 起才有）与 `PianoUEFI-product.img` 由同一次构建产出，`module-manifest.json` 的 `same_product.product_sha256` 就是那份产品的摘要，`verify-bundle.py` 在发布前核对。在模块管理器里选中这个 ZIP 安装，重启即生效。
 
