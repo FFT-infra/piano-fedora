@@ -40,6 +40,20 @@ with patch.object(audit, "github", side_effect=[metadata, commit]) as fetch:
     result = audit.inspect_repository(consumer, {"kernel": {"ref": "piano/v2", "commit": "b" * 40}})
     assert fetch.call_args.args[0].endswith("/commits/piano%2Fv2"), "catalog must not override the build lock"
     assert result["matches_pin"] is False
+# 锁条目带 tag 的上游跟正式 release：核最新 release 的 tag，分支头不参与。
+released = {"kernel": {"ref": "main", "tag": "v1.0.0", "commit": "b" * 40}}
+with patch.object(audit, "github", side_effect=[metadata, {"tag_name": "v1.0.1"}, commit]) as fetch:
+    result = audit.inspect_repository(consumer, released)
+    endpoints = [call.args[0] for call in fetch.call_args_list]
+    assert endpoints[1:] == ["repos/example/linux/releases/latest",
+                             "repos/example/linux/commits/tags%2Fv1.0.1"], endpoints
+    assert result["ref"] == "v1.0.1" and result["matches_pin"] is False, result
+with patch.object(audit, "github", side_effect=[metadata, {"tag_name": "v1.0.0"}, commit]):
+    assert audit.inspect_repository(consumer, {"kernel": {**released["kernel"], "commit": "a" * 40}})["matches_pin"] is True
+# 最新 release 取不到时不能退回去比分支头，那会把 release 之间的提交报成漂移。
+with patch.object(audit, "github", side_effect=[metadata, ValueError("HTTP 404")]) as fetch:
+    result = audit.inspect_repository(consumer, released)
+    assert result["status"] == "unverified" and fetch.call_count == 2, result
 # 没有基线的行只拍快照；有基线才谈得上发现上游更新。
 with patch.object(audit, "github", side_effect=[metadata, commit]):
     assert "updated" not in audit.inspect_repository(fixture, {}), "unbaselined row must not claim drift"

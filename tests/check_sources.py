@@ -37,6 +37,9 @@ def main():
                 return fail(f"{name}: missing {field}")
         if not HEX40.match(entry["commit"]):
             return fail(f"{name}: commit must be 40 hex chars, got {entry['commit']!r}")
+        # tag 只出现在跟上游正式 release 的条目上，上游巡检拿它决定比 release 还是比分支头。
+        if "tag" in entry and not (isinstance(entry["tag"], str) and entry["tag"].strip()):
+            return fail(f"{name}: tag must be a non-empty release tag")
         if entry["url"] in urls:
             return fail(f"{name}: url duplicates {urls[entry['url']]}")
         urls[entry["url"]] = name
