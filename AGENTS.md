@@ -1,97 +1,54 @@
 # piano-fedora Agent Guide
 
-本文件是权威约定。改仓库前先读它。
+改仓库前先读本文件；修改 README 或 `docs/` 下文档时再按需读取 [docs/AGENTS.md](docs/AGENTS.md)。
 
 ## 项目
 
-小米平板 8 Pro（piano / 25091RP04C / SM8750）的 Fedora + HyperOS 双系统构建仓库，Linux 根分区用 F2FS。SunUEFI 按 commit 锁定为上游。本仓库只带四样增量：Fedora 后端、F2FS 全链路、首次分区，以及 `patches/uefi-*` 下的 UEFI 启动补丁。
-
-仓库地址是 `FFT-infra/piano-fedora`。补丁 `From:` 行与文档里的仓库名用这个名字，不是本地目录名。
+小米平板 8 Pro（`piano` / `25091RP04C` / `SM8750`）的 Fedora + HyperOS 双系统构建仓库（F2FS 根分区，[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 按 commit 锁定为上游）。仓库地址为 `FFT-infra/piano-fedora`（补丁 `From:` 行与文档均用此名）。
 
 ## 仓库地图
 
-每个事实只在一处定义，别处引用它。
+每个事实只在一处定义，别处引用：
 
-| 路径 | 拥有的真源 | 说明 |
-| --- | --- | --- |
-| `sources.lock.json` | 上游是谁、锁定在哪个 commit | 只列实际消费的上游 |
-| `product.json` | 要构建什么 | 发行版、文件系统、尺寸、分区标签 |
-| `scripts/build-clean-rootfs.py` | Fedora 装配后端 | plan / execute / audit 三条路径 |
-| `scripts/piano_desktop.py` | 桌面差异解释器 | 登录、服务、包集合、电源策略与产物名 |
-| `scripts/release-assets.py` | Release 资产名 | 哪些四档共用、哪些按桌面加 `-<desktop>` |
-| `scripts/profiles/` | 发行版与桌面配方 | base 包、dnf 选项、桌面包组与电源文件 |
-| `scripts/package-sets.json` | 包集合与构建顺序 | 矩阵、运行时、图形栈、extras；各脚本与 workflow 都从这里派生 |
-| `tests/` | 离线检查 | `make test` 跑全部 |
-| `docs/architecture.md` | 组件边界与阶段计划 | 分工、前提、本机约束 |
-| `.github/workflows/` | 主机侧 CI | 不接触设备 |
+| 路径 | 拥有的真源 |
+| --- | --- |
+| `sources.lock.json` | 上游仓库与锁定 commit（只列实际消费的上游） |
+| `product.json` | 发行版、文件系统、封存尺寸、分区标签 |
+| `scripts/build-clean-rootfs.py` | Fedora 装配后端（`plan` / `execute` / `audit`） |
+| `scripts/piano_desktop.py` | 桌面差异解释器（登录、服务、电源策略、产物名） |
+| `scripts/release-assets.py` | Release 资产成员表与按档后缀规则 |
+| `scripts/profiles/` | 发行版与桌面配方 |
+| `scripts/package-sets.json` | 包集合与构建顺序（脚本与 workflow 由此派生） |
+| `tests/` | 离线契约测试（`make test` 全跑） |
+| `docs/AGENTS.md` | 文档归属边界、风格红线与文档测试门槛 |
+| `.github/workflows/` | 主机侧 CI（不接触设备） |
 
 ## 硬规则
 
-- 上游不 fork。SunUEFI 按 `sources.lock.json` 的 commit 取用；本仓库的改动走自有脚本或补丁。
-- 桌面差异只出现在 `scripts/profiles/`、`scripts/piano_desktop.py` 与桌面运行时探测里。其他层（workflow、发布、安装器）只消费派生出来的名字与字段，不手写桌面列表。
+- 上游不 fork：SunUEFI 按 `sources.lock.json` 取用，改动走自有脚本或补丁。
+- 桌面差异只出现在 `scripts/profiles/`、`scripts/piano_desktop.py` 与桌面运行时探测里；其余层不硬编码桌面列表。
 - 固件、校准数据、密钥不入库。
-- 证据分层。作者记录、构建通过、设备可用是三件事，不互相代替。
-- 未定的值留 null 并让工具报错，不猜。现在的 `product.json` 里没有 null，规则是为将来留的。
-- 目录跟着实际交付走。没有文件就不建目录。
-- 没有生成文件。若将来引入，源与产物分开，产物不入库。唯一的例外是 `rootfs/selinux/piano_hardware.pp`：设备上的 `semodule -i` 加载的是编译后的模块，`.te` 本身不会被读取，所以它必须入库。改 `.te` 之后跑 `make selinux` 重新生成（需要 `checkpolicy` 与 `policycoreutils`），否则镜像里装的还是旧策略。
+- 证据分层：作者记录、构建通过、设备可用三者不互相代替。
+- 未定值留 `null` 并让工具报错，不猜；无交付文件时不建空目录。
+- 生成产物不入库，唯一例外是 `rootfs/selinux/piano_hardware.pp`（设备上 `semodule -i` 只读 `.pp`）：改 `.te` 后必须运行 `make selinux` 重新编译入库。
 
-## 命令
+## 常用命令
 
 ```sh
-make test                  # 全部离线检查（scripts/run-checks.py 自动发现 tests/check_*.py）
-make test-device DEVICE_HOST=piano-usb   # 平板上跑只读冒烟，报告落在 SMOKE_OUTPUT
-make plan RELEASEVER=44    # 打印 Fedora rootfs 构建计划（默认桌面档）
-make plan-desktop DESKTOP=kde RELEASEVER=44   # 另一档的装配计划
-make selinux               # 从 .te 重新生成 piano_hardware.pp
+make test                              # 全部离线检查（tests/check_*.py）
+make test-device DEVICE_HOST=piano-usb # 平板只读冒烟
+make plan RELEASEVER=45                # 打印默认桌面 rootfs 装配计划
+make plan-desktop DESKTOP=kde RELEASEVER=45
+make selinux                           # 从 .te 重新编译 piano_hardware.pp
 ```
 
-## 长构建
+## 长构建与验证
 
-编译类 workflow（内核、UEFI、镜像、rootfs）动辄几十分钟到几小时，失败一次
-的代价是整轮重跑。因此**首次运行前必须先把该 workflow 完整审一遍**：
+- 编译型 workflow 耗时较长，首次触发前必须先审完外部命令依赖、构建容器、产物路径/权限、`run-id` 传参及源码可达性，再把审查要点写进提交信息。
+- 声称通过时必须附本轮实际命令与输出；改 `scripts/`、`product.json`、`sources.lock.json`、`docs/`、`README*` 或 `.github/workflows/` 后必须跑 `make test`。
 
-- 逐个核对它调用的每个外部命令在 runner 上是否存在，不靠运行时才发现缺项。
-- 上游若自带构建容器或依赖清单（如 `containers/Dockerfile`、
-  `requirements-build.txt`），优先用它，不手工逐条补包。
-- 核对产物路径、权限（容器以 root 写入时需要 sudo）、以及跨 run 取
-  artifact 的 `run-id`。
-- 核对每个输入是否真的在仓库或上游里可取，特别是 vendor 目录与子模块。
+## 提交、注释与表达
 
-审完再触发，并把审查发现写进提交信息。
-
-## 验证
-
-| 改了什么 | 跑什么 |
-| --- | --- |
-| `scripts/` | `make test` |
-| `product.json`、`sources.lock.json` | `make test` |
-| `docs/`、`README.md` | `make test`（含链接检查） |
-| `.github/workflows/` | `make test` |
-
-声称某件事通过时，附上本轮的命令与输出。没跑的检查标为未跑，不写成通过。
-
-## 提交
-
-格式 `{type}: {description}`，type 取 `feat`、`fix`、`refactor`、`docs`、`chore`。
-
-## 注释
-
-少写注释，用命名、类型与结构表达意图。
-
-- 写代码说不出的事：外部协议约束、硬件或上游行为、为什么不能用更直白的写法。
-- 不写逐句翻译、修复流水、变更历史，也不写调用者一眼能读出的前置条件。
-- 本仓库的注释会被后续所有 agent 当范例复制。一条解释坏设计的注释，会让这个设计再活十轮。
-
-规格、理由与变更记录放在提交信息、`docs/` 或包的 changelog 里，不塞进源码。
-
-## 表达
-
-仓库文档用中文。`README.en.md` 是 README 的英文版，两版由
-`tests/check_readme_parity.py` 锁定同一骨架，改一版就要同步另一版。
-
-- 先写结论，再写做法。
-- 不加粗打光，一段最多一个粗体。
-- 不写“值得注意的是”“由此可见”“首先其次最后”“不是 A 而是 B”。
-- 一句一个动作，条件紧跟动作。长句拆开，不用分号串联三件事。
-- 中英文之间、中文与数字之间留一个空格（盘古之白）。
-- 一个事实只写一处，别处引用。
+- **提交格式**：`{type}: {description}`（`feat` / `fix` / `refactor` / `docs` / `chore`）。
+- **代码注释**：只写代码本身表达不出的外部协议约束、硬件/上游行为与非直白原因，不写逐句翻译或修复流水。
+- **文档规则**：改 README 与 `docs/` 前读 [docs/AGENTS.md](docs/AGENTS.md)，保持事实单源，中英文与中文数字之间留空格，`README.md` 与 `README.en.md` 骨架由 `tests/check_readme_parity.py` 锁定同步。

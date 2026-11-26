@@ -1,8 +1,5 @@
-> **实验性项目。** 这个仓库面向驱动适配与硬件调试，不是可以日常使用的稳定版本。
->
-> 刷写会解锁 Bootloader、改写 GPT、替换活动槽 `boot` 分区里的合体 BOOT，并重写 Linux 分区。操作不规范会让平板变砖或丢失全部数据。刷写之前，备份全部分区与个人数据。
->
-> 本项目按 [MIT 许可证](LICENSE) 原样提供，作者与贡献者不承担设备损坏、数据丢失或保修失效的责任。
+> **实验性项目。** 面向驱动适配与硬件调试，不是稳定日用系统。
+> 刷写会解锁 Bootloader、改写 GPT 并替换活动槽 `boot` 与 Linux 分区，请先备份全盘与个人数据。本项目按 [MIT 许可证](LICENSE) 原样提供。
 
 # Fedora 45 for Xiaomi Pad 8 Pro (piano)
 
@@ -10,76 +7,63 @@
 
 [![host-check](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml/badge.svg)](https://github.com/FFT-infra/piano-fedora/actions/workflows/host-check.yml)
 
-在小米平板 8 Pro（代号 `piano`，高通骁龙 8 至尊版 SM8750）上原生运行 Fedora 45，默认桌面是 GNOME。内核是 Linux 7.3 主线适配，root 文件系统用 F2FS。它与原生 HyperOS 组成双系统，合体 BOOT 里的 3 秒选择器与引导助手负责往返，两个方向都不需要电脑。
+在小米平板 8 Pro（`piano`，骁龙 8 至尊版 SM8750）上运行原生 Fedora 45（F2FS 根分区，Linux 7.3 主线适配内核），通过 [SunUEFI](https://github.com/slwyts/Project-SunUEFI) 与原生 HyperOS 共存双系统。两个方向都能脱机切换。
 
-[SunUEFI](https://github.com/slwyts/Project-SunUEFI)（EDK2）提供启动链与内核打包。本仓库增加 Fedora 后端、F2FS 全链路、首次分区与 UEFI 启动补丁。分工表见[系统架构](docs/architecture.md)。
+启动链、内核打包、设备树 overlay 与部分 UEFI 补丁来自或移植自 Project SunUEFI；本仓库负责 Fedora 后端、F2FS 全链路、首次分区与相关补丁，架构边界见[系统架构](docs/architecture.md)，署名与文件级许可见 [NOTICE](NOTICE)。
 
 ## 硬件支持
 
-状态图例：
-- ✅ 真机验证通过
-- ⚠️ 部分可用（说明中注明缺口）
-- ❌ 未实现或未验证
-
-主要硬件外设在当前版本的支持状态如下：
+状态图例：✅ 真机验证通过 | ⚠️ 部分可用（带已知限制） | ❌ 未实现或未验证
 
 | 模块 | 状态 | 说明 |
-|---|---|---|
+| --- | --- | --- |
 | 显示与渲染 | ✅ | 3200×2136 @ 120Hz，Mesa 26.2.7 Turnip（Adreno 830）硬件加速 |
-| 触控 | ⏳ | 手指矩阵解码已移入内核（32 帧参考、中值滤波、基线漂移处理、掌托分类），用户态卡尔曼滤波与 24 像素死区路径保留，内核接管时退出。新解码不读原厂逐屏电极校准，触感平滑度与多点行为待真机验收 |
-| 视频编解码 | ✅ | Iris V4L2 M2M 已通：H.264 与 HEVC 各 300 帧的硬件编码与解码、带 B 帧素材的解码，逐帧摘要与软件解码一致，Iris 中断计数同步增长（1080p）。浏览器硬解已就绪：Chrome 与 Firefox 默认走硬件解码，Fedora 的 Chromium 暂走软解，原因见[已知问题](docs/known-issues.md#触屏网络音频与相机)。VP9、10-bit 与 4K60 待后续测试 |
-| 电源与电池 | ✅ | 双电芯电量监控，支持深度挂起 |
-| 引导稳定性 | ✅ | `qbootctl.service` 写入 `Successful: 1`，避免 ABL 计数归零掉进 Fastboot |
-| 相机 | ✅ | `piano-camerad` 常驻，ISP 直出 NV12，前摄与后摄都能正常成像。出流首帧有短暂黑帧，自动曝光收敛需数帧，见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
-| 音频 | ⏳ | 四只扬声器走原厂 DAP，拓扑按原厂矩阵把立体声铺到四路。功放上限 235，与原厂 FSM_Volume 相同。DAP 加载与四扬声器分频待真机验收 |
-| 性能调度 | ✅ | `uperf-linux` 触控提频 |
+| 触控 | ⚠️ | 内核 IRQ 线程已启用手指矩阵解码；用户态卡尔曼滤波路径保留作兜底。内核路径暂不读取原厂逐屏电极校准，跟手度与多指表现待实机长期验收 |
+| 视频编解码 | ✅ | Iris V4L2 M2M 1080p H.264/HEVC 硬编硬解就绪；Chrome 与 Firefox 默认硬解，Fedora Chromium 因 `ffmpeg-free` 限制仅软解，见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
+| 电源与电池 | ✅ | 双电芯电量上报、深度挂起与唤醒正常 |
+| 引导稳定性 | ✅ | `qbootctl.service` 上报 `Successful: 1`，避免 ABL 计数归零掉进 Fastboot |
+| 相机 | ✅ | `piano-camerad` 前后摄直出 NV12 成像正常；开流首帧黑帧与 AE 收敛问题见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
+| 音频 | ⚠️ | 拓扑按原厂矩阵把立体声铺到四扬声器 DAP（功放上限 235）；播放录音连续无 xrun，四扬声器分频与 DAP 效果待实机验收 |
+| 性能调度 | ✅ | `uperf-linux` 触控提频，并通过 `tuned-ppd` 桥接三档电源模式 |
 | 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
-| 传感器 | ✅ | 走 SSC 后端（`libssc` + `iio-sensor-proxy-ssc`，QRTR/MHI），加速度计、环境光、接近均有数据。支持自动旋转，检测到方向变化后屏幕联动旋转 90° |
-| 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk 与 virtio-net、单 vCPU 客体启动。SMP、图形与 GUI 操作待验收 |
-| 双系统往返 | ✅ | 合体 BOOT 装在活动槽的 `boot` 分区（`boot_a` 或 `boot_b`）。Linux→Android 用 `piano-next-boot android --reboot`，Android→Linux 用「SunUEFI 引导助手」模块或开机 3 秒选择器。双向切换链路完整，见[已知问题](docs/known-issues.md#双系统切换) |
-| 手写笔 | ✅ | Type 29 协议就绪，压感 0–1，位置与倾斜正常。轴事件、接近感应与笔尖响应完整，见[已知问题](docs/known-issues.md#手写笔) |
-| 指纹 | ✅ | 侧置电容式（汇顶 Goodix），`piano-fingerprint` 与 `piano-libfprint` 随镜像预装。录入与解锁验证链路完整，现版本状态与边界见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
-| 红外 | ✅ | 消费级红外发射器，`/dev/lirc0` 节点与 `ir-spi` 驱动就绪，支持 `ir-ctl` 发码。测试边界见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
-| HDR | ✅ | 面板支持 HDR10。开启后 DSI-1 提交 PQ 元数据与 BT.2020，DPU 经面板校准的 IGC、Gamut、GC 转换输出，控制字读回与上游记录一致。KDE Plasma 下 extras 补丁版 KWin 支持开关与背光恢复；色准与峰值亮度未用仪器测量，见[已知问题](docs/known-issues.md#指纹红外与-hdr) |
+| 传感器 | ✅ | SSC 后端（`libssc` + `iio-sensor-proxy-ssc`）提供加速度计、光感与接近数据，支持自动旋转 |
+| 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk/net 与单 vCPU 客体启动通过；SMP 与图形客体未验 |
+| 双系统往返 | ✅ | 活动槽合体 BOOT 支持 Linux 与 Android 互切，细节见[双系统切换](docs/known-issues.md#双系统切换) |
+| 手写笔 | ⚠️ | Type 29 压感（0-1）、坐标与倾斜正常；侧键与磁吸交互未实现，见[手写笔](docs/known-issues.md#手写笔) |
+| 指纹 | ⚠️ | 预装 `piano-fingerprint` / `piano-libfprint`（Goodix TEE 路径），与 Android 模板隔离；当前版本实机录入解锁未验，见[指纹与硬件](docs/known-issues.md#指纹红外与-hdr) |
+| 红外 | ✅ | `/dev/lirc0` 与 `ir-spi` 驱动就绪，可用 `ir-ctl` 发码 |
+| HDR | ⚠️ | 面板与 DPU 支持 HDR10 及 BT.2020 输出，extras 的 KWin 修复退出 HDR 后背光恢复；色准与峰值亮度未用仪器测量，见[HDR 说明](docs/known-issues.md#hdr) |
 
 ## 桌面
 
-镜像按档位构建，同一份发布链出五档 root 文件系统。五档共用内核、ESP 与
-一键脚本，只有 root 镜像与 `root-install/` 不同。
+五档桌面共用同一内核、ESP 与刷机脚本，仅 rootfs 与 `root-install/` 按档区分。各档的登录管理器、电源策略与配置细节见[桌面档](docs/desktops.md)。
 
-| 档位 | 会话 | 登录 | 自动旋转 | 验收状态 |
-|---|---|---|---|---|
-| `gnome` | GNOME 51（Workstation 环境） | GDM 自动登录 | Mutter | 已登录桌面，旋转已实机验证 |
-| `kde` | KDE Plasma | plasma-login-manager 自动登录 | KWin，需 `qt6-qtsensors` | 已登录桌面，旋转已验 |
-| `niri` | niri | greetd + tuigreet | 无，手动 `transform` | 已登录桌面 |
-| `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无，手动 rotate | 已登录桌面 |
-| `denial` | Denial（第三方 DNF 仓库） | greetd + tuigreet | 无 | 未在 Fedora 45 实机验收 |
-
-每档一个归档，装哪一档就下哪一档。每档的登录、电源行为、旋转能力与已知
-缺口见[桌面档](docs/desktops.md)。
+| 档位 | 会话 | 登录 | 自动旋转 | 当前状态 |
+| --- | --- | --- | --- | --- |
+| `gnome` | GNOME 51（默认） | GDM 自动登录 | Mutter | 已登录桌面，旋转实机验证通过 |
+| `kde` | KDE Plasma | `plasma-login-manager` | KWin（`qt6-qtsensors`） | 已登录桌面，旋转实机验证通过 |
+| `niri` | niri | greetd + tuigreet | 无（手动 `transform`） | 已登录桌面 |
+| `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无（手动设置） | 已登录桌面 |
+| `denial` | Denial（第三方 DNF 源） | greetd + tuigreet | 无（缺少 SensorProxy） | `0.6.10-1` 已实机冷启并验证 GPUI/Vulkan `denial-settings` |
 
 ### extras 可选组件
 
-默认镜像用 Fedora 原版桌面组件，装完就能用。extras 是另一个默认关闭的软件源，装上后多出这些能力：
+默认镜像使用 Fedora 原版桌面包。如需原厂自动亮度曲线、KWin HDR 背光恢复等补丁组件，可按 [COPR 软件源](docs/copr-repository.md#可选的-extras-软件源) 启用默认关闭的 `xinyang26/piano-fedora-extras`：
 
-| 想要的效果 | 档位 | 补丁做了什么 |
-|---|---|---|
-| 屏幕亮度跟随环境光 | GNOME | GSD 按原厂 lux→nits 曲线换算目标亮度 |
-| 悬浮键盘插拔后背光可用 | GNOME | GSD 刷新键盘背光设备 |
-| 手写笔在 X11 应用里可用 | 五档 | GTK3 用设备所属 display 取 XI2 工具原子 |
-| 触摸时 GNOME 不崩 | GNOME | mutter 加空 KMS gamma LUT 与已取消触摸 grab 两个守卫 |
-| 关掉 HDR 后背光回落 | KDE | KWin 退出 HDR 时恢复原亮度 |
-| GNOME 登录前等显示就绪 | GNOME | gdm 等 KMS connector 出现再起会话 |
-
-启用、装包与卸载的命令和完整包清单见 [COPR 软件源](docs/copr-repository.md#可选的-extras-软件源)。
+| 能力 | 适用档位 | 包与作用 |
+| --- | --- | --- |
+| 环境光自动亮度与键盘背光热插拔 | GNOME | `gnome-settings-daemon-piano` 按原厂 lux 曲线调光并刷新键盘背光 |
+| X11 应用手写笔适配 | 五档 | `gtk3` 修复 XI2 工具原子查询 |
+| GNOME 触摸崩溃与启动等待保护 | GNOME | `mutter` 增加空 gamma LUT / grab 守卫；`gdm` 等 KMS connector 就绪再启动；`gnome-control-center` 指纹录入等待 `fprintd` |
+| HDR 关闭后恢复背光 | KDE | `kwin` 修复退出 HDR 后亮度停在最大值的问题 |
 
 ## 安装
 
-安装分两条路。手动路径是主路径，逐条给出命令，每一步都能单独核对。一键脚本执行与手动路径相同的写入，是可选路径。两条路径的完整步骤见[安装指南](docs/installation.md)。
+完整流程与故障排查见[安装指南](docs/installation.md)。手动路径逐条核对命令，是主路径；一键脚本做完全相同的写入。
 
-1. 解锁 Bootloader，准备好 `fastboot`。
-2. 原始 GPT 的设备先按[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)分区、擦除 `userdata`、让 Android 首次开机。**没有这一步，一键脚本不能运行。**
-3. 从 [Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载所选档位的 `piano-<tag>-<档位>.sha256` 与全部分片。把它们放进同一个空目录，然后依次执行：
+1. 解锁 Bootloader 并准备好电脑端 `adb` 与 `fastboot`。
+2. **原始 GPT 设备必须先分区**：按[从原始 GPT/UFS 开始的首次安装](docs/installation.md#四-从原始-gptufs-开始的首次安装)划出 Linux 分区、擦除 `userdata` 并让 Android 完成首次开机。**没有这一步，一键脚本不能运行。**
+3. 从 [Releases](https://github.com/FFT-infra/piano-fedora/releases) 下载所选档位的 `.sha256` 与全部分片到空目录，校验并解包（或直接运行 `bash scripts/unpack-release.sh --tag <tag> --desktop <档位>`）：
 
    ```sh
    sha256sum -c piano-<tag>-<档位>.sha256
@@ -87,46 +71,39 @@
    sha256sum -c SHA256SUMS
    ```
 
-   其他档位是各自的归档，不必下载。解压后的目录就是暂存目录，一键脚本、`root-install/` 与组件 manifest 都在里面。也可以执行 `bash scripts/unpack-release.sh --tag <tag> --desktop <档位>` 让脚本代做这三步。从源码构建时，用同一次成功 `build-bundle` 的 `deploy-bundle-<档位>`，以及这次 run 派生的 `prepare-install` 的 `root-install-<档位>`。不要混用来自不同 run 的资产。
-4. 在暂存目录执行 `./make-device-boot.sh`，生成 `device-boot/boot_linux.img`。`boot_linux.img` 由这台平板自己的原厂 BOOT 重打包而成，归档里的 ESP 镜像不能顶替。
-5. 关机后长按 `电源键 + 音量减键` 进入 Fastboot，确认 `fastboot getvar current-slot` 返回 `a` 或 `b`。然后按[手动刷写](docs/installation.md#五-手动刷写-linux)逐条执行：校验两份 `SHA256SUMS`，确认设备身份，依次写入活动槽的 `boot` 分区（`boot_a` 或 `boot_b`）、`sunuefi_esp`、`sunuefi_root`，最后执行 `fastboot reboot`。
+   从源码构建时，需配套同一次成功 `build-bundle` 的 `deploy-bundle-<档位>` 与同 run 派生的 `prepare-install` 的 `root-install-<档位>`，不要混用不同 run 的产物。
+4. 在暂存目录运行 `./make-device-boot.sh`，基于平板自己的原厂 BOOT 生成 `device-boot/boot_linux.img`。
+5. 关机后长按 `电源键 + 音量减键` 进入 Fastboot，确认 `fastboot getvar current-slot` 返回 `a` 或 `b`。按[手动刷写](docs/installation.md#五-手动刷写-linux)校验材料后依次写入活动槽 `boot`、`sunuefi_esp`、`sunuefi_root` 并重启；或直接运行一键脚本：
 
-   要一次完成刷写，在暂存目录执行 `./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub`（Linux / macOS），或双击 `flash-linux.bat`（Windows，不自动注入公钥）。一键脚本执行与手动路径相同的写入，并在写入前额外核对几项。
+   ```sh
+   ./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub   # Windows 使用 flash-linux.bat（不注入公钥）
+   ```
 
-6. 刷完自动重启进入所选桌面。用户名 `piano`，默认密码 `piano123456`，登录后尽快用 `passwd` 修改。
+6. 自动重启进入桌面。默认用户 `piano`，密码 `piano123456`，登录后请立即用 `passwd` 改密。
 
-**不要擦除 `dtbo_a` 或 `dtbo_b`**，ABL 会因此拒绝整条引导链。回滚方法见[手动刷写的回滚一节](docs/installation.md#4-回滚到-android)。
+**不要擦除 `dtbo_a` 或 `dtbo_b`**，否则 ABL 会拒绝引导。回滚原厂 BOOT 见[回滚到 Android](docs/installation.md#4-回滚到-android)。
 
 ### 双系统切换
 
-- Linux → Android：应用抽屉点「返回 Android」，或执行 `piano-next-boot android --reboot`。已真机验收。
-- Android → Linux：使用「SunUEFI 引导助手」模块切换；若未安装，开机 3 秒内按音量键呼出选择器。
-- 两个方向均写入同一份活动槽 BOOT 请求页；不切活动槽，不改 GPT。
+- **Linux 到 Android**：点击应用抽屉里的「返回 Android」，或执行 `piano-next-boot android --reboot`。
+- **Android 到 Linux**：在 KernelSU/SukiSU 中使用「SunUEFI 引导助手」模块，或开机亮屏 3 秒内按音量键进入选择器。
 
-## 发布产物
+装好后通过 `sudo dnf upgrade --refresh` 即可直接升级内核与适配包，无需重刷镜像，详见[升级与回滚](docs/upgrade.md)。
 
-Release 由维护者用 tag 手工 dispatch，tag push 不会触发发布。一个 Release 只包含同一次 `build-bundle` 与这次 run 派生的 `prepare-install` 的已验证产物，不重新编译。一个 Release 带五档桌面，每档一个归档 `piano-<tag>-<档位>.tar.zst`，超过 2 GiB 时切成 `.part-NN`。
+## 文档与发布产物
 
-归档里有平台镜像、所选档位的 `root-install/`、组件 manifest、一键脚本与 boot-tools。装机只下所选档位，GNOME 约 2.1 GiB，niri 约 1 GiB。归档自带的 `SHA256SUMS` 只列真实存在的文件，两条校验命令都能直接通过。逐个文件的作用见[交付物与流水线](docs/artifacts.md#release-发布)。
+Release 由维护者手动 dispatch 生成，每档打成一个完整归档 `piano-<tag>-<档位>.tar.zst`（超 2 GiB 自动分片；GNOME 约 2.1 GiB，niri 约 1 GiB），文件构成见[交付物与流水线](docs/artifacts.md#release-发布)。
 
-## 文档
+- [文档中心](docs/README.md)：按安装、日常使用、桌面、开发维护分类索引
+- [构建与维护参考](docs/internals.md)：CI 流水线、真机取证脚本与 PR 验收门槛
+- [参与贡献](CONTRIBUTING.md)：本地测试、补丁检查与提交流程
+- [安全策略](SECURITY.md)：漏洞反馈方式
 
-- [文档中心](docs/README.md)：按安装、日常使用与维护分类的文档目录
-- [参与贡献](CONTRIBUTING.md)：本地检查、提交格式与 PR 门槛
-- [安全策略](SECURITY.md)：漏洞报告渠道与处理范围
+## 构建与测试
 
-
-## 构建与检查
-
-```bash
-make test                  # 全套离线单测：GPT 计算、镜像与元数据校验
-make plan RELEASEVER=45    # 打印 Fedora 45 根文件系统生成计划
+```sh
+make test                  # 全套离线检查（含 GPT、镜像、补丁与文档链接检查）
+make plan RELEASEVER=45    # 打印 Fedora 45 默认桌面装配计划
 ```
 
-流水线入口是 `.github/workflows/`。主链是 `host-check`（带 `build_piano_rpms=true`）→ `build-rootfs` → `build-image` → `build-bundle` → `prepare-install`。每一步都要显式指定上游的成功 run id：`build-rootfs` 要 RPM 矩阵、运行时、Mesa 与 FFmpeg，`build-image` 再加内核，`build-bundle` 要镜像与 UEFI，`prepare-install` 要 bundle。各步的依赖不是单纯的线性接力。
-
-每一步只接受成功 run 的产物，混用不同 run 会被拒绝。细节见 [docs/internals.md](docs/internals.md)。
-
-## 许可
-
-仓库自有代码遵循 [MIT](LICENSE)，第三方上游组件与内核补丁保留各自许可证，见 [sources.lock.json](sources.lock.json) 与 [NOTICE](NOTICE)。
+自有代码遵循 [MIT 许可证](LICENSE)，上游组件与内核补丁保留各自许可证，详情见 [sources.lock.json](sources.lock.json) 与 [NOTICE](NOTICE)。

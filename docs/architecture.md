@@ -1,117 +1,66 @@
-# 架构
+# 系统架构
 
-[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 提供启动链。本仓库增加四项：Fedora 后端、F2FS 全链路、首次分区、UEFI UFS 唤醒补丁。
+[SunUEFI](https://github.com/slwyts/Project-SunUEFI) 按 commit 锁定为上游提供启动链；本仓库不 fork 上游，所有增量通过自有脚本和 `patches/` 维护。
 
-## 分工
+## 组件边界
 
-系统各层按维护职责划分为上游锁定组件与本仓库扩展组件：
-
-| 层 | 归属 |
+| 层 | 维护归属 |
 | --- | --- |
-| 合体 BOOT、UEFI、内核编排、打包、安装器 | SunUEFI（锁定） |
-| UEFI UFS 休眠唤醒与 SCSI 重试补丁 | 本仓库（patches/uefi-ufs） |
-| Fedora root 文件系统后端与配方 | 本仓库 |
-| F2FS 全链路（内核策略、initramfs、fstab、udev、镜像、一键脚本） | 本仓库 |
-| 首次分区（上游返回 `NEW_INSTALL_NOT_READY`） | 本仓库 |
+| 合体 BOOT、UEFI、内核编排、打包、基础安装器 | SunUEFI（`sources.lock.json` 锁定） |
+| UEFI 启动/休眠/USB 停机补丁 | 本仓库（`patches/uefi-*`） |
+| Fedora rootfs 装配后端与桌面配方 | 本仓库（参考 [fedora-sheng](https://github.com/mumuxiao722/fedora-sheng) 的 spec 与参数化设计，不迁移 SM8550/mkbootimg 逻辑） |
+| F2FS 全链路（内核配置、`release-disk-bootstrap`、fstab、udev、镜像打包、一键脚本） | 本仓库 |
+| 首次分区规划与执行（上游仅报错 `NEW_INSTALL_NOT_READY`） | 本仓库 |
 
-本项目不 fork 上游。改动走自有脚本或补丁。
+F2FS 镜像打包不走 `f2fs-tools` 的 `sload -P`（它会丢掉 xattr、ACL 与 SELinux capability），而是在挂载后的真实 F2FS 分区上通过 `tar --xattrs --acls --numeric-owner` 写入，再卸载 `fsck.f2fs` 校验并只读挂回逐项比对。GitHub Actions Linux runner 需先装 `linux-modules-extra` 才能 `modprobe f2fs`。封存镜像尺寸由 `product.json` 的 `root_size_mib` 固定，装机后首次启动由 initramfs 自动撑满设备分区。
 
-## 阶段
+## CI 工作流分工
 
-每个阶段独立可用。所有步骤都在主机上完成，不碰设备。
+所有工作流均仅在主机端构建和校验，上传失败视作未交付；详细产物规格与归档命名见[交付物与流水线](artifacts.md)。
 
-1. Fedora 后端。给上游增加 dnf5 路径，生成 Fedora root 文件系统树。参考 [fedora-sheng](https://github.com/mumuxiao722/fedora-sheng) 的 RPM spec 与 Actions 参数化。不迁移其中的 SM8550 硬件内容与 mkbootimg 启动链。
-2. F2FS 全链路。处理六处 ext4 硬编码：内核配置策略、`release-disk-bootstrap`、fstab、udev 放行、`package_release.py` 的镜像制作、一键脚本 magic 与 SSH 注入。
-
-   制作镜像不用 `sload -P`。上游 f2fs-tools 的 sload 只保留 owner/mode/setuid，不枚举源树的 xattr/ACL/capability。导入阶段会静默丢失元数据。改用挂载真实 F2FS，用 `tar --xattrs --acls --numeric-owner` 写入。写完再挂载读回，逐项比对。
-
-   制镜像需要挂载 F2FS。GitHub runner 的内核默认不带 f2fs。装上 `linux-modules-extra` 之后，`modprobe f2fs` 才能用。挂载式往返验证已在 CI 上跑通（`IMAGE_VERIFIED`，xattr 核对通过，fsck 退出码 0）。
-
-3. 首次分区。只读探测本机并生成计划。使用模拟 GPT 在主机上验证计划。
-4. 安装与验收。实际刷写设备，验证启动，完成双向切换。
-
-F2FS 排在分区之前：先验证 F2FS 镜像的挂载式往返机制，再根据 root 文件系统实际打包容量确定分区方案。镜像容量与设备容量已经脱钩。封存镜像的容量由 `product.json` 的 `root_size_mib` 定义，首次启动时由 initramfs 长满分区。
-
-## CI 分工
-
-持续集成工作流按触发条件与构建产物划分：
-
-| workflow | 触发 | 产出 |
+| Workflow | 触发方式 | 产出与职责 |
 | --- | --- | --- |
-| `host-check.yml` | push / PR / 手动 | 离线检查与 `make test`。手动 dispatch 时按输入复用调用 `build-piano-rpms`、`build-ffmpeg` 与 `package-install` |
-| `build-piano-rpms.yml` | `host-check` 调用 | 九类矩阵 RPM 与匹配内核的 `kernel-piano`，同一 job 产出 SRPM |
-| `build-ffmpeg.yml` | `host-check` 调用 | 带 v4l2m2m 的 FFmpeg RPM |
-| `build-rootfs.yml` | 手动 | 按配方展开档位矩阵，每档生成一棵 Fedora root 文件系统树与 `.tar.zst`（`desktop=all` 一次出齐） |
-| `build-kernel.yml` | 手动 | F2FS/SELinux Image、完整模块与匹配 SDK |
-| `build-uefi.yml` | 手动 | UEFI 产品与原始 manifest |
-| `build-mesa.yml` | 手动 | Fedora 原生 A830v1 Mesa RPM 与实际驱动检查记录 |
-| `build-device-runtime.yml` | 手动 | Fedora 原生设备运行时。ABI 匹配的 `v4l2loopback` 由 `build-piano-rpms.yml` 编进 `kernel-piano` |
-| `build-initramfs.yml` | 手动 | 独立 initramfs 构建与检查。正式 bundle 消费 build-image 的 initramfs |
-| `verify-f2fs.yml` | push / PR | 小 fixture 的 F2FS 元数据往返验证 |
-| `build-image.yml` | 手动 | 单个档位：同一次集成的设备 rootfs、initramfs、F2FS 镜像及相互绑定的 manifest，产物名 `root-image-<rel>-<desktop>` |
-| `build-bundle.yml` | 手动 | 汇总内核、UEFI、root 文件系统与镜像为 deploy-bundle。每档一个 `deploy-bundle-<desktop>`，内部文件名不随档位变 |
-| `prepare-install.yml` | 手动 | 按 bundle run 扩容 root、写入设备配置，产出 `root-install-<desktop>` 与 `boot-tools`。`root-install-manifest.json` 记录档位 |
-| `package-install.yml` | 手动 / `host-check` 调用 | 压缩已校验的 `root-install-<desktop>`，不重建文件系统 |
-| `publish-copr.yml` | 手动 | 从矩阵 SRPM 在 COPR 重建用户态包 |
-| `release.yml` | 手动 | 单个 Release 带一个或多个档位，每档一个归档。不填 run id，按 tag commit 解析 |
-| `upstream-watch.yml` | 每周一 | 上游漂移看板，只写 issue，改 pin 由人执行 |
+| `host-check.yml` | push / PR / 手动 | 跑 `make test`；手动时可复用调用 `build-piano-rpms`、`build-ffmpeg`、`package-install` |
+| `build-piano-rpms.yml` | `host-check` 复用 | 编译 15 个硬件/运行时矩阵 RPM 与匹配内核的 `kernel-piano`（含 SRPM） |
+| `build-ffmpeg.yml` | `host-check` 复用 | 编译启用 H.264/HEVC v4l2m2m 的 `ffmpeg-piano` |
+| `build-uefi.yml` | 手动 | UEFI 固件产品及原始 manifest |
+| `build-kernel.yml` | 手动 | 启用 F2FS/SELinux/Gunyah 的内核 `Image`、模块树与 SDK |
+| `build-mesa.yml` | 手动 | Fedora 原生 Adreno A830v1 `mesa-piano-*` RPM |
+| `build-device-runtime.yml` | 手动 | `piano-runtime`、`piano-crosvm`、`librevm` |
+| `build-rootfs.yml` | 手动 | 按 `scripts/profiles/fedora-desktops.json` 并行展开五档 rootfs（`desktop=all`） |
+| `build-image.yml` | 手动 | 安装运行时/Mesa/FFmpeg，校验内核模块树一致性并打出 F2FS raw 镜像与 initramfs |
+| `build-bundle.yml` | 手动 | 组装单档 `deploy-bundle-<desktop>`（ESP + UEFI 产品 + sparse root） |
+| `prepare-install.yml` | 手动 | 可选离线扩容 `root-install-<desktop>` 与 `boot-tools` |
+| `package-install.yml` | `host-check` 复用 | 打包校验后的 `root-install-<desktop>` |
+| `publish-copr.yml` | 手动 | 从矩阵 SRPM 向 COPR 提交源码重建 |
+| `release.yml` | 手动 | 按 tag commit 校验并打包五档归档、sidecar 与 provenance |
+| `verify-f2fs.yml` | push / PR | 小 fixture 的 F2FS 元数据往返测试 |
+| `upstream-watch.yml` | 每周一 | 巡检上游漂移并开/关 issue，不自动改 pin |
 
-上表只列构建与发布链。`host-check.yml` 也会在 push 与 PR 上跑 `make test`。
+## 启动链与载荷布局
 
-各 workflow 显式上传产物。上传失败不计为交付完成。
+固件从 `sunuefi_esp` 加载 Linux，启动入口按 ESP 实际布局二选一：
 
-产物清单与 deploy-bundle 结构见 [部署产物](artifacts.md)。
+1. **BLS 布局**（当前默认）：由 `EFI/BOOT/BOOTAA64.EFI`（systemd-boot）引导 `/loader/entries/linux-<release>.conf`，内核、`initramfs` 与合成 `board.dtb` 分置 `/linux/<release>/`。
+2. **单 UKI 布局**（早期兼容）：由固件直接加载 `/EFI/Linux/sunuefi.efi`（`systemd-ukify` 封装 `.linux`/`.initrd`/`.dtb`/`.cmdline`/`.osrel`/`.uname`）。
 
-## 启动链
+每次启动前，固件内建的 `EFI_DT_FIXUP_PROTOCOL`（`PianoDeviceTreeFixup.c`）动态重写 `/memory` 区间、面板 `compatible`、蓝牙地址、RTC 偏移及 Gunyah RM 属性。系统切回依赖活动槽合体 BOOT 末尾的 `SUNUEFI-NEXTv1` 请求页。
 
-固件从 ESP 加载 Linux。载荷有两种布局，以 ESP 上有没有 systemd-boot 区分。
+在线通过 `dnf upgrade` 升级 `kernel-piano` 时，`%posttrans` 会重建 initramfs 并按 ESP 现有布局原位更新内核与 `board.dtb`（详情与回滚见 [COPR 软件源](copr-repository.md)）。
 
-新装镜像走标准 UEFI 启动顺序：`EFI/BOOT/BOOTAA64.EFI`（systemd-boot）是入口，内核、initramfs 与板级 DTB 分放在 `/linux/<release>/`，启动项在 `/loader/entries/linux-<release>.conf`。这是上游 `package_release.py` 的默认布局。
+## 桌面矩阵组织方式
 
-早期单 UKI 固件没有 systemd-boot，只打开固定的 `\EFI\Linux\sunuefi.efi`。这个文件是 UKI，`systemd-ukify` 把内核、initramfs、DTB、cmdline、os-release 与 uname 写进同一个 PE 文件，节区是 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname`。
+五档桌面的结构参考 [jhuang6451/nabu_fedora](https://github.com/jhuang6451/nabu_fedora)（每档独立归档、统一配方矩阵），但构建机制改为：
 
-启动时 DT 由固件改写。`PianoDeviceTreeFixup.c` 实现 `EFI_DT_FIXUP_PROTOCOL`，依次处理内存、面板、蓝牙地址、RTC 偏移与 Gunyah 资源管理器。`systemd-stub` 以 `APPLY_FIXUPS|RESERVE_MEMORY` 调它，载荷 DTB 的 `/memory` 被换成设备本次的布局，并按 `DramBytes` 与固定保留区校验。raw Linux 交接走同一个协议。
+- **单一配置真源**：[`scripts/profiles/fedora-desktops.json`](../scripts/profiles/fedora-desktops.json) 定义五档差异，[`scripts/piano_desktop.py`](../scripts/piano_desktop.py) 统一解释，CI 与安装脚本不硬编码档位列表。
+- **独立签名事务**：不使用基础 rootfs `cp -a` 增量派生或全局 `--nogpgcheck`，而是按 Fedora `releasever` 容器并行执行带 GPG 校验的 DNF 安装事务。
 
-切系统仍靠请求页。`PianoBootPolicy.c` 的 `REQUEST_BOOT_STABLE` 与返回 Android 的 token 没有变，和内核载荷格式无关。
+## 设备前提与系统约束
 
-内核升级由 `kernel-piano` 的 `%posttrans` 维护，目标按 ESP 上的布局选。BLS 布局写 `/linux/<release>/` 与新的 loader 条目，旧 release 留着给 systemd-boot 菜单回退。UKI 布局重建 PE 文件：有 systemd-boot 时写版本化文件名，没有时原地替换固件读取的 `sunuefi.efi`，旧文件留成 `.bak`。细节见 [COPR 软件源](copr-repository.md)。
-
-`c720568` 及更早的固件读 `\EFI\Piano\stable\boot.img`，要求 Android boot v2 容器。HEAD 删掉了这条路径。
-
-## 从 nabu_fedora 取什么
-
-档位矩阵与单个 Release 的形态参考 [jhuang6451/nabu_fedora](https://github.com/jhuang6451/nabu_fedora)，取的是结构，不是它的构建方式。
-
-取：
-
-- matrix job 扫配方文件展开，不手写档位：
-  - 配方由 `scripts/profiles/fedora-desktops.json` 提供，workflow 自动展开。
-- 每个档位独立归档，一个 Release 带齐全部档位：
-  - ESP、内核与 initramfs 在五档各存一份，用户仅下载所选档位。
-- 一个产品 README 加一张变体对照表。表格与入口结构已经落地。五档真机验收之后再补截图。
-
-不取：
-
-- 构建器镜像（Dockerfile → GHCR）：
-  - 避免增加镜像维护与缓存失效面；podman 容器按 `releasever` 锁定并由 manifest 兜底。
-- base root 文件系统 `cp -a` 增量变体模型：
-  - 避免打断单次审计事务与 SELinux relabel；五档在 arm runner 并行构建不增加总耗时。
-- 独立变体脚本与全局 `--nogpgcheck`：
-  - 采用一份配方加解释器，五档共用签名安装事务；派生名与登录配置由 `make test` 覆盖。
-
-各档的登录、电源与旋转差异见[桌面档](desktops.md)。
-
-## 前提
-
-整套方案假设 SunUEFI 的启动交接在目标设备上成立。上游基准基于 16 GB 机型与 OS3.0.309；本项目针对 24 GB / 1 TB 机型适配。首次分区前的只读探测会核对 GPT、槽位与原厂 BOOT。任何一项与预期不符就停在计划阶段，不写设备。
-
-## 设备约束
-
-1. 存储扩容过的机器，分区边界与校准数据可能被第三方改过。分区一律按自己设备的实时 GPT 计算，不套用固定数值。
-2. 全盘没有空闲空间。`userdata` 占满盘尾，新分区只能从 `userdata` 尾部让出。
-3. `/data` 是加密 dm 映射。F2FS 的在线 resize 能缩不能扩，所以无损缩容必须经 vold 建立的解密映射在线完成，扩容才需要卸载后跑 `resize.f2fs`。宿主机读不到明文超级块，section 大小只能在设备上取。默认首装路径仍然清空 `userdata`；`--lossless` 走设备侧在线缩容，见[安装指南](installation.md#0-保留-android-数据的首装--lossless)。
-4. 无 `/dev/kvm`。内核参数是 `kvm-arm.mode=protected`。虚拟化只能走 AVF/crosvm + Gunyah。
+- **硬件基线**：上游状态基线为 16 GB 机型，本仓库针对 24 GB / 1 TB 机型（小米平板 8 Pro）适配；装机前必须按每台平板实时 GPT 计算分区，不假设第三方扩容机型的固定偏移。
+- **分区与加密限制**：Android `userdata` 占满盘尾且以 dm 加密挂载，宿主机无法直接无损缩放，因此默认首次安装擦除重建 `userdata`，仅 `--lossless` 模式通过设备侧 vold 在线缩容（详情见[安装指南](installation.md#0-保留-android-数据的首装--lossless)）。
+- **虚拟化路径**：内核运行于 `kvm-arm.mode=protected`（无 `/dev/kvm`），虚拟化统一走 Gunyah + `crosvm` / `librevm`。
 
 ## 许可
 
-自有代码采用 MIT 许可。SunUEFI 为文件级许可。内核为 GPL-2.0。固件许可不明，不入库。上游依赖按各自许可取用，不复制代码。
+仓库自有代码采用 [MIT 许可证](../LICENSE)，内核补丁遵循 GPL-2.0，SunUEFI 保留各自文件级许可（汇总见 [NOTICE](../NOTICE)）。专有固件与屏幕校准数据不入库。

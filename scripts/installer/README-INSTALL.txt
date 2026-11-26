@@ -1,5 +1,5 @@
 ====================================================================
-  Xiaomi Pad 8 Pro (piano) - Fedora 44 GNOME Linux Flashing Guide
+  Xiaomi Pad 8 Pro (piano) - Fedora Linux Flashing Guide
 ====================================================================
 
 THIS INSTALLER DOES NOT PARTITION A STOCK TABLET.

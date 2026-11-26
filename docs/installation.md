@@ -1,34 +1,27 @@
 # Xiaomi Pad 8 Pro (piano) 安装指南
 
-> 日常系统与内核升级、双系统往返请参见 [升级与回滚](upgrade.md)。
+> 日常系统与内核升级、双系统往返见[升级与回滚](upgrade.md)。
 
-本指南说明如何在小米平板 8 Pro（代号 `piano`，骁龙 8 至尊版 SM8750）上安装 Fedora 45、完成首次登录与排查安装故障。默认档位是 GNOME。其他档位的差异见[桌面档](desktops.md)。
+本指南说明如何在小米平板 8 Pro（`piano`，骁龙 8 至尊版 SM8750）上划出 Linux 分区、刷入 Fedora 45 并完成首次登录。默认档位是 GNOME，其余四档差异见[桌面档](desktops.md)。
 
-安装有两条路。手动路径逐条给出命令，每一步都能单独核对，是主路径。一键脚本把同一条路径包成一次执行，是可选路径。两条路写入的分区和字节数相同。
+手动路径逐条列出命令，是主路径；一键脚本做完全相同的写入，两者的分区与刷写内容一致。
 
 ---
 
 ## 一、 前提
 
-1. 通过小米官方渠道解锁 Bootloader。刷写前把电量保持在 30% 以上。
-2. 在电脑上装好 Android Platform Tools，`fastboot` 与 `adb` 在 `PATH` 里。Linux 主机还要配好设备 udev 规则，或者用带 `sudo` 的 shell。
-3. 备份 Android 用户数据。首次分区会清空 `userdata`，数据无法恢复。
-
-首次分区要用 Android 的 root 权限读写块设备。获取 root 的方法不在本仓库范围内。
+1. 通过小米官方渠道解锁 Bootloader，刷机前保持电量 > 30%。
+2. 电脑端装好 `adb`、`fastboot`（Android Platform Tools）及下表工具；Linux 宿主机需配置 USB udev 规则或使用 `sudo`。
+3. 备份 Android 个人数据：默认首次分区会清空 `userdata`。首次分区需要 Android 的 root 权限（获取 root 不在本仓库讨论范围内）。
 
 ### 电脑端工具
 
-电脑端需要以下命令行工具完成校验、解压、BOOT 打包与镜像写入：
-
-| 工具 | 用途 | 缺少时的后果 |
+| 工具 | 用途 | 缺少时的影响 |
 | --- | --- | --- |
-| `sha256sum`、`tar` | 校验与解开归档 | 无法开始 |
-| `zstd` | 解压归档 | 无法开始。GNU tar 的 `--zstd` 也是去调外部 `zstd`，没有内建支持 |
-| `python3` | 一键脚本读 `root-install-manifest.json`，`make-device-boot.sh` 重打包 BOOT | 脚本在校验摘要前停下，不写设备 |
-| `adb` | 读原厂 BOOT | `make-device-boot.sh` 无法生成 `device-boot/` |
-| `mtools`（`mcopy`、`mtype`） | 注入 SSH 公钥，核对 ESP 里的内核版本 | 只能做手动路径，且不能注入公钥 |
-
-Windows 的一键脚本用系统自带的 PowerShell，不需要 `python3`。Windows 上解 `.tar.zst` 用 7-Zip。安装命令：
+| `sha256sum`、`tar`、`zstd` | 校验并解包归档（GNU tar `--zstd` 仍依赖外部 `zstd`） | 无法解包 |
+| `python3` | 一键脚本解析清单，`make-device-boot.sh` 重打包 BOOT | 一键脚本停在校验前（Windows 一键脚本用内置 PowerShell，解包可用 7-Zip） |
+| `adb` | 读取设备原厂 BOOT | `make-device-boot.sh` 无法生成 `device-boot/` |
+| `mtools`（`mcopy`、`mtype`） | 向 ESP 注入 SSH 公钥、核对 ESP 内核版本 | 只能手动刷写且不注入公钥 |
 
 ```sh
 # Fedora
@@ -36,14 +29,14 @@ sudo dnf install coreutils zstd python3 android-tools mtools
 # Ubuntu / Debian
 sudo apt install coreutils zstd python3 adb mtools
 # macOS
-brew install zstd android-platform-tools mtools   # python3 随 Command Line Tools 提供
+brew install zstd android-platform-tools mtools
 ```
 
 ---
 
 ## 二、 存储与分区架构原理
 
-平板用 UFS 4.0 闪存，配合高通 A/B 槽位（Slot A / Slot B）：
+平板采用 UFS 4.0 闪存与高通 A/B 槽位（出厂设备多为 Slot A，OTA 到 HyperOS 4 后多为 Slot B）：
 
 ```text
                     ┌────────────────────────────────────────┐
@@ -52,51 +45,27 @@ brew install zstd android-platform-tools mtools   # python3 随 Command Line Too
                                         │
         ┌───────────────────────────────┴───────────────────────────────┐
         ▼                                                               ▼
-  【Slot A（默认启动）】                                       【Slot B（保留原厂，不切槽）】
-  - boot_a (合体 BOOT：原厂 Android 内核                        - boot_b
-    + 3 秒选择器 + SunUEFI UEFI 核心)                          - dtbo_b
-  - dtbo_a / init_boot_a                                        - init_boot_b
-  - super / userdata
-  - sunuefi_esp (512 MiB, FAT32，GPT 顶层分区)
-  - sunuefi_root (剩余空间, F2FS，GPT 顶层分区)
+  【活动槽（如 Slot A）】                                      【另一槽（保持原厂，不切槽）】
+  - boot_a（合体 BOOT：Android 内核 + 3 秒选择器 + SunUEFI）     - boot_b / dtbo_b / init_boot_b
+  - dtbo_a / init_boot_a / super / userdata
+  - sunuefi_esp（512 MiB，FAT32，GPT 顶层分区）
+  - sunuefi_root（剩余空间，F2FS，GPT 顶层分区）
 ```
 
-合体 BOOT 把 Android 内核、3 秒选择器与 UEFI 核心装进活动槽的 BOOT：出厂设备是 `boot_a`，OTA 到 HyperOS 4 的设备是 `boot_b`。上图按 Slot A 画，Slot B 设备把这两个名字对调，其余相同。开机前 3 秒按音量键进入 SunUEFI 菜单。不按则按请求页里的持久选择进入 Android 或 Linux。系统不切换活动槽，另一槽的 BOOT 原样保留。
+> **不要擦除 `dtbo_a` 或 `dtbo_b`。** SunUEFI 的板级 DTB 由活动槽 `vendor_boot` 叠加原厂 `dtbo` 拼装；ABL 找不到活动槽 DTBO 会报 `Failed to load/authenticate boot image: Device Error` 并卡在 Fastboot。
 
-> **不要擦除 `dtbo_a` 或 `dtbo_b`。** 高通 ABL 启动时校验活动槽位的整条引导链。空 DTBO 会被拒绝，高通 ABL 报 `Failed to load/authenticate boot image: Device Error`，平板卡在 Fastboot。
->
-> SunUEFI 的板级 DTB 来自活动槽的 `vendor_boot` 底包，再叠加原厂 `dtbo<槽>` 的增量片段。原厂 DTBO 内容必须留在原位。
+- `sunuefi_esp`（512 MiB，FAT32）：存放 systemd-boot、合成板级 DTB、Linux 7.3 内核、initramfs 与启动条目。
+- `sunuefi_root`（F2FS）：Fedora 45 根文件系统。
+- `boot_a` 或 `boot_b`：活动槽合体 BOOT，Linux 与 Android 共用此入口启动；`qbootctl.service` 在每次 Linux 开机成功后写入 `Successful = 1`，防止 ABL 计数器归零掉进 Fastboot。
 
-### 分区用途
+### 容量计算与分区方式
 
-* `sunuefi_esp`（512 MiB，FAT32）：systemd-boot、合并设备树（DTB）、Linux 7.3 适配内核、initramfs 与启动项。
-* `sunuefi_root`（F2FS）：Fedora 45 根文件系统。桌面按档位装配。F2FS 为闪存设计，能发挥 UFS 4.0 的顺序与随机读写性能。
-* `boot_a` 或 `boot_b`：合体 BOOT，随活动槽。Linux 与 Android 都从这里启动。
+每台设备按自己实时的 GPT 计算分区（512 GiB、1 TiB 等均通用）：保留 Android 全部固定分区，从尾部缩短 `userdata`，划出 1 MiB 对齐的 `sunuefi_esp`（512 MiB）与 `sunuefi_root`（默认与 `userdata` 对半平分）。`product.json` 的 `root_size_mib`（8192 MiB）仅是封存镜像尺寸，首次启动时 initramfs 会将 F2FS 自动撑满 `sunuefi_root`。
 
-### 引导稳定性
+由于原厂 Fastboot 不支持改分区表，首次分区只有两条路（均需 Android root）：
 
-`qbootctl.service` 在每次 Linux 引导成功后向底层 GPT 写入 `Successful = 1`。ABL 的启动计数器不会归零。
-
-### 容量计算
-
-容量不是固定值。每台设备按自己实时的 GPT 计算，512 GiB、1 TiB 或其他容量都走同一套规则：
-
-1. 保留 Android 的全部固定分区（`boot_a`、`boot_b`、`dtbo_a`、`super` 等）不动。
-2. 从尾部缩短 `userdata`，让出 Linux 需要的空间。
-3. 让出的空间放 `sunuefi_esp`（512 MiB）和 `sunuefi_root`（其余全部）。
-4. `userdata` 与 `sunuefi_root` 默认按剩余空间对半分配。固定 Android 容量的方法见第四节。
-5. 所有新分区起点按 1 MiB 对齐，两边相差不超过 2 MiB。
-
-`product.json` 的 `root_size_mib` 是封存镜像的容量（8192 MiB），与设备无关。`sunuefi_root` 的实际容量从实时 GPT 算。文件系统在首启时长满 `sunuefi_root`。
-
-### 首次分区的两条路
-
-首次分区只有两条路：
-
-- 用 `install-f2fs.py apply` 在已 root 的 Android 上写 GPT。
-- 按第四节的手动步骤在 Android 上执行 `adb shell su -c`。
-
-两条路都离不开 root。原厂 Fastboot 只能读分区容量、擦除和刷写，不能改分区表。
+- 用 `install-f2fs.py apply` 在线计算并写入（第四节 1）。
+- 按第四节 2 在 Android 上用 `adb shell su -c` 手动切表。
 
 ---
 
@@ -436,7 +405,7 @@ fastboot reboot
 
 ### 3. 请求页
 
-`device-boot-manifest.json` 的 `active_slot` 是 `_a`，`app_generation` 必须与归档里的 `PianoUEFI-product.img` 中的 APPv1 载荷一致。
+`device-boot-manifest.json` 的 `active_slot` 须与当前设备活动槽一致（`_a` 或 `_b`），`app_generation` 必须与归档里的 `PianoUEFI-product.img` 中的 APPv1 载荷一致。
 
 3 秒选择器在“正在引导的那份镜像”末尾读请求页。ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装进活动槽，Linux 与 Android 都从同一份 `boot<槽>` 启动，请求页因此指向它。不切槽，也不存在第二份需要同步的页。
 
@@ -553,7 +522,7 @@ findmnt /             # 根文件系统为 F2FS
 systemctl --failed    # 输出为空
 ```
 
-`uname -r` 的正确值是这一版 ESP 里实际装的内核，不是随便一个 7.2.9。两处可以查到，两边必须一致：
+`uname -r` 的正确值是这一版 ESP 里实际装的内核，不是写死的旧版本号。两处可以查到，两边必须一致：
 
 ```sh
 # 1) ESP 镜像里的内核版本（刷写前就能查，不需要设备）
@@ -568,7 +537,7 @@ uname -r
 ls /usr/lib/modules/
 ```
 
-`uname -r` 与 ESP 里的字符串不符，说明刷进去的不是这一版资产。`/usr/lib/modules/` 下没有同名目录，说明 rootfs 与 ESP 的内核不是一套。系统能起来，但一个驱动都加载不了。
+`uname -r` 与 ESP 里的字符串不符，说明刷进去的不是这一版资产。`/usr/lib/modules/` 下没有同名目录，说明 rootfs 与 ESP 的内核不是一套，initramfs 会停在救援环境，无法进入系统。
 
 能进所选档位的桌面，就是刷写成功最直接的证据。
 
@@ -576,7 +545,7 @@ ls /usr/lib/modules/
 
 ### 4. 回滚到 Android
 
-Linux 起不来时，先从 3 秒选择器选 Android。开机前 3 秒按音量键进入菜单，或者在 Android 正常时执行 `piano-next-boot android --reboot`。
+Linux 起不来时，先从 3 秒选择器选 Android。开机前 3 秒按音量键进入菜单，或者在 Linux 正常运行时执行 `piano-next-boot android --reboot`。
 
 合体 BOOT 本身损坏时，把备份的原厂引导镜像刷回活动槽的 boot 分区。不需要改动分区或活动槽：
 
@@ -643,89 +612,40 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 
 ---
 
-## 七、 首次登录与诊断
+## 七、 首次登录与基本验证
 
-刷完后平板自动重启，进入 120 Hz 的桌面。五个档位都自动登录到 `piano` 用户：GNOME 走 GDM，KDE 走 plasma-login-manager，niri、Hyprland 与 Denial 走 greetd 的 `tuigreet` 兜底。
+刷完自动重启后进入 120 Hz 桌面，五档均自动登录用户 `piano`（GNOME 走 GDM，KDE 走 plasma-login-manager，niri / Hyprland / Denial 走 greetd + tuigreet 兜底）。
 
-### 1. 默认状态
-
-镜像预设的系统账户与凭据如下：
-
-| 项 | 值 |
+| 账户 / 凭据 | 说明 |
 | --- | --- |
-| 用户 | `piano` |
-| 密码 | `piano123456` |
-| 改密 | 打开终端执行 `passwd` |
-| root | 密码锁定 |
-| `authorized_keys` | 镜像里没有，刷写时用 `--ssh-key` 注入 |
+| 用户名 | `piano` |
+| 默认密码 | `piano123456`（登录后尽快在终端运行 `passwd` 修改） |
+| root 账户 | 密码默认锁定 |
+| SSH 公钥 | 镜像内不含 `authorized_keys`，需在刷写时通过 `--ssh-key` 注入 |
 
-首次使用后执行 `passwd` 改密。
+默认系统行为：内核直接负责手指矩阵与笔解码（`piano-touch-view` 自动让路，`piano-touch.service` 仅留作笔蓝牙初始化）；四扬声器走原厂 DAP 矩阵拓扑（功放上限 235）；双电芯电量与深度挂起正常（默认关闭自动休眠与空闲挂起）；`uperf-linux` 负责触控 1 ms 提频；串口登录通过 `serial-getty@ttyGS0.service` 提供。
 
-> **完成判据**：系统成功进入桌面。
+维护者专用的增量 SELinux 重标记、ABL 诊断包与取证脚本说明已集中到[维护与验收](internals.md)。
 
-### 2. 桌面默认配置
-
-* 120 Hz 与触控：Mesa 硬件加速默认开启。手指矩阵与笔解码都由内核驱动完成，`piano-touch-view` 检测到 `kernel_input: enabled` 后不再创建用户态手指设备；`piano-touch.service` 只负责笔的蓝牙初始化。
-* 音频：扬声器走原厂 DAP，拓扑按原厂矩阵把立体声铺到四路；没有 DAP 时回到四声道直连。FS19xx 四功放上限 235，与原厂 FSM_Volume 相同。麦克风有 +40 dB 硬件增益。
-* 电池与电源：`/hypervisor` 节点已软隔离，桌面显示原生双电芯电量，支持合盖与深度挂起：
-  * 休眠与混合睡眠默认关闭；
-  * `sleep.conf.d/piano.conf` 由 `scripts/finalize-fedora-rootfs.py` 写入；
-  * `logind.conf.d/piano.conf` 由 `piano-fedora-configs` 包提供。
-* 触控提频：`uperf-linux` 监听触控输入，触点按下后 1 ms 内拉高全大核频率。
-
-### 3. 串口
-
-正常 Fedora 用需要账户认证的 `serial-getty@ttyGS0.service`。initramfs 救援的串口 shell 另走一条。
-
-### 4. 维护者用的诊断
-
-在现有 Fedora 上用 `stage-rootfs-payload.py --rootfs /` 增量安装时，脚本返回成功前会用本机 `setfiles -F` 恢复新模块、硬件准备程序、USB 诊断程序、systemd 单元和来源记录的 SELinux 标签。来源里的 `user_home_t` 不能用在系统模块上。
-
-摘要一致不代表标签正确。离线 staging 的标签由 build-image 里的目标策略标记步骤处理。
-
-ABL 只读对照把完整取证放在 RAM 的 `/run/piano-boot-evidence.txt`，进串口救援后读取。取证文件不写 Linux root 文件系统。这条链的刷写件（`boot-abl-storage.img`、`init_boot-abl-storage.img`、`dtbo-abl-storage.img`）不随 Release 发布：它是调试材料，manifest 自标未做真机验证。需要时从 `build-image` 的 `diagnostic-abl-storage.tar.zst` workflow artifact 取。原生 BOOT 文件检查用 `verify-native-boot.py`。七项文件 guard 的报告与真实设备的槽位、当前来源、块设备写读回分开保存。未完成的引导助手模块不标为 ready。
-
----
-
-## 八、 真机验收清单
-
-刷完之后逐项核对，每项留一条命令输出或截图作为证据。任一项失败，按失败记录，不要写成“未验证”。
+### 开机后快速检查
 
 ```sh
-uname -r                      # 与 ESP 里的 Image 字符串一致
-findmnt /                     # 根文件系统是 f2fs
+uname -r                      # 与 ESP 里的 Image 版本一致
+findmnt /                     # 根文件系统为 f2fs
 systemctl --failed            # 输出为空
-ls /usr/lib/modules/          # 有与 uname -r 同名的目录
+ls /usr/lib/modules/          # 存在与 uname -r 同名目录
 ```
 
-硬件按五门检查：
-
-| 门 | 检查内容 |
-| --- | --- |
-| 显示、触控、笔 | 拖动窗口不抖，手写笔压感与倾斜有响应 |
-| 音频 | 扬声器放音、麦克风录音各一次 |
-| 相机 | 相机应用能出画面，无斜条纹 |
-| 无线 | Wi-Fi 连接、蓝牙扫描 |
-| 电源与睡眠 | 合盖与 `rtcwake -m mem -s 20` 能唤醒，唤醒后无 failed unit |
-
-浏览器放 H.264 视频另算一项，且三家结果不同：Google Chrome 与 Firefox 默认走硬件解码。Fedora 的 Chromium 连 MP4 都打不开，因为它链接系统 `libavcodec`，而 `ffmpeg-free` 去掉了软件 H.264 解码器。装 RPM Fusion 的 `libavcodec-freeworld` 后能播，但仍然软解。细节见[已知问题](known-issues.md#触屏网络音频与相机)。
-
-再完整重启一次，确认仍进所选档位的桌面。双系统往返参见 [升级与回滚](upgrade.md)，往返后核对 `fastboot getvar current-slot`。
-
-发布验收的标准比这里更严：必须从原始 GPT/UFS 重新分区，并使用同一条流水线新产出的 bundle 与 root-install。门槛见[维护与验收](internals.md#pr-验收门槛)。
+进一步核对：显示拖动与手写笔压感、扬声器与麦克风、相机预览与 Wi-Fi/蓝牙均正常；合盖与 `rtcwake -m mem -s 20` 唤醒后无 failed unit；完整重启一次确认仍能进桌面。Chrome 与 Firefox 默认走 Iris V4L2 M2M 硬解，Fedora 自带 Chromium 因 `ffmpeg-free` 仅软解（见[已知问题](known-issues.md#触屏网络音频与相机)）。正式发布的更严格 PR 门槛见[维护与验收](internals.md#pr-验收门槛)。
 
 ---
 
-## 九、 故障排查
+## 八、 故障排查
 
-### Q1: 开机直接掉进 Fastboot 怎么解决？
+### 开机直接掉进 Fastboot
 
-高通 ABL 在开机时没收到明确的 `Successful = 1` 标记，会在连续重启后递减尝试次数，归零后掉进 Fastboot。
+ABL 在启动计数耗尽或活动槽未标 `Successful = 1` 时会掉回 Fastboot。进入 Linux 后检查 `qbootctl.service` 运行状态或执行 `sudo qbootctl -m`；若 Linux 无法启动，按第五节的[回滚到 Android](#4-回滚到-android) 刷回原厂 BOOT。
 
-系统稳定启动后，确认 `qbootctl.service` 在运行，或手动执行 `sudo qbootctl -m` 把当前槽标记为 `Successful: 1`。设备始终从原来的活动槽启动。Linux 起不来时按第五节的回滚步骤刷回原厂 BOOT。
+### 误将 Android userdata 格式化
 
-### Q2: 误将 Android 数据格式化了？
-
-活动槽保留着完整的原厂 Android 分区（`super`、`userdata` 等）。合体 BOOT 只替换 `boot<槽>`，备份的原厂镜像可以随时刷回。
-
-在 Fastboot 里执行 `fastboot erase userdata && fastboot reboot`，Android 会重建加密分区并走首次开机引导。重启后若停在 Recovery 并显示 `Couldn't initialize user 0`，在 Recovery 里选一次“清除数据”再继续。
+合体 BOOT 不动 `super` 等分区，可在 Fastboot 执行 `fastboot erase userdata && fastboot reboot` 让 Android 重建加密分区；若重启停在 Recovery 并提示 `Couldn't initialize user 0`，在 Recovery 菜单手动选一次「清除数据」即可恢复。

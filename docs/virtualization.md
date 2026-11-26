@@ -1,80 +1,38 @@
-# Gunyah 正式集成与 VM 验收
+# Gunyah 虚拟化与验收
 
-Gunyah 已进入标准 Fedora 内核构建链。构建链不再包含实验档输入或独立实验 job。
-客体执行、磁盘和网络需要真机证据。内核编译成功不能代替 VM 验收。
+Gunyah 已作为内置正式能力进入标准 Fedora 内核构建链，不再使用单独实验开关或独立实验分支，所有虚拟化成果均以真机实测为准。
 
-## 正式构建链
+## 内核与用户态集成
 
-正式内核与虚拟化组件的构建流程及输入输出约定如下：
+- **内核端**：由 `scripts/prepare-production-kernel.py` 重放 `patches/linux/7.3/series.json`（含源自 `code002-2/librevm@56918558e2c4` 的 `0006-gunyah.patch`），并通过 `--fedora-policy` 强制打开全部八项内建配置（`GUNYAH`、`GUNYAH_HYPERCALLS`、`GUNYAH_TIMER`、`GUNYAH_PLATFORM_HOOKS`、`GUNYAH_QCOM_PLATFORM`、`GUNYAH_QCOM_TRUSTED_VM`、`GUNYAH_IRQFD`、`GUNYAH_IOEVENTFD`）。`check_production_kernel.py` 与 `check_runtime_kernel_source.py` 在 `make test` 中校验来源唯一性。
+- **用户态**（`build-device-runtime.py` 交付并校验安装二进制字节）：
+  - `piano-crosvm`：基于锁定 crosvm 源码启用 `gunyah,net,balloon` 特性；仅选择 Gunyah 时注入 `--disable-sandbox` 以适配 `PAGE_FAULT exit`（reason 3），KVM 路径保持沙箱开启。
+  - `librevm`：含 CLI、daemon 与 GTK GUI；就绪检测以 `/dev/gunyah` 及内核注册路径为准。
 
-| 环节 | 入口与合同 |
-| --- | --- |
-| 驱动来源 | 7.3 的封存序列里 `0006-gunyah.patch` 自带驱动，来源 `code002-2/librevm` 的 `56918558e2c4`。不再单独取厂商分支 |
-| 源码准备 | `scripts/prepare-production-kernel.py` 只重放 `patches/linux/7.3/series.json`。脚本不依赖已编译的基础内核 |
-| 来源证明 | `production-source-manifest.json` 记录最终源码身份，逐行列出序列里每个补丁的提交与树 |
-| 标准配置 | `--fedora-policy` 启用全部八项 Gunyah 配置。配置不完整就失败 |
-| 内核与 SDK | `build-kernel.yml` 标准 job 先配置再构建整核。SDK 携带源码清单 |
-| 外部模块 | `prepare-runtime-kernel.py` 要求重放出的源码树、配置、Module.symvers 与内核清单匹配 |
-| 镜像与交付 | 只接受标准 kernel/runtime artifact。旧实验档一律拒绝，防止混装模块 |
+## Gunyah RM Capability 交接
 
-八项内置配置包括 `GUNYAH`、`GUNYAH_HYPERCALLS`、`GUNYAH_TIMER`、`GUNYAH_PLATFORM_HOOKS`、`GUNYAH_QCOM_PLATFORM`、`GUNYAH_QCOM_TRUSTED_VM`、`GUNYAH_IRQFD` 与 `GUNYAH_IOEVENTFD`。
-`check_production_kernel.py` 与 `check_runtime_kernel_source.py` 校验正式源码就是序列重放的结果、且没有第二份 Gunyah 导入。两项脚本都纳入 `make test`。
+ABL 每次重启都会重新分配 Gunyah 资源管理器（RM）的 TX/RX capability 并写入 inherited FDT；若把镜像构建期冻结的旧值直接交给 hypervisor，首次 RM 请求会返回 `ARG_INVAL` 并让 `gunyah_rm_msgq_send` 死等。
 
-补丁文件名 `0001-isolated-gunyah-profile.patch` 是历史名称。补丁内容已改为 Fedora 正式策略，不再包含 `--experimental-gunyah` 开关。
+为此 `PianoDeviceTreeFixup.c`（`PianoProductBootObjectsApplyGunyah`）会在交接内核前改写 payload DTB `/hypervisor/qcom,resource-manager-rpc@...` 节点的 `reg`（16 字节 TX/RX capability）与 `interrupts`，改写前强制满足四个条件：两棵树均恰好匹配一个目标节点、继承值刚好 16 字节且两个 id 均非零、属性布局合法；否则保留原值并记日志。
 
-## 用户态
+## 实机验收状态
 
-`piano-crosvm` 原生构建锁定的 crosvm，启用 `gunyah,net,balloon` feature。
-`librevm` RPM 包含 CLI、daemon 和 GTK GUI，使用仓库内的 Fedora 适配与完整 `Cargo.lock`。
-VM 配置默认包含 `disable_sandbox=false`。只有实际选择 Gunyah 时，命令行才追加 `--disable-sandbox`。锁定的 Gunyah crosvm 后端需要 `--disable-sandbox`，才能跑通 piano 的 `PAGE_FAULT exit`（reason 3）。
-KVM 路径保留 sandbox。回归测试覆盖默认配置。
-内置驱动的就绪判断检查 `/dev/gunyah` 和内核注册路径，不检查 `/proc/modules`。
+> 以下真机实测结果完成于先前的 `boot.img` 启动链；当前切换到 UKI 引导链后仅复验过内核升级本身，尚未重跑完整 VM 压测。
 
-`build-device-runtime.py` 自动构建并交付上述 RPM。
-finalizer 校验源码 pin、适配与锁文件摘要，并校验 root 文件系统里实际安装的二进制字节。只有包名不算通过。
-同一链路还交付 VA-API 与旋转、充电、schedutil 的平台配置。
-
-## Gunyah RM capability 交接
-
-Gunyah 资源管理器的 capability 交接由固件的 DT fixup 完成。`PianoDeviceTreeFixup.c` 的 `PianoProductBootObjectsApplyGunyah` 在交接前改写 `gunyah-resource-manager` 节点的 `reg` 与 `interrupts`。
-payload DTB 的 `/hypervisor/qcom,resource-manager-rpc@…` 节点 `reg` 记录构建镜像时的 TX/RX capability。ABL 每次启动都重新分配 TX/RX capability，并通过 inherited FDT 下发当次的值。
-驱动按 `compatible` 查找节点，并按两个 u64 读取 `reg`。
-传入过期值时，hypervisor 判定首次 RM 请求为 ARG_INVAL。`gunyah_rm_msgq_send` 的许可永不返回，调用者停在 D 状态，`VM_START` 发不出去。
-
-固件在把 DTB 移交内核之前，用产品已校验的 inherited FDT 覆盖这 16 字节。
-覆盖只在四个条件同时成立时执行：两棵树各自恰好有一个匹配节点，继承值正好 16 字节，两个 id 都非零，目标属性结构符合驱动读取要求。
-节点缺失、匹配有歧义或读取失败时，保留 payload 原值，并记录日志。
-不改节点名里的 unit-address，Linux 侧也不读这个字段。
-
-实机结论只能由正常启动路径给出。验收状态见验收结果表格与 [已知问题](known-issues.md)。
-
-## 当前验收结果与剩余门槛
-
-各项虚拟化功能的真机验收现状与待跟进工作如下：
-
-| 项目 | 当前结果 | 剩余工作 |
+| 验证面 | 已通过内容 | 尚未覆盖 / 待跟进 |
 | --- | --- | --- |
-| 平台接口 | 正式内核、`/dev/gunyah`、实时 RM capability 交接及 SELinux Enforcing 通过 | 后续内核更新后复测 |
-| 客体执行 | LibreVM Auto 选中 Gunyah。单 vCPU VM_START 与客体正常退出通过 | 控制台交互体验仍需验收 |
-| 数据路径 | virtio-blk 上 64 MiB ext4 写入和读回通过。virtio-net 连通通过（`NET_OK=1 NET_RX=2`，与宿主同网段伪桥，无 NAT） | 无 |
-| 生命周期 | 三轮 disk+net 全通过，单轮无磁盘失败有界退出通过。每轮 crosvm 退出后进程、PID、socket 全清（0 hub、0 僵尸） | 无 |
-| 管理器 | RPM、CLI、daemon、D-Bus 与安装二进制核验通过，KVM sandbox 回归通过 | GUI 实际创建与操作客体、完整 SELinux 流程待测；Gunyah 下自动关闭 crosvm sandbox 待验收 |
-| 扩展 | — | SMP、UEFI、图形和 Incus 分别实现与验收，不由单 vCPU 结果推定 |
+| 平台接口 | 正式内核、`/dev/gunyah`、动态 RM capability 交接与 SELinux Enforcing | 新内核版本后常规复测 |
+| 客体执行 | LibreVM Auto 自动选中 Gunyah，单 vCPU `VM_START` 与正常退出通过 | 交互式控制台长期体验 |
+| 数据路径 | `virtio-blk` 64 MiB ext4 读写一致性通过；`virtio-net` 同网段通信通过（`NET_OK=1 NET_RX=2`） | 无 |
+| 生命周期 | 3 轮盘+网与 1 轮无盘失败有界退出均无残留 crosvm 进程/socket | 无 |
+| 管理器与扩展 | RPM、CLI/D-Bus 与 KVM sandbox 回归通过 | GTK GUI 操作、Gunyah 沙箱开关与 SMP / UEFI / 图形客体 / Incus 支持 |
 
-首次 RM 请求失败后卡在发送许可等待，属于修复前的记录。根本原因是构建期冻结的 RM capability。这条交接现在由固件在正常启动路径上完成。虚拟化的这批验收在旧 `boot.img` 链上完成；UKI 链只验了内核升级本身，虚拟化没有在 UKI 链上重跑。
-项目 guest kernel 完成 64 MiB ext4 写入和读回。VM 返回码为 0。进程资源清理通过。
-旧实验产物、错误 guest kernel 的失败尝试和最终通过结果分开记录。
-未完成的验收项见 [已知问题](known-issues.md)。
+详见[已知问题](known-issues.md)。
 
-## 实读来源
+## 参考来源
 
-- [Qualcomm v17 完整提案](https://lore.kernel.org/lkml/20240222-gunyah-v17-0-1e9da6763d38@quicinc.com/)
-- [7.3 序列里 Gunyah 补丁的上游来源](https://github.com/code002-2/librevm/tree/56918558e2c4303cda803a655ea716869c551b71)
-- [librevm 对 Gunyah 驱动的打包与移植说明](https://github.com/code002-2/librevm/tree/9833d43c7caadfdfb8439306cd10641921d58e90/packaging/gunyah-driver-7.2)
-- [小米 piano 官方 Gunyah 驱动](https://github.com/MiCode/Xiaomi_Kernel_OpenSource/tree/45fb9bd6ae5ba2942fc1d53e4b6b46ef76992f71/drivers/virt/gunyah)
-- [完整 VMM 源码树](https://github.com/CodeLinaro-mirror/linux-kernel_gunyah-linux/tree/a73f08e03671eed3c2e3917637eacff764feef90/drivers/virt/gunyah)
-- [公开 VM Manager 与 UAPI 补丁](https://lists.infradead.org/pipermail/linux-arm-kernel/2024-January/894121.html)
-- [KVM 桥接系列及作者限制说明](https://patchew.org/linux/20250424141341.841734-1-karim.manaouil@linaro.org/)
-- [配套 QEMU](https://github.com/karim-manaouil/qemu-for-gunyah)
-- [librevm 的模块获取脚本](https://github.com/code002-2/librevm/blob/4be3e42b963e95a7753e600613a46059ebdfcd04/scripts/librevm-get-gunyah.sh)
-- [librevm 的 virtio 实验记录](https://github.com/code002-2/librevm/blob/4be3e42b963e95a7753e600613a46059ebdfcd04/docs/virtio-on-gunyah.md)
+- [Qualcomm Gunyah v17 LKML 提案](https://lore.kernel.org/lkml/20240222-gunyah-v17-0-1e9da6763d38@quicinc.com/)
+- [7.3 Gunyah 补丁来源（code002-2/librevm）](https://github.com/code002-2/librevm/tree/56918558e2c4303cda803a655ea716869c551b71) 与 [Gunyah 7.2 移植说明](https://github.com/code002-2/librevm/tree/9833d43c7caadfdfb8439306cd10641921d58e90/packaging/gunyah-driver-7.2)
+- [小米 piano 官方内核 Gunyah 驱动](https://github.com/MiCode/Xiaomi_Kernel_OpenSource/tree/45fb9bd6ae5ba2942fc1d53e4b6b46ef76992f71/drivers/virt/gunyah) 与 [CodeLinaro Gunyah 源码](https://github.com/CodeLinaro-mirror/linux-kernel_gunyah-linux/tree/a73f08e03671eed3c2e3917637eacff764feef90/drivers/virt/gunyah)
+- [Linux ARM-Kernel VM Manager 补丁](https://lists.infradead.org/pipermail/linux-arm-kernel/2024-January/894121.html)、[KVM 桥接系列](https://patchew.org/linux/20250424141341.841734-1-karim.manaouil@linaro.org/)、[QEMU for Gunyah](https://github.com/karim-manaouil/qemu-for-gunyah)
+- [librevm 模块脚本](https://github.com/code002-2/librevm/blob/4be3e42b963e95a7753e600613a46059ebdfcd04/scripts/librevm-get-gunyah.sh) 与 [virtio on Gunyah 实验记录](https://github.com/code002-2/librevm/blob/4be3e42b963e95a7753e600613a46059ebdfcd04/docs/virtio-on-gunyah.md)

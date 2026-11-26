@@ -1,47 +1,25 @@
 # 本地构建与验证
 
-出货只在 Actions 上编。内核、UEFI 产品、RPM、root 文件系统、F2FS 镜像和 bundle 需要 arm64 Fedora 环境，还要多次 run 的产物按摘要串起来，本机能做的是取源、套补丁和全套离线检查。下面按实际执行顺序写，每步都有判据。
+正式出货产物均在 GitHub Actions arm64 环境构建（需多次 run 产物摘要绑定）；本地主机负责取源、重放检查补丁、运行全套离线契约测试，以及按正确顺序调度 CI。
 
-## 工具
+## 主机依赖工具
 
-`python3`（仓库脚本只用标准库）与 `git` 必需。其余工具缺失时，对应的检查打印 SKIP 而不是失败，所以看输出里的 SKIP 比看退出码重要。
+仅需 `python3`（纯标准库）与 `git` 即可运行核心检查；以下工具缺失时对应测试项会输出 `SKIPPED`：
 
-| 工具 | 参与的检查 |
+| 工具 | 覆盖的检查 |
 | --- | --- |
 | `cpp`、`dtc`、`fdtoverlay` | overlay 应用、厂商 DT 对照 |
-| `gcc`、`readelf` | 传感器运行时的 C 探针 |
-| `meson`、`glib-compile-resources` | 传感器运行时的 meson 语法 |
+| `gcc`、`readelf`、`meson`、`glib-compile-resources` | 传感器运行时语法与 C 探针 |
 | `busybox`、`blkid`、`fsck.f2fs`、`logrotate` | initramfs 与启动证据 |
-| `mcopy`、`mdir` | 首启 SSH 密钥注入 |
-| `chpasswd` | root 文件系统收尾 |
-| `podman` | 在 Fedora 45 容器里跑全部检查 |
+| `mcopy`、`mdir` | 首启 SSH 公钥注入 |
+| `chpasswd` | rootfs 收尾检查 |
+| `podman` | 在 `registry.fedoraproject.org/fedora:45` 容器内复现全部检查 |
 
-CI 用 `ubuntu-24.04-arm` 装 podman，起 `registry.fedoraproject.org/fedora:45`，一次装齐 `busybox binutils util-linux shadow-utils libxcrypt make git python3 gcc patch dtc logrotate glib2-devel f2fs-tools` 再 `make test`。本机要等价复现就照这份清单装。
+CI `host-check` 使用 `ubuntu-24.04-arm` 配上述容器内 `busybox binutils util-linux shadow-utils libxcrypt make git python3 gcc patch dtc logrotate glib2-devel f2fs-tools` 运行 `make test`。
 
-## 取源
+## 本地取源与离线测试
 
-`scripts/checkout-sources.py` 按 `sources.lock.json` 取锁定 commit，输出目录必须在被忽略的 `build/` 下。
-
-```sh
-python3 scripts/checkout-sources.py --output build/test-sources --mode boot
-```
-
-| `--mode` | 取什么 |
-| --- | --- |
-| `check` | 只取 [SunUEFI](https://github.com/slwyts/Project-SunUEFI) |
-| `boot` | SunUEFI、内核稀疏检出（`include/dt-bindings/`）、dtc |
-| `device` | 上面之外加运行时源码、crosvm、LibreVM、VA-API、piano-integration 的稀疏路径 |
-| `graphics` | Mesa 源码 |
-| `installer` | Mu-Silicium 与 simple-init |
-| `gunyah`、`loopback` | 要带 `--kernel`：v4l2loopback 与派生内核输入 |
-| `vendor-dt` | 厂商内核稀疏检出（DTS、techpack、include）与 dtc |
-| `vendor-blobs` | 厂商固件树的索引，`--filter=blob:none`，只取路径与摘要 |
-
-取完会就地跑一次 `apply-patches.py`。`--check` 不写目标树。
-
-上游删掉子模块时这里不会跟着报错：`checkout-sources.py` 按本仓库自己的 pin 直接取源码，路径保持下游一直在用的那个。
-
-## 门槛
+`scripts/checkout-sources.py` 按 `sources.lock.json` 将上游检出到 `build/` 下（切换 `--mode` 控制范围：`check` 仅 SunUEFI，`boot` 含内核 dt-bindings 与 dtc，`device` / `graphics` / `installer` / `vendor-dt` / `vendor-blobs` 按需取对应源码；`gunyah` 与 `loopback` 需额外传 `--kernel`）：
 
 ```sh
 python3 scripts/checkout-sources.py --output build/test-sources --mode boot
@@ -49,42 +27,31 @@ python3 scripts/apply-patches.py --sunuefi build/test-sources/sunuefi --check
 PIANO_TEST_SUNUEFI=build/test-sources/sunuefi make test
 ```
 
-`--check` 在隔离副本里把每个系列真重放一遍，再比对 `targets` 的前像摘要与 `creates`，输出 `CHECKED` 才算过。`--only <系列>` 只应用这一个系列，不套前置系列，靠它判断补丁坏没坏会误报；定位真因时按 `apply-patches.py` 的顺序逐条 `git apply --check` 更准。
+- `apply-patches.py --check` 在隔离副本中按序重放全部系列并比对 `targets` 与 `creates`，打印 `CHECKED` 为通过；排查单个失败时不要仅用 `--only`（缺少前置补丁会误报），按顺序手工 `git apply --check` 定位。
+- `make test` 通过 `scripts/run-checks.py` 自动运行所有 `tests/check_*.py`（可用 `--pattern <子串>` 或 `--timeout <秒>` 过滤和调整）；设置 `PIANO_TEST_SUNUEFI` 才不会跳过 `check_iris_source.py`、`check_bundle_overlays.py`、`check_installer.py` 等上游相关测试。其中 `tests/check_bundle_overlays.py` 会直接将 `build-bundle.yml` 传入的 `--dtb-overlay` 列表与上游 `config/release.json`（排除 `product.json` 的 `dtb_overlays_not_shipped`）逐项对齐，防止漏传硬件 overlay。
 
-`make test` 走 `scripts/run-checks.py`，按 `tests/check_*.py` 自动发现，逐行打印 `PASSED`/`FAILED`/`SKIPPED` 与单文件耗时，最后给一行汇总。`--pattern <子串>` 只跑匹配的文件，`--timeout` 调单文件超时（默认 120 秒）。
+## CI 发布构建顺序
 
-要真实上游树的检查在没设 `PIANO_TEST_SUNUEFI` 时打印 SKIP 而不是失败，例如 `check_iris_source.py`、`check_bundle_overlays.py`、`check_installer.py`。CI 总是指向 `build/test-sources/sunuefi`，本机比照。
+各 workflow 通过输入 run id 显式衔接：
 
-`tests/check_bundle_overlays.py` 还会把 `build-bundle.yml` 里的 `--dtb-overlay` 列表和上游 `config/release.json` 逐项对齐。少传一个 overlay 不会让构建失败，只会让对应硬件在设备上不工作，这条断言是唯一能提前发现它的地方。
-
-## 出货顺序
-
-依赖只看各 workflow 的 run id 输入，产物之间靠 manifest 的 SHA256 绑定。kernel release 相同不等于配置相同，同名不同字节会被拒。
-
-| 顺序 | workflow | 依赖 |
+| 顺序 | Workflow | 依赖的成功 run |
 | --- | --- | --- |
-| 1 | `build-uefi` | 无 |
-| 2 | `build-kernel` | 无 |
-| 3 | `build-device-runtime` | `kernel_run_id`；`calibration_run_id` 可选 |
-| 3 | `build-mesa`、`build-ffmpeg` | 无 |
-| 4 | `host-check`（`build_piano_rpms=true`） | `kernel_run_id`。`build-piano-rpms` 是 `workflow_call` 复用件，artifact 挂在 host-check 的 run 上 |
-| 5 | `build-rootfs` | piano-rpms、runtime、mesa、ffmpeg 四个 run |
-| 6 | `build-image` | kernel、runtime、rootfs、mesa、ffmpeg 五个 run |
-| 7 | `build-bundle`（每档一次） | `root_image_run_id`、`uefi_run_id` |
-| 8 | `prepare-install` | `bundle_run`，可选 |
-| 9 | `release.yml` | `bundle_run`、`prepare_run`、`extras_run` |
+| 1 | `build-uefi` / `build-kernel` / `build-mesa` / `build-ffmpeg` | 无 |
+| 2 | `build-device-runtime` | `kernel_run_id`（`calibration_run_id` 可选） |
+| 3 | `host-check`（`build_piano_rpms=true`） | `kernel_run_id` |
+| 4 | `build-rootfs` | `piano_rpms`、`runtime`、`mesa`、`ffmpeg` |
+| 5 | `build-image` | `kernel`、`runtime`、`rootfs`、`mesa`、`ffmpeg` |
+| 6 | `build-bundle`（每档或 `all`） | `root_image_run_id`、`uefi_run_id` |
+| 7 | `prepare-install` | `bundle_run`（可选扩容） |
+| 8 | `release.yml` | 默认 `publish=false` 生成 draft（不可对同一已有 tag 重复覆盖发布，重发需换 tag） |
 
-`release.yml` 默认 `publish=false`，停在 draft。同一个 tag 二次 dispatch 会被「Refuse to overwrite an existing release」拒绝，重发要换 tag。每个产物的内容与归档规则见[交付物与流水线](artifacts.md)。
+## 换 Pin 操作顺序
 
-## 换 pin
+决定跟进哪些上游变更见[上游跟踪](upstream.md)，更新 pin 时按以下顺序调整并全量校验：
 
-要不要跟、跟哪一部分，看[上游跟踪](upstream.md)的规则与看板。改起来是这几步，顺序不能换：后一步的输入是前一步的产物。
-
-1. `sources.lock.json` 改 commit。`patches/*/series.json` 的 `base.sunuefi_commit` 与 `xiaomi-piano-firmware.spec` 的 `%global sunuefi_commit` 跟同一个值；前者由 `tests/check_patches.py` 对齐，后者由 `tests/check_firmware_overlays.py` 核对。
-2. 上游改了目录或文件名，补丁正文里的路径与 `series.json` 的 `targets` 键一起改。`apply-patches.py --check` 会停在第一个摘要不匹配的目标上。
-3. 上游的内核序列变了，本仓库的封存序列跟着重排：上游补丁按原顺序放前面，自有补丁整体后移。逐条重放，重算每条 `tree`、下一条的 `original_parent`、上一条的 `original_commit`，末条的 `original_commit` 与 `target_tree` 写进 `config/release.json`。编号允许不连续，文件名不能重复，`From <commit>` 头与每行 sha256 都会被核对。
-4. `patches/kernel/0001`–`0007` 是分段累积 diff，序列重排后按同样的分段边界重新生成，`patches/kernel/series.json` 的 `targets`、`creates` 与摘要一起更新。
-5. `tests/check_iris_source.py` 的 `EXPECTED` 写死了序列里几条具体文件名，重排后跟着改，否则它会对旧名做「改一字节必须被拒」的校验。
-6. 跑「门槛」那三行。`CHECKED` 与 `make test` 都过，才算改完。
-
-不发货的上游 overlay 记在 `product.json` 的 `dtb_overlays_not_shipped`，bundle overlay 测试与厂商 DT 对照都按这一处排除，不各写一份。
+1. 更新 `sources.lock.json` commit，并同步 `patches/*/series.json` 的 `base.sunuefi_commit`（`tests/check_patches.py` 校验）与 `xiaomi-piano-firmware.spec` 的 `%global sunuefi_commit`（`tests/check_firmware_overlays.py` 校验）。
+2. 若上游改名或移动文件，同步修改对应补丁路径与 `series.json` `targets` 摘要，跑 `apply-patches.py --check` 确认干净。
+3. 若上游内核序列变动，按先上游序列、后自有补丁（整体后移）重排并重算每条 `tree` / `original_parent` / `original_commit` 及 `config/release.json` 末尾值；按同样分段边界重新导出 `patches/kernel/0001`-`0007` 累积 diff 并更新 `patches/kernel/series.json`。
+4. 若重排更改了内核补丁文件名，同步更新 `tests/check_iris_source.py` 中的 `EXPECTED` 列表。
+5. 不随镜像发布的上游 overlay 统一登记在 `product.json` 的 `dtb_overlays_not_shipped`。
+6. 运行上面的取源、补丁与 `PIANO_TEST_SUNUEFI=... make test` 三条门禁命令，全绿后提交。
