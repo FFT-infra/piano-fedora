@@ -214,3 +214,10 @@ Dual-Boot Switching:
 - Linux to Android : Click "Return to Android" in the GNOME app grid.
 - Android to Linux : Use the SunUEFI boot assistant module in KernelSU/SukiSU.
 - Boot selection   : Press the volume keys during the 3-second chooser.
+
+Credits and licenses:
+- The boot chain, kernel packaging and device-tree overlays are referenced
+  from or ported from Project SunUEFI (https://github.com/slwyts/Project-SunUEFI).
+  Each file keeps its original copyright and license notices.
+- This archive ships NOTICE and LICENSE. NOTICE lists every upstream source
+  item by item; LICENSE covers this repository's own code.
