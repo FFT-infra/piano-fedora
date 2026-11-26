@@ -1,4 +1,15 @@
-diff --git a/patches/linux/7.3/0273-rpmsg-glink.patch b/patches/linux/7.3/0273-rpmsg-glink.patch
+From 7454f59d5a082ebb9720f418564f89e2a690fec9 Mon Sep 17 00:00:00 2001
+From: piano-fedora <dev@piano.invalid>
+Date: Wed, 25 Nov 2026 12:21:37 +0800
+Subject: [PATCH] kernel: append 1 Piano adaptation(s)
+
+---
+ patches/linux/7.3/0477-rpmsg-glink.patch | Bin 0 -> 7225 bytes
+ patches/linux/7.3/series.json            |  17 +++++++++++++++--
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+ create mode 100644 patches/linux/7.3/0477-rpmsg-glink.patch
+
+diff --git a/patches/linux/7.3/0477-rpmsg-glink.patch b/patches/linux/7.3/0477-rpmsg-glink.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..b53cc85a871ca2817740609edd8749797c671f86
 GIT binary patch
@@ -82,32 +93,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index dad576a..2ad0485 100644
+index d3ac67b..c5dfc41 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -11,8 +11,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "0629489009040b4eaaa6a8b33bb106ba475605a7",
--  "original_target_commit": "0f7687cfde86b9045a4c03645dda4f69b5094014",
-+  "target_tree": "11c12f6159086cceb8e0d7e03f2df1a183eabd9f",
-+  "original_target_commit": "632627ae4314293684d64ae2865aac51308ddd2e",
+-  "target_tree": "45df08f0806afa037d85952d4b4cd9ac6b0b12e0",
+-  "original_target_commit": "ef6114379378e88d6dcf5d2f532b4226e170a665",
++  "target_tree": "1a9e7c1115217ea4becd04770e3ffb5a81b40ba9",
++  "original_target_commit": "fd5a8df0e11b4fbc7e05952861911091c614cd75",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -3588,6 +3588,19 @@
+@@ -3975,6 +3975,19 @@
          "url": "https://github.com/slwyts/Project-SunUEFI",
          "drop_when": "This Piano device adaptation is not part of the upstream sealed series; remove it when the corresponding subsystem fix is accepted upstream and the sealed series carries it."
        }
 +    },
 +    {
-+      "file": "0273-rpmsg-glink.patch",
++      "file": "0477-rpmsg-glink.patch",
 +      "sha256": "9aa0611f0f64cf365869c6eff173e3ee59a3b3ac0d002cb2ea04ff06999fcf88",
-+      "original_commit": "632627ae4314293684d64ae2865aac51308ddd2e",
-+      "original_parent": "0f7687cfde86b9045a4c03645dda4f69b5094014",
-+      "committer_date": "2026-11-21T17:05:08+08:00",
-+      "tree": "11c12f6159086cceb8e0d7e03f2df1a183eabd9f",
++      "original_commit": "fd5a8df0e11b4fbc7e05952861911091c614cd75",
++      "original_parent": "ef6114379378e88d6dcf5d2f532b4226e170a665",
++      "committer_date": "2026-11-25T12:19:26+08:00",
++      "tree": "1a9e7c1115217ea4becd04770e3ffb5a81b40ba9",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",

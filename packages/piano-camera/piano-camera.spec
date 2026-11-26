@@ -1,11 +1,11 @@
 %global _annotated_build 0
 %global debug_package %{nil}
 # 与 sources.lock.json 的 sunuefi pin 相同；tests/check_camera_package.py 守住。
-%global sunuefi_commit edcf272063bfaf9be50f69c85961a5bbe1447b7b
+%global sunuefi_commit a6c321d0b3c8bf9ad2b1168904904909c1beee31
 
 Name:           piano-camera
 Version:        0.1.0
-Release:        9%{?dist}
+Release:        11%{?dist}
 Summary:        Camera pipeline and v4l2loopback daemon for Xiaomi Pad 8 Pro (piano)
 License:        MIT
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -95,6 +95,15 @@ systemctl enable piano-camerad.service piano-camera.service || :
 %systemd_postun_with_restart piano-camerad.service piano-camera.service
 
 %changelog
+* Thu Nov 26 2026 FFT-infra <dev@piano.invalid> - 0.1.0-11
+- camera-start 按节点名找 CAMSS 的平台设备。v1.0.0 的绑定把 top 排到 reg
+  第一段，设备名从 ad27000.isp-ml 变成 ac04000.isp-ml，写死的路径让
+  piano-camera.service 在新设备树上每次开机都失败
+
+* Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 0.1.0-10
+- 跟到 SunUEFI v1.0.0（a6c321d）：源码归档 URL 随 pin 变，
+  用户态源码本身未改
+
 * Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.1.0-9
 - 源码不再入库维护：构建期从 SunUEFI edcf272 的 linux/userspace/camera 取，
   静态拍摄与 ancillary link 找镜头改成 patches/0001 一份补丁；quad/vendor/

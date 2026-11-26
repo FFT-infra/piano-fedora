@@ -42,10 +42,14 @@ def main():
         overlays = ['cpu-model'] + [Path(item).name[len('piano-'):-len('.dtso')]
                                     for item in kernel['additional_dtb_overlays']
                                     if item not in skipped]
+        include_dirs = (SUN / 'upstream/linux-piano/include',)
+        if not include_dirs[0].is_dir():
+            include_dirs = ()
         for name in overlays:
             print('APPLY:', name, flush=True)
             package.apply_cpu_model_overlay(board, SUN / f'linux/dts/piano-{name}.dtso',
-                                            work, cpu_only=name == 'cpu-model')
+                                            work, cpu_only=name == 'cpu-model',
+                                            include_dirs=include_dirs)
         after = read_fdt(board.read_bytes())
         tree, handles = after['tree'], after['phandles']
         assert after['reservations'] == before['reservations']

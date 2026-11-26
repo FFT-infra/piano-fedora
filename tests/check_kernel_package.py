@@ -17,8 +17,10 @@ config 只有 6 行硬编码。装进镜像等于没有内核，但构建全程�
 """
 
 from pathlib import Path
+import hashlib
 import importlib.machinery
 import importlib.util
+import json
 import re
 import subprocess
 import sys
@@ -52,9 +54,16 @@ def check_spec(failures):
         if token not in body:
             failures.append(f"kernel-piano.spec does not assert payload: {token!r}")
 
-    # The DTB is not part of the kernel artifact; it must be asserted too.
-    if "test -s %{buildroot}/boot/dtb/qcom/sm8750-xiaomi-piano.dtb" not in body:
-        failures.append("kernel-piano.spec does not assert a non-empty board DTB")
+    # 板级 DTB 随包发布，%posttrans 把它写进 ESP。缺它或缺摘要都不能出包。
+    for token in ("test -s board.dtb", "test -s board-dtb.json",
+                  "install -m 0644 board.dtb board-dtb.json %{buildroot}%{_prefix}/lib/piano/",
+                  "%{_prefix}/lib/piano/board.dtb", "%{_prefix}/lib/piano/board-dtb.json"):
+        if token not in body:
+            failures.append(f"kernel-piano.spec does not ship the composed board DTB: {token!r}")
+    # /boot/dtb 下那份是没叠 overlay 的 vendor DTB，CMA 与 UFS MCQ 都没有。
+    # 包里留着它，迟早有人把它当成可以写进 ESP 的那一份。
+    if "/boot/dtb" in body.split("%changelog")[0]:
+        failures.append("kernel-piano.spec still ships the raw vendor DTB under /boot/dtb")
 
     # An empty `touch` of the kernel image is the signature of the stub build.
     if re.search(r"^\s*touch\s+%\{buildroot\}/boot/vmlinuz", body, re.MULTILINE):
@@ -173,7 +182,14 @@ def check_build_script(failures):
     if "kernel-payload-" not in body:
         failures.append("build-rpms.sh does not stage a kernel-payload tarball")
     if "resolve_board_dtb" not in body:
-        failures.append("build-rpms.sh does not resolve the SunUEFI board DTB")
+        failures.append("build-rpms.sh does not resolve the composed board DTB")
+    if not re.search(r"compose-board-dtb\.py\"?\s+--verify", body):
+        failures.append("build-rpms.sh does not verify the board DTB against its manifest")
+    if not re.search(r"resolve_board_dtb\)\s*\|\|\s*\{", body):
+        failures.append("build-rpms.sh does not fail when no composed board DTB is found")
+    # 裸的 vendor DTB 写进 ESP 设备起不来；构建脚本不能再有拿它兜底的路径。
+    if "vendor/piano-linux/board.dtb" in body:
+        failures.append("build-rpms.sh can still package the raw vendor board DTB")
 
     # Failing to find the payload must abort, not fall through to a stub build.
     if not re.search(r"resolve_kernel_payload\)\s*\|\|\s*\{", body):
@@ -222,10 +238,9 @@ def check_built_rpm(failures):
     if not vmlinuz:
         failures.append(f"{rpm.name} ships no /boot/vmlinuz")
     # rpm -ql lists directory entries too; only files can be size-checked.
-    dtb = [f for f in files
-           if f.startswith("/boot/dtb/") and not f.endswith(("/dtb", "/qcom"))]
-    if not dtb:
-        failures.append(f"{rpm.name} ships no /boot/dtb")
+    dtb = [f for f in files if f == "/usr/lib/piano/board.dtb"]
+    if not dtb or "/usr/lib/piano/board-dtb.json" not in files:
+        failures.append(f"{rpm.name} ships no composed board DTB with its manifest")
     modules = [f for f in files if f.startswith("/usr/lib/modules/")]
     if not modules:
         failures.append(f"{rpm.name} ships no /usr/lib/modules")
@@ -274,8 +289,216 @@ def load_esp_update():
     return module
 
 
+def fake_fdt(tag):
+    """更新器只看 FDT 头：魔数与 totalsize。"""
+    body = tag.ljust(32, b"\0")
+    return b"\xd0\x0d\xfe\xed" + (len(body) + 8).to_bytes(4, "big") + body
+
+
+def packaged_root(root, data, sealed=None):
+    piano = root / "usr" / "lib" / "piano"
+    piano.mkdir(parents=True, exist_ok=True)
+    (piano / "board.dtb").write_bytes(data)
+    (piano / "board-dtb.json").write_text(json.dumps(
+        {"sha256": hashlib.sha256(data if sealed is None else sealed).hexdigest()}))
+
+
+def bls_entry(esp, version, dtb=b"old-dtb"):
+    payload = esp / "linux" / version
+    payload.mkdir(parents=True)
+    for name, data in (("linux", b"old-image"), ("initrd", b"old-initrd"), ("board.dtb", dtb)):
+        (payload / name).write_bytes(data)
+    entry = esp / "loader" / "entries" / f"linux-{version}.conf"
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text(
+        f"title Linux\nversion {version}\nlinux /linux/{version}/linux\n"
+        f"initrd /linux/{version}/initrd\ndevicetree /linux/{version}/board.dtb\n"
+        f"options root=LABEL=PIANOROOT rw\n", encoding="utf-8")
+    return entry
+
+
+def check_packaged_dtb(failures):
+    """板级 DTB 来自内核包。旧 DTB 配新内核会缺节点，残缺的 DTB 起不来。"""
+    updater = load_esp_update()
+    good = fake_fdt(b"new-dtb")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        packaged_root(root, good)
+        if updater.packaged_dtb(root).read_bytes() != good:
+            failures.append("packaged_dtb does not return the DTB shipped in the package")
+        for label, data, sealed in (("a digest mismatch", good, b"other"),
+                                    ("a truncated DTB", good[:-4], None),
+                                    ("a file that is not a DTB", b"not-a-dtb".ljust(40, b"\0"), None)):
+            packaged_root(root, data, sealed)
+            try:
+                updater.packaged_dtb(root)
+            except updater.EspUpdateError:
+                continue
+            failures.append(f"packaged_dtb accepts {label}")
+        (root / "usr/lib/piano/board-dtb.json").unlink()
+        try:
+            updater.packaged_dtb(root)
+        except updater.EspUpdateError:
+            pass
+        else:
+            failures.append("packaged_dtb accepts a DTB without its manifest")
+
+    # update() 整条路径：新条目里的 DTB 是包里那一份，不是旧条目里的。
+    real_inspect, real_build = updater.inspect_installed_kernel, updater.build_initramfs
+    with tempfile.TemporaryDirectory() as tmp:
+        root, esp = Path(tmp) / "root", Path(tmp) / "esp"
+        packaged_root(root, good)
+        image = root / "vmlinuz"
+        image.write_bytes(b"new-image")
+        bls_entry(esp, "7.3.3")
+        built = []
+
+        def build(_root, output, manifest=None):
+            output.mkdir(parents=True)
+            (output / "initramfs.cpio.gz").write_bytes(b"new-initrd")
+            built.append(output)
+            return {"kernel_manifest_sha256": "sealed", "initramfs_sha256": "x",
+                    "initramfs_bytes": 10, "modules": []}
+
+        updater.inspect_installed_kernel = lambda _root, manifest=None: (
+            {"kernel_release": "7.3.4"}, "sealed", image)
+        updater.build_initramfs = build
+        try:
+            record = updater.update(root, esp)
+            written = esp / "linux" / "7.3.4" / "board.dtb"
+            if not written.is_file() or written.read_bytes() != good:
+                failures.append("update() does not write the packaged board DTB into the new entry")
+            if (esp / "linux" / "7.3.3" / "board.dtb").read_bytes() != b"old-dtb":
+                failures.append("update() touched the previous generation's board DTB")
+            if record.get("board_dtb", {}).get("sha256") != hashlib.sha256(good).hexdigest():
+                failures.append("update() does not record the board DTB it wrote")
+            # 包里的 DTB 不可用时在碰 ESP 之前就停：不重建 initramfs，不写条目。
+            packaged_root(root, good[:-4])
+            before = sorted(str(p.relative_to(esp)) for p in esp.rglob("*"))
+            built.clear()
+            try:
+                updater.update(root, esp)
+            except updater.EspUpdateError:
+                pass
+            else:
+                failures.append("update() proceeds with an unusable packaged board DTB")
+            if built or sorted(str(p.relative_to(esp)) for p in esp.rglob("*")) != before:
+                failures.append("update() touched the ESP before rejecting the board DTB")
+        finally:
+            updater.inspect_installed_kernel, updater.build_initramfs = real_inspect, real_build
+
+
+def check_same_release_rewrite(failures):
+    """同一个 release 换 DTB：条目正指着这个目录，任何时刻三个文件都得在。
+
+    整目录换名的写法会在两次 rename 之间留下条目悬空的窗口，此时断电设备
+    起不来，而 ESP 上只有这一代。
+    """
+    updater = load_esp_update()
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp) / "esp"
+        entry = bls_entry(esp, "7.3.4")
+        target = esp / "linux" / "7.3.4"
+        sources = Path(tmp) / "src"
+        sources.mkdir()
+        image, initramfs, dtb = sources / "image", sources / "initrd", sources / "dtb"
+        image.write_bytes(b"old-image")
+        initramfs.write_bytes(b"new-initrd")
+        dtb.write_bytes(b"new-dtb")
+        fields = updater.read_entry(entry)
+        real = updater.install_payload_file
+        calls = []
+
+        def interrupted(source, destination):
+            calls.append(destination.name)
+            if len(calls) == 2:
+                raise OSError("power lost between two files")
+            real(source, destination)
+
+        updater.install_payload_file = interrupted
+        try:
+            updater.update_bls(esp, fields, image, initramfs, dtb, "7.3.4", False, {"changed": {}})
+        except OSError:
+            pass
+        else:
+            failures.append("the simulated interruption did not reach update_bls")
+        finally:
+            updater.install_payload_file = real
+        if calls[:1] != ["initrd"]:
+            failures.append(f"an unchanged kernel image was rewritten in place: {calls}")
+        state = {name: (target / name).read_bytes() if (target / name).is_file() else None
+                 for name in ("linux", "initrd", "board.dtb")}
+        if state != {"linux": b"old-image", "initrd": b"new-initrd", "board.dtb": b"old-dtb"}:
+            failures.append(f"an interrupted same-release rewrite left {state}")
+        record = {"changed": {}}
+        moved, real_rename = [], Path.rename
+
+        def rename(self, destination):
+            moved.append(self)
+            return real_rename(self, destination)
+
+        Path.rename = rename
+        try:
+            updater.update_bls(esp, fields, image, initramfs, dtb, "7.3.4", False, record)
+        finally:
+            Path.rename = real_rename
+        if target in moved:
+            failures.append("a same-release rewrite renamed the directory the entry points at")
+        if (target / "board.dtb").read_bytes() != b"new-dtb" \
+                or (target / "initrd").read_bytes() != b"new-initrd":
+            failures.append("a same-release rewrite did not land the new DTB and initramfs")
+        leftovers = sorted(p.name for p in (esp / "linux").rglob("*") if p.name.startswith("."))
+        if leftovers:
+            failures.append(f"a same-release rewrite left temporary files: {leftovers}")
+        if record["changed"].get("payload") is not True:
+            failures.append("a DTB-only change was not reported as a changed payload")
+    # 写到一半失败（这里让 fsync 报错）不留临时文件，条目引用的文件原样。
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp) / "esp"
+        entry = bls_entry(esp, "7.3.4")
+        target = esp / "linux" / "7.3.4"
+        source = Path(tmp) / "new"
+        source.write_bytes(b"new-dtb")
+        real_fsync = updater.fsync_path
+
+        def failing(path):
+            raise OSError("no space left on device")
+
+        updater.fsync_path = failing
+        try:
+            updater.update_bls(esp, updater.read_entry(entry), target / "linux", target / "initrd",
+                               source, "7.3.4", False, {"changed": {}})
+        except OSError:
+            pass
+        else:
+            failures.append("a failed payload write was not reported")
+        finally:
+            updater.fsync_path = real_fsync
+        if sorted(p.name for p in target.iterdir()) != ["board.dtb", "initrd", "linux"] \
+                or (target / "board.dtb").read_bytes() != b"old-dtb":
+            failures.append("a failed payload write left "
+                            f"{sorted(p.name for p in target.iterdir())} in the live directory")
+    # 同 release 重写没有新增一代：ESP 上已有的上一代不能被当成更早的历史清掉。
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp) / "esp"
+        bls_entry(esp, "7.3.3")
+        entry = bls_entry(esp, "7.3.4")
+        sources = Path(tmp) / "src"
+        sources.mkdir()
+        for name in ("image", "initrd", "dtb"):
+            (sources / name).write_bytes(b"new-" + name.encode())
+        record = {"changed": {}}
+        updater.update_bls(esp, updater.read_entry(entry), sources / "image", sources / "initrd",
+                           sources / "dtb", "7.3.4", False, record, running="7.3.4")
+        if sorted(p.name for p in (esp / "linux").iterdir()) != ["7.3.3", "7.3.4"] \
+                or not (esp / "loader/entries/linux-7.3.3.conf").is_file():
+            failures.append("a same-release rewrite removed the previous generation")
+        if record.get("history", {}).get("removed"):
+            failures.append(f"a same-release rewrite pruned {record['history']['removed']}")
+
+
 def check_esp_layout(failures):
-    """出厂是 BLS 布局：以 ESP 上现有条目为准，写出的条目要能被 systemd-boot 读。"""
+    """出厂是 BLS 布局：写出的条目要能被 systemd-boot 读，cmdline 沿用现有条目。"""
     updater = load_esp_update()
     with tempfile.TemporaryDirectory() as tmp:
         esp = Path(tmp)
@@ -320,6 +543,93 @@ def check_esp_layout(failures):
         updater.update_bls(esp, fields, image, initramfs, dtb, "7.3.4", False, again)
         if again["changed"].get("payload") is not False:
             failures.append("update_bls rewrites an unchanged payload")
+    # 只留当前与一套回退：更早的 release 的条目与载荷要清掉。
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp)
+        entries = esp / "loader" / "entries"
+        entries.mkdir(parents=True)
+        image = esp / "image.src"; image.write_bytes(b"new-image")
+        initramfs = esp / "initramfs.src"; initramfs.write_bytes(b"new-initrd")
+        dtb_src = esp / "board.src"; dtb_src.write_bytes(b"board-dtb")
+        for version in ("7.3.1", "7.3.2", "7.3.3"):
+            (esp / "linux" / version).mkdir(parents=True)
+            (esp / "linux" / version / "linux").write_bytes(b"old")
+            (esp / "linux" / version / "initrd").write_bytes(b"old")
+            (esp / "linux" / version / "board.dtb").write_bytes(b"old")
+            (entries / f"linux-{version}.conf").write_text(
+                f"title Linux\nversion {version}\nlinux /linux/{version}/linux\n"
+                f"initrd /linux/{version}/initrd\ndevicetree /linux/{version}/board.dtb\n"
+                f"options root=LABEL=PIANOROOT rw\n", encoding="utf-8")
+        # 非 piano 的条目不该被删：linux 路径不在 /linux/<version>/ 下。
+        (entries / "linux-foreign.conf").write_text(
+            "title Other\nversion other\nlinux /EFI/other/vmlinuz\n"
+            "initrd /EFI/other/initrd\ndevicetree /EFI/other/dtb\n"
+            "options root=/dev/sda1 rw\n", encoding="utf-8")
+        fields = {"options": "root=LABEL=PIANOROOT rw", "version": "7.3.3"}
+        record = {"changed": {}}
+        updater.update_bls(esp, fields, image, initramfs, dtb_src, "7.3.4", False, record)
+        kept = sorted(p.name for p in (esp / "linux").iterdir())
+        if kept != ["7.3.3", "7.3.4"]:
+            failures.append(f"history retention kept {kept}, expected 7.3.3 and 7.3.4")
+        if not (entries / "linux-7.3.3.conf").is_file():
+            failures.append("history retention removed the rollback entry")
+        if (entries / "linux-7.3.1.conf").exists():
+            failures.append("history retention kept an entry older than one generation")
+        if not (entries / "linux-foreign.conf").is_file():
+            failures.append("history retention removed a non-piano boot entry")
+        if sorted(record.get("history", {}).get("removed", [])) != ["7.3.1", "7.3.2"]:
+            failures.append(f"history record removed {record.get('history')}")
+    # 新内核已写入但起不来时，启动项里最新的是坏内核，正在运行的旧内核
+    # 必须留在 keep 里。
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp)
+        entries = esp / "loader" / "entries"
+        entries.mkdir(parents=True)
+        image = esp / "image.src"; image.write_bytes(b"new-image")
+        initramfs = esp / "initramfs.src"; initramfs.write_bytes(b"new-initrd")
+        dtb_src = esp / "board.src"; dtb_src.write_bytes(b"board-dtb")
+        for version in ("7.3.1", "7.3.2", "7.3.3", "7.3.4"):
+            (esp / "linux" / version).mkdir(parents=True)
+            for name in ("linux", "initrd", "board.dtb"):
+                (esp / "linux" / version / name).write_bytes(b"old")
+            (entries / f"linux-{version}.conf").write_text(
+                f"title Linux\nversion {version}\nlinux /linux/{version}/linux\n"
+                f"initrd /linux/{version}/initrd\ndevicetree /linux/{version}/board.dtb\n"
+                f"options root=LABEL=PIANOROOT rw\n", encoding="utf-8")
+        fields = {"options": "root=LABEL=PIANOROOT rw", "version": "7.3.4"}
+        record = {"changed": {}}
+        # 7.3.5 已写入但起不来，运行中的是 7.3.3，启动项最新的是坏掉的 7.3.4。
+        # 7.3.4（previous）与 7.3.3（running）都在 keep 里；只剩 7.3.1/7.3.2 被清掉。
+        record = {"changed": {}}
+        updater.update_bls(esp, fields, image, initramfs, dtb_src, "7.3.5", False, record,
+                           running="7.3.3")
+        kept = sorted(p.name for p in (esp / "linux").iterdir())
+        if kept != ["7.3.3", "7.3.4", "7.3.5"]:
+            failures.append(f"history retention kept {kept}, expected running 7.3.3 kept")
+        if sorted(record.get("history", {}).get("removed", [])) != ["7.3.1", "7.3.2"]:
+            failures.append(f"running-kernel retention removed {record.get('history')}")
+    # 版本化 UKI 同样只留两代；固定 sunuefi.efi 是固件契约，不能被当历史删掉。
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp)
+        (esp / "EFI" / "Linux").mkdir(parents=True)
+        (esp / "EFI" / "BOOT").mkdir(parents=True)
+        (esp / "EFI" / "BOOT" / "BOOTAA64.EFI").write_bytes(b"boot")
+        for version in ("7.3.2", "7.3.3", "7.3.4"):
+            (esp / "EFI" / "Linux" / f"linux-{version}.efi").write_bytes(version.encode())
+        record = {"changed": {}}
+        updater.retain_history(esp, "uki", "7.3.4", "7.3.3", False, record)
+        left = sorted(p.name for p in (esp / "EFI" / "Linux").iterdir())
+        if left != ["linux-7.3.3.efi", "linux-7.3.4.efi"]:
+            failures.append(f"UKI history retention left {left}")
+    with tempfile.TemporaryDirectory() as tmp:
+        esp = Path(tmp)
+        (esp / "EFI" / "Linux").mkdir(parents=True)
+        fixed = esp / "EFI" / "Linux" / "sunuefi.efi"
+        fixed.write_bytes(b"uke")
+        record = {"changed": {}}
+        updater.retain_history(esp, "uki", "7.3.4", None, False, record)
+        if not fixed.is_file():
+            failures.append("history retention deleted the fixed sunuefi.efi")
     # ESP 若被改成可选 UKI 布局，检测也认它，不当成“不可启动的系统”。
     # 带 systemd-boot 时它枚举版本化文件。
     with tempfile.TemporaryDirectory() as tmp:
@@ -354,6 +664,8 @@ def main():
     check_tools(failures)
     check_build_script(failures)
     check_esp_layout(failures)
+    check_packaged_dtb(failures)
+    check_same_release_rewrite(failures)
     check_built_rpm(failures)
     if failures:
         for item in failures:

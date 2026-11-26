@@ -84,6 +84,11 @@ def check_readelf_dependency(path, expected, work):
 IIO_SPEC = ROOT / "packages/iio-sensor-proxy-ssc/iio-sensor-proxy-ssc.spec"
 LIBSSC_SPEC = ROOT / "packages/libssc/libssc.spec"
 IIO_PATCH = ROOT / "packages/iio-sensor-proxy-ssc/ssc-claim-race.patch"
+# 跟 SunUEFI v1.0.0 的 patches/piano-sensors/5/series.json 逐字节相同。
+IIO_POLL_PATCH = ROOT / "packages/iio-sensor-proxy-ssc/ssc-report-polling-failure.patch"
+IIO_POLL_SHA256 = "07ed0f93948c7cc1702064792f4ab71163699f1cd732bf31ba87f4306a60dc48"
+LIBSSC_BOUND_PATCH = ROOT / "packages/libssc/0004-bound-sensor-open.patch"
+LIBSSC_BOUND_SHA256 = "ae2c85dbe3956065a77b6f0f20b82f4de71196d467b7c12ab533e86fbd3cf7b5"
 
 
 def check_option_flag():
@@ -96,15 +101,20 @@ def check_option_flag():
     spec = IIO_SPEC.read_text()
     assert "-Dssc-support=enabled" in spec, spec
     assert "ssc-claim-race.patch" in spec and "autosetup -p1" in spec, spec
+    assert "ssc-report-polling-failure.patch" in spec, spec
     assert IIO_PATCH.is_file()
+    assert IIO_POLL_PATCH.is_file()
+    assert hashlib.sha256(IIO_POLL_PATCH.read_bytes()).hexdigest() == IIO_POLL_SHA256
 
     libssc = LIBSSC_SPEC.read_text()
     for patch in ("0001-fix-sensor-property-types.patch",
                   "0002-raw-vector-reports.patch",
                   "0003-piano-ssc-vector-cli.patch",
+                  "0004-bound-sensor-open.patch",
                   "wait_for_qmi_service.patch"):
         assert patch in libssc, (patch, libssc)
         assert (ROOT / "packages/libssc" / patch).is_file(), patch
+    assert hashlib.sha256(LIBSSC_BOUND_PATCH.read_bytes()).hexdigest() == LIBSSC_BOUND_SHA256
 
 
 def check_meson_auto_semantics(work):

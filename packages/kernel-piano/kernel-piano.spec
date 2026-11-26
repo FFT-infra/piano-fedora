@@ -15,7 +15,8 @@
 
 # The real payload is produced by the build-kernel pipeline (SunUEFI
 # artifacts/kernels/release), not by this spec. It is handed to rpmbuild as
-# a tar of the kernel tree: Image, System.map, config, dtb/ and lib/modules/.
+# a tar of the kernel tree: Image, System.map, config, lib/modules/ and the
+# composed board DTB with its manifest.
 #
 # This used to be optional: `%install` only ran `touch` on empty files and the
 # payload copy was guarded by `if [ -d kernel-payload ]`. build-rpms.sh never
@@ -26,7 +27,7 @@
 
 Name:           kernel-piano
 Version:        7.3.3
-Release:        8.%{DEVICE_NAME}%{?dist}
+Release:        11.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
 URL:            https://github.com/blu-sharky/linux-piano
@@ -85,23 +86,15 @@ test -s Image
 test -s System.map
 test -s config
 test -d lib/modules
+test -s board.dtb
+test -s board-dtb.json
 
-install -d %{buildroot}/boot/dtb/qcom
+install -d %{buildroot}/boot
 install -d %{buildroot}%{_prefix}/lib/modules
 
 install -m 0644 Image    %{buildroot}/boot/vmlinuz-%{version}-%{release}
 install -m 0644 System.map %{buildroot}/boot/System.map-%{version}-%{release}
 install -m 0644 config   %{buildroot}/boot/config-%{version}-%{release}
-
-# The board DTB may come as dtb/qcom/*.dtb (kernel build) or as a single
-# board.dtb next to the kernel (SunUEFI packaging). Accept either.
-if [ -d dtb ]; then
-    cp -a dtb/. %{buildroot}/boot/dtb/
-fi
-if [ -f board.dtb ]; then
-    install -m 0644 board.dtb %{buildroot}/boot/dtb/qcom/sm8750-xiaomi-piano.dtb
-fi
-test -s %{buildroot}/boot/dtb/qcom/sm8750-xiaomi-piano.dtb
 
 # Modules keep the kernel's own release string (7.3.3-piano-sunuefi-cachy-optimize);
 # the RPM version alone would not match the modules' vermagic.
@@ -129,11 +122,15 @@ install -m 0755 piano-tools/f2fs-disk-bootstrap \
 install -m 0644 piano-tools/build-initramfs.py \
                piano-tools/piano_artifacts.py %{buildroot}%{_prefix}/lib/piano/
 
+# 板级 DTB 与内核同一个 pin 合成（scripts/compose-board-dtb.py），%posttrans 把它
+# 写进 ESP。放在模块树之外：build-image 拿模块树与封存的内核产物逐文件比对，
+# 多一个文件就不相等。
+install -m 0644 board.dtb board-dtb.json %{buildroot}%{_prefix}/lib/piano/
+
 %files
 /boot/vmlinuz-%{version}-%{release}
 /boot/System.map-%{version}-%{release}
 /boot/config-%{version}-%{release}
-/boot/dtb
 # 整个模块树归本包所有，包括 updates/ 里的 v4l2loopback：它按本内核的 ABI
 # 编译，模块树的名字就是本内核的 release。piano-runtime 不再提供第二份。
 %{_prefix}/lib/modules/*
@@ -142,6 +139,8 @@ install -m 0644 piano-tools/build-initramfs.py \
 %{_prefix}/lib/piano/piano-kernel-esp-update
 %{_prefix}/lib/piano/build-initramfs.py
 %{_prefix}/lib/piano/piano_artifacts.py
+%{_prefix}/lib/piano/board.dtb
+%{_prefix}/lib/piano/board-dtb.json
 
 %posttrans
 # 设备侧升级：depmod 之后重建 initramfs，再为刚装上的内核写一条 systemd-boot
@@ -164,6 +163,22 @@ depmod -a "$RELEASE" || exit 1
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
+* Thu Nov 26 2026 FFT-infra <dev@piano.invalid> - 7.3.3-11.piano
+- 板级 DTB 随包发布，%posttrans 写进 ESP：此前升级沿用 ESP 上旧的 DTB，
+  内核跟到 SunUEFI v1.0.0 后设备树里缺独立的 CSI2 PHY 节点，相机起不来
+- 同一个 release 重写载荷时逐个文件原子替换，条目不再有指向空目录的窗口
+- 不再带 /boot/dtb 下那份没叠 overlay 的 vendor DTB
+
+* Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 7.3.3-10.piano
+- ESP 只保留当前与一套回退的启动项；正在运行的内核始终保留，
+  避免新内核起不来时把回退项清掉
+
+* Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 7.3.3-9.piano
+- 封存序列跟到 SunUEFI v1.0.0（a6c321d）：上游 290 条，自有 36 条后移到
+  0465–0500，末端树 e08cdb7d → 5a404cc5。上游新增相机 CSI2 PHY 重构、
+  触屏关屏不阻塞显示管线（0464）与关屏充电查询修复；0464 与自有 0468
+  （panel vendor/THP 字符设备）同区域，两者按顺序重放无冲突
+
 * Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 7.3.3-8.piano
 - ESP 升级按固件契约选目标：ESP 上没有 systemd-boot 时写固定的
   /EFI/Linux/sunuefi.efi，不再写固件从不读取的版本化文件名

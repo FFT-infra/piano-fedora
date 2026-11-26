@@ -273,6 +273,7 @@ jobs:
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-interconnects.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-flash.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-privacy-led.dtso \
+            --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-csi2-phys.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-touch-panel.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-pen-charger.dtso \
             --dtb-overlay build/sources/sunuefi/linux/dts/piano-bluetooth-nvm.dtso \
@@ -281,6 +282,17 @@ jobs:
             --initramfs build/initramfs/initramfs.cpio.gz \
             --rootfs build/device-root/rootfs --rootfs-manifest build/device-root/manifest.json \
             --root-selector LABEL=PIANOROOT --esp-size-mib "$ESP_SIZE_MIB" --output build/packaged
+
+      - name: Require the ESP and kernel-piano to carry the same board DTB
+        run: |
+          set -euo pipefail
+          # 装机用 ESP 镜像里的 DTB，之后每次内核升级改用 kernel-piano 包里的那一份。
+          # 两份由两个 job 各自合成，不等就意味着装机与升级后的设备树不一样。
+          release=$(python3 -c 'import json; print(json.load(open("build/kernel/manifest.json"))["kernel_release"])')
+          sudo env MTOOLS_SKIP_CHECK=1 mcopy -n -i build/packaged/esp.img \
+            "::/linux/$release/board.dtb" build/esp-board.dtb
+          sudo cmp build/esp-board.dtb build/device-root/rootfs/usr/lib/piano/board.dtb
+          sudo rm -f build/esp-board.dtb
 
       - name: Assemble and verify the delivery set
         env:

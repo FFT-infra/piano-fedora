@@ -71,26 +71,13 @@ resolve_kernel_payload() {
     return 1
 }
 
-# The board DTB is not part of the kernel artifact: SunUEFI builds it into its
-# vendor tree and the firmware loads it from the ESP. kernel-piano ships a copy
-# under /boot/dtb/qcom so an installed system can be inspected without unpacking
-# the ESP. Point BOARD_DTB at it, or let the resolver find the pinned checkout.
+# kernel-piano 随包带的板级 DTB 由 compose-board-dtb.py 合成，设备侧升级把它写进
+# ESP。裸的 vendor/piano-linux/board.dtb 没有 CMA 与 UFS MCQ overlay，写进去设备
+# 起不来，所以这里只认 manifest 对得上的合成产物。
 resolve_board_dtb() {
-    if [ -n "${BOARD_DTB:-}" ]; then
-        echo "$BOARD_DTB"
-        return 0
-    fi
-    local candidate
-    for candidate in \
-        "$REPO_ROOT/build/test-sources/sunuefi/vendor/piano-linux/board.dtb" \
-        "$REPO_ROOT/build/test-sunuefi/vendor/piano-linux/board.dtb" \
-        "$REPO_ROOT/build/sources/sunuefi/vendor/piano-linux/board.dtb"; do
-        if [ -s "$candidate" ]; then
-            echo "$candidate"
-            return 0
-        fi
-    done
-    return 1
+    local directory="${BOARD_DTB_DIR:-$REPO_ROOT/build/board-dtb}"
+    python3 "$REPO_ROOT/scripts/compose-board-dtb.py" --verify "$directory" >/dev/null || return 1
+    echo "$directory"
 }
 
 mkdir -p "$OUT_DIR"
@@ -152,19 +139,15 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
             else
                 cp -a "$PAYLOAD/modules/lib" "$STAGE/lib"
             fi
-            [ -d "$PAYLOAD/dtb" ] && cp -a "$PAYLOAD/dtb" "$STAGE/"
-            [ -f "$PAYLOAD/board.dtb" ] && cp -a "$PAYLOAD/board.dtb" "$STAGE/"
-            # Fall back to the pinned SunUEFI board DTB when the kernel artifact
-            # does not carry one (the usual case for build-kernel outputs).
-            if [ ! -f "$STAGE/board.dtb" ] && [ ! -d "$STAGE/dtb" ]; then
-                DTB=$(resolve_board_dtb) || {
-                    echo "Error: no board DTB found for kernel-piano." >&2
-                    echo "       Set BOARD_DTB to SunUEFI's vendor/piano-linux/board.dtb." >&2
-                    exit 1
-                }
-                echo "--> Using board DTB: $DTB"
-                cp -a "$DTB" "$STAGE/board.dtb"
-            fi
+            DTB_DIR=$(resolve_board_dtb) || {
+                echo "Error: no composed board DTB for kernel-piano." >&2
+                echo "       Run scripts/compose-board-dtb.py --sunuefi <checkout> --output build/board-dtb," >&2
+                echo "       or point BOARD_DTB_DIR at its output." >&2
+                rm -rf "$STAGE"
+                exit 1
+            }
+            echo "--> Using board DTB: $DTB_DIR"
+            cp -a "$DTB_DIR/board.dtb" "$DTB_DIR/board-dtb.json" "$STAGE/"
             [ -f "$PAYLOAD/manifest.json" ] && cp -a "$PAYLOAD/manifest.json" "$STAGE/"
             # 设备侧升级要用的那套工具跟内核一起发布：initramfs 构建器、
             # UKI 重打器与 manifest 判据都是跟这个内核一起演进的，分开发布会出现

@@ -74,6 +74,27 @@ KNOWN_MISSING = {
 } | {("piano-cdsp-fastrpc.dtso",
        f"/soc/remoteproc-cdsp@32300000/glink-edge/qcom,fastrpc/compute-cb@{index}")
       for index in range(1, 13)}
+# v1.0.0 的 piano-camera-csi2-phys.dtso：主线 CAMSS 改用独立的
+# qcom,sm8750-csi2-phy 节点，overlay 关掉下游驱动的 csiphy1 与 csiphy4。
+# - 三条 regulator：厂商用下游命名（regulator-pm-vxf-l1 等），路径对不上。
+#   电压与厂商 sun-regulators.dtsi 一致：L1F 0.88–0.92 V、L3I 0.88–0.912 V、
+#   L3G 1.2–1.256 V；供电关系也与厂商 sun-camera.dtsi 的 csiphy1（L3G、L1F）
+#   和 csiphy4（L3G、L3I）一致。
+# - qcom,csiphy1/4：厂商有这两个节点，在 sun-camera.dtsi 里。这里合成的厂商
+#   树只叠 TECHPACK_OVERLAYS 那三份，不含它，所以报成缺失。
+# - isp-ml 与 camera@10 的 endpoint：主线的 media graph，厂商 DT 没有对应物。
+KNOWN_MISSING |= {
+    ("piano-camera-csi2-phys.dtso", "/soc/rsc@16500000/regulators-1"),
+    ("piano-camera-csi2-phys.dtso", "/soc/rsc@16500000/regulators-7"),
+    ("piano-camera-csi2-phys.dtso", "/soc/rsc@16500000/regulators-6/ldo3"),
+    ("piano-camera-csi2-phys.dtso", "/soc/cci-ml@ac7b000/i2c-bus@1/camera@10/port/endpoint"),
+    ("piano-camera-csi2-phys.dtso", "/soc/qcom,qupv3_2_geni_se@8c0000/i2c@884000/camera@10/port/endpoint"),
+    ("piano-camera-csi2-phys.dtso", "/soc/isp-ml@ad27000"),
+    ("piano-camera-csi2-phys.dtso", "/soc/isp-ml@ad27000/ports/port@1/endpoint"),
+    ("piano-camera-csi2-phys.dtso", "/soc/isp-ml@ad27000/ports/port@4/endpoint"),
+    ("piano-camera-csi2-phys.dtso", "/soc/qcom,csiphy1@adab000"),
+    ("piano-camera-csi2-phys.dtso", "/soc/qcom,csiphy4@adb1000"),
+}
 
 
 def classify_missing(overlays):
@@ -241,6 +262,8 @@ def main():
     ap.add_argument("--vendor", type=Path, required=True)
     ap.add_argument("--sunuefi", type=Path, required=True)
     ap.add_argument("--dtc", type=Path)
+    ap.add_argument("--kernel-include", type=Path,
+                    help="mainline kernel include/ for overlays that use dt-bindings")
     ap.add_argument("--dtb", type=Path)
     ap.add_argument("--output", type=Path, required=True)
     args = ap.parse_args()
@@ -278,8 +301,14 @@ def main():
             work = Path(directory)
             dts = args.vendor / "arch/arm64/boot/dts/vendor/qcom"
             dtsi = args.sunuefi / "linux/dts"
+            # 上游新增的 overlay 可能引用主线 dt-bindings（例如 CSI2 PHY），
+            # 厂商 include 树里没有这些头；先查主线稀疏检出的 include。
+            kernel_include = args.kernel_include or (args.sunuefi / "upstream/linux-piano/include")
+            include_dirs = [dtsi, dts, args.vendor / "include"]
+            if kernel_include.is_dir():
+                include_dirs.insert(1, kernel_include)
             compiled = compile_dtb(tool, preprocess(
-                tool["cpp"], source, [dtsi, dts, args.vendor / "include"], work / "in.pp"),
+                tool["cpp"], source, include_dirs, work / "in.pp"),
                 work / "out.dtbo")
             data = compiled.read_bytes()
         entry = {"overlay": source.name, "targets": []}

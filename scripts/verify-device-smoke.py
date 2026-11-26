@@ -120,7 +120,7 @@ def check_pcm_open():
     """
     if not shutil.which("gst-launch-1.0"):
         return "skip", "gst-launch-1.0 not installed"
-    code, output = run(["gst-launch-1.0", "-q", "audiotestsrc", "num-buffers=10",
+    code, output = run(["gst-launch-1.0", "-q", "audiotestsrc", "wave=silence", "num-buffers=10",
                         "!", "audio/x-raw,rate=48000,channels=2", "!", "pipewiresink"],
                        timeout=20, env=session_env())
     if code is None:

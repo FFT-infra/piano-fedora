@@ -70,8 +70,8 @@ def check_guards():
     else:
         raise AssertionError("build accepted an output outside the build directory")
     releasever = json.loads((ROOT / "product.json").read_text())["target"]["releasever"]
-    assert ffmpeg.SPEC_RELEASE_NEW == "Release:        4.piano1%{?dist}\n"
-    assert ffmpeg.RELEASE == f"4.piano1.fc{releasever}", "RPM release and product releasever disagree"
+    assert ffmpeg.SPEC_RELEASE_NEW == "Release:        4.piano2%{?dist}\n"
+    assert ffmpeg.RELEASE == f"4.piano2.fc{releasever}", "RPM release and product releasever disagree"
     assert f"fc{releasever}" in ffmpeg.SOURCE_URL and ffmpeg.SOURCE_SHA256
 
 
@@ -113,7 +113,7 @@ def check_spec():
     raw = synthetic.encode()
     with pinned("SPEC_SHA256", hashlib.sha256(raw).hexdigest()):
         adapted = ffmpeg.adapt_spec(raw, names)
-    assert "Release:        4.piano1%{?dist}\n" in adapted
+    assert "Release:        4.piano2%{?dist}\n" in adapted
     # 改名压过官方版：子包全部带 -piano 后缀，各自声明替代的 Fedora 原名。
     assert ffmpeg.SPEC_SUFFIX_NEW in adapted, adapted
     assert "%global pkg_suffix -free\n" not in adapted, adapted
@@ -224,8 +224,11 @@ def check_bsp_port(sunuefi):
             if Path(row["path"]).name == name:
                 row["sha256"] = hashlib.sha256(target_file.read_bytes()).hexdigest()
         (folder / ffmpeg.BSP_SERIES_FILE).write_text(json.dumps(fresh))
-        assert fresh["series"][0]["sha256"] != json.loads(
-            (series / ffmpeg.BSP_SERIES_FILE).read_text())["series"][0]["sha256"]
+        original = json.loads((series / ffmpeg.BSP_SERIES_FILE).read_text())
+        def digest_of(document, wanted):
+            return next(row["sha256"] for row in document["series"]
+                        if Path(row["path"]).name == wanted)
+        assert digest_of(fresh, name) != digest_of(original, name), name
         try:
             ffmpeg.port_series(work / "fresh")
         except ValueError:

@@ -337,6 +337,9 @@ jobs:
             "$archive/scripts/"
           cp scripts/installer/flash-linux.sh scripts/installer/flash-linux.bat \
             scripts/installer/README-INSTALL.txt scripts/make-device-boot.sh "$archive/"
+          # 归档会脱离 GitHub 单独传播；SunUEFI 要求基于它的项目注明来源，
+          # 许可正文也要跟着走。
+          cp -p NOTICE LICENSE "$archive/"
           chmod +x "$archive/flash-linux.sh" "$archive/make-device-boot.sh"
           # 归档自己的清单只列目录里真有的文件。留一份列着未发布文件的清单，
           # 手动路径的 `sha256sum -c SHA256SUMS` 就会恒返回 1。

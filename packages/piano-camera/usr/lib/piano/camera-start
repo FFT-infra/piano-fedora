@@ -23,7 +23,6 @@ CAMERA_START=1
 # shellcheck source=/dev/null
 [ ! -r /etc/piano/camera.conf ] || . /etc/piano/camera.conf
 
-CAMSS=/sys/bus/platform/devices/ad27000.isp-ml
 FRONT_BUS=/sys/bus/platform/devices/884000.i2c
 
 say() {
@@ -44,8 +43,22 @@ wait_bound() {
     done
 }
 
+# The platform device is named after the first reg entry. That entry moved
+# when the CAMSS binding put "top" first (ad27000.isp-ml became
+# ac04000.isp-ml); the node name did not.
+camss_device() {
+    for candidate in /sys/bus/platform/devices/*.isp-ml; do
+        if [ -e "$candidate" ]; then
+            echo "$candidate"
+            return
+        fi
+    done
+}
+
 [ "$CAMERA_START" = 1 ] || { say "disabled by /etc/piano/camera.conf"; exit 0; }
 
+CAMSS=$(camss_device)
+[ -n "$CAMSS" ] || die 'CAMSS platform device is missing'
 [ -e "$CAMSS/iommu_group" ] || die 'CAMSS has no IOMMU group (apps SMMU not bound?)'
 # 7.3 上这个属性在内核把组放进 DMA 域之后不可写，root 也是 EPERM。只有组不在
 # DMA 域时才需要切换，先读当前值，避免把"已经是 DMA"当成失败。

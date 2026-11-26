@@ -104,6 +104,8 @@ jobs:
           sudo apt-get install -y -qq git gcc make flex bison python3
       - name: Fetch the pinned vendor DTS and the SunUEFI overlays
         run: python3 scripts/checkout-sources.py --output build/vendor-dt-src --mode vendor-dt
+      - name: Fetch mainline dt-bindings for overlays that use them
+        run: python3 scripts/checkout-sources.py --output build/vendor-dt-kernel --mode boot
       - name: Build the pinned dtc and libfdt
         run: make -C build/vendor-dt-src/dtc -j2 NO_PYTHON=1 NO_YAML=1 dtc fdtoverlay
       - name: Compare each overlay against the vendor hardware description
@@ -115,6 +117,7 @@ jobs:
             --vendor build/vendor-dt-src/vendor-kernel \
             --sunuefi build/vendor-dt-src/sunuefi \
             --dtc build/vendor-dt-src/dtc \
+            --kernel-include build/vendor-dt-kernel/sunuefi/upstream/linux-piano/include \
             --output build/vendor-dt-report
       - name: Fail on differences the whitelist does not cover
         run: |

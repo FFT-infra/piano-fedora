@@ -155,7 +155,9 @@ def main():
     if args.mode == "vendor-blobs":
         vendor = lock["vendor-blobs"]
         index_only(vendor["url"], vendor["commit"], output / "vendor-blobs")
-    if args.mode in ("boot", "vendor-dt"):
+    # loopback 是 RPM 矩阵用的模式：kernel-piano 随包带合成的板级 DTB，合成要用
+    # 与 bundle 同一个锁定的 dtc。
+    if args.mode in ("boot", "vendor-dt", "loopback"):
         dtc = lock["dtc"]
         checkout(dtc["url"], dtc["commit"], output / "dtc")
     if args.mode == "device":

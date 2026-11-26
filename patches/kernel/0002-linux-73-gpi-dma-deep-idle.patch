@@ -1,4 +1,15 @@
-diff --git a/patches/linux/7.3/0265-spi-geni-qcom-keep-the-system-out-of-deep-idle-while-a-GPI-D.patch b/patches/linux/7.3/0265-spi-geni-qcom-keep-the-system-out-of-deep-idle-while-a-GPI-D.patch
+From e96568c5ed5cbfd146defa28207f1b9bdf199d1f Mon Sep 17 00:00:00 2001
+From: piano-fedora <dev@piano.invalid>
+Date: Wed, 25 Nov 2026 12:21:37 +0800
+Subject: [PATCH] kernel: append 1 Piano adaptation(s)
+
+---
+ ...system-out-of-deep-idle-while-a-GPI-D.patch | Bin 0 -> 4623 bytes
+ patches/linux/7.3/series.json                  |  17 +++++++++++++++--
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+ create mode 100644 patches/linux/7.3/0469-spi-geni-qcom-keep-the-system-out-of-deep-idle-while-a-GPI-D.patch
+
+diff --git a/patches/linux/7.3/0469-spi-geni-qcom-keep-the-system-out-of-deep-idle-while-a-GPI-D.patch b/patches/linux/7.3/0469-spi-geni-qcom-keep-the-system-out-of-deep-idle-while-a-GPI-D.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..a07c1429b5acc027b80843e7397b5ce9e0aa95a3
 GIT binary patch
@@ -60,32 +71,32 @@ literal 0
 HcmV?d00001
 
 diff --git a/patches/linux/7.3/series.json b/patches/linux/7.3/series.json
-index 5eaa4a5..f13be28 100644
+index b5cf579..ad02bcc 100644
 --- a/patches/linux/7.3/series.json
 +++ b/patches/linux/7.3/series.json
 @@ -11,8 +11,8 @@
    "kernel_version": "7.3.3",
    "base_commit": "d50d994bffa3c7c6db2d8bc4c5f0c55e3f46b0cd",
    "base_tree": "a3d0b8db615452e89f37be4454c80262c06ecc99",
--  "target_tree": "e996b79fd52999fb0ac88b5d0596e78617923be0",
--  "original_target_commit": "f52bb0df3c9e15b07bbc08c08948e309932c42b4",
-+  "target_tree": "e3472308945c97317fee3f734b945dcccf1ca905",
-+  "original_target_commit": "d0d6d0de3ae63d2ec10cf0a97ace074c64817c99",
+-  "target_tree": "d5989f3a861c857a6c0432eac5e9e70f1ea4d123",
+-  "original_target_commit": "e6ed21602ae72b26c548b6d53315e3cf5861de99",
++  "target_tree": "2c2c5c11d149b1aa5c76e9cc1e08477257be117e",
++  "original_target_commit": "7340fafefe920416634557e07326c509f482b06b",
    "source_url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
    "patches": [
      {
-@@ -3484,6 +3484,19 @@
+@@ -3871,6 +3871,19 @@
          "url": "https://github.com/slwyts/Project-SunUEFI",
          "drop_when": "This Piano device adaptation is not part of the upstream sealed series; remove it when the corresponding subsystem fix is accepted upstream and the sealed series carries it."
        }
 +    },
 +    {
-+      "file": "0265-spi-geni-qcom-keep-the-system-out-of-deep-idle-while-a-GPI-D.patch",
++      "file": "0469-spi-geni-qcom-keep-the-system-out-of-deep-idle-while-a-GPI-D.patch",
 +      "sha256": "dec2cf4aee9de53cd458f80a17a5950c3d8a94d1b50eee69cd908ac7994d0778",
-+      "original_commit": "d0d6d0de3ae63d2ec10cf0a97ace074c64817c99",
-+      "original_parent": "f52bb0df3c9e15b07bbc08c08948e309932c42b4",
-+      "committer_date": "2026-11-21T17:05:07+08:00",
-+      "tree": "e3472308945c97317fee3f734b945dcccf1ca905",
++      "original_commit": "7340fafefe920416634557e07326c509f482b06b",
++      "original_parent": "e6ed21602ae72b26c548b6d53315e3cf5861de99",
++      "committer_date": "2026-11-25T12:19:25+08:00",
++      "tree": "2c2c5c11d149b1aa5c76e9cc1e08477257be117e",
 +      "upstream": {
 +        "status": "downstream",
 +        "url": "https://github.com/slwyts/Project-SunUEFI",

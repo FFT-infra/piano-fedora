@@ -8,7 +8,7 @@
 
 内核把这支笔报成 SPI 设备，vendor `0x0603`、product `0x6532`，名字是
 `Novatek Focus Pen` 或 `Novatek Focus Pen Pro`（SunUEFI 的
-`patches/linux/7.3/0225-LOCAL-input-nt36532e-pen.patch`）。Fedora 45 的
+`patches/linux/7.3/0432-LOCAL-input-nt36532e-pen.patch`）。Fedora 45 的
 libwacom 2.19.0 只认
 usb/bluetooth/i2c/serial，桌面设置里看不到这支笔。2.20.0 本身也没有 SPI
 支持，补丁仍然必需。

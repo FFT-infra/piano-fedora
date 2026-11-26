@@ -2,7 +2,7 @@
 
 Name:           libssc
 Version:        0.4.4
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        Qualcomm Sensor Core userspace library for Xiaomi Pad 8 Pro (piano)
 License:        GPL-3.0-or-later
 URL:            https://codeberg.org/DylanVanAssche/libssc
@@ -16,6 +16,9 @@ Patch0:         wait_for_qmi_service.patch
 Patch1:         0001-fix-sensor-property-types.patch
 Patch2:         0002-raw-vector-reports.patch
 Patch3:         0003-piano-ssc-vector-cli.patch
+# Upstream 5/series.json: a pending enable must not poll forever; dispatch
+# completion in the caller's main context and tear down listeners cleanly.
+Patch4:         0004-bound-sensor-open.patch
 
 ExclusiveArch:  aarch64
 
@@ -70,6 +73,10 @@ retry support to guarantee sensor enumeration without stalling boot.
 %exclude %{_libdir}/girepository-1.0/SSC-2.typelib
 
 %changelog
+* Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 0.4.4-4
+- 跟到 SunUEFI v1.0.0：带上 0004-bound-sensor-open，传感器启动等待有界，
+  不再轮询，超时或取消的流请求只完成一次
+
 * Sun Nov 15 2026 FFT-infra <dev@piano.invalid> - 0.4.4-3
 - Drop the arch-qualified protobuf-c requires. Fedora 45 renamed the package
   to protobuf3-c, which obsoletes the old name without providing

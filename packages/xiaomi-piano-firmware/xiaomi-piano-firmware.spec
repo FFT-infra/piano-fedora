@@ -5,11 +5,11 @@
 # 每份都带 manifest.json，逐个文件记 bytes 与 sha256，由 firmware-overlays.py
 # 在写盘前核对。提交号与 sources.lock.json 的 sunuefi pin 相同，
 # 由 tests/check_firmware_overlays.py 守住。
-%global sunuefi_commit edcf272063bfaf9be50f69c85961a5bbe1447b7b
+%global sunuefi_commit a6c321d0b3c8bf9ad2b1168904904909c1beee31
 
 Name:           xiaomi-piano-firmware
 Version:        20261113
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        Firmware binaries for Xiaomi Pad 8 Pro (piano)
 # 厂商没有给出书面许可。包内只有部分文件来自 linux-firmware，按 LICENSES/
 # 里的原条款分发；stock ROM 的文件没有再分发许可。整包用 proprietary 标记，
@@ -60,6 +60,10 @@ find %{buildroot}%{_firmwaredir} -type f -exec chmod 0644 {} \;
 %{_firmwaredir}/*
 
 %changelog
+* Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 4
+- 跟到 SunUEFI v1.0.0（a6c321d）：叠层清单与固件字节未变，
+  归档 URL 随 pin 变，产物摘要因此改变
+
 * Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 20261113-3
 - Source1 的 SunUEFI 提交号跟到 edcf272。叠层文件逐字节未变，只有归档 URL
   变了，所以产物摘要会变，需要新的 release 号
