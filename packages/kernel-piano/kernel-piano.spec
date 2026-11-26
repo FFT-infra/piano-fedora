@@ -26,7 +26,7 @@
 
 Name:           kernel-piano
 Version:        7.3.3
-Release:        9.%{DEVICE_NAME}%{?dist}
+Release:        10.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
 URL:            https://github.com/blu-sharky/linux-piano
@@ -164,6 +164,10 @@ depmod -a "$RELEASE" || exit 1
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
+* Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 7.3.3-10.piano
+- ESP 只保留当前与一套回退的启动项；正在运行的内核始终保留，
+  避免新内核起不来时把回退项清掉
+
 * Wed Nov 25 2026 FFT-infra <dev@piano.invalid> - 7.3.3-9.piano
 - 封存序列跟到 SunUEFI v1.0.0（a6c321d）：上游 290 条，自有 36 条后移到
   0465–0500，末端树 e08cdb7d → 5a404cc5。上游新增相机 CSI2 PHY 重构、
