@@ -405,7 +405,7 @@ fastboot reboot
 
 ### 3. 请求页
 
-`device-boot-manifest.json` 的 `active_slot` 是 `_a`，`app_generation` 必须与归档里的 `PianoUEFI-product.img` 中的 APPv1 载荷一致。
+`device-boot-manifest.json` 的 `active_slot` 须与当前设备活动槽一致（`_a` 或 `_b`），`app_generation` 必须与归档里的 `PianoUEFI-product.img` 中的 APPv1 载荷一致。
 
 3 秒选择器在“正在引导的那份镜像”末尾读请求页。ABL 只加载当前槽，`BootSelect.c` 按 `Base + align(original_image_size)` 取页。合体 BOOT 装进活动槽，Linux 与 Android 都从同一份 `boot<槽>` 启动，请求页因此指向它。不切槽，也不存在第二份需要同步的页。
 
@@ -522,7 +522,7 @@ findmnt /             # 根文件系统为 F2FS
 systemctl --failed    # 输出为空
 ```
 
-`uname -r` 的正确值是这一版 ESP 里实际装的内核，不是随便一个 7.2.9。两处可以查到，两边必须一致：
+`uname -r` 的正确值是这一版 ESP 里实际装的内核，不是写死的旧版本号。两处可以查到，两边必须一致：
 
 ```sh
 # 1) ESP 镜像里的内核版本（刷写前就能查，不需要设备）
@@ -537,7 +537,7 @@ uname -r
 ls /usr/lib/modules/
 ```
 
-`uname -r` 与 ESP 里的字符串不符，说明刷进去的不是这一版资产。`/usr/lib/modules/` 下没有同名目录，说明 rootfs 与 ESP 的内核不是一套。系统能起来，但一个驱动都加载不了。
+`uname -r` 与 ESP 里的字符串不符，说明刷进去的不是这一版资产。`/usr/lib/modules/` 下没有同名目录，说明 rootfs 与 ESP 的内核不是一套，initramfs 会停在救援环境，无法进入系统。
 
 能进所选档位的桌面，就是刷写成功最直接的证据。
 
@@ -545,7 +545,7 @@ ls /usr/lib/modules/
 
 ### 4. 回滚到 Android
 
-Linux 起不来时，先从 3 秒选择器选 Android。开机前 3 秒按音量键进入菜单，或者在 Android 正常时执行 `piano-next-boot android --reboot`。
+Linux 起不来时，先从 3 秒选择器选 Android。开机前 3 秒按音量键进入菜单，或者在 Linux 正常运行时执行 `piano-next-boot android --reboot`。
 
 合体 BOOT 本身损坏时，把备份的原厂引导镜像刷回活动槽的 boot 分区。不需要改动分区或活动槽：
 
