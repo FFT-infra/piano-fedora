@@ -46,9 +46,9 @@ on:
         required: false
         default: "false"
       prerelease:
-        description: "公开时标为 pre-release"
+        description: "标为 pre-release（Beta），正式版时改 false"
         required: false
-        default: "false"
+        default: "true"
 
 permissions:
   contents: write
@@ -140,6 +140,7 @@ jobs:
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
           # 说明里的示例用实际发布的第一个档位，单档发布时不会教用户下 gnome。
@@ -148,48 +149,52 @@ jobs:
           cat > build/stage/notes.md <<EOF
           ## piano Fedora ${release} ${TAG}
 
-          小米平板 8 Pro（25091RP04C）的 Fedora 系统。本次发布档位：${DESKTOPS}。各档共用同一个内核与启动链，只有 root 文件系统不同，下载你选的那一档就够。
+          小米平板 8 Pro（\`25091RP04C\`）的 Fedora 镜像发布。本次包含档位：${DESKTOPS}。各档共用同一内核与启动链，仅 root 文件系统不同，按需下载对应那一档即可。
 
-          - 外设逐项状态见 [README 硬件支持](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/README.md#硬件支持)，已知问题与未验证项见 [docs/known-issues.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/known-issues.md)
+          - 硬件支持与已知限制: 外设支持矩阵见 [README 硬件支持](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/README.md#硬件支持)，已知问题见 [docs/known-issues.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/known-issues.md)
           - 产物状态: Actions 内完整校验通过
           - 源码提交: [${GITHUB_SHA}](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})
-          - 启动链: [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)，文件级许可与第三方材料见该仓库的 LICENSE.md 与 THIRD_PARTY.md；本项目的归属说明见 [NOTICE](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/NOTICE)
+          - 许可与署名: 启动链来自 [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)（见上游 \`LICENSE.md\` 与 \`THIRD_PARTY.md\`）；本仓库归属声明见 [NOTICE](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/NOTICE)
 
-          ### 各档文件与选档
+          ### 各档归档与下载
 
           <!-- DESKTOP_TABLE_PLACEHOLDER -->
 
-          ### 新装与在用升级
+          ### 安装与升级
 
-          - **已有系统升级**：不用重新下载刷机包。终端运行 \`sudo dnf upgrade --refresh\`，内核与适配包从 COPR 更新。步骤见 [docs/upgrade.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/upgrade.md)。
-          - **全新安装**：按下面的步骤下载校验，再按 [docs/installation.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/installation.md) 刷写。装完开机直接进桌面，用户名 \`piano\`，默认密码 \`piano123456\`，登录后用 \`passwd\` 改掉。
+          - **已有系统直接升级**：无需重下刷机包，终端执行 \`sudo dnf upgrade --refresh\` 即可通过 COPR 升级内核与适配包（详见 [docs/upgrade.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/upgrade.md)）。
+          - **首次全新安装**：刷写会解锁 Bootloader、修改 GPT、覆盖活动槽 \`boot\` 并重写 Linux 分区，动手前请备份全盘数据。**不要擦除 \`dtbo_a\` 或 \`dtbo_b\`**，否则 ABL 会拒绝引导。完整分区与刷机步骤见 [docs/installation.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/installation.md)。
 
-          刷写会解锁 Bootloader、改写 GPT、替换活动槽合体 BOOT 并重写 Linux 分区，动手前备份全盘数据。**不要擦除 \`dtbo_a\` 或 \`dtbo_b\`**：高通 ABL 校验空 DTBO 会拒绝启动，机器停在 Fastboot。
+          以 \`${example}\` 为例（仅下载所选那一档）：
 
-          每个档位一个自包含归档，只需下载所选档位。以 ${example} 为例：
+          1. 下载 \`piano-${TAG}-${example}.sha256\` 以及 \`piano-${TAG}-${example}.tar.zst\` 的全部文件（若有 \`.part-00\`、\`.part-01\` 须全下）。
+          2. 校验分片并解包到空目录：
+             \`\`\`sh
+             sha256sum -c piano-${TAG}-${example}.sha256
+             cat piano-${TAG}-${example}.tar.zst.part-* | zstd -dc | tar -x   # 单文件改为 zstd -dc piano-${TAG}-${example}.tar.zst | tar -x
+             sha256sum -c SHA256SUMS
+             (cd root-install && sha256sum -c SHA256SUMS)
+             \`\`\`
+             也可直接用仓库脚本一步完成上述四步：\`bash scripts/unpack-release.sh --tag ${TAG} --desktop ${example}\`。
+          3. 在暂存目录生成本机专属合体 BOOT：\`./make-device-boot.sh\`（生成 \`device-boot/boot_linux.img\`）。
+          4. 原厂未分区平板先完成 [docs/installation.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/installation.md) 第四节首次分区与 Android 初始化，再按归档内 \`README-INSTALL.txt\` 刷写。
+          5. 刷完自动进入桌面，默认用户 \`piano\`、密码 \`piano123456\`，登录后请立即运行 \`passwd\` 修改。
 
-          1. 下载 \`piano-${TAG}-${example}.sha256\`，再下载
-             \`piano-${TAG}-${example}.tar.zst\` 的全部分片。有这个档位的
-             \`.part-00\` 与 \`.part-01\` 时，两个都要。
-          2. \`sha256sum -c piano-${TAG}-${example}.sha256\`
-          3. \`cat piano-${TAG}-${example}.tar.zst.part-* | zstd -dc | tar -x\`
-             只有一个分片时改用 \`zstd -dc piano-${TAG}-${example}.tar.zst | tar -x\`。
-          4. \`sha256sum -c SHA256SUMS\` 与 \`(cd root-install && sha256sum -c SHA256SUMS)\`
-          5. \`./make-device-boot.sh\` 生成这台的 \`device-boot/boot_linux.img\`
-          6. 全新平板先读 [docs/installation.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/installation.md) 第四节，再按 \`README-INSTALL.txt\` 刷写。
+          ### 归档构成与校验提示
 
-          也可以让仓库里的 \`scripts/unpack-release.sh\` 代做第 1 至 4 步：
-          \`bash scripts/unpack-release.sh --tag ${TAG} --desktop ${example}\`。
-
-          ### 归档内容与安全约束
-
-          - 归档里有平台镜像（ESP、Linux 载荷、产品固件）、这一档的 \`root-install/\`、组件 manifest、一键脚本与 boot-tools。\`SHA256SUMS\` 只列归档里真实存在的文件，所以上面两条校验命令都能直接过。
-          - \`device-boot/boot_linux.img\` 不在归档里。这个文件必须用这台平板自己的原厂 BOOT 生成，工具随归档发布。
-          - Windows 上用 7-Zip 解 \`.tar.zst\`。有分片时先用 \`copy /b\` 合并，再解压。
-          - 校验构建来源: \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`
+          - 归档内含 ESP 镜像（已包含 systemd-boot、Linux 内核与板级 DTB）、产品固件、\`sunuefi-module.zip\` 引导助手、所选档位 \`root-install/\`、一键脚本与 \`boot-tools\`，自带的 \`SHA256SUMS\` 精确匹配目录内文件。
+          - \`device-boot/boot_linux.img\` 绑定本机原厂内核，不随通用归档分发，必须由 \`./make-device-boot.sh\` 现生成。
+          - Windows 用户解分片时可先 \`copy /b\` 合并后用 7-Zip 打开。
+          - 来源证明校验：\`gh attestation verify <asset-file> --repo ${GITHUB_REPOSITORY}\`
           EOF
+          title="piano Fedora ${release} ${TAG}"
+          draft_flags=()
+          if [ "${PRERELEASE:-true}" = "true" ]; then
+            title="${title} (Beta)"
+            draft_flags+=(--prerelease)
+          fi
           # 默认 draft：转公开要显式传 publish=true。
-          gh release create "$TAG" --draft --title "piano Fedora ${release} ${TAG}" \
+          gh release create "$TAG" --draft "${draft_flags[@]}" --title "$title" \
             --notes-file build/stage/notes.md
 
       # 后续各档并行取计划，不靠 job 输出字符串再拆一遍。
@@ -438,22 +443,20 @@ jobs:
           cp -a "$extras/rpms" "$extras/srpms" "$extras/scripts" "$archive/"
           cp "$extras/manifest.json" "$extras/desktop-manifest.json" "$archive/"
           cat > "$archive/README-extras.txt" <<'EOF'
-          可选的桌面补丁包。默认镜像不需要它。
+          可选桌面补丁包（自动亮度曲线、KWin HDR 背光恢复、GTK3/mutter/gdm/control-center 修复）。默认镜像不需要它。
 
           安装（GNOME 或 KDE 二选一）：
 
             sudo sh scripts/piano-extras-install.sh gnome
             sudo sh scripts/piano-extras-install.sh kde
 
-          脚本会启用 xinyang26/piano-fedora-extras、把仓库优先级设为 1，再安装
-          对应的 meta 包。装完注销并重新登录。
+          脚本会自动启用 xinyang26/piano-fedora-extras 并设为最高优先级，再安装对应 meta 包。装完注销重新登录生效。
 
-          卸载：
+          卸载回退 Fedora 原版组件：
 
             sudo sh scripts/piano-extras-uninstall.sh
 
-          仓库优先级会让 extras 的 KWin/GTK3 压过 Fedora 的更高版本，直到
-          extras 按新版本重编。默认镜像和默认 COPR 不含这些包。
+          启用后，priority=1 会让 extras 中的同名桌面包压过 Fedora 官方高版本，需等 extras 重建后再随系统更新。
           EOF
           python3 scripts/release-assets.py write-sums "$archive"
           name=$(python3 scripts/release-assets.py extras-archive-name "$TAG")
@@ -540,19 +543,19 @@ jobs:
           )"
             case "$desktop" in
               gnome)
-                desc="GDM 自动登录；Wayland 原生会话，Mutter 自动旋转"
+                desc="GDM 自动登录，Wayland 原生会话，Mutter 自动旋转"
                 ;;
               kde)
-                desc="plasma-login-manager 自动登录；Wayland 原生会话，KWin 自动旋转（qt6-qtsensors）"
+                desc="plasma-login-manager 自动登录，Wayland 原生会话，KWin 自动旋转（qt6-qtsensors）"
                 ;;
               hyprland)
-                desc="greetd [initial_session] 自动登录（tuigreet 兜底）；动态平铺，旋转需通过 hyprctl keyword monitor 调整"
+                desc="greetd [initial_session] 自动登录（tuigreet 兜底），动态平铺，需用 hyprctl keyword monitor 旋转"
                 ;;
               niri)
-                desc="greetd [initial_session] 自动登录（tuigreet 兜底）；无限横向滚动平铺，旋转需在 output 段声明 transform"
+                desc="greetd [initial_session] 自动登录（tuigreet 兜底），横向滚动平铺，需在 output 设 transform 旋转"
                 ;;
               denial)
-                desc="greetd [initial_session] 自动登录（tuigreet 兜底）；denial-session --start-locked 启动会话，默认桌面档"
+                desc="greetd [initial_session] 自动登录（tuigreet 兜底），denial-session --start-locked（mobile shell，无自动旋转）"
                 ;;
               *)
                 desc="定制桌面环境"
@@ -586,9 +589,9 @@ jobs:
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
-          extra=()
+          extra=(--prerelease=false)
           if [ "$PRERELEASE" = "true" ]; then
-            extra+=(--prerelease)
+            extra=(--prerelease)
           fi
           gh release edit "$TAG" --draft=false "${extra[@]}"
           gh release view "$TAG" --json url,assets,isDraft,isPrerelease \

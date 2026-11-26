@@ -3,221 +3,126 @@
 ====================================================================
 
 THIS INSTALLER DOES NOT PARTITION A STOCK TABLET.
-It only updates a tablet where install-f2fs.py apply has already created
-sunuefi_esp and sunuefi_root. For a brand-new or stock GPT/UFS device, stop
-here and follow docs/installation.md section 4 first. That flow creates the
-partitions, erases userdata, and lets Android initialize it before Linux is
-installed. This installer writes the combined SunUEFI BOOT to the active
-slot (boot_a or boot_b, whichever Android boots from); Android stays bootable
-from that slot through the 3-second chooser.
+It only updates a tablet where install-f2fs.py apply (or manual partitioning)
+has already created sunuefi_esp and sunuefi_root. On a stock GPT/UFS tablet,
+follow docs/installation.md section 4 first to partition, erase userdata, and
+boot Android once before flashing Linux. This installer writes the combined
+SunUEFI BOOT to the active slot (boot_a or boot_b); Android stays bootable
+from the same slot via the 3-second boot chooser.
 
 Requirements:
-1. Xiaomi Pad 8 Pro with Bootloader UNLOCKED.
-2. Battery above 30%.
-3. Fastboot and ADB installed on PC.
-4. USB cable connected directly to tablet.
-5. zstd and tar, to unpack the archive. GNU tar's --zstd also runs an external
-   zstd binary, so zstd cannot be skipped.
-   Fedora "sudo dnf install zstd", Ubuntu/Debian "sudo apt install zstd",
-   macOS "brew install zstd".
-6. mtools (mcopy), only when you install an SSH key with --ssh-key:
-   Fedora "sudo dnf install mtools", Ubuntu/Debian "sudo apt install mtools",
-   macOS "brew install mtools".
+1. Xiaomi Pad 8 Pro with Bootloader unlocked and battery above 30%.
+2. fastboot and adb installed on the host PC, USB cable connected.
+3. zstd and tar to unpack (GNU tar --zstd still shells out to external zstd).
+4. mtools (mcopy), only needed if injecting an SSH key with --ssh-key.
 
-Using a GitHub Release:
-Each profile ships as one archive. Download the archive for the profile you
-want, plus its checksum file. Download nothing else:
+Downloading and Unpacking a Release:
+Each desktop ships as its own archive; download only the profile you want
+(gnome, kde, niri, hyprland, or denial; see docs/desktops.md):
    piano-<tag>-<desktop>.sha256
-   piano-<tag>-<desktop>.tar.zst            (or every .part-NN piece)
-Put them in an empty folder and run, in this order:
+   piano-<tag>-<desktop>.tar.zst            (or all .part-NN files)
+
+Verify and extract in an empty directory:
    sha256sum -c piano-<tag>-<desktop>.sha256
    cat piano-<tag>-<desktop>.tar.zst.part-* | zstd -dc | tar -x
    sha256sum -c SHA256SUMS
-Omit the .part-* glob when the archive is a single file:
+For single-file archives, run:
    zstd -dc piano-<tag>-<desktop>.tar.zst | tar -x
-The other profiles are separate archives. Do not download them. A release can
-carry gnome, kde, niri and hyprland. See docs/desktops.md for what each profile
-provides.
-Requires zstd and tar. GNU tar's --zstd also shells out to a zstd binary, so
-installing zstd is unavoidable.
-Windows: open the .tar.zst with 7-Zip. Join split pieces first:
-   copy /b piano-<tag>-<desktop>.tar.zst.part-00+piano-<tag>-<desktop>.tar.zst.part-01 piano-<tag>-<desktop>.tar.zst
-On Linux or macOS, run unpack-release.sh. It downloads the archive, runs both
-checksum passes, and extracts the files:
+Windows: join parts first ("copy /b ...part-00+...part-01 out.tar.zst"),
+then extract with 7-Zip.
+On Linux/macOS you can automate download + checks with:
    bash scripts/unpack-release.sh --tag <tag> --desktop <desktop> --dir piano-install
 
-Required Files in this Folder:
-- flash-linux.sh / flash-linux.bat (one-step scripts)
+Files in This Staging Folder:
+- flash-linux.sh / flash-linux.bat (one-step flashing scripts)
 - README-INSTALL.txt               (this guide)
-- make-device-boot.sh              (builds device-boot/ from this tablet's boot_a image)
-- sunuefi_esp.img                  (SunUEFI EFI System Partition holding the Linux UKI)
-- PianoUEFI-product.img            (SunUEFI product firmware; first-install check)
-- sunuefi-module.zip               (Android-side boot assistant, same firmware as above)
-- module-manifest.json             (binds the module ZIP to PianoUEFI-product.img)
+- make-device-boot.sh              (repacks device-boot/ from active slot boot)
+- sunuefi_esp.img                  (SunUEFI ESP holding systemd-boot, kernel, DTB)
+- PianoUEFI-product.img            (SunUEFI product firmware)
+- sunuefi-module.zip               (Android boot-assistant module, matches product)
+- module-manifest.json             (binds sunuefi-module.zip to PianoUEFI-product.img)
 - uefi-source.json                 (UEFI source pin and patch digests)
-- SHA256SUMS                       (checksums of everything in this folder)
-- bundle-manifest.json             (binds root-install/ to this bundle)
-- root-image-manifest.json         (binds root-install/ to this root image)
-- source-runs.json                 (run ids behind this bundle; used by install-f2fs.py)
-- boot-tools/                      (Android-side boot-assistant module and repacker)
-- host-boot-tool/                  (x86-64 host repacker)
-- scripts/                         (prepare-device-boot.py and its helpers)
-- root-install/                    (complete prepared root for this tablet)
-  - pianoroot.f2fs.sparse.img      (prepared root image for this tablet)
+- SHA256SUMS                       (checksums matching this folder's files)
+- bundle-manifest.json / root-image-manifest.json / source-runs.json
+- boot-tools/ / host-boot-tool/ / scripts/
+- root-install/
+  - pianoroot.f2fs.sparse.img      (prepared sparse F2FS root)
   - root-install-manifest.json
   - SHA256SUMS                     (root-install checksums)
-- device-boot/boot_linux.img       (generated here; not shipped)
+- device-boot/boot_linux.img       (generated locally by make-device-boot.sh)
 
-SHA256SUMS covers exactly the files above. The check in Step 1 of "Manual
-Flashing" passes without editing SHA256SUMS.
+When assembling from CI Actions instead of a Release, extract
+deploy-bundle-<desktop> here, extract root-install-<desktop> into
+root-install/, and copy flash-linux.sh, flash-linux.bat, make-device-boot.sh,
+scripts/prepare-device-boot.py, scripts/piano_artifacts.py, and
+scripts/piano_sparse.py from the repo. Keep both SHA256SUMS files intact.
 
-If this is a brand-new tablet, this archive does not create sunuefi_esp or
-sunuefi_root.
-Follow docs/installation.md section 4 first: it partitions, erases userdata,
-and lets Android boot once. Do not run install-f2fs.py or this installer on a
-stock GPT until that is done.
+One-Step Flashing:
+Before flashing, verify current-slot is "a" or "b" matching root-install's
+android_slot (release archives target _a; Slot B devices must run
+prepare-install.yml with android_slot=_b first, never switch slots).
 
-Building from Actions instead of a release: unzip build-bundle's
-deploy-bundle-<desktop> artifact into this folder, unzip prepare-install's
-root-install-<desktop> artifact into root-install/, then copy flash-linux.sh,
-flash-linux.bat, make-device-boot.sh, scripts/prepare-device-boot.py,
-scripts/piano_artifacts.py and scripts/piano_sparse.py from the repository.
-Do not merge the two SHA256SUMS files. Do not regenerate them.
-
-The archive does not ship the sealed build image or the bundle's own sparse
-copy. Both hold the same root as root-install/, but neither carries this
-device's configuration. Do not flash either one. If you need the sealed build
-image as an archive copy, run prepare-install.yml yourself, or take it from the
-matching Actions artifact.
-
-Flashing Instructions:
-1. Put tablet into Fastboot mode:
-   Power off -> Hold [Power] + [Volume Down] until FASTBOOT screen appears.
-2. Connect tablet to PC via USB.
-3. Run the installer:
+1. Power off -> Hold [Power] + [Volume Down] for Fastboot and connect USB.
+2. Run the script in this folder:
    - Linux / macOS:
        chmod +x flash-linux.sh
        ./flash-linux.sh
-     To install an SSH public key for user piano:
+       # Or inject an SSH public key for user piano:
        ./flash-linux.sh --ssh-key ~/.ssh/id_ed25519.pub
-   - Windows:
-       Double-click flash-linux.bat
-4. Follow the prompt and type YES to flash.
-5. The tablet reboots into the selected desktop.
+   - Windows: double-click flash-linux.bat (use mcopy manually if needed)
+3. Type YES when prompted; the tablet flashes and reboots into the desktop.
 
-The image ships no authorized_keys. When you use --ssh-key, the one-step script
-writes the key to /piano-ssh-key.pub inside sunuefi_esp.img after every checksum
-and manifest check passes. The script then flashes that image.
-piano-first-boot-ssh-key.service imports the key into piano's authorized_keys on
-first boot, then deletes the ESP copy. Without --ssh-key, password login is the
-only way in.
-The key changes the ESP image digest. For a later rerun, either unpack a fresh
-copy of the archive or compare readbacks against the digest that the one-step
-script printed.
-Windows users inject the key manually with mcopy before flashing. See the
-prompt in flash-linux.bat.
+SSH key injection writes /piano-ssh-key.pub inside sunuefi_esp.img after
+checksums pass, changing the ESP digest (use the newly printed digest if you
+recheck or re-extract a clean copy before rerunning).
 
-Before step 3, confirm current-slot is "a" or "b". This installer writes the
-combined BOOT to whichever slot Android runs from, and root-install must target
-the same slot: an archive's root-install is built for _a, so on a Slot B device
-run prepare-install.yml with android_slot=_b first. Do not switch slots to
-match an artifact; the script stops before writing anything when they differ.
+Manual Flashing (equivalent to the one-step script):
+1. Verify checksums (on macOS use "shasum -a 256 -c SHA256SUMS"):
+     sha256sum -c SHA256SUMS
+     (cd root-install && sha256sum -c SHA256SUMS)
+2. Build device-boot/boot_linux.img (requires root adb in Android):
+     ./make-device-boot.sh
+3. Check device identity & target root capacity (expanded_bytes in manifest):
+     fastboot devices
+     fastboot getvar product                    # must be "piano"
+     fastboot getvar unlocked                   # must be "yes"
+     fastboot getvar is-userspace               # must be "no" (stock ABL)
+     fastboot getvar current-slot               # must be "a" or "b" for this first-install path
+     fastboot getvar partition-size:sunuefi_root
+4. Flash with -S 128M (stock ABL hangs on raw writes over 128 MiB):
+     SLOT=$(fastboot getvar current-slot 2>&1 | awk '/^current-slot:/{print $2}')
+     fastboot -S 128M flash "boot_${SLOT}" device-boot/boot_linux.img
+     fastboot -S 128M flash sunuefi_esp sunuefi_esp.img
+     fastboot -S 128M flash sunuefi_root root-install/pianoroot.f2fs.sparse.img
+     fastboot reboot
 
-Manual Flashing (no installer script):
-The one-step scripts wrap the commands below. Run these commands instead if you
-prefer manual control, or if the script does not work on your platform.
+Do NOT add os_version or re-sign boot_linux.img (the Android boot-assistant
+compares the header byte-for-byte). Do NOT flash sunuefi_esp.img to boot_a or
+boot_b: systemd-boot loads the kernel from /linux/<release>/ inside ESP, so the
+ESP image is not a device boot image.
 
-Step 1 - Verify the downloaded files:
-   sha256sum -c SHA256SUMS
-   (cd root-install && sha256sum -c SHA256SUMS)
-   (macOS: use "shasum -a 256 -c SHA256SUMS")
-   Run these commands in the staging directory. Every line must say OK.
+5. Post-boot check & login:
+   Confirm the chosen desktop loads, "uname -r" matches the release kernel,
+   "findmnt /" shows f2fs, and "systemctl --failed" is empty.
+   Default credentials: user "piano", password "piano123456" (run "passwd"
+   immediately after login).
 
-Step 2 - Confirm the prepared root exists:
-   test -f root-install/pianoroot.f2fs.sparse.img
-   Raw or compressed root images cannot be flashed directly.
+Android-side Boot-Assistant Module:
+Install sunuefi-module.zip in KernelSU/SukiSU and reboot so Android matches
+PianoUEFI-product.img (carries UFS and DWC3 fixes missing from upstream).
 
-Step 2b - Build the device boot image (needs adb with root on the tablet):
-   ./make-device-boot.sh
-   It reads the active slot's boot partition through adb (--slot a|b overrides
-   the inferred slot). It refuses a read that is not exactly 96 MiB, or that
-   differs from the tablet's digest. It then repacks device-boot/boot_linux.img.
-   Nothing is written to the tablet.
-
-Step 3 - Confirm the device before writing anything:
-   fastboot devices
-   fastboot getvar product          -> must be "piano"
-   fastboot getvar unlocked         -> must be "yes"
-   fastboot getvar is-userspace     -> must be "no" (stock ABL, not fastbootd)
-   fastboot getvar current-slot     -> must be "a" or "b" for this first-install
-                                     path (the combined BOOT goes to boot_<slot>)
-   fastboot getvar partition-size:sunuefi_root
-                                    -> must be at least expanded_bytes in
-                                       root-install-manifest.json; the root
-                                       grows to fill the partition on first boot
-
-Step 4 - Flash, one command at a time (each must print OKAY):
-   SLOT=$(fastboot getvar current-slot 2>&1 | awk '/^current-slot:/{print $2}')
-   fastboot -S 128M flash "boot_${SLOT}" device-boot/boot_linux.img
-   fastboot -S 128M flash sunuefi_esp sunuefi_esp.img
-   fastboot -S 128M flash sunuefi_root root-install/pianoroot.f2fs.sparse.img
-   fastboot reboot
-
-   -S 128M splits every transfer into pieces of at most 128 MiB. The piano ABL
-   stops responding to a single 512 MiB raw ESP write, and the tablet then
-   needs a power cycle. Do not drop this flag.
-
-   Flash the active slot's boot partition with device-boot/boot_linux.img.
-   Generate that file once by running make-device-boot.sh (which calls
-   scripts/prepare-device-boot.py) against this tablet's stock boot image. The
-   file keeps the upstream unsigned AVB NONE metadata. The active slot's ABL
-   boots boot_linux.img directly, the same way it boots the stock Android image.
-   Do not add os_version, and do not re-sign the image: piano-boot-repack
-   compares the wrapper header byte-for-byte, and a patched os_version breaks
-   the Android boot-assistant module.
-   The ESP payload is not a device boot image. SunUEFI's systemd-boot
-   (EFI/BOOT/BOOTAA64.EFI) loads the kernel from /linux/<release>/; the ABL
-   does not. If you flash that payload to boot_a or boot_b, the tablet sticks
-   in Fastboot with no bootable slot.
-
-Step 5 - Verify after reboot:
-   Confirm: the GNOME desktop appears; "uname -r" shows the release kernel;
-   "findmnt /" shows an F2FS root; "systemctl --failed" returns empty.
-
-To return to Android, press the volume keys during the 3-second chooser, or run
-"piano-next-boot android --reboot" from Linux.
-
-Installing the Android-side module:
-Flash sunuefi-module.zip from KernelSU/SukiSU as a module, then reboot. It is
-built from the same product firmware as PianoUEFI-product.img, so the Android
-side and the ESP agree. Flashing the ESP or the root does not install it: an
-installed tablet that only takes a new release needs this ZIP, not a reinstall.
-The module carries the UFS and DWC3 fixes this release needs; a module from
-upstream lacks them.
-
-WARNING - never run these:
-   * Erasing dtbo_a (or dtbo_b): ABL then rejects the whole boot chain with
-     "Failed to load/authenticate boot image: Device Error" and the tablet
-     sticks in Fastboot.
-   * Erasing userdata: destroys all Android user data irreversibly.
-   * Erasing boot_a or boot_b, "fastboot -w", or any write to abl, xbl, tz,
-     modem.
-SunUEFI reads its board DTB from the active slot's vendor_boot plus the stock
-dtbo overlay, so the stock DTBO content must stay in place.
-
-Login Credentials:
-- Username: piano
-- Password: piano123456
-- Run "passwd" after the first login. The default password is public.
+NEVER RUN THESE COMMANDS:
+- Erasing dtbo_a or dtbo_b (ABL rejects the boot chain with Device Error)
+- Erasing userdata (destroys Android user data)
+- Erasing boot_a/boot_b, running "fastboot -w", or touching abl/xbl/tz/modem
 
 Dual-Boot Switching:
-- Linux to Android : Click "Return to Android" in the GNOME app grid.
-- Android to Linux : Use the SunUEFI boot assistant module in KernelSU/SukiSU.
-- Boot selection   : Press the volume keys during the 3-second chooser.
+- Linux to Android : "Return to Android" app icon or "piano-next-boot android --reboot"
+- Android to Linux : SunUEFI boot-assistant module in KernelSU/SukiSU
+- Boot menu        : Press a volume key during the 3-second boot chooser
 
-Credits and licenses:
-- The boot chain, kernel packaging and device-tree overlays are referenced
-  from or ported from Project SunUEFI (https://github.com/slwyts/Project-SunUEFI).
-  Each file keeps its original copyright and license notices.
-- This archive ships NOTICE and LICENSE. NOTICE lists every upstream source
-  item by item; LICENSE covers this repository's own code.
+Credits and Licenses:
+Boot chain, kernel packaging, and DT overlays come from or are ported from
+Project SunUEFI (https://github.com/slwyts/Project-SunUEFI). Each file keeps
+its own copyright/license notices; NOTICE lists every upstream item by item
+and LICENSE covers repository code.
