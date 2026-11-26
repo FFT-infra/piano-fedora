@@ -685,13 +685,15 @@ def check_bundle_asset_names():
 
 
 def check_esp_reproducible(tmp):
-    """四档的 esp.img 必须逐字节相同，否则 release 的上传前比对会拒绝发布。
+    """打包时刻不能漏进 esp.img：同一份载荷隔几秒再打一次，镜像要逐字节相同。
 
-    实机教训（2026-10-22）：v44.1 的第一次发布在 sunuefi_esp.img 上停下，
-    gnome 与 kde 的 ESP 不同。载荷本身一致——package_release.py 会把四个
-    文件的 mtime 归一，并在写入后逐个读回比对——差的是 FAT 目录项：
-    mkfs.vfat/mmd/mcopy 取当前时间，两个 job 跑在不同分钟就得到两份镜像。
-    mtools 认 SOURCE_DATE_EPOCH，所以 workflow 必须钉住它。
+    package_release.py 把载荷文件的 mtime 归一，并在写入后逐个读回比对，但
+    mkfs.vfat、mmd、mcopy 建 FAT 目录项时取的是当前时间。mtools 认
+    SOURCE_DATE_EPOCH，所以 workflow 必须钉住它，并且带过 sudo。
+
+    这里只管时间戳。目录项的先后跟宿主文件系统的 readdir 顺序走（上游用
+    mcopy -s 整目录拷贝），换一版 runner 镜像仍可能打出文件内容相同、布局
+    不同的 esp.img；release 不跨档比对 esp.img 的字节。
     """
     bundle = (ROOT / ".github/workflows/build-bundle.yml").read_text()
     step = bundle.split("Create the ESP with the Linux UKI", 1)

@@ -232,10 +232,12 @@ jobs:
         env:
           # ESP 容量只在 product.json 定义，这里不写第二份。
           ESP_SIZE_MIB: ${{ steps.product.outputs.esp_size_mib }}
-          # 四档必须交出逐字节相同的 ESP，release 的上传前比对靠这一条。
           # 载荷文件的时间戳由 package_release.py 归一，但 mkfs.vfat/mmd/mcopy
-          # 建的 FAT 目录项取的是当前时间，不钉住 epoch，每档的 esp.img 都会
-          # 差在这几个目录项上。mtools 认 SOURCE_DATE_EPOCH。
+          # 建的 FAT 目录项取的是当前时间，不钉住 epoch，打包时刻就会漏进
+          # esp.img。mtools 认 SOURCE_DATE_EPOCH。
+          # 钉住之后各档 esp.img 里的文件内容一致，目录项的先后仍跟 runner
+          # 文件系统的 readdir 顺序走（package_release.py 用 mcopy -s 整目录
+          # 拷贝），不同 runner 镜像上打出的 esp.img 不保证逐字节相同。
           SOURCE_DATE_EPOCH: "0"
         run: |
           set -euo pipefail
@@ -322,10 +324,9 @@ jobs:
             piano_sparse.encode('build/pianoroot.f2fs.img', 'bundle/pianoroot.f2fs.sparse.img')"
           rm -f build/pianoroot.f2fs.img
           cp build/in/image/diagnostic-abl-storage.tar.zst bundle/
-          # initramfs.tar.zst 由 build-image 用固定时间戳与 owner 打出，四档
-          # 逐字节相同，所以它是平台资产。release.yml 的 platform_files 里
-          # 一直有它，但以前没人把它拷进 bundle，门禁在 release 那一步才以
-          # "deploy-bundle lacks platform asset" 失败。
+          # initramfs.tar.zst 由 build-image 用固定时间戳与 owner 打出，各档
+          # 逐字节相同，所以它是平台资产。verify-bundle.py 把它列为必需文件，
+          # release 下载 bundle 后还会再验一次。
           cp build/in/image/initramfs.tar.zst bundle/
           cp build/in/image/root-image-manifest.json build/in/image/source-runs.json build/in/image/runtime-manifest.json bundle/
           cp build/in/image/mesa-manifest.json build/in/image/ffmpeg-manifest.json build/in/image/rootfs-manifest.json bundle/
