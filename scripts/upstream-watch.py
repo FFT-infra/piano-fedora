@@ -152,7 +152,7 @@ def render_pull_request(rows, changed, today=None):
         "只改 `sources.lock.json` 的 commit，ref 不动。合并前请确认：",
         "",
         "- 这个 PR 由人提交，CI 会正常跑；`make test` 里的补丁、清单与源码 pin 校验会拒绝任何不一致。",
-        "- 白名单上游的改动仍要按 `docs/upstreams.md` 重编受影响产物，只有离线检查不算验收。",
+        "- 白名单上游的改动仍要按 `docs/upstream.md` 重编受影响产物，只有离线检查不算验收。",
         "",
         "| 上游 | 旧 pin | 新 pin | 最近提交 |",
         "| --- | --- | --- | --- |",
