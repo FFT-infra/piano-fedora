@@ -104,7 +104,7 @@ def check_bundle(root, verifier=ROOT / "scripts/verify-bundle.py"):
     raw = b"verified fixture raw bytes".ljust(4096, b"\0")
     for name in ("sunuefi_esp.img", "PianoUEFI-product.img", "pianoroot.f2fs.img.zst"):
         (root / name).write_bytes(b"fixture")
-    # 四档共用的 initramfs 归档；它是平台资产，bundle 缺了就不完整。
+    # 各档共用的 initramfs 归档；它是平台资产，bundle 缺了就不完整。
     (root / "initramfs.tar.zst").write_bytes(b"fixture")
     write("kernel-manifest.json", {"kernel_release": "fixture"})
     kernel = digest(root / "kernel-manifest.json")

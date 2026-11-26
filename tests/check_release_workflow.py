@@ -302,7 +302,7 @@ def test_workflow_contract():
     ]
     missing = [item for item in required if item not in text]
     assert not missing, f"release.yml lost: {missing}"
-    # 打 tag 不能再自动建 Release：四档发布要显式 dispatch。
+    # 打 tag 不能再自动建 Release：各档发布要显式 dispatch。
     assert "push:" not in text, "release.yml still triggers on tag pushes"
     assert "tags: [" not in text, "release.yml still triggers on tag pushes"
     assert "GITHUB_REF_NAME" not in text

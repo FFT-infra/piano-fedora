@@ -529,7 +529,7 @@ def check_gdm_enable_is_the_display_manager_alias():
 
     真实 Fedora 的 `gdm.service` 的 `[Install]` 段只有这一条别名，`systemctl
     enable gdm.service` 落的是 `etc/systemd/system/display-manager.service`
-    指向它的链接。只查 `*.wants/` 会把装好的 GDM 判成未启用，四档镜像全部
+    指向它的链接。只查 `*.wants/` 会把装好的 GDM 判成未启用，各档镜像全部
     在 finalize 阶段被拒。
     """
     with tempfile.TemporaryDirectory() as temporary:

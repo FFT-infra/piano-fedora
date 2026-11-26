@@ -460,7 +460,7 @@ jobs:
           set -euo pipefail
           sudo tar --format=pax --numeric-owner --xattrs --xattrs-include='*' --acls --selinux \
             -I 'zstd -6 -T0' -cf device-root.tar.zst -C build/device-root rootfs manifest.json packages.tsv
-          # 同上：initramfs 与镜像无关，四档共用一个 tar。
+          # 同上：initramfs 与镜像无关，各档共用一个 tar。
           tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
             -I 'zstd -6 -T0' -cf initramfs.tar.zst -C build/initramfs .
           cp build/kernel/manifest.json kernel-manifest.json

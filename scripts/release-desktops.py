@@ -57,7 +57,7 @@ def bundle_artifacts(desktop):
 
 
 def prepare_artifacts(desktop):
-    """root-install 按档命名；boot-tools 与 host-boot-tool 四档同源。"""
+    """root-install 按档命名；boot-tools 与 host-boot-tool 各档同源。"""
     return [f"root-install-{desktop}", "boot-tools", "host-boot-tool"]
 
 
