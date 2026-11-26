@@ -81,6 +81,7 @@ CHAINS = {
             "patches",
             "product.json",
             "scripts/build-rpms.sh",
+            "scripts/compose-board-dtb.py",
             "scripts/package_sets.py",
             "scripts/package-sets.json",
             "scripts/build-initramfs.py",

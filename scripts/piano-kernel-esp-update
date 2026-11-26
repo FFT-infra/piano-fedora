@@ -7,26 +7,30 @@
 `/loader/entries/linux-<release>.conf`。
 
 UKI 布局分两种，以 ESP 上有没有 systemd-boot 区分。有 systemd-boot 时它枚举
-`/EFI/Linux/` 下的版本化文件（`linux-<release>.efi`），旧文件留给菜单回退。
-没有 systemd-boot 的是早期单 UKI 固件，它只打开固定的
-`/EFI/Linux/sunuefi.efi`，这个文件名就是契约，只能原文件替换。
+`/EFI/Linux/` 下的版本化文件（`linux-<release>.efi`）。没有 systemd-boot 的
+是早期单 UKI 固件，它只打开固定的 `/EFI/Linux/sunuefi.efi`，这个文件名就是
+契约，只能原文件替换。
 
-内核升级不需要重编固件：在设备上取出现有条目里的 cmdline 与板级 DTB，
-配上新内核与重建的 initramfs，写成新 release 的条目，旧 release 原样留着，
-systemd-boot 菜单因此天然给出回退项。
+内核升级不需要重编固件。cmdline 取自现有启动项，内核与板级 DTB 来自刚装上
+的 kernel-piano，initramfs 在设备上重建。DTB 与内核出自同一个 SunUEFI pin，
+必须一起换：旧 DTB 配新内核会缺节点。
 
-顺序是固定的，任何一步失败都不落盘：
+ESP 上留两代：刚写的 release 和更新前在用的那一个，正在运行的内核也留。
+同一个 release 重写时就地替换文件，不另占一代。
 
-1. 用封存 manifest 校验已安装的内核（`inspect_installed_kernel`）；
-2. 从现有启动项读 cmdline 与板级 DTB。DTB 是构建时叠加过板级 dtbo 的那一份，
-   不是 `/boot/dtb/qcom/` 里的；
-3. 在临时目录重建 initramfs；
-4. 先把载荷写进同级临时目录并读回比对，再改名就位，最后才落启动项；
-5. 写审计记录。
+前四步任何一步失败都不碰 ESP：
 
-失败模式：写失败时旧条目与旧载荷原样留着，设备继续用上一个内核启动。
-已经装好但起不来的内核没有自动回滚，回滚靠旧 release 的条目与
-installonly 保留下来的旧模块树。
+1. 从现有启动项认出布局，读 cmdline；
+2. 用封存 manifest 校验已安装的内核（`inspect_installed_kernel`）；
+3. 校验随包的板级 DTB：摘要对得上 `board-dtb.json`，FDT 头完整；
+4. 在临时目录重建 initramfs；
+5. 载荷先写临时名并读回比对，再改名就位，最后才落启动项；
+6. 写审计记录。
+
+写到一半失败时，启动项引用的文件始终齐全：新 release 的条目最后才落，
+同 release 的文件逐个原子替换。已经装好但起不来的内核没有自动回滚。旧
+release 的条目还在，但它的模块树已被新包替换，回滚要先
+`dnf downgrade kernel-piano`。
 
 由 kernel-piano 的 `%posttrans` 调用；镜像构建（`dnf --installroot`）里没有
 ESP 载荷，那种环境直接跳过。
@@ -67,6 +71,10 @@ UKI_STUB = Path(os.environ.get("PIANO_UKI_STUB",
                                "/usr/lib/systemd/boot/efi/linuxaa64.efi.stub"))
 AUDIT_DIR = Path(os.environ.get("PIANO_KERNEL_ESP_STATE", "/var/lib/piano/kernel-esp"))
 BUILD_INITRAMFS = HERE / "build-initramfs.py"
+# kernel-piano 随包带的板级 DTB 与它的摘要，由 scripts/compose-board-dtb.py 合成。
+PACKAGED_DTB = "usr/lib/piano/board.dtb"
+PACKAGED_DTB_MANIFEST = "usr/lib/piano/board-dtb.json"
+FDT_MAGIC = b"\xd0\x0d\xfe\xed"
 # ukify 写进 PE 段的语义内容。除这六段之外的东西（签名表、PE 头时间戳）不参与
 # “内容有没有变”的判断。
 UKI_SECTIONS = (".linux", ".initrd", ".dtb", ".cmdline", ".osrel", ".uname")
@@ -114,6 +122,37 @@ def replace_atomically(source, target, backup):
         fsync_path(backup)
     os.replace(source, target)
     fsync_directory(target.parent)
+
+
+def packaged_dtb(root):
+    """随内核包发布的板级 DTB。摘要或 FDT 头不对就不让它进 ESP。
+
+    设备固件只认 ESP 上这一份 DTB，写进一份残缺的等于写进一个起不来的启动项。
+    """
+    path = Path(root) / PACKAGED_DTB
+    try:
+        manifest = json.loads((Path(root) / PACKAGED_DTB_MANIFEST).read_text(encoding="utf-8"))
+        data = path.read_bytes()
+    except (OSError, ValueError) as exc:
+        raise EspUpdateError(f"kernel package carries no usable board DTB: {exc}")
+    if hashlib.sha256(data).hexdigest() != manifest.get("sha256"):
+        raise EspUpdateError(f"{path} differs from its sealed manifest")
+    if data[:4] != FDT_MAGIC or int.from_bytes(data[4:8], "big") != len(data):
+        raise EspUpdateError(f"{path} is not a complete flattened device tree")
+    return path
+
+
+def install_payload_file(source, target):
+    """写同目录的临时名并读回比对，再原子换到 target 上。"""
+    staged = target.with_name("." + target.name + ".new")
+    try:
+        shutil.copyfile(source, staged)
+        fsync_path(staged)
+        if sha256(staged) != sha256(source):
+            raise EspUpdateError("staged ESP payload differs from its source: " + target.name)
+        os.replace(staged, target)
+    finally:
+        staged.unlink(missing_ok=True)
 
 
 def read_entry(path):
@@ -167,9 +206,9 @@ def current_boot(esp):
 
 
 def retain_history(esp, layout, release, previous, dry_run, record, running=None):
-    """只留当前版本与一套回退，清掉更早的启动项与载荷。
+    """只留当前版本与上一代，清掉更早的启动项与载荷。
 
-    回退项取更新前正在用的那个 release（BLS 的 version 行，或版本化 UKI 的
+    上一代取更新前在用的那个 release（BLS 的 version 行，或版本化 UKI 的
     文件名），不按 mtime 猜。只处理能确认属于 piano 的条目：BLS 的 linux
     路径必须正好是 /linux/<version>/linux，UKI 文件名必须是 linux-*.efi。
     """
@@ -179,9 +218,12 @@ def retain_history(esp, layout, release, previous, dry_run, record, running=None
     if previous:
         keep.add(previous)
     # 正在运行的内核也必须留：新内核可能起不来，此时启动项里最新的那个
-    # 不是回退目标，os.uname().release 才是。
+    # 不是上一代，os.uname().release 才是。
     if running:
         keep.add(running)
+    # 同一个 release 重写没有新增一代。此时 previous 就是 release，照上面的集合
+    # 清会把 ESP 上仅有的上一代删掉。
+    added = previous != release
     if layout == "bls":
         for entry in sorted((esp / ENTRY_DIR).glob(ENTRY_PREFIX + "*.conf")):
             fields = read_entry(entry)
@@ -189,7 +231,7 @@ def retain_history(esp, layout, release, previous, dry_run, record, running=None
             if not version or fields.get("linux") != f"/{BLS_PAYLOAD}/{version}/linux":
                 continue
             payload = esp / BLS_PAYLOAD / version
-            if version in keep:
+            if version in keep or not added:
                 history["kept"].append(version)
                 continue
             if not payload.is_dir():
@@ -206,7 +248,7 @@ def retain_history(esp, layout, release, previous, dry_run, record, running=None
     elif layout == "uki":
         for uki in sorted((esp / UKI_PAYLOAD).glob(UKI_PREFIX + "*.efi")):
             version = uki.name[len(UKI_PREFIX):-len(".efi")]
-            if version in keep:
+            if version in keep or not added:
                 history["kept"].append(version)
                 continue
             if dry_run:
@@ -309,13 +351,11 @@ def update_bls(esp, fields, image, initramfs, dtb, release, dry_run, record, run
     record["layout"] = "bls"
     record["entry"] = str(entry_path)
     record["payload"] = {"path": str(target_dir), "files": {}}
-    changed = True
-    if target_dir.is_dir() and entry_path.is_file():
-        if entry_path.read_text(encoding="utf-8") == text and all(
-                (target_dir / name).is_file()
-                and sha256(target_dir / name) == sha256(source)
-                for name, source in payload.items()):
-            changed = False
+    stale = [name for name, source in payload.items()
+             if not (target_dir / name).is_file()
+             or sha256(target_dir / name) != sha256(source)]
+    changed = bool(stale) or not entry_path.is_file() \
+        or entry_path.read_text(encoding="utf-8") != text
     record["changed"] = {"payload": changed}
     if not changed:
         for name, source in payload.items():
@@ -323,7 +363,7 @@ def update_bls(esp, fields, image, initramfs, dtb, release, dry_run, record, run
                                                 "bytes": source.stat().st_size}
         retain_history(esp, "bls", release, fields.get("version"), dry_run, record, running)
         return record
-    needed = sum(source.stat().st_size for source in payload.values())
+    needed = sum(payload[name].stat().st_size for name in stale)
     if free_bytes(esp) < needed:
         raise EspUpdateError(
             f"ESP has {free_bytes(esp)} bytes free, the update needs {needed}")
@@ -331,26 +371,21 @@ def update_bls(esp, fields, image, initramfs, dtb, release, dry_run, record, run
         record["dry_run"] = True
         retain_history(esp, "bls", release, fields.get("version"), dry_run, record, running)
         return record
-    staged = target_dir.with_name("." + release + ".new")
-    if staged.exists():
-        shutil.rmtree(staged)
-    staged.mkdir(parents=True)
-    for name, source in payload.items():
-        staged_file = staged / name
-        shutil.copyfile(source, staged_file)
-        fsync_path(staged_file)
-        if sha256(staged_file) != sha256(source):
-            raise EspUpdateError("staged ESP payload differs from its source: " + name)
-    # 同 release 重装时先让开旧目录，新目录就位后再删。
-    previous = target_dir.with_name("." + release + ".old")
-    if target_dir.exists():
-        if previous.exists():
-            shutil.rmtree(previous)
-        target_dir.rename(previous)
-    staged.rename(target_dir)
-    fsync_directory(target_dir.parent)
-    if previous.exists():
-        shutil.rmtree(previous)
+    if target_dir.is_dir():
+        # 同一个 release 重写时，条目此刻正指着这个目录。逐个文件原子替换，
+        # 任一时刻条目引用的三个文件都在；整目录换名会留下条目悬空的窗口。
+        for name in stale:
+            install_payload_file(payload[name], target_dir / name)
+        fsync_directory(target_dir)
+    else:
+        staged = target_dir.with_name("." + release + ".new")
+        if staged.exists():
+            shutil.rmtree(staged)
+        staged.mkdir(parents=True)
+        for name, source in payload.items():
+            install_payload_file(source, staged / name)
+        staged.rename(target_dir)
+        fsync_directory(target_dir.parent)
     # 载荷就位之后才写条目，systemd-boot 不会看到指向半份文件的条目。
     entry_staged = entry_path.with_name("." + entry_path.name + ".new")
     entry_staged.write_text(text, encoding="utf-8")
@@ -367,8 +402,8 @@ def update_bls(esp, fields, image, initramfs, dtb, release, dry_run, record, run
 def update_uki(esp, current, image, initramfs, dtb, release, dry_run, record, running=None):
     """UKI 布局：重建单个 PE 文件。
 
-    有 systemd-boot 时写版本化文件名，旧 UKI 留着给菜单回退。没有时写固件
-    固定读取的 `sunuefi.efi`，原地替换，旧文件留在 `.bak`。
+    有 systemd-boot 时写版本化文件名。没有时写固件固定读取的 `sunuefi.efi`，
+    原地替换，旧文件留在 `.bak`。
     """
     existing = uki_sections(current)
     missing = [name for name in (".cmdline", ".osrel") if name not in existing]
@@ -420,10 +455,12 @@ def update(root, esp, release_expected=None, dry_run=False, manifest_name=None):
         raise EspUpdateError(
             f"installed kernel release {release} differs from the requested {release_expected}")
 
+    dtb = packaged_dtb(root)
     record = {
         "release": release,
         "kernel_manifest_sha256": manifest_sha,
         "image": {"source": str(image), "sha256": sha256(image), "bytes": image.stat().st_size},
+        "board_dtb": {"source": str(dtb), "sha256": sha256(dtb), "bytes": dtb.stat().st_size},
         "esp": str(esp),
         "current": str(current),
     }
@@ -435,11 +472,8 @@ def update(root, esp, release_expected=None, dry_run=False, manifest_name=None):
             raise EspUpdateError("rebuilt initramfs names a different kernel manifest")
         initramfs = initramfs_dir / "initramfs.cpio.gz"
         if layout == "bls":
-            dtb = esp_relative(esp, fields["devicetree"])
             update_bls(esp, fields, image, initramfs, dtb, release, dry_run, record, running)
         else:
-            dtb = scratch / "board.dtb"
-            dtb.write_bytes(uki_sections(current)[".dtb"])
             update_uki(esp, current, image, initramfs, dtb, release, dry_run, record, running)
 
     record["initramfs"] = {

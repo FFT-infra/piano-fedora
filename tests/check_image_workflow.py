@@ -743,6 +743,33 @@ def check_esp_reproducible(tmp):
         "directory timestamps are leaking the build time again")
 
 
+def check_bundle_dtb_matches_kernel_package():
+    """ESP 镜像与 kernel-piano 各带一份板级 DTB，build-bundle 必须逐字节比对。
+
+    装机用前一份，内核升级用后一份。两份由两个 job 分别合成，没有这道门，
+    overlay 列表或 dtc 版本一旦分叉，设备升级一次内核设备树就变了。
+    """
+    workflow = ".github/workflows/build-bundle.yml"
+    body = step_body(workflow, "Require the ESP and kernel-piano to carry the same board DTB")
+    assert '"::/linux/$release/board.dtb"' in body, "the gate does not read the DTB the ESP boots"
+    assert "cmp build/esp-board.dtb build/device-root/rootfs/usr/lib/piano/board.dtb" in body, (
+        "the gate does not compare the ESP DTB with the one kernel-piano ships")
+    text = (ROOT / workflow).read_text()
+    assert text.index("Create the ESP with the Linux UKI") \
+        < text.index("Require the ESP and kernel-piano to carry the same board DTB") \
+        < text.index("Assemble and verify the delivery set"), (
+        "the DTB gate must run after the ESP exists and before the bundle is assembled")
+    # RPM 矩阵那一侧：合成用锁定的 dtc，build-rpms.sh 拿到的是合成目录。
+    rpms = ".github/workflows/build-piano-rpms.yml"
+    compose = step_body(rpms, "Compose the board DTB that ships with the kernel")
+    assert "make -C build/sources/dtc" in compose and "compose-board-dtb.py" in compose, (
+        "the RPM matrix does not compose the board DTB with the pinned dtc")
+    assert 'LD_LIBRARY_PATH="$PWD/build/sources/dtc/libfdt"' in compose, (
+        "fdtoverlay would load the runner's libfdt instead of the pinned one")
+    assert "export BOARD_DTB_DIR=/workspace/build/board-dtb" in (ROOT / rpms).read_text(), (
+        "build-rpms.sh is not pointed at the composed board DTB")
+
+
 def check_uefi_sealer(root):
     sealer = module("uefi_sealer", ROOT / "scripts/seal-uefi-source.py")
     image = root / "uefi.img"
@@ -844,6 +871,7 @@ def main():
         check_kernel_unpack(root / "unpack")
         check_clean_rootfs_release_entry()
         check_bundle_asset_names()
+        check_bundle_dtb_matches_kernel_package()
         check_esp_reproducible(root / "esp")
     print("OK: audited rootfs entry, A830v1 device tables and sealed bundle identity checks")
 

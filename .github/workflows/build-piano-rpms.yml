@@ -109,7 +109,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq podman zstd rpm createrepo-c \
             python3 git tar xz-utils patch clang lld llvm make bison flex bc \
-            libelf-dev libssl-dev cpio kmod
+            libelf-dev libssl-dev cpio kmod gcc
 
       - name: Unpack the matching kernel payload
         id: payload
@@ -137,7 +137,7 @@ jobs:
           test -n "$kernel_release"
           echo "kernel_release=$kernel_release" >> "$GITHUB_OUTPUT"
 
-      - name: Fetch the pinned SunUEFI tree and its board DTB
+      - name: Fetch the pinned SunUEFI tree, its board DTB and the pinned dtc
         id: source
         run: |
           set -euo pipefail
@@ -147,8 +147,24 @@ jobs:
           python3 scripts/checkout-sources.py --output build/sources --mode loopback --kernel
           test -s build/sources/sunuefi/vendor/piano-linux/board.dtb
           test -d build/sources/sunuefi/upstream/v4l2loopback
+          test -d build/sources/sunuefi/upstream/linux-piano/include/dt-bindings
+          test -s build/sources/dtc/Makefile
           sunuefi_commit=$(git -C build/sources/sunuefi rev-parse HEAD)
           echo "sunuefi_commit=$sunuefi_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Compose the board DTB that ships with the kernel
+        run: |
+          set -euo pipefail
+          # kernel-piano 随包带这份 DTB，设备升级内核时把它写进 ESP。它必须与
+          # build-bundle 写进 ESP 镜像的那一份逐字节相同，所以走同一条上游链、
+          # 用同一个锁定的 libfdt：Ubuntu 24.04 的 1.6.1 会覆盖已存在的 panel
+          # phandle。内核源码此时还是 pin 的原样，dt-bindings 与 bundle 用的一致。
+          make -C build/sources/dtc -j2 NO_PYTHON=1 NO_YAML=1 dtc fdtoverlay
+          PATH="$PWD/build/sources/dtc:$PATH" \
+            LD_LIBRARY_PATH="$PWD/build/sources/dtc/libfdt" \
+            python3 scripts/compose-board-dtb.py \
+            --sunuefi build/sources/sunuefi --output build/board-dtb
+          python3 scripts/compose-board-dtb.py --verify build/board-dtb
 
       - name: Seed the sealed kernel source from a reachable mirror
         run: |
@@ -200,7 +216,7 @@ jobs:
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory /workspace/build/sources/sunuefi
               export KERNEL_PAYLOAD=/workspace/build/kernel
-              export BOARD_DTB=/workspace/build/sources/sunuefi/vendor/piano-linux/board.dtb
+              export BOARD_DTB_DIR=/workspace/build/board-dtb
               export LOOPBACK_MODULE=/workspace/build/kernel-runtime/v4l2loopback/v4l2loopback.ko
               export TMPDIR=/workspace/build/rpm-tmp
               mkdir -p "$TMPDIR"
