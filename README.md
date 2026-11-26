@@ -14,6 +14,8 @@
 
 [SunUEFI](https://github.com/slwyts/Project-SunUEFI)（EDK2）提供启动链与内核打包。本仓库增加 Fedora 后端、F2FS 全链路、首次分区与 UEFI 启动补丁。分工表见[系统架构](docs/architecture.md)。
 
+本仓库的启动链、内核打包方式、设备树 overlay 与部分 UEFI 补丁引用或移植自 Project SunUEFI；各文件保留原有的版权与许可声明，逐项来源见 [NOTICE](NOTICE)。
+
 ## 硬件支持
 
 状态图例：

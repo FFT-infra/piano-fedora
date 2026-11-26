@@ -53,19 +53,19 @@ python3 boot-tools/installer/scripts/update-f2fs.py apply \
 
 ### 2. 只升级内核
 
-装好之后，内核跟着 `dnf upgrade` 走，不需要重跑刷写，也不需要 bundle。`kernel-piano` 按普通包升级，新包替换旧包；回滚要先 `dnf downgrade kernel-piano`，再恢复 UKI 的 `.bak`。
+装好之后，内核跟着 `dnf upgrade` 走，不需要重跑刷写，也不需要 bundle。`kernel-piano` 按普通包升级，新包替换旧包，旧内核的模块树随之删除。
 
 ```sh
 sudo dnf upgrade --refresh
 ```
 
-升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再按 ESP 上的布局写启动项。BLS 布局写 `/linux/<release>/` 与 `/loader/entries/linux-<release>.conf`，旧 release 留着给 systemd-boot 菜单回退。UKI 布局用 `systemd-ukify` 把新内核、新 initramfs、ESP 里现有的 `.dtb` 与 `.cmdline`、新的 `.osrel` 与 `.uname` 重打成 PE 文件：有 systemd-boot 时写版本化文件名，没有时原地替换 `/boot/efi/EFI/Linux/sunuefi.efi`，旧文件留成 `.bak`。重启后固件加载新内核。
+升级事务收尾时 `kernel-piano` 的 `%posttrans` 会 `depmod`、用新内核重建 initramfs，再按 ESP 上的布局写启动项。BLS 布局写 `/linux/<release>/` 与 `/loader/entries/linux-<release>.conf`，内核与板级 DTB 都来自刚装上的包。UKI 布局用 `systemd-ukify` 把新内核、新 initramfs、包里的 DTB、ESP 里现有的 `.cmdline`、新的 `.osrel` 与 `.uname` 重打成 PE 文件：有 systemd-boot 时写版本化文件名，没有时原地替换 `/boot/efi/EFI/Linux/sunuefi.efi`，旧文件留成 `.bak`。重启后固件加载新内核。
 
 系统支持从早期 `boot.img` 引导链路及当前 UKI 引导链路平滑升级至最新内核与适配包。
 
-任何一步失败时，旧启动项保持原样，设备继续用上一个内核启动。审计记录写在 `/var/lib/piano/kernel-esp/<release>.json`。
+写 ESP 之前的任何一步失败，ESP 不动。审计记录写在 `/var/lib/piano/kernel-esp/<release>.json`。
 
-已经装好但起不来的内核没有自动回滚。BLS 布局在 systemd-boot 菜单里选旧 release；单 UKI 布局回滚靠 `sunuefi.efi.bak`：
+已经装好但起不来的内核没有自动回滚。BLS 布局的旧条目还在，但旧模块树已被新包替换，要先 `dnf downgrade kernel-piano` 再选旧条目；单 UKI 布局回滚靠 `sunuefi.efi.bak`：
 
 ```sh
 sudo cp /boot/efi/EFI/Linux/sunuefi.efi.bak /boot/efi/EFI/Linux/sunuefi.efi

@@ -14,6 +14,8 @@ Fedora 45 runs natively on the Xiaomi Pad 8 Pro (codename `piano`, Snapdragon 8 
 
 [SunUEFI](https://github.com/slwyts/Project-SunUEFI) (EDK2) provides the boot chain and kernel packaging. This repository adds a Fedora backend, the F2FS path end to end, first-time partitioning and UEFI boot patches. [Architecture](docs/architecture.md) has the split by layer.
 
+The boot chain, kernel packaging, device-tree overlays and some UEFI patches are referenced from or ported from Project SunUEFI. Each file keeps its original copyright and license notices; [NOTICE](NOTICE) lists the sources item by item.
+
 ## Hardware status
 
 Legend:

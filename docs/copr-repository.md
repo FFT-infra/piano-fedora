@@ -14,13 +14,15 @@
 
 **内核怎么升级。** [SunUEFI](https://github.com/slwyts/Project-SunUEFI) 固件从 ESP 加载 Linux。新装镜像走标准 UEFI 启动顺序，入口是 `EFI/BOOT/BOOTAA64.EFI`（systemd-boot），内核与启动项分放在 `/linux/<release>/` 与 `/loader/entries/`。早期单 UKI 固件没有 systemd-boot，只打开固定的 `/EFI/Linux/sunuefi.efi`，`PianoProductCore.c` 直接按路径加载，没有编译期哈希或 Android boot v2 解析。
 
-用户态 `dnf upgrade` 只改 `/usr/lib/modules`，与 ESP 本来脱钩，`kernel-piano` 的 `%posttrans` 把这条链接上。事务收尾时先跑 `depmod -a <release>`，再用刚装上的内核重建 initramfs，最后按 ESP 现有布局写启动项。BLS 布局写 `/linux/<release>/` 与新的 loader 条目，旧 release 留给 systemd-boot 菜单回退。UKI 布局用 `systemd-ukify` 重打 PE 文件，有 systemd-boot 时写版本化文件名，没有时原地替换 `sunuefi.efi`。
+用户态 `dnf upgrade` 只改 `/usr/lib/modules`，与 ESP 本来脱钩，`kernel-piano` 的 `%posttrans` 把这条链接上。事务收尾时先跑 `depmod -a <release>`，再用刚装上的内核重建 initramfs，最后按 ESP 现有布局写启动项。BLS 布局写 `/linux/<release>/` 与新的 loader 条目。UKI 布局用 `systemd-ukify` 重打 PE 文件，有 systemd-boot 时写版本化文件名，没有时原地替换 `sunuefi.efi`。
 
 不需要重编固件。换内核不改固件。
 
-板级 DTB 与 cmdline 沿用 ESP 上现有的那一份，不是内核包里的 `/boot/dtb/qcom/sm8750-xiaomi-piano.dtb`。板级 overlay 已经在打包 bundle 时合成进 DTB。在线升级只复用现有 DTB，换 overlay 要换整个 bundle。
+板级 DTB 随 `kernel-piano` 发布，装在 `/usr/lib/piano/board.dtb`。它与内核出自同一个 SunUEFI pin，板级 overlay 已经合成在里面，和 bundle 的 ESP 镜像里那一份逐字节相同。`%posttrans` 先核对它的摘要与 FDT 头，再和内核一起写进 ESP。cmdline 沿用 ESP 上现有的那一份。
 
-**失败边界。** 任何一步失败，旧启动项保持原样，设备继续用上一个内核启动。UKI 布局的写入顺序是：先写 `.new` 并 fsync，重新读出六个语义节区与预期比对；通过后把旧文件复制成 `.bak`，最后用 `os.replace` 换上去。PE 时间戳每次不同，判断文件有没有变只看 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname` 六段内容。
+**启动项保留。** 写新条目时清掉更早的 piano 条目与载荷，留下当前 release、更新前在用的那一个和正在运行的内核。非 piano 的启动项（`linux` 路径不在 `/linux/<version>/` 下的）不动。清理失败只记进审计记录的 `history.errors`，不影响本次更新。单 UKI 固件的固定 `sunuefi.efi` 不参与清理。同一个 release 重写时就地替换文件，不新增一代。
+
+**失败边界。** 写 ESP 之前的任何一步失败，ESP 不动。BLS 布局先写载荷再落条目，同一个 release 重写时逐个文件原子替换，条目引用的文件始终齐全。UKI 布局的写入顺序是：先写 `.new` 并 fsync，重新读出六个语义节区与预期比对；通过后把旧文件复制成 `.bak`，最后用 `os.replace` 换上去。PE 时间戳每次不同，判断文件有没有变只看 `.linux`、`.initrd`、`.dtb`、`.cmdline`、`.osrel`、`.uname` 六段内容。
 
 **运行与验证记录。** UKI 升级由 `%posttrans` 重建 initramfs，写出 `sunuefi.efi.bak` 并原子替换 `sunuefi.efi`；重启后进入桌面，`uname -r` 与 UKI 内部 `.uname` 严格一致。升级审计信息同步写入 `/var/lib/piano/kernel-esp/<release>.json`。
 
@@ -30,7 +32,7 @@ manifest 的名字带 NVRA，`%posttrans` 读自己那一版并把文件名传�
 
 `kernel-piano` 不提供 `kernel` / `kernel-core` 这类名字。DNF 的 installonlypkgs 按名字或 provides 匹配，提供它们会把新的 RPM Release 当成“再装一份内核”。模块树目录只由编译期 release 决定（`7.3.3-piano-sunuefi-cachy-optimize`），两个 Release 指向同一批文件，rpm 在安装阶段报 `file ... conflicts with file from package` 并中止整个事务。去掉这些 provides 后，`dnf upgrade` 按普通包替换本包。
 
-已经装好但起不来的内核没有自动回滚。上游没有 boot counter（`PianoNvJournal` 是现成的双槽 NV journal，只是没有人往里写尝试计数），回滚只能手工做。BLS 布局在 systemd-boot 菜单里选旧 release。单 UKI 布局恢复 `.bak`：
+已经装好但起不来的内核没有自动回滚。上游没有 boot counter（`PianoNvJournal` 是现成的双槽 NV journal，只是没有人往里写尝试计数），回滚只能手工做。BLS 布局的旧条目还在，但旧内核的模块树已被新包替换，要先 `dnf downgrade kernel-piano` 把它装回来，再在 systemd-boot 菜单里选旧 release。新内核起不来、只能从旧条目启动时，系统没有模块树，这条路径没有在设备上验过。单 UKI 布局恢复 `.bak`：
 
 ```bash
 # 恢复上一个 UKI，重启即回到旧内核
@@ -176,8 +178,7 @@ sudo dnf install --allowerasing mesa-piano-vulkan-drivers mesa-piano-libGL \
 ## 边界
 
 - COPR 覆盖全部 20 个包（包括内核）：
-  - ESP 上的启动项与载荷由 `%posttrans` 维护，板级 DTB 沿用 ESP 上现有的那一份；
-  - 板级 overlay 不在这条升级路径上更新。
+  - ESP 上的启动项与载荷由 `%posttrans` 维护，板级 DTB 随 `kernel-piano` 一起更新。
 - 设备的 `.repo` 只指向项目自己的 COPR。Hyprland 与 Denial 两档在构建期另加
   第三方源：Hyprland 用 `lionheartp/Hyprland` COPR，Denial 用官方
   `packages.denialwm.org` 的 Fedora 44 仓库（Fedora 45 官方仓库没有这两个桌面）。

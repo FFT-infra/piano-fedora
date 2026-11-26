@@ -74,7 +74,7 @@ F2FS 排在分区之前：先验证 F2FS 镜像的挂载式往返机制，再根
 
 切系统仍靠请求页。`PianoBootPolicy.c` 的 `REQUEST_BOOT_STABLE` 与返回 Android 的 token 没有变，和内核载荷格式无关。
 
-内核升级由 `kernel-piano` 的 `%posttrans` 维护，目标按 ESP 上的布局选。BLS 布局写 `/linux/<release>/` 与新的 loader 条目，旧 release 留着给 systemd-boot 菜单回退。UKI 布局重建 PE 文件：有 systemd-boot 时写版本化文件名，没有时原地替换固件读取的 `sunuefi.efi`，旧文件留成 `.bak`。细节见 [COPR 软件源](copr-repository.md)。
+内核升级由 `kernel-piano` 的 `%posttrans` 维护，目标按 ESP 上的布局选。BLS 布局写 `/linux/<release>/` 与新的 loader 条目，板级 DTB 用内核包里的那一份。UKI 布局重建 PE 文件：有 systemd-boot 时写版本化文件名，没有时原地替换固件读取的 `sunuefi.efi`，旧文件留成 `.bak`。细节见 [COPR 软件源](copr-repository.md)。
 
 `c720568` 及更早的固件读 `\EFI\Piano\stable\boot.img`，要求 Android boot v2 容器。HEAD 删掉了这条路径。
 

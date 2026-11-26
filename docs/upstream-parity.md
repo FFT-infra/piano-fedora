@@ -1,6 +1,8 @@
 # 与上游的功能差距
 
 > **说明**：本文档对照上游 [Project SunUEFI](https://github.com/slwyts/Project-SunUEFI)（首次核对 2026-11-11，当前构建 pin 见 `sources.lock.json`）及相关生态组件，汇总当前支持矩阵、架构设计分歧与基线复核指引。
+>
+> 表中标「完成」的桌面补丁（KDE HDR 背光恢复、夜灯 mutter gamma、自动亮度、键盘背光热插拔、GDM 重认证、GCC 指纹等待、GTK3 XI2、mutter 触摸取消）位于 `piano-fedora-extras` 可选包；默认镜像使用 Fedora 原版组件，装 extras 后对应能力才生效。
 
 ---
 
@@ -13,8 +15,8 @@
 | 相机 JPEG 直出 | 完成：`piano-camera-ctl capture --output FILE` 直出 JPEG | `photo/jpeg.c` | 工具链完整 |
 | 相机高像素 | 完成：后摄 8160x6120 走 RDI RAW10，Rust worker 合成 NV12 | `quad/` 与 v4l2loopback 生产者协商 | 格式协商完整，支持 8160x6120 输出 |
 | 电源策略 | 完成：`tuned-ppd` 三档 profile 桥接到 uperf-linux 模式 | 上游 profile 直接写 cpufreq/devfreq | 避免频点冲突，受 uperf 保护 |
-| 充电、温控与 FFC | 补丁已收：上游 `0093`、`0094`、`0096`–`0104` 共 11 条进封存序列 | 关机充电、皮肤温控、带认证 FFC 与停充退出 | 满电停充、温控降流与关机充电尚无实机记录 |
-| 内核手指解码 | 跟进上游：`0197` 把逐帧矩阵解码移入内核 IRQ 线程（32 帧参考、中值滤波、基线漂移处理），用户态桥接在 `kernel_input: enabled` 时退出 | 同一份内核解码 | 内核解码不读原厂逐屏电极校准，上机验收未做 |
+| 充电、温控与 FFC | 补丁已收：关机充电 `0398`、皮肤温控 `0411`、带认证 FFC `0414`、停充 `0397` 等随封存序列进来 | 关机充电、皮肤温控、带认证 FFC 与停充退出 | 满电停充、温控降流与关机充电尚无实机记录 |
+| 内核手指解码 | 跟进上游：`0399` 把逐帧矩阵解码移入内核 IRQ 线程（32 帧参考、中值滤波、基线漂移处理），用户态桥接在 `kernel_input: enabled` 时退出 | 同一份内核解码 | 内核解码不读原厂逐屏电极校准，上机验收未做 |
 | 中文环境 | 完成：装 `glibc-langpack-zh`，`/etc/locale.conf` 设 `zh_CN.UTF-8`，默认输入法 `libpinyin` | `defaults.ini` 写 `LANG=zh_CN.UTF-8`，输入源含 `ibus`/`libpinyin` | 桌面预置中文与拼音输入 |
 | mutter 触摸崩溃 | 默认采用发行版 `mutter-51.1-1.fc45`，补丁入 extras 扩展仓 | 补丁在 51.1 源码上可干净套用 | 默认镜像不合入，作为 opt-in 选项 |
 | KDE 桌面默认值 | 完成：KWin 默认值与环境变量落盘，支持缩放与自然滚动 | 类似配置，另设 `QT_SCALE_FACTOR=2` | 架构分歧：避免二次放大，不设 QT 变量 |
@@ -34,6 +36,7 @@
 | DisplayPort 音频 | topology 与 UCM 都含 `DISPLAY_PORT_RX_0`，`SectionDevice."HDMI"` 走 `hw:${CardId},1` | 同一份 BSP m4 与 UCM | 链路已接通，未实机验收 |
 | exFAT/NTFS | `patches/kernel-f2fs` 已把 `EXFAT_FS`/`NTFS3_FS` 编入内核 | 文件系统读写 | 外置存储挂载未验证 |
 | 10-bit 与 144 Hz | 面板与驱动支持，未量测色深与刷新率 | 面板 10bpc，144 Hz 可选 | 保持默认稳定档（KDE 120Hz，GNOME 可选 144Hz） |
+| 非四行对齐高度的显示模式 | 补丁已收：Mesa 带上游的 renderonly 高度对齐（`patches/mesa/0002`），Freedreno 不再拒绝导入这类高度的显示缓冲 | 同一份 Mesa 补丁 | 设备上切 2400×1602 与 1280×854 未验 |
 
 ---
 
@@ -41,9 +44,9 @@
 
 针对上游部分实现方案，本项目基于稳定性、硬件特征与系统协同考虑，作出了明确的架构分歧决策（Architectural Decisions）：
 
-### 1. 触控矩阵滤波：跟进内核解码（0197 补丁）
-* **上游做法**：`0197-LOCAL-input-nt36532e-matrix.patch` 在既有 IRQ 线程里用整数运算解码互容矩阵，做 32 帧参考、中值滤波与基线漂移处理，按标准多点触控事件上报，并保留掌托分类。
-* **本项目决策**：**跟进该补丁**。序列启用后 `/proc/nvt_thp_status` 报 `kernel_input: enabled`，`piano-touch-view` 据此让用户态手指桥接退出。笔解码同样进了内核（`0229`、`0230`），从标准固件目录取逐屏校准，用户态只保留 `pen-control.py` 做 BlueZ 初始化。内核解码用写死的矩阵尺寸，不读本仓库校验并随 `xiaomi-piano-thp` 分发的原厂逐屏电极校准；这条差异与触感平滑度在真机上验收，验收前不把它写成已完成。
+### 1. 触控矩阵滤波：跟进内核解码（0399 补丁）
+* **上游做法**：`0399-LOCAL-input-nt36532e-matrix.patch` 在既有 IRQ 线程里用整数运算解码互容矩阵，做 32 帧参考、中值滤波与基线漂移处理，按标准多点触控事件上报，并保留掌托分类。
+* **本项目决策**：**跟进该补丁**。序列启用后 `/proc/nvt_thp_status` 报 `kernel_input: enabled`，`piano-touch-view` 据此让用户态手指桥接退出。笔解码同样进了内核（`0431`、`0432`），从标准固件目录取逐屏校准，用户态只保留 `pen-control.py` 做 BlueZ 初始化。内核解码用写死的矩阵尺寸，不读本仓库校验并随 `xiaomi-piano-thp` 分发的原厂逐屏电极校准；这条差异与触感平滑度在真机上验收，验收前不把它写成已完成。
 * **用户态路径保留的契约**：用户态桥接仍按 `BUS_SPI`、`0603:6532` 与 `piano NT36532 THP touchscreen` 上报，补报 `ABS_MT_TOUCH_MINOR`，掌托锁存时把上一帧手指以 `MT_TOOL_PALM` 重报。内核接管时该设备不创建，避免同名同 ID 的两个输入设备并存。
 
 ### 2. 电源模式调度：禁止外部直接写频点，采用 Uperf 桥接
@@ -100,4 +103,14 @@ zcat /proc/config.gz | grep -E 'CONFIG_LIRC|CONFIG_IR_SPI|CONFIG_UIO_PIANO|CONFI
 rpm -q mutter libfprint fprintd tuned glibc-langpack-zh
 ```
 
-上游基线对照源文件位于 `build/test-sources/sunuefi`（`18274377`）的 `tools/build_piano_fingerprint.py`、`linux/userspace/camera/`、`linux/desktops/`、`patches/libfprint/` 与 `docs/status.md`。
+上游基线对照源文件位于 `build/test-sources/sunuefi`（`a6c321d`，tag `v1.0.0`）的 `tools/build_piano_fingerprint.py`、`linux/userspace/camera/`、`linux/desktops/`、`patches/libfprint/` 与 `docs/status.md`。
+
+---
+
+## 五、未跟进的上游改动
+
+| 项 | 上游做法 | Fedora 现状 | 何时再看 |
+| --- | --- | --- | --- |
+| PipeWire 的 v4l2 与 libcamera 补丁 | `patches/pipewire/1.6.11/series.json` 里 gst 之外的 7 条 | 只重编 `piano-pipewire-gstreamer`，其余用 Fedora 的 PipeWire | 相机应用出现具体失败时 |
+| FFmpeg 9.1 | `patches/ffmpeg/9.1/series.json` | Fedora 45 是 FFmpeg 9.0.2，port 钉在 9.0.2 的系列 | Fedora 升到 9.1 时 |
+| ACPI 与 Windows | `uefi/components/acpi` 编进产品固件 | 固件产物带 ACPI 表，Linux 仍走 DTB | 不做 Windows 镜像 |
