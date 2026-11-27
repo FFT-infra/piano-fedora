@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """piano-pipewire-gstreamer 的离线契约。
 
-Fedora 45 的 pipewire-1.6.11-1 是 1.6.11 tag 的源码，缺 1.6 分支之后收的
-GStreamer 修复：转 caps 时丢掉 SPA choice 的首选值，gst_caps_fixate() 对区间
-取最小值，GNOME Snapshot 经 portal 拿到 16x4 而不是 1920x1440；同一条链上
-buffer_recycle 的加锁顺序也反了，回收的 SPA buffer 可能在被复制前解映射。
+Fedora 45 的 pipewire-1.6.12-1 已带 1.6 分支收的 GStreamer 修复（首选 caps、
+buffer_recycle 的加锁顺序、首帧空指针、32 位 modifier 截断），pipewiresrc 还缺
+三处：caps 带列表时每次 reconfigure 都断开重连（上游 97699d70，1.6.12 没有
+带）、MemPtr chunk 的映射在重协商时被移除、不兼容的采集格式让
+wait_negotiated 一直等。
 
-这份包替换 Fedora 的 pipewire-gstreamer 子包，带的是 1.6 分支 tip 在
-src/gst/ 下的全部提交。这里锁住：补丁序列完整、替换声明成立、只下发那一个
-插件、构建矩阵、镜像清单与 COPR 发布链都带上它。设备侧 fixate 与取帧行为不在
+这份包替换 Fedora 的 pipewire-gstreamer 子包，在同一版源码上补这三处。这里
+锁住：补丁序列完整且不重复带基准源码已有的修复、替换声明成立、只下发那一个
+插件、构建矩阵、镜像清单与 COPR 发布链都带上它。设备侧的协商与取帧行为不在
 离线测试里。
 
-Fedora 跟上 1.6 分支之后，本测试与整份包一起删掉。
+Fedora 带上这三处之后，本测试与整份包一起删掉。
 """
 
 import re
@@ -27,45 +28,36 @@ SPEC = PKG / "piano-pipewire-gstreamer.spec"
 
 def main():
     patches = sorted(p.name for p in PKG.glob("*.patch"))
-    assert len(patches) == 9, f"补丁序列应为 9 个，实际 {patches}"
+    assert len(patches) == 3, f"补丁序列应为 3 个，实际 {patches}"
     body = "\n".join((PKG / name).read_text() for name in patches)
-    # 三条必须都在：首选值进 caps、回收 buffer 的加锁顺序、首帧空指针。
-    assert "set_pref_int_range" in body and "gst_value_list_append_and_take_value" in body, \
-        "补丁没有把 SPA choice 的首选值带进 caps，fixate 仍会落到最小值"
-    assert "pw_thread_loop_lock" in body, "补丁没有改 buffer_recycle 的加锁顺序"
-    assert "last_buffer" in body, "补丁没有修首帧 keepalive 的空指针"
-    # 每个补丁头里的 From 就是 1.6 分支上的提交号，必须一一对上。
-    expected = {
-        "c4309f0eb5667f15c6c98a3ab19ea2c6f45afa3e",
-        "18244c9741dda4d5c48df29d15834f25ef97da2b",
-        "97699d707df374773fe5d6e32ea7362ef8dcf51b",
-        "765e628cb2ad2153cf6adc581262da7abd0d9213",
-        "1efc570002f01502f75f335ed464aea864c18e05",
-        "e57890495a6ca105a5945ec5eb8496eb8b61890c",
-    }
+    # 三条里只有不重连的判定是上游提交，补丁头的 From 就是它的提交号；另外
+    # 两条是下游补丁，没有上游提交号。多出别的提交号说明带了不该带的东西。
+    expected = {"97699d707df374773fe5d6e32ea7362ef8dcf51b"}
     got = set(re.findall(r"^From ([0-9a-f]{40}) ", body, re.M))
-    assert got == expected, f"补丁序列与 1.6 分支不一致：多 {got - expected} 少 {expected - got}"
+    assert got == expected, f"补丁序列里的上游提交不对：多 {got - expected} 少 {expected - got}"
     # 不重连的判定要改成"现有 caps 仍是下游子集就不重连"，否则每秒重连
     # 十几次、池子拆掉后 sink 还在拷贝。
     assert "gst_caps_is_subset (current_caps, possible_caps)" in body, \
         "缺少不重连的判定，reconfigure 会继续反复重连"
     assert "97699d70" in body, "不重连的判定没有记上游提交号"
-    # 上游 0013：caps 交集为空时 fixate 仍留空 caps，断言会让 wait_negotiated
-    # 一直等下去；只有这条流该失败。
+    # caps 交集为空时 fixate 仍留空 caps，断言会让 wait_negotiated 一直等；
+    # 只有这条流该失败。
     assert "No compatible capture format" in body, \
         "缺少不兼容采集格式的错误路径，wait_negotiated 会一直等"
-    # 上游序列里 1.6.11 tag 已含 per-plane stride，重复带会在 %prep 阶段反向失败。
-    assert "extrapolate_stride" not in body, "per-plane stride 已在 1.6.11 tag 里，不该再带"
-    # 第 8 个来自 SunUEFI：MemPtr 指向的映射在重协商时会被移除，必须拷贝后再
-    # 交出；fd 背书的内存仍走 share。少了这条，sink 手里的 buffer 会在池子
-    # 拆掉后读到已解映射的地址。
+    # MemPtr 指向的映射在重协商时会被移除，必须拷贝后再交出；fd 背书的内存
+    # 仍走 share。少了这条，sink 手里的 buffer 会在池子拆掉后读到已解映射的
+    # 地址。
     assert "SPA_DATA_MemPtr" in body and "has_shared_memory" in body, \
         "缺少 MemPtr 拷贝路径，下游 buffer 仍会引用已移除的映射"
+    # 1.6.12 的源码已带首选 caps 与 per-plane stride。SunUEFI 的 1.6.11 序列里
+    # 还有这两条，照着序列整份搬回来会在 %prep 阶段套不上。
+    assert "set_pref_int_range" not in body, "首选 caps 已在 1.6.12 的源码里，不该再带"
+    assert "extrapolate_stride" not in body, "per-plane stride 已在 1.6.12 的源码里，不该再带"
 
     spec = SPEC.read_text()
-    assert re.search(r"^Version:\s+1\.6\.11$", spec, re.M), "版本没有对上 Fedora 的 1.6.11"
+    assert re.search(r"^Version:\s+1\.6\.12$", spec, re.M), "版本没有对上 Fedora 的 1.6.12"
     assert re.search(r"^Release:\s+[2-9]", spec, re.M), \
-        "Release 必须高于 Fedora 的 1.6.11-1，否则 Obsoletes 不生效、两份包会文件冲突"
+        "Release 必须高于 Fedora 的 1.6.12-1，否则 Obsoletes 不生效、两份包会文件冲突"
     declared = re.findall(r"^Patch\d+:\s+(\S+)$", spec, re.M)
     assert declared == patches, f"spec 的 Patch 行与实际补丁不一致：{declared} vs {patches}"
     # 同一个 .so 只能由一份包提供，两条声明缺一不可。
