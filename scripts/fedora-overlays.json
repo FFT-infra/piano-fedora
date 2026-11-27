@@ -30,11 +30,11 @@
       "fedora_packages": [
         {
           "name": "pipewire",
-          "base_version": "1.6.11"
+          "base_version": "1.6.12"
         }
       ],
-      "upstream_fix": "1.6 分支 src/gst 的六条提交（首选 caps、加锁顺序等）+ 97699d70（caps 未变不重连，pipewire 官方 1.6 未回移；SunUEFI 的 1.6.11 series 已常驻 0004-gst-retain-running-caps）+ SunUEFI 的 copy-memptr",
-      "drop_when": "pipewire 把 97699d70 回移到 1.6 或新版本带上它，Fedora 稳定库随后跟上首选 caps 与不重连两条，且 copy-memptr 不再需要，整份包才删",
+      "upstream_fix": "97699d70（caps 未变不重连，pipewire 官方 1.6 未回移，1.6.12 里没有；SunUEFI 的 1.6.11 series 已常驻 0004-gst-retain-running-caps）+ SunUEFI 序列的两条下游补丁 copy-memptr 与 report-incompatible-capture-format。1.6 分支 src/gst 的首选 caps、加锁顺序等修复已随 1.6.12 进 Fedora，不再带",
+      "drop_when": "pipewire 把 97699d70 回移到 1.6 或新版本带上它，Fedora 稳定库随后跟上，且 copy-memptr 与 report-incompatible-capture-format 两条下游补丁不再需要，整份包才删",
       "tracking_issue": 64,
       "rebase_on_fedora_update": true,
       "rebase_note": "先重基补丁集、去掉已进上游的补丁；97699d70 未进官方 1.6，按常驻补丁保留。"
