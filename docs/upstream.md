@@ -20,6 +20,22 @@
 
 每次跟进上游变更前：完整比对上游具体 commit 与代码差异，复核受影响的补丁 `series.json`、构建容器、DTB/内存交接合同及全链重编产物；绝对不能混用旧二进制或直接照搬上游 16 GB 机器上的设备结论。
 
+## `v1.0.0` 固件的设备验证范围
+
+`sunuefi` 锁到 `v1.0.0`（`a6c321d0`）之后，这个 pin 的 UEFI 固件只在一台参考平板上换过。平板上是经 COPR 就地升级上来的 `denial` 档系统，没有用 `v45.11` 镜像重装。换 pin 后下表作废，按新固件重做。
+
+| 验证面 | 已通过内容 | 尚未覆盖 |
+| --- | --- | --- |
+| 固件产物 | 这个 pin 上 `build-uefi` 产出的 `PianoUEFI-product.img`，SHA256 `b89b37056aa12ce50f43430d97a8a657b434d936f8cd326919895c529a4686e9`，与 `v45.11` 五档 `build-bundle` 记录的 `product_sha256` 相同；换固件用的是同一次构建的模块载荷，模块清单声明的 `product_sha256` 也是这个值 | 无 |
+| 换固件（主机离线） | 对 `boot_b` 的备份执行 `piano-boot-repack upgrade`；换固件前后两份合体 BOOT 各自 `restore` 出的原厂 BOOT 逐字节相同 | 在 Android 里安装 `sunuefi-module.zip` 的路径，见[升级](upgrade.md#3-单独升级-uefi-固件与引导助手) |
+| 写入 | 在 Linux 下直接写 `boot_b`，落盘并清页缓存后回读，SHA256 与换固件后的镜像相同 | 从原始 GPT 开始的首次安装 |
+| 启动 | `systemctl reboot` 后回到 `denial` 会话，`uname -r` 为 `7.3.3-piano-sunuefi-cachy-optimize-b1795512178-g384787daa271`，与这个 pin 上 `build-kernel` 产物的 `kernel_release` 相同；`systemctl --failed` 为空 | 关机后的冷启动；其余四档 |
+| 固件表 | `/sys/firmware/efi/systab` 有 `ACPI20` 项；`/sys/firmware/acpi/tables` 不存在，内核仍按 DTB 启动 | ACPI 表的内容 |
+| 请求页 | 换固件保留了原有请求；启动后 `piano-next-boot status` 报 `target: 2`（Linux）、`sequence: 2`、`original_kernel_changed: false`，`boot_device` 指向 `boot_b` | 切到 Android 再切回的往返与原厂 Recovery |
+| 只读冒烟 | 登录用户运行 `scripts/verify-device-smoke.py`，8 项通过 | 冒烟不看的相机出图、触控采样与视频硬解，见[真机取证脚本](internals.md#真机取证脚本) |
+
+[PR 验收门槛](internals.md#pr-验收门槛)要求的首次分区安装、同一流水线镜像的冷装与 Android ↔ Linux 往返都不在上表范围内，这组结果不能记作通过真机设备验收。
+
 ## 核心补丁分叉与策略
 
 本仓库内核补丁集（`patches/kernel/`）在封存上游 290 条补丁之后追加自有 36 条适配补丁。各份累积补丁依次改写 SunUEFI 的 `patches/linux/7.3/series.json`，重放完成后该文件的 `target_tree` 字段就是目标树；`patches/kernel/series.json` 记录的是每份补丁改写后各文件的 sha256，由 `apply-patches.py --check` 核对。其余 Fedora 临时重编包的移除条件记录于 `scripts/fedora-overlays.json`。主要策略包括：
