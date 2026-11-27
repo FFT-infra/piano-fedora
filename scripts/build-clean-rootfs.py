@@ -9,10 +9,10 @@
 3. 具备完整的构建计划 (plan)、构建执行 (execute) 与 100% RPM 文件归属审计 (audit)。
 
 用法：
-    scripts/build-clean-rootfs.py --plan --releasever 44
-    scripts/build-clean-rootfs.py --execute --releasever 44 --output build/clean-rootfs
-    scripts/build-clean-rootfs.py --execute --releasever 44 --image \
-        --output build/clean-distros/fedora-44-gnome
+    scripts/build-clean-rootfs.py --plan --releasever 45
+    scripts/build-clean-rootfs.py --execute --releasever 45 --output build/clean-rootfs
+    scripts/build-clean-rootfs.py --execute --releasever 45 --image \
+        --output build/clean-distros/fedora-45-gnome
     scripts/build-clean-rootfs.py --audit-only --rootfs build/clean-rootfs
 """
 

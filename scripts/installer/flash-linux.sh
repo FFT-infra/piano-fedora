@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# flash-linux.sh - Xiaomi Pad 8 Pro (piano) Fedora 44 Linux Flashing Tool
+# flash-linux.sh - Xiaomi Pad 8 Pro (piano) Fedora Linux Flashing Tool
 # ==============================================================================
 set -euo pipefail
 
@@ -32,7 +32,7 @@ usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
-Flashing utility for Fedora 44 Linux on Xiaomi Pad 8 Pro (piano).
+Flashing utility for Fedora Linux on Xiaomi Pad 8 Pro (piano).
 
 Options:
   -y, --yes            Skip safety confirmation prompt (non-interactive)
@@ -103,7 +103,7 @@ done
 
 echo -e "${BLUE}${BOLD}"
 echo "===================================================================="
-echo "    Xiaomi Pad 8 Pro (piano) - Fedora 44 Linux Flashing Tool        "
+echo "       Xiaomi Pad 8 Pro (piano) - Fedora Linux Flashing Tool        "
 echo "===================================================================="
 echo -e "${NC}"
 
@@ -659,9 +659,9 @@ fi
 fb -S 128M flash sunuefi_esp "$ESP_IMG"
 
 if [ -n "$BOOT_IMG" ]; then
-    echo -e "\n--> Step 4/4: Flashing Fedora 44 RootFS to sunuefi_root..."
+    echo -e "\n--> Step 4/4: Flashing Fedora RootFS to sunuefi_root..."
 else
-    echo -e "\n--> Step 3/3: Flashing Fedora 44 RootFS to sunuefi_root..."
+    echo -e "\n--> Step 3/3: Flashing Fedora RootFS to sunuefi_root..."
 fi
 fb -S 128M flash sunuefi_root "$ROOT_IMG"
 
@@ -676,13 +676,13 @@ if [ -n "$ESP_SHA256" ]; then
     echo "  - SSH key              : imported on first boot; password login still works"
 fi
 echo "  - SunUEFI boot menu    : Press Volume keys during initial 3-second logo"
-echo "  - Switch back to Android: Open GNOME App Drawer -> Click 'Return to Android'"
+echo "  - Switch back to Android: 'Return to Android' app icon, or run: piano-next-boot android --reboot"
 echo ""
 
 if [ "$DO_REBOOT" -eq 1 ] && [ -z "$BOOT_IMG" ]; then
     echo -e "--> Not rebooting: the boot image was not written, so the active slot stays as it was."
 elif [ "$DO_REBOOT" -eq 1 ]; then
-    echo -e "--> Rebooting tablet into Fedora 44 Linux..."
+    echo -e "--> Rebooting tablet into Fedora Linux..."
     fb reboot
     echo -e "${GREEN}Device reboot triggered. Enjoy Fedora Linux on Xiaomi Pad 8 Pro!${NC}"
 else

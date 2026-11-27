@@ -14,7 +14,7 @@ custom.conf 并启用 gdm.service，`finalize-fedora-rootfs.py` 再写一遍，�
 用法：
     python3 scripts/piano_desktop.py matrix
     python3 scripts/piano_desktop.py show --desktop kde
-    python3 scripts/piano_desktop.py plan --desktop kde --releasever 44
+    python3 scripts/piano_desktop.py plan --desktop kde --releasever 45
 """
 
 import argparse

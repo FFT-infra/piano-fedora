@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
-title Xiaomi Pad 8 Pro (piano) Fedora 44 Flasher
+title Xiaomi Pad 8 Pro (piano) Fedora Linux Flasher
 
 echo ====================================================================
-echo     Xiaomi Pad 8 Pro (piano) - Fedora 44 Linux Flashing Tool        
+echo        Xiaomi Pad 8 Pro (piano) - Fedora Linux Flashing Tool        
 echo ====================================================================
 echo.
 
@@ -293,7 +293,7 @@ echo --^> Step 3/4: Flashing SunUEFI ESP to sunuefi_esp...
 %FASTBOOT% -S 128M flash sunuefi_esp "%ESP_IMG%"
 if %ERRORLEVEL% neq 0 goto error
 
-echo --^> Step 4/4: Flashing Fedora 44 RootFS to sunuefi_root...
+echo --^> Step 4/4: Flashing Fedora RootFS to sunuefi_root...
 %FASTBOOT% -S 128M flash sunuefi_root "%ROOT_IMG%"
 if %ERRORLEVEL% neq 0 goto error
 
@@ -306,7 +306,7 @@ echo System Summary:
 echo   - Default user     : piano
 echo   - Default password : piano123456
 echo   - SunUEFI menu     : Press Volume keys during initial 3-second logo
-echo   - Return to Android: Open GNOME App Drawer -^> Click 'Return to Android'
+echo   - Return to Android: 'Return to Android' app icon, or run: piano-next-boot android --reboot
 echo.
 echo --^> Rebooting tablet into Fedora Linux...
 %FASTBOOT% reboot
