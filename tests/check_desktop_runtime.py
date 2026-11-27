@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""运行时脚本必须覆盖四档桌面，而不是只认 GNOME。
+"""运行时脚本必须覆盖各档桌面，而不是只认 GNOME。
 
 三处硬编码藏在 `packages/piano-fedora-configs` 里：
 
@@ -494,7 +494,7 @@ def _find_busybox():
 
 
 def check_login_units_match_the_profiles():
-    """运行时脚本认识的登录单元集合要与四档 profile 一致。
+    """运行时脚本认识的登录单元集合要与各档 profile 一致。
 
     采集器里写死的三个单元、fake-tablet-mode 的 greeter 用户表，都必须覆盖
     profile 里每一档的 display_manager.unit 与用户；漏一档就意味着那档镜像

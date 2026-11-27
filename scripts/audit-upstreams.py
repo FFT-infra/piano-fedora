@@ -26,7 +26,13 @@ def inspect_repository(row, lock):
         metadata = github("repos/" + row["repo"])
         source = lock.get(row.get("lock_key"))
         ref = source["ref"] if source else row["ref"] or metadata["default_branch"]
-        commit = github("repos/" + row["repo"] + "/commits/" + quote(ref, safe=""))
+        target = ref
+        if source and source.get("tag"):
+            # 带 tag 的锁条目跟的是上游正式 release：看最新 release 的 tag 指向哪个提交，
+            # release 之间落在分支上的提交不算漂移。tags/ 前缀避开同名分支。
+            ref = github("repos/" + row["repo"] + "/releases/latest")["tag_name"]
+            target = "tags/" + ref
+        commit = github("repos/" + row["repo"] + "/commits/" + quote(target, safe=""))
         sha = commit["sha"]
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise ValueError("invalid remote commit")
@@ -101,7 +107,8 @@ def main():
         records = list(pool.map(lambda row: inspect_repository(row, lock), rows))
     report = {"schema_version": 1, "started_at": started,
               "finished_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-              "method": "GitHub API repository metadata and exact selected ref commit",
+              "method": "GitHub API repository metadata and exact selected ref commit; "
+                        "lock entries with a tag resolve the latest release tag instead",
               "repositories": records}
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")

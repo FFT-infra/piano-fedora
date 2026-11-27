@@ -104,4 +104,11 @@ with tempfile.TemporaryDirectory() as temporary:
     assert watch.summary(clean) == {"drift": [], "auto": [], "unverified": []}
     assert "所有锁定 ref 都还指向 pin" in watch.render(None, clean)
 
+# 跟 release 的条目换版本时 tag 与 commit 要一起改，bump 只写 commit，所以带 tag 的
+# 条目不能进白名单。SunUEFI 丢了 tag，巡检就会退回去比 main 头。
+real = json.loads((ROOT / "sources.lock.json").read_text())["sources"]
+tagged = {key for key, entry in real.items() if entry.get("tag")}
+assert not tagged & watch.AUTO_BUMP, sorted(tagged & watch.AUTO_BUMP)
+assert "sunuefi" in tagged, "sunuefi must be tracked by upstream release tag"
+
 print("OK: upstream watch reports drift and bumps only whitelisted pins")

@@ -243,7 +243,7 @@ def test_every_resolved_workflow_is_registered_on_default_branch():
 
 
 def test_per_desktop_artifacts_do_not_match_each_other():
-    """四档各上传一份 artifact，档位写进名字里。
+    """每档上传一份 artifact，档位写进名字里。
 
     旧布局是四档共用一个名为 deploy-bundle 的 artifact，只能靠手填 run 区分。
     现在名字带档位，解析就按名字走：只要 deploy-bundle 的 run 不能给 kde 用，
@@ -292,7 +292,7 @@ def test_workflows_upload_and_download_per_desktop_artifacts():
     assert '--name "deploy-bundle-${desktop}"' in release
     assert '--name "root-install-${desktop}"' in release
     assert "name: root-install-${{ inputs.desktop }}" in pkg
-    # run 标题带档位，Actions 列表与 gh run list 一眼能分出四档。
+    # run 标题带档位，Actions 列表与 gh run list 一眼能分出各档。
     assert "run-name: build-bundle ${{ inputs.desktop }}" in bundle
     assert "run-name: prepare-install ${{ inputs.desktop }}" in prepare
     # 没有一处还按旧名下载。

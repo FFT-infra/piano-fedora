@@ -44,5 +44,7 @@ assert "if [ ! -f build/fedora-overlay-releases.json ]" in workflow
 assert '"status": "failed"' in workflow
 assert '.fedora_overlays.status == "failed"' in workflow
 assert "total=$((drift + overlays + failed))" in workflow
+# issue 会跨多次巡检开着，标题里的两个计数要跟正文一起重写。
+assert 'gh issue edit "$number" --title "$title"' in workflow
 
 print("OK: Fedora 重编包巡检的报告与 workflow 接线完整")

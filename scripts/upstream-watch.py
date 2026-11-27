@@ -10,8 +10,10 @@
 workflow 只调 report。仓库不允许 Actions 创建 PR，所以白名单的改 pin 由人跑
 bump 完成，报告里给出可复制的命令。
 
-判断"漂移"用 build_pin 与上游当前 ref 指向的 commit 比较。审计里的 updated
-依赖 docs/upstreams.json 的人工基线，基线过期就会误报，不能拿来做决定。
+判断"漂移"用 build_pin 与上游当前 ref 指向的 commit 比较。锁条目带 tag 的上游
+跟的是正式 release，审计给出的 ref 是最新 release 的 tag，分支头往前走不算漂移。
+审计里的 updated 依赖 docs/upstreams.json 的人工基线，基线过期就会误报，不能
+拿来做决定。
 """
 import argparse
 import datetime
@@ -150,7 +152,7 @@ def render_pull_request(rows, changed, today=None):
         "只改 `sources.lock.json` 的 commit，ref 不动。合并前请确认：",
         "",
         "- 这个 PR 由人提交，CI 会正常跑；`make test` 里的补丁、清单与源码 pin 校验会拒绝任何不一致。",
-        "- 白名单上游的改动仍要按 `docs/upstreams.md` 重编受影响产物，只有离线检查不算验收。",
+        "- 白名单上游的改动仍要按 `docs/upstream.md` 重编受影响产物，只有离线检查不算验收。",
         "",
         "| 上游 | 旧 pin | 新 pin | 最近提交 |",
         "| --- | --- | --- | --- |",

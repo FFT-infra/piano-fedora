@@ -1,6 +1,7 @@
 name: upstream-watch
 
 # 每周只读核验登记上游的锁定 ref 指向哪个提交，把漂移写进一个跟踪 issue。
+# 锁条目带 tag 的上游（SunUEFI）跟正式 release，核的是最新 release 的 tag。
 # 白名单里的纯用户态上游在 issue 里给出可直接复制的改 pin 命令；
 # 内核、UEFI、相机/触控、固件和 debian-piano 只报告，pin 由人评审。
 # 本 workflow 不改 sources.lock.json，也不开 PR。
@@ -104,15 +105,17 @@ jobs:
           failed=$(jq -r 'if .fedora_overlays.status == "failed" then 1 else 0 end' \
             build/upstream-drift.json)
           total=$((drift + overlays + failed))
+          # issue 会跨多次巡检一直开着，标题里的计数跟正文一起重写。
+          title="上游漂移：$drift 个锁定 ref 已移动，$overlays 个重编包版本待评估"
           if [ -n "$number" ]; then
-            gh issue edit "$number" --body-file build/upstream-drift.md
+            gh issue edit "$number" --title "$title" --body-file build/upstream-drift.md
             if [ "$total" -eq 0 ]; then
               gh issue close "$number" \
                 --comment "锁定 ref 与 pin 一致，Fedora 重编包也没有版本漂移，先关掉；下次漂移会重新开一个。"
             fi
           elif [ "$total" -gt 0 ]; then
             gh issue create --label upstream-drift \
-              --title "上游漂移：$drift 个锁定 ref 已移动，$overlays 个重编包版本待评估" \
+              --title "$title" \
               --body-file build/upstream-drift.md
           else
             echo "没有漂移，不建 issue"

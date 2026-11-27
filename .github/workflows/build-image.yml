@@ -414,8 +414,8 @@ jobs:
           python3 scripts/build-abl-diagnostic.py --kernel build/kernel \
             --initramfs build/initramfs-abl --source "$source" \
             --dtbo build/dtbo-abl-storage.img --output build/diagnostic-abl-storage
-          # 平台资产要在四档之间逐字节相同，tar 必须固定 mtime 与排序；
-          # 否则同一份内容每次打包都得到不同字节，发布门禁会误报分叉。
+          # 平台资产要在各档之间逐字节相同，tar 必须固定 mtime 与排序；
+          # 否则同一份内容每次打包都得到不同字节。
           sudo tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
             -I 'zstd -6 -T0' -cf diagnostic-abl-storage.tar.zst -C build/diagnostic-abl-storage .
           sudo chown "$(id -u):$(id -g)" diagnostic-abl-storage.tar.zst
@@ -460,7 +460,7 @@ jobs:
           set -euo pipefail
           sudo tar --format=pax --numeric-owner --xattrs --xattrs-include='*' --acls --selinux \
             -I 'zstd -6 -T0' -cf device-root.tar.zst -C build/device-root rootfs manifest.json packages.tsv
-          # 同上：initramfs 与镜像无关，四档共用一个 tar。
+          # 同上：initramfs 与镜像无关，各档共用一个 tar。
           tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
             -I 'zstd -6 -T0' -cf initramfs.tar.zst -C build/initramfs .
           cp build/kernel/manifest.json kernel-manifest.json

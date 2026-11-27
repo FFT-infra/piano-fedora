@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Release 里每档一个自包含归档：命名、成员表与 bundle 核对。
 
-四档镜像共用同一个 ESP、内核与 UEFI，差的是 root 文件系统。Release 把它们
+各档镜像的 ESP 内容、内核与 UEFI 相同，差的是 root 文件系统。Release 把它们
 按桌面打成一个归档，用户只下自己那一档：
 
     piano-<tag>-<desktop>.tar.zst[.part-NN]   归档，超过 2 GiB 时切片
