@@ -50,3 +50,7 @@ rpm -q mutter libfprint fprintd tuned glibc-langpack-zh
 | PipeWire v4l2/libcamera 补丁 | `patches/pipewire/1.6.11` 另含 7 条补丁 | 当前仅重编 `piano-pipewire-gstreamer`，其余用官方 PipeWire；仅当相机应用明确失败时跟进 |
 | FFmpeg 9.1 | `patches/ffmpeg/9.1/series.json` | Fedora 45 当前为 FFmpeg 9.0.2，待 Fedora 升级 9.1 后跟进 |
 | ACPI 与 Windows 支持 | 固件含 `uefi/components/acpi` | 产物附带 ACPI 表，Fedora 仍只使用 DTB |
+| Qt Multimedia 录像与 Plasma Camera | `patches/qt6-multimedia/6.11.2` 让 MP4/MOV 录像先试 V4L2 H.264 编码器；`patches/plasma-camera/26.08.3` 带 libcamera 0.8 适配与 `record-captured-frames` 两条补丁。两者由上游重编后装进它的桌面镜像 | 不重编也不预装，Qt Multimedia 用 Fedora 原版；相机走 `piano-camerad` 与 GNOME Snapshot。镜像要带 Qt 相机应用录像时跟进 |
+| IBus 候选窗焦点 | `patches/ibus/1.5.34`：KWin 下候选窗抢走 Xwayland 输入框的键盘焦点，预编辑被清空，敲一个词只上屏一个空格；上游只在 SteamOS 镜像重编 | 用 Fedora 原版 IBus；KDE 档在 Xwayland 应用里输入中文没有在设备上试过，复现后跟进 |
+| Denial 方向传感器 | `patches/denial/0.6.8` 让 `deniald` 优先读 SensorProxy，没有加速度计时再读 steinerd；上游带这条补丁从源码构建 Denial | 直接装 `packages.denialwm.org` 的二进制包，不带这条补丁，`denial` 档没有自动旋转，见[桌面档](desktops.md#自动旋转)；Denial 接入 SensorProxy 或本仓库改成自行构建后重评 |
+| SteamOS 与 Nyarch 专属补丁 | `patches/gamescope`、`patches/steamos-manager`、`patches/webrtc-audio-processing`（SteamOS 镜像），`patches/blur-my-shell`、`patches/material-you-colors`（Nyarch 桌面） | 没有对应的镜像与桌面，不跟 |
