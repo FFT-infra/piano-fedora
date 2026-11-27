@@ -1,6 +1,6 @@
 # 上游跟踪
 
-所有构建消费的提交均锁定在 `sources.lock.json`（只看正式发布的 tag 对应的 commit，不自动跟上游 main 头；`docs/upstreams.json` 仅登记研究对照仓库，不参与构建）。修改文档或查看最新上游动态不会改变已发布镜像的来源。
+所有构建消费的提交均锁定在 `sources.lock.json`。SunUEFI 跟正式 release：锁条目带 `tag`，`commit` 是该 tag 指向的提交，两次 release 之间落在 `main` 上的提交不跟。其余条目各锁在 `ref` 所指分支上的一个提交。`docs/upstreams.json` 登记全部上游：带 `lock_key` 的行与锁条目一一对应，其余是研究对照仓库，不参与构建。修改文档或查看最新上游动态不会改变已发布镜像的来源。
 
 ## 对照基准 pin
 
@@ -13,10 +13,10 @@
 
 ## 自动漂移检查与换 Pin 原则
 
-`.github/workflows/upstream-watch.yml` 每周一运行 `scripts/audit-upstreams.py --execute` 并调用 `scripts/upstream-watch.py`：
+`.github/workflows/upstream-watch.yml` 每周一运行 `scripts/audit-upstreams.py --execute` 并调用 `scripts/upstream-watch.py`，拿锁定的 `commit` 与上游当前提交比较：带 `tag` 的条目比最新正式 release 的 tag 所指提交，其余比 `ref` 分支头。
 
-- 白名单纯用户态组件（`crosvm`、`librevm`、`uperf`、`piano-mesa`、`piano-sensors`、`piano-mipps-auth`）发生漂移时，在 `upstream-drift` issue 中附带建议 `upstream-watch.py bump` 命令，由维护者审阅后手工更新。
-- 内核、UEFI、相机/触控、固件与 `debian-piano` 以及非白名单的厂商树漂移仅开 issue 报告；83 个 `upstreams.json` 对照仓库通过本地手工执行 `audit-upstreams.py --execute [--record-baseline]` 人工复核。
+- 白名单纯用户态组件（`crosvm`、`librevm`、`uperf`、`piano-mesa`、`piano-sensors`）发生漂移时，在 `upstream-drift` issue 中附带建议 `upstream-watch.py bump` 命令，由维护者审阅后手工更新。
+- 内核、UEFI、相机/触控、固件与 `debian-piano` 以及非白名单的厂商树漂移仅开 issue 报告；`upstreams.json` 里不带 `lock_key` 的对照仓库不进这份报告，通过本地手工执行 `audit-upstreams.py --execute [--record-baseline]` 人工复核。
 
 每次跟进上游变更前：完整比对上游具体 commit 与代码差异，复核受影响的补丁 `series.json`、构建容器、DTB/内存交接合同及全链重编产物；绝对不能混用旧二进制或直接照搬上游 16 GB 机器上的设备结论。
 

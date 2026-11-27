@@ -49,7 +49,7 @@ PIANO_TEST_SUNUEFI=build/test-sources/sunuefi make test
 
 决定跟进哪些上游变更见[上游跟踪](upstream.md)，更新 pin 时按以下顺序调整并全量校验：
 
-1. 更新 `sources.lock.json` commit，并同步 `patches/*/series.json` 的 `base.sunuefi_commit`（`tests/check_patches.py` 校验）与 `xiaomi-piano-firmware.spec` 的 `%global sunuefi_commit`（`tests/check_firmware_overlays.py` 校验）。
+1. 更新 `sources.lock.json` commit（`sunuefi` 条目的 `tag` 一起改成新 release 的 tag），并同步 `patches/*/series.json` 的 `base.sunuefi_commit`（`tests/check_patches.py` 校验）与 `xiaomi-piano-firmware.spec` 的 `%global sunuefi_commit`（`tests/check_firmware_overlays.py` 校验）。
 2. 若上游改名或移动文件，同步修改对应补丁路径与 `series.json` `targets` 摘要，跑 `apply-patches.py --check` 确认干净。
 3. 若上游内核序列变动，按先上游序列、后自有补丁（整体后移）重排并重算每条 `tree` / `original_parent` / `original_commit` 及 `config/release.json` 末尾值；按同样分段边界重新导出 `patches/kernel/0001`-`0007` 累积 diff 并更新 `patches/kernel/series.json`。
 4. 若重排更改了内核补丁文件名，同步更新 `tests/check_iris_source.py` 中的 `EXPECTED` 列表。
