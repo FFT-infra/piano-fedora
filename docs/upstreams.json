@@ -214,10 +214,9 @@
       "repo": "blu-sharky/piano-mipps-auth",
       "ref": "main",
       "category": "reference",
-      "role": "MiPPS 充电认证，SunUEFI 构建链依赖，ianchb 版的浅 fork",
-      "decision": "consume",
-      "reason": "MiPPS 充电认证。SunUEFI 构建链依赖",
-      "lock_key": "piano-mipps-auth",
+      "role": "MiPPS 充电认证的用户态服务，piano 适配版，ianchb/xiaomi-mipps-auth 的浅 fork",
+      "decision": "reference",
+      "reason": "认证改由 SunUEFI patches/linux/7.3 序列的 power-piano-mipps-authentication 补丁在内核里完成，补丁参照了这里对 piano 固件漏报充电器身份的处理和原厂命令顺序；用户态服务不再安装，构建不取这份源码，保留为补丁来源对照",
       "reference_commit": "ccdc3ce7f5200ef736d7d552eb7b387ea3bb6fd9",
       "reference_date": "2026-10-04"
     },

@@ -52,12 +52,6 @@
       "commit": "65a92202db65ad13493b43fbf15d6abb3b7bcf92",
       "role": "传感器用户态栈"
     },
-    "piano-mipps-auth": {
-      "url": "https://github.com/blu-sharky/piano-mipps-auth.git",
-      "ref": "main",
-      "commit": "ccdc3ce7f5200ef736d7d552eb7b387ea3bb6fd9",
-      "role": "已由内核序列 0027 取代，用户态服务不再安装；条目留到文档 PR 一并移除"
-    },
     "debian-piano": {
       "url": "https://github.com/blu-sharky/debian-piano.git",
       "ref": "main",
