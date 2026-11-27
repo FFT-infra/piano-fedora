@@ -149,9 +149,11 @@ QUPv3 SPI 上的红外发射器经 `ir_spi` 暴露 `/dev/lirc0`，可通过 `ir-
 
 ## Denial 桌面
 
-`denial` 包来自上游 `packages.denialwm.org` 的 Fedora 44 仓库（Fedora 45 尚无上游仓库），在本仓库 `v45.11` 链上的实测状态为：`denial 0.6.10-1` 已确认可在真机冷启动进入会话，并且 GPUI/Vulkan 版 `denial-settings` 可正常运行，系统无 coredump。
+`denial` 与 `denial-flutter-engine` 在构建镜像时直接从上游 `packages.denialwm.org` 的 Fedora 44 仓库安装（Fedora 45 尚无上游仓库），[不钉版本](desktops.md#第三方软件源)，`v45.11` 的 `denial` 镜像装到的是 `0.6.10-1`。这两个包不进本仓库的 COPR，装好的系统里也没有 Denial 的源，`dnf upgrade` 不会更新它们。
 
-由于 Denial 合成器尚未接入 `iio-sensor-proxy` D-Bus，平板上没有自动旋转；构建与运行包仍直接消费上游源，不进本仓库 COPR 镜像。
+实机记录对应 `0.6.10-1`：参考平板就地升级到这个版本后重启，greetd 自动登录拉起 `deniald --start-locked`，`DSI-1` 以 3200×2136 输出，`systemctl --failed` 为空；GPUI/Vulkan 版 `denial-settings` 在会话里运行 5 秒未退出，这次启动以来 `coredumpctl` 没有记录。检查时会话处于锁屏，解锁后的界面操作没有记录；关机后的冷启动与直接刷入 `denial` 镜像的安装不在这份记录里，镜像装到别的版本时这份记录也不适用。
+
+`denial` 档没有自动旋转，原因见[桌面档](desktops.md#自动旋转)。
 
 ---
 

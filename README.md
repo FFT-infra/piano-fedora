@@ -44,7 +44,7 @@
 | `kde` | KDE Plasma | `plasma-login-manager` | KWin（`qt6-qtsensors`） | 已登录桌面，旋转实机验证通过 |
 | `niri` | niri | greetd + tuigreet | 无（手动 `transform`） | 已登录桌面 |
 | `hyprland` | Hyprland（第三方 COPR） | greetd + tuigreet | 无（手动设置） | 已登录桌面 |
-| `denial` | Denial（第三方 DNF 源） | greetd + tuigreet | 无（缺少 SensorProxy） | `0.6.10-1` 已实机冷启并验证 GPUI/Vulkan `denial-settings` |
+| `denial` | Denial（第三方 DNF 源） | greetd + tuigreet | 无（Denial 不读 SensorProxy） | 会话可拉起，验证范围见[已知问题](docs/known-issues.md#denial-桌面) |
 
 ### extras 可选组件
 

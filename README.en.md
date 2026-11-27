@@ -44,7 +44,7 @@ All five profiles share the kernel, ESP, and installer scripts, differing only i
 | `kde` | KDE Plasma | `plasma-login-manager` | KWin (`qt6-qtsensors`) | Booted to desktop, rotation verified on device |
 | `niri` | niri | greetd + tuigreet | None (manual `transform`) | Booted to desktop |
 | `hyprland` | Hyprland (3rd-party COPR) | greetd + tuigreet | None (manual monitor rule) | Booted to desktop |
-| `denial` | Denial (3rd-party DNF repo) | greetd + tuigreet | None (no SensorProxy) | `0.6.10-1` cold boot and GPUI/Vulkan `denial-settings` verified on device |
+| `denial` | Denial (3rd-party DNF repo) | greetd + tuigreet | None (Denial does not read SensorProxy) | Session starts on device; see [known issues](docs/known-issues.md#denial-桌面) for what was verified |
 
 ### Optional extras
 

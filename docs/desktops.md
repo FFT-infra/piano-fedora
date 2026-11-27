@@ -8,7 +8,7 @@
 | `kde` | KDE Plasma | `plasma-login-manager` | kconfig（`powerdevilrc`） | KWin（`qt6-qtsensors`） | ✅ 已登录桌面，旋转实机验证通过 |
 | `niri` | niri | greetd `[initial_session]` | logind：短按挂起，长按关机 | 手动设置 `transform` | ⚠️ 桌面可用，无自动旋转 |
 | `hyprland` | Hyprland（第三方 COPR） | greetd `[initial_session]` | logind：短按挂起，长按关机 | 手动执行 `hyprctl` | ⚠️ 桌面可用，无自动旋转 |
-| `denial` | Denial（第三方 DNF 源） | greetd `[initial_session]`（`mobile` + `--start-locked`） | logind：短按挂起，长按关机 | 无（未接入传感器） | ⚠️ `0.6.10-1` 已冷启通过并验证 GPUI/Vulkan `denial-settings` |
+| `denial` | Denial（第三方 DNF 源） | greetd `[initial_session]`（`mobile` + `--start-locked`） | logind：短按挂起，长按关机 | 无（Denial 不读 SensorProxy） | ⚠️ 会话可拉起，验证范围见[已知问题](known-issues.md#denial-桌面) |
 | `server` | 无 | 无 | logind：短按挂起，长按关机 | 无 | 仅用于内部装配测试，不进 Release |
 
 ## 登录方式
@@ -59,7 +59,8 @@ KWin 与输入默认设置落在 `piano` 用户目录下（装配时设好属主
 
 - **GNOME**：Mutter 原生订阅 `iio-sensor-proxy` 自动旋转，实机验证通过。
 - **KDE**：需要 Fedora 官方包里未声明的依赖 `qt6-qtsensors`，KDE 档位已显式装入以启用「自动」旋转。
-- **niri / Hyprland / Denial**：合成器自身不读传感器 D-Bus。niri 在配置文件 `output` 段写 `transform "90"` 等，Hyprland 用 `hyprctl keyword monitor` 旋转。
+- **niri / Hyprland**：合成器自身不读传感器 D-Bus。niri 在配置文件 `output` 段写 `transform "90"` 等，Hyprland 用 `hyprctl keyword monitor` 旋转。
+- **Denial**：`deniald` 只从 steinerd 读屏幕方向（`v0.6.10` 源码），不读 SensorProxy。镜像提供的是 SensorProxy，没有 steinerd，所以没有自动旋转。
 
 ## extras 可选组件
 
@@ -78,6 +79,8 @@ KWin 与输入默认设置落在 `piano` 用户目录下（装配时设好属主
 
 - **Hyprland**：`lionheartp/Hyprland` COPR。
 - **Denial**：`https://packages.denialwm.org/rpm/fedora/44/aarch64/`（上游目前仅发布 Fedora 44 仓库，故不随 `releasever` 变化；未开 `repo_gpgcheck` 以避开 dnf5 installroot 路径解析 bug，请求使用自定义 UA 以绕过主机的 `Python-urllib` 拦截）。
+
+两个源都不钉包版本，镜像装到的是构建当时源里的版本。装好的系统上用 `rpm -q hyprland` 或 `rpm -q denial denial-flutter-engine` 看实际版本。
 
 ## 产物命名规律
 
