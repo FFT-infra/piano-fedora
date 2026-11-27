@@ -72,8 +72,7 @@ CHAINS = {
     "rpms": {
         "locks": [
             "sunuefi", "linux-piano", "dtc", "piano-firmware", "piano-sensors",
-            "piano-mipps-auth", "fastrpc", "librevm", "crosvm", "uperf",
-            "piano-integration",
+            "fastrpc", "librevm", "crosvm", "uperf", "piano-integration",
         ],
         # build-rpms.sh 会把下面几个脚本与 initramfs 片段打进 RPM 载荷。
         "paths": [
@@ -99,7 +98,7 @@ CHAINS = {
     "runtime": {
         "locks": [
             "sunuefi", "linux-piano", "fastrpc", "piano-sensors",
-            "piano-mipps-auth", "librevm", "crosvm", "uperf", "piano-integration",
+            "librevm", "crosvm", "uperf", "piano-integration",
         ],
         "paths": [
             "packages",
