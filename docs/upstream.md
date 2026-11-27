@@ -22,7 +22,7 @@
 
 ## 核心补丁分叉与策略
 
-本仓库内核补丁集（`patches/kernel/`）在封存上游 290 条补丁之后追加自有 36 条适配补丁（目标树记录于 `patches/kernel/series.json`），其余 Fedora 临时重编包的移除条件记录于 `scripts/fedora-overlays.json`。主要策略包括：
+本仓库内核补丁集（`patches/kernel/`）在封存上游 290 条补丁之后追加自有 36 条适配补丁。各份累积补丁依次改写 SunUEFI 的 `patches/linux/7.3/series.json`，重放完成后该文件的 `target_tree` 字段就是目标树；`patches/kernel/series.json` 记录的是每份补丁改写后各文件的 sha256，由 `apply-patches.py --check` 核对。其余 Fedora 临时重编包的移除条件记录于 `scripts/fedora-overlays.json`。主要策略包括：
 
 - **内核与触控解码**：启用 LLVM 23.1.5 + ThinLTO + `-O3` + `CONFIG_ARM64_PIANO_OPTIMIZE`；跟进上游 `0399` / `0431` / `0432` 在内核 IRQ 线程做手指矩阵与笔解码，`/proc/nvt_thp_status` 输出 `kernel_input: enabled` 时由用户态 `piano-touch-view` 自动退避（两者仅在 BlueZ 笔初始化保留交互）。
 - **电源与充电**：`0415`-`0422` 接入 4.0.6 循环充电、MCA/SC8541 FFC 与 PPS；GNOME PPD 通过 `piano-power-mode` 桥接到 `uperfctl` 而不直接改 sysfs 频点。
