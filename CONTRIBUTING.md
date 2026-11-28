@@ -4,7 +4,7 @@
 
 ## 开始之前
 
-先读 `AGENTS.md`。它写明了每个事实的唯一出处、硬规则和提交格式。
+先读 [AGENTS.md](AGENTS.md)。它写明了每个事实的唯一出处、底线和提交格式。
 
 需要的东西：
 
@@ -48,9 +48,7 @@ make test
 
 ## 提交
 
-格式 `{type}: {description}`，`type` 取 `feat`、`fix`、`refactor`、`docs`、`chore`。一个提交一件事。
-
-提交前自查：
+提交标题的格式见 [AGENTS.md](AGENTS.md#提交与注释)。提交前自查：
 
 ```sh
 git status --short
@@ -59,9 +57,4 @@ make test
 
 ## Pull Request
 
-描述里写这四样：
-
-1. 改了什么，为什么。一句话说清动机，不贴 diff。
-2. 怎么验证的。贴命令与关键输出。没跑的检查标为未跑。
-3. 影响面。是否改变镜像内容、分区布局、引导链或 `sources.lock.json`。
-4. 回滚方式。如果改动涉及刷机、分区或安全相关路径，写清怎么退回。
+描述按 [PR 模板](.github/PULL_REQUEST_TEMPLATE.md) 的各节填：改了什么、怎么验证的、影响面、回滚。开 PR 时 GitHub 会自动带出模板。
