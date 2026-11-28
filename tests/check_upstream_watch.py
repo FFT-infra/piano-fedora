@@ -26,7 +26,7 @@ AUDIT = {"schema_version": 1, "repositories": [
     {"repo": "code002-2/librevm", "ref": "main", "status": "verified",
      "commit": digest("4"), "subject": "cpus"},
     # 核验失败：不能当成漂移，也不能写 pin。
-    {"repo": "blu-sharky/uperf", "ref": "main", "status": "unverified",
+    {"repo": "blu-sharky/piano-sensors", "ref": "main", "status": "unverified",
      "error": "HTTP 503"},
     # 只作参照的研究上游：没有 lock_key，不参与报告。
     {"repo": "linux-msm/audioreach-topology", "status": "verified",
@@ -37,7 +37,7 @@ UPSTREAMS = {"repositories": [
     {"repo": "google/crosvm", "lock_key": "crosvm", "decision": "consume"},
     {"repo": "slwyts/Project-SunUEFI", "lock_key": "sunuefi", "decision": "consume"},
     {"repo": "code002-2/librevm", "lock_key": "librevm", "decision": "consume"},
-    {"repo": "blu-sharky/uperf", "lock_key": "uperf", "decision": "consume"},
+    {"repo": "blu-sharky/piano-sensors", "lock_key": "piano-sensors", "decision": "consume"},
     {"repo": "linux-msm/audioreach-topology", "decision": "reference"},
 ]}
 
@@ -45,7 +45,7 @@ LOCK = {"schema_version": 1, "sources": {
     "crosvm": {"url": "https://github.com/google/crosvm.git", "ref": "main", "commit": digest("1")},
     "sunuefi": {"url": "https://github.com/slwyts/Project-SunUEFI.git", "ref": "main", "commit": digest("3")},
     "librevm": {"url": "https://github.com/code002-2/librevm.git", "ref": "main", "commit": digest("4")},
-    "uperf": {"url": "https://github.com/blu-sharky/uperf.git", "ref": "main", "commit": digest("5")},
+    "piano-sensors": {"url": "https://github.com/blu-sharky/piano-sensors.git", "ref": "main", "commit": digest("5")},
 }}
 
 
@@ -66,7 +66,7 @@ with tempfile.TemporaryDirectory() as temporary:
     _, rows = load_rows(root)
     result = watch.summary(rows)
     assert result == {"drift": ["crosvm", "sunuefi"], "auto": ["crosvm"],
-                      "unverified": ["uperf"]}, result
+                      "unverified": ["piano-sensors"]}, result
 
     text = watch.render(None, rows, "2026-10-20T00:00:00+00:00")
     assert "`crosvm`" in text and "白名单，可自动改 pin" in text
@@ -76,8 +76,8 @@ with tempfile.TemporaryDirectory() as temporary:
     assert "devices: fix \\| pipe" in text
     assert "未能核验" in text and "HTTP 503" in text
     assert "audioreach" not in text
-    # 未核验的 uperf 与未漂移的 librevm 都不进表。
-    assert "`uperf`" not in text.split("### 未能核验")[0]
+    # 未核验的 piano-sensors 与未漂移的 librevm 都不进表。
+    assert "`piano-sensors`" not in text.split("### 未能核验")[0]
 
     # bump 只动白名单里已漂移的那一项，其余字节不变。
     lock = write(root, "lock.json", LOCK)
@@ -87,7 +87,7 @@ with tempfile.TemporaryDirectory() as temporary:
     written = json.loads(lock.read_text())
     assert written["sources"]["crosvm"]["commit"] == digest("2")
     assert written["sources"]["sunuefi"]["commit"] == digest("3"), "manual upstream moved"
-    assert written["sources"]["uperf"]["commit"] == digest("5"), "unverified upstream moved"
+    assert written["sources"]["piano-sensors"]["commit"] == digest("5"), "unverified upstream moved"
     assert written["sources"]["crosvm"]["ref"] == "main", "bump must not change the ref"
     assert lock.read_text() == json.dumps(written, ensure_ascii=False, indent=2) + "\n"
     body = watch.render_pull_request(rows, changed, "2026-10-20")

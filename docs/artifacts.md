@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | UEFI 产品 | `build-uefi.yml` | 锁定 SunUEFI 配方输出 `PianoUEFI-product.img` 与原始 manifest |
 | 内核与 SDK | `build-kernel.yml` | 内建 F2FS/SELinux/Gunyah，仅出 `kernel-release-7.3.0` 与绑定的 `kernel-sdk-7.3.0` |
-| 矩阵 RPM 与 SRPM | `host-check.yml` (`build-piano-rpms.yml`) | 编译 15 个硬件/运行时包与匹配内核的 `kernel-piano`（供 COPR 源码重建） |
+| 矩阵 RPM 与 SRPM | `host-check.yml` (`build-piano-rpms.yml`) | 编译 14 个矩阵包（含匹配内核的 `kernel-piano`），SRPM 供 COPR 源码重建 |
 | 图形栈 RPM | `build-mesa.yml` / `build-ffmpeg.yml` | `mesa-piano-*`（Adreno A830v1）与启用 v4l2m2m 的 `ffmpeg-piano` |
 | 运行时 RPM | `build-device-runtime.yml` | `piano-runtime`、`piano-crosvm`、`librevm`（`v4l2loopback` 在矩阵内核包中编译） |
 | 基础 rootfs | `build-rootfs.yml` | 按 `desktop=all` 展开五档，记录容器 ID 与实际 RPM 列表 |

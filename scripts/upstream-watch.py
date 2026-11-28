@@ -29,7 +29,6 @@ ROOT = Path(__file__).resolve().parents[1]
 AUTO_BUMP = {
     "crosvm",
     "librevm",
-    "uperf",
     "piano-mesa",
     "piano-sensors",
 }

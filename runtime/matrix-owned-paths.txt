@@ -16,9 +16,6 @@
 /etc/udev/rules.d/70-piano-power-button.rules
 /etc/wireplumber/wireplumber.conf.d/50-piano-camera.conf
 /etc/xdg/powerdevilrc
-/etc/uperf-linux/config.json
-/etc/uperf-linux/perapp_powermode
-/etc/uperf-linux/sm8550.json
 /usr/bin/piano-next-boot
 /usr/lib/firmware/adsp.b00
 /usr/lib/firmware/adsp.b01
@@ -138,7 +135,6 @@
 /usr/lib/systemd/user/piano-plasma-power-button.service
 /usr/lib/systemd/user/piano-power-button.service
 /usr/lib/systemd/system/piano-touch.service
-/usr/lib/systemd/system/uperf-linux.service
 /usr/lib/tmpfiles.d/cpufreq-schedutil.conf
 /usr/lib/tmpfiles.d/piano-machine-info.conf
 /usr/lib64/dri/msm_drv_video.so
@@ -149,9 +145,6 @@
 /usr/share/alsa/ucm2/Qualcomm/sm8750/Xiaomi-Pad-8-Pro/Xiaomi-Pad-8-Pro.conf
 /usr/share/applications/org.sunuefi.BootMenu.desktop
 /usr/share/applications/org.sunuefi.ReturnAndroid.desktop
-/usr/share/applications/uperf-gui.desktop
-/usr/share/dbus-1/system.d/org.uperflinux.Daemon.conf
-/usr/share/licenses/uperf-linux/LICENSE
 /usr/share/piano/machine-info
 /usr/share/piano/pen/calibration/piano-boe.ini
 /usr/share/piano/pen/calibration/piano-csot.ini
@@ -159,8 +152,5 @@
 /usr/share/piano/touch/piano-boe.json
 /usr/share/piano/touch/piano-csot.json
 /usr/share/polkit-1/actions/org.sunuefi.boot-request.policy
-/usr/share/polkit-1/actions/org.uperflinux.policy
 /usr/share/polkit-1/rules.d/49-piano-boot-request.rules
-/usr/share/uperf-linux/dbus-interface.xml
-/usr/share/uperf-linux/sm8550.json
 /usr/share/alsa/ucm2/conf.d/sm8750/Xiaomi Pad 8 Pro.conf

@@ -2,7 +2,7 @@
 
 Name:           piano-fedora-configs
 Version:        0.1.0
-Release:        21%{?dist}
+Release:        22%{?dist}
 Summary:        System configuration, hardware fixes and power management for Xiaomi Pad 8 Pro (piano)
 License:        MIT AND BSD-2-Clause-Patent AND GPL-2.0-only
 URL:            https://github.com/FFT-infra/piano-fedora
@@ -17,6 +17,9 @@ Requires:       f2fs-tools
 Requires:       python3-evdev
 # piano-power-button 用 gi.repository 的 Gio/GLib 走会话总线。
 Requires:       python3-gobject
+# 三档电源策略由 TuneD 的 sysfs 插件执行，tuned-ppd 给桌面提供 PowerProfiles 接口，
+# 它自己依赖同版本的 tuned。
+Requires:       tuned-ppd
 
 # Replaces the older standalone piano-session-fixes package. The bound is
 # written as `< %{version}-%{release}` so it can never reach this package's
@@ -25,10 +28,14 @@ Requires:       python3-gobject
 # obsoleted here.
 Obsoletes:      piano-session-fixes < %{version}-%{release}
 Provides:       piano-session-fixes = %{version}-%{release}
+# uperf-linux 的守护进程自己管 cpufreq 与 devfreq，会把 TuneD 写的上限改回去。
+Obsoletes:      uperf-linux < 0.1.2-3
+# TuneD 只定上限，过热降频靠内核温区。带 SoC 温区的板级 DTB 从这一版内核包才有。
+Conflicts:      kernel-piano < 7.3.3-12
 
 %description
 System integration, hardware platform fixes, and power management configuration
-for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
+for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora:
 - qbootctl A/B slot stability: automatically marks slot Successful: 1 on boot
 - f2fs-root-shutdown hook: safely flushes F2FS checkpoint and remounts root read-only
 - PMIC RTC software clock floor restore and periodic background save
@@ -38,8 +45,8 @@ for Xiaomi Pad 8 Pro (SM8750 piano) running Fedora 44 / GNOME:
 - Interconnect bwmon and RPMh stats module auto-loading
 - Dual-boot SunUEFI / Android return launchers and polkit rules
 - CPU schedutil 2ms rate limit tuning for instantaneous touch response
-- TuneD profiles and the tuned-ppd power mode mapping for GNOME, bridged to
-  uperf-linux's own power modes
+- Three TuneD power profiles with the tuned-ppd mapping, and a guard that keeps
+  the ceilings down on a device tree without SoC cooling maps
 - Chinese default locale and the pinyin input source for GNOME
 - Static tablet chassis identification for systemd and desktop
 
@@ -119,9 +126,9 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %{_libexecdir}/piano-fake-tablet-mode
 %{_libexecdir}/piano-physical-platform
 %{_libexecdir}/xiaomi-charger-mode
+%{_libexecdir}/piano-thermal-guard
 %{_prefix}/lib/piano/power-button
 %{_prefix}/lib/piano/plasma-power-button
-%{_prefix}/lib/piano/piano-power-mode
 %{_prefix}/lib/piano/first-boot-ssh-key
 %{_prefix}/lib/piano/piano-ram-hardware-prepare
 %{_prefix}/lib/piano/piano-disk-hardware-prepare
@@ -141,12 +148,10 @@ chmod 0755 %{buildroot}/usr/local/bin/* %{buildroot}%{_prefix}/lib/piano/* || tr
 %config(noreplace) %{_sysconfdir}/locale.conf
 %config(noreplace) %{_sysconfdir}/dconf/db/local.d/00-input-sources
 %{_prefix}/lib/tuned/profiles/piano-power-saver/tuned.conf
-%{_prefix}/lib/tuned/profiles/piano-power-saver/apply.sh
 %{_prefix}/lib/tuned/profiles/piano-balanced/tuned.conf
-%{_prefix}/lib/tuned/profiles/piano-balanced/apply.sh
 %{_prefix}/lib/tuned/profiles/piano-performance/tuned.conf
-%{_prefix}/lib/tuned/profiles/piano-performance/apply.sh
 %{_unitdir}/tuned-ppd.service.d/50-piano-ppd.conf
+%{_unitdir}/tuned.service.d/50-piano-thermal-guard.conf
 %{_datadir}/piano/machine-info
 
 %{_datadir}/applications/org.sunuefi.ReturnAndroid.desktop
@@ -184,7 +189,28 @@ rm -f /etc/systemd/system/multi-user.target.wants/piano-boot-request-autoconfig.
 %postun
 %systemd_postun_with_restart piano-clock-restore.service piano-clock-save.timer piano-fake-tablet-mode.service piano-physical-platform.service xiaomi-charger-mode.service
 
+%posttrans
+# 运行中的系统：uperf 在这次事务里卸掉了，带温区的设备树要到重启才生效。让守卫按
+# 当前设备树判一次，正在跑的 TuneD 重启时过同一个检查。镜像构建里没有运行中的
+# systemd，整段跳过。
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || :
+    systemctl try-restart tuned.service || :
+    %{_libexecdir}/piano-thermal-guard || :
+fi
+
 %changelog
+* Sat Nov 28 2026 FFT-infra <dev@piano.invalid> - 0.1.0-22
+- 三档电源策略换成 SunUEFI 的 TuneD profile：sysfs 插件直接定 CPU 与 GPU 的频率
+  上限，不再经 piano-power-mode 转给 uperf-linux。依赖 tuned-ppd，每个桌面档都有
+  PowerProfiles 接口；uperf-linux 由本包 Obsoletes
+- 平衡档的 CPU 上限取 2400000 / 3283200 kHz，比上游低：背面温区没有触发点，
+  上游的上限下八核满载 8 分钟背面到 43 C 还在升，这组上限下是 35 C
+- 加 piano-thermal-guard 作 tuned.service 的 ExecStartPre：运行中的设备树没有降频
+  映射时按省电档封顶，TuneD 不启动。7.3.3-12 之前的板级 DTB 没有 SoC 温区，升级后
+  到重启前、ESP 没写成、从上一代启动项启动都是这种情况
+- 描述不再写 Fedora 44 / GNOME
+
 * Mon Nov 23 2026 FFT-infra <dev@piano.invalid> - 0.1.0-21
 - 删掉遮住发行版 dist-alsa.conf 的同名文件。内核早就有 CONFIG_SND_SEQUENCER=m，
   留着它 MIDI 与音序器软件拿不到 /dev/snd/seq

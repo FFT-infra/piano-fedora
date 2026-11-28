@@ -146,7 +146,7 @@ jobs:
                 dbus-daemon dbus-tools
               git config --global --add safe.directory /workspace/build/sources/sunuefi/upstream/debian-piano-current
               git config --global --add safe.directory /workspace/build/sources/fastrpc
-              for name in librevm crosvm iris-vaapi piano-integration uperf; do
+              for name in librevm crosvm iris-vaapi piano-integration; do
                 git config --global --add safe.directory /workspace/build/sources/$name
               done
               git config --global --add safe.directory /workspace/build/sources/crosvm/third_party/minijail

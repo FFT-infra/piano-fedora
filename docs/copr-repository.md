@@ -1,10 +1,10 @@
 # COPR 软件源
 
-设备装好 Fedora 后，内核、固件、相机、触控、传感器、调度器与图形栈全部通过 COPR `xinyang26/piano-fedora`（`fedora-45-aarch64`）在线升级，不必手工下载安装 RPM。
+设备装好 Fedora 后，内核、固件、相机、触控、传感器、电源模式与图形栈全部通过 COPR `xinyang26/piano-fedora`（`fedora-45-aarch64`）在线升级，不必手工下载安装 RPM。
 
-## 默认维护的 20 个包
+## 默认维护的 19 个包
 
-- **矩阵包（15 个）**：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-bluez`、`piano-camera`、`piano-fedora-configs`、`piano-fingerprint`、`piano-libfprint`、`piano-libwacom`、`piano-pipewire-gstreamer`、`sm8750-video-accel`、`uperf-linux`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`
+- **矩阵包（14 个）**：`alsa-xiaomi-piano`、`iio-sensor-proxy-ssc`、`kernel-piano`、`libssc`、`piano-bluez`、`piano-camera`、`piano-fedora-configs`、`piano-fingerprint`、`piano-libfprint`、`piano-libwacom`、`piano-pipewire-gstreamer`、`sm8750-video-accel`、`xiaomi-piano-firmware`、`xiaomi-piano-thp`
 - **设备运行时（3 个）**：`piano-runtime`、`piano-crosvm`、`librevm`
 - **图形栈（2 组）**：`mesa-piano-*`、`ffmpeg-piano`
 
@@ -36,7 +36,11 @@ sudo dnf downgrade --repo fedora piano-fedora-configs      # 单个包回退 Fed
 - **BLS 布局**（带 `systemd-boot`）：写 `/linux/<release>/` 与 `/loader/entries/linux-<release>.conf`，仅保留当前、更新前与正在运行的内核条目，不动非 piano 启动项。
 - **UKI 布局**：重打包含 `.linux` / `.initrd` / `.dtb` / `.cmdline` / `.osrel` / `.uname` 的 PE 文件（先写 `.new` 并核对六个节区，再备份旧文件为 `.bak` 后原子替换 `sunuefi.efi`）。
 
-写 ESP 前任一步出错即中止且不修改 ESP。因为旧模块目录在 RPM 升级时已被移除，`dnf history undo` 或仅还原 `.bak` 都不足以让旧内核完整工作，回滚须先降级包：
+写 ESP 前任一步出错即中止且不修改 ESP。
+
+`kernel-piano` 7.3.3-12 之前的板级 DTB 没有 SoC 降频映射，内核过热时不降频。系统还跑在这种设备树上时（升级后没重启、ESP 没写成、从上一代启动项启动），`piano-thermal-guard` 把 CPU 与 GPU 上限压在省电档，`tuned.service` 不启动，电源模式开关不可用；重启进新设备树后恢复。
+
+因为旧模块目录在 RPM 升级时已被移除，`dnf history undo` 或仅还原 `.bak` 都不足以让旧内核完整工作，回滚须先降级包：
 
 ```sh
 sudo dnf downgrade kernel-piano
@@ -109,4 +113,4 @@ gh workflow run publish-copr.yml --ref main \
   -f execute=false
 ```
 
-在平板上验证仓库状态：`python3 scripts/verify-copr-device.py`（检查 20 个包齐全、图形栈已切 `mesa-piano-*`/`ffmpeg-piano`、无 `exclude=kernel-piano`），加 `--install-test` 确认 `dnf upgrade --assumeno` 可选到内核，加 `--extras` 检查 extras 源包状态。
+在平板上验证仓库状态：`python3 scripts/verify-copr-device.py`（检查 19 个包齐全、图形栈已切 `mesa-piano-*`/`ffmpeg-piano`、无 `exclude=kernel-piano`），加 `--install-test` 确认 `dnf upgrade --assumeno` 可选到内核，加 `--extras` 检查 extras 源包状态。

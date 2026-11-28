@@ -93,7 +93,7 @@
       "url": "https://github.com/code002-2/uperf-linux.git",
       "ref": "main",
       "commit": "edfb14a235c3708b4e9627c819dc28c68596d0f1",
-      "role": "原生 ARM64 性能守护进程、CLI 和 GTK GUI；使用内核限制与显式触控坐标单位"
+      "role": "没有包再用它。条目留着是因为 scripts/checkout-sources.py 的 device 模式还按它取源，那个脚本是 mesa 与 ffmpeg 两条链的输入，改它会让两条链整条重编；两条链下次重编时连同取源一起删"
     }
   }
 }

@@ -77,7 +77,7 @@ Mainline Linux kernel adapted for Xiaomi Pad 8 Pro (SM8750 piano):
 %build
 # Nothing to compile: the kernel Image, DTB and modules arrive prebuilt from the
 # pinned build-kernel pipeline. Rebuilding here would produce a different ABI
-# from the one the external modules (piano-camera, uperf, thp) were built against.
+# from the one the external modules (piano-camera, thp) were built against.
 
 %install
 # Refuse to package an incomplete kernel. Every one of these has been observed

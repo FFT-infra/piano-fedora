@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | 指纹用户态 | 预装 `piano-fingerprint` + `piano-libfprint`（随上游 TEE 重写，设备枚举就绪） | 真机录入、匹配与锁屏解锁未验，模板与 Android 隔离 |
 | 相机（闪光灯 / JPEG / 高像素 / 录像 / 隐私灯 / 对焦） | 前后摄录像（1920×1440@30）、后摄 8160×6120 RAW10→NV12、闪光频闪、`piano-camera-ctl` JPEG 直出、隐私灯与双向 GT9764BA 对焦已接入 | 开流首帧黑帧与 AE 收敛待优化；新对焦执行器实机长测待补 |
-| 电源调度 | `tuned-ppd` 桥接到 `uperf-linux` 三档（不直接写 sysfs 频点） | 无 |
+| 电源调度 | 沿用上游的 TuneD profile 与 `tuned-ppd` 映射，每个桌面档都装；平衡档的 CPU 上限比上游低 | 性能档满载时背面温度高，见[已知问题](known-issues.md#电源模式与发热) |
 | 充电、温控与 FFC | 已合入 `0397`/`0398`/`0411`/`0414` 序列 | 满电停充、高温降流与关机充电缺长期实机数据 |
 | 内核触控解码 | 跟进 `0399` / `0431` / `0432`，用户态检测到 `kernel_input: enabled` 后退出 | 内核路径不读逐屏电极校准，跟手度与多指长测待验 |
 | 中文与输入法 | 预装 `glibc-langpack-zh`、`zh_CN.UTF-8` 与拼音输入法 | 无 |
@@ -26,7 +26,7 @@
 针对部分上游方案，本仓库基于 Fedora 生态与本机硬件特性采用了不同做法：
 
 - **跟进内核触控解码并保留用户态契约**：启用 `0399` 内核矩阵解码后，用户态桥接按 `kernel_input: enabled` 自动不创建输入设备以避免冲突；但用户态仍保留 `BUS_SPI` / `0603:6532`、`ABS_MT_TOUCH_MINOR` 与 `MT_TOOL_PALM` 上报逻辑作兜底。
-- **电源策略走 Uperf 桥接而非写 sysfs**：直接在 TuneD profile 修改 `scaling_max_freq` / GPU 频率会被 `uperf-linux` 定时覆盖并可能锁死 GPU 频率，故通过 `/usr/lib/piano/piano-power-mode` 将 PPD 映射给 `uperfctl`。
+- **平衡档的 CPU 上限低于上游**：上游平衡档不限 CPU 频率，而背面温区没有触发点，满载时背面一直升温。本仓库的 `piano-balanced` 取 2400000 / 3283200 kHz，省电档、性能档与映射文件是上游原文，实测数据见[已知问题](known-issues.md#电源模式与发热)。背面温区有触发点后改回上游的值。
 - **允许分数缩放并避免 KDE 二次放大**：屏幕物理尺寸为 239×163 mm，GNOME 默认使用 Mesa/Mutter 自动协商的 2.67 倍分数缩放；KDE 仅启用 `KWIN_DRM_FORCE_SCALING_MODE=FULL` 而拒绝同时设 `QT_SCALE_FACTOR=2`。
 - **跳过不需要的上游补丁**：面板拥有规范 384 字节 EDID（不引入 `0002-color-no-edid-standard-profile`）；设备树只在子节点声明 Gunyah，无须引入依赖根节点的 `0001-about-gunyah-primary-domain` 关于页补丁。
 
