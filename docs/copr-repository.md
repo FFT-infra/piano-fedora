@@ -110,6 +110,7 @@ Fedora COPR 公开实例未开启二进制 RPM 直接上传（无 `DIRECT_RPM_UP
 gh workflow run publish-copr.yml --ref main \
   -f rpms_run_id=<host-check run> -f kernel_run_id=<kernel run> \
   -f mesa_run_id=<build-mesa run> -f ffmpeg_run_id=<host-check run> \
+  -f runtime_run_id=<build-device-runtime run> \
   -f execute=false
 ```
 
