@@ -242,45 +242,23 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$ESP_SIZE_MIB"
-          # Ubuntu 24.04 的 libfdt 1.6.1 会覆盖已存在的 panel phandle。
-          # 使用锁定上游 1.8.1，sudo 下显式传递工具和动态库路径。
-          make -C build/sources/dtc -j2 NO_PYTHON=1 NO_YAML=1 dtc fdtoverlay
-          export PATH="$PWD/build/sources/dtc:$PATH"
-          export LD_LIBRARY_PATH="$PWD/build/sources/dtc/libfdt"
-          PIANO_TEST_SUNUEFI=build/sources/sunuefi python3 tests/check_bundle_overlays.py
+          # 板级 DTB 只在 RPM 矩阵 job 里合成一次，kernel-piano 带着它进 rootfs。
+          # 这里把包里那一份原样交给上游打包工具，装机与之后每次内核升级用的是
+          # 同一份字节。先按随包的 manifest 核对，再把摘要显式传进去；放进单独的
+          # 目录，上游工具不会把同目录下别的 manifest.json 当成它的来源记录。
+          sudo install -D -m 0644 -o "$(id -u)" -g "$(id -g)" -t build/board-dtb \
+            build/device-root/rootfs/usr/lib/piano/board.dtb \
+            build/device-root/rootfs/usr/lib/piano/board-dtb.json
+          dtb_sha256=$(python3 scripts/compose-board-dtb.py --verify build/board-dtb \
+            | python3 -c 'import json, sys; print(json.load(sys.stdin)["sha256"])')
           # stock Android BOOT 包装仍要求本机当前 BOOT，通用包不冒充已部署合体 BOOT。
           # sudo 会清掉环境，SOURCE_DATE_EPOCH 必须显式传进去，否则 mtools
           # 拿不到它，FAT 目录项又回到当前时间。
-          sudo env "PATH=$PATH" "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
-            "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" \
+          sudo env "PATH=$PATH" "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" \
             python3 build/sources/sunuefi/tools/package_release.py \
             --uefi build/uefi/PianoUEFI-product.img --kernel build/kernel \
-            --dtb build/sources/sunuefi/vendor/piano-linux/board.dtb \
-            --cpu-model-overlay build/sources/sunuefi/linux/dts/piano-cpu-model.dtso \
+            --dtb build/board-dtb/board.dtb --dtb-sha256 "$dtb_sha256" \
             --panel-vendor auto \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-cma.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-pcie-interrupt-map.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-pcie-clocks.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-usb-typec.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-displayport.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-battery.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-ufs-mcq.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-dsp-resources.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-cdsp-fastrpc.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-fingerprint.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-board-identity.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-regdma-resource.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-audio-dmic-clock.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-sensors.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-interconnects.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-flash.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-privacy-led.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-camera-csi2-phys.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-touch-panel.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-pen-charger.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-bluetooth-nvm.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-ir-spi-controller.dtso \
-            --dtb-overlay build/sources/sunuefi/linux/dts/piano-display-interconnects.dtso \
             --initramfs build/initramfs/initramfs.cpio.gz \
             --rootfs build/device-root/rootfs --rootfs-manifest build/device-root/manifest.json \
             --root-selector LABEL=PIANOROOT --esp-size-mib "$ESP_SIZE_MIB" --output build/packaged
@@ -289,7 +267,8 @@ jobs:
         run: |
           set -euo pipefail
           # 装机用 ESP 镜像里的 DTB，之后每次内核升级改用 kernel-piano 包里的那一份。
-          # 两份由两个 job 各自合成，不等就意味着装机与升级后的设备树不一样。
+          # 上游打包工具拿到 DTB 后还会再做一遍主线绑定归一，这道门证明它没有
+          # 改动已经归一过的树：两份不等就意味着装机与升级后的设备树不一样。
           release=$(python3 -c 'import json; print(json.load(open("build/kernel/manifest.json"))["kernel_release"])')
           sudo env MTOOLS_SKIP_CHECK=1 mcopy -n -i build/packaged/esp.img \
             "::/linux/$release/board.dtb" build/esp-board.dtb

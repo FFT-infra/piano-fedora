@@ -746,10 +746,11 @@ def check_esp_reproducible(tmp):
 
 
 def check_bundle_dtb_matches_kernel_package():
-    """ESP 镜像与 kernel-piano 各带一份板级 DTB，build-bundle 必须逐字节比对。
+    """板级 DTB 只合成一次，ESP 镜像里的那份必须与 kernel-piano 带的逐字节相同。
 
-    装机用前一份，内核升级用后一份。两份由两个 job 分别合成，没有这道门，
-    overlay 列表或 dtc 版本一旦分叉，设备升级一次内核设备树就变了。
+    装机用前一份，内核升级用后一份。build-bundle 把包里的 DTB 交给上游打包
+    工具，工具还会再做一遍主线绑定归一；没有这道门，归一一旦不再幂等，设备
+    升级一次内核设备树就变了。
     """
     workflow = ".github/workflows/build-bundle.yml"
     body = step_body(workflow, "Require the ESP and kernel-piano to carry the same board DTB")
@@ -761,14 +762,25 @@ def check_bundle_dtb_matches_kernel_package():
         < text.index("Require the ESP and kernel-piano to carry the same board DTB") \
         < text.index("Assemble and verify the delivery set"), (
         "the DTB gate must run after the ESP exists and before the bundle is assembled")
-    # RPM 矩阵那一侧：合成用锁定的 dtc，build-rpms.sh 拿到的是合成目录。
+    # RPM 矩阵那一侧：合成用锁定的 dtc 与这个内核自己的源码树，build-rpms.sh
+    # 拿到的是合成目录。
     rpms = ".github/workflows/build-piano-rpms.yml"
     compose = step_body(rpms, "Compose the board DTB that ships with the kernel")
     assert "make -C build/sources/dtc" in compose and "compose-board-dtb.py" in compose, (
         "the RPM matrix does not compose the board DTB with the pinned dtc")
     assert 'LD_LIBRARY_PATH="$PWD/build/sources/dtc/libfdt"' in compose, (
         "fdtoverlay would load the runner's libfdt instead of the pinned one")
-    assert "export BOARD_DTB_DIR=/workspace/build/board-dtb" in (ROOT / rpms).read_text(), (
+    assert "--kernel build/kernel" in compose and '--kernel-source "$worktree"' in compose, (
+        "the SoC thermal zones are not taken from the source of the kernel that ships")
+    assert "check_bundle_overlays.py --dtb build/board-dtb/board.dtb" in compose, (
+        "the composed board DTB is packaged without checking what each overlay left in it")
+    text = (ROOT / rpms).read_text()
+    # 源码树由 v4l2loopback 那一步重放并与内核产物核对，合成必须排在它后面。
+    assert text.index("Compile the kernel-matched v4l2loopback") \
+        < text.index("Compose the board DTB that ships with the kernel") \
+        < text.index("Build the local RPM matrix in Fedora"), (
+        "the board DTB is composed before the kernel source exists, or after the RPMs are built")
+    assert "export BOARD_DTB_DIR=/workspace/build/board-dtb" in text, (
         "build-rpms.sh is not pointed at the composed board DTB")
 
 

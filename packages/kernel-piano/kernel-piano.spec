@@ -27,7 +27,7 @@
 
 Name:           kernel-piano
 Version:        7.3.3
-Release:        11.%{DEVICE_NAME}%{?dist}
+Release:        12.%{DEVICE_NAME}%{?dist}
 Summary:        Mainline Linux kernel with hardware fixes for Xiaomi Pad 8 Pro (piano)
 License:        GPL-2.0-only
 URL:            https://github.com/blu-sharky/linux-piano
@@ -163,6 +163,12 @@ depmod -a "$RELEASE" || exit 1
 /usr/lib/piano/piano-kernel-esp-update --release "$RELEASE" --manifest "$MANIFEST" || exit 1
 
 %changelog
+* Sat Nov 28 2026 FFT-infra <dev@piano.invalid> - 7.3.3-12.piano
+- 板级 DTB 补上 SoC 温区：47 个 tsens 温区取自这个内核自己的 sm8750.dtsi，
+  九个 CPU 温区到 95 °C 被动降频，GPU 温区绑到 GPU 降频。此前的设备树没有
+  SoC 温区，过热时内核不降频
+- 内核与模块同 7.3.3-11，只换设备树
+
 * Thu Nov 26 2026 FFT-infra <dev@piano.invalid> - 7.3.3-11.piano
 - 板级 DTB 随包发布，%posttrans 写进 ESP：此前升级沿用 ESP 上旧的 DTB，
   内核跟到 SunUEFI v1.0.0 后设备树里缺独立的 CSI2 PHY 节点，相机起不来

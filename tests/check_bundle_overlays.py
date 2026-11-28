@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
-"""用完整上游覆盖层链验证触屏、笔座和既有 phandle 引用。"""
-import json
+"""合成出来的板级 DTB 上，每个上游 overlay 都留下了它该留的东西。
+
+    check_bundle_overlays.py                   # 用内核替身合成一份再检查
+    check_bundle_overlays.py --dtb board.dtb   # 检查已合成的产物（RPM 矩阵 job 用）
+
+少叠一个 overlay 不会让构建失败，只会让对应的硬件在设备上不工作，所以只能在
+这里固定住。
+"""
+import argparse
+import importlib.util
 import os
 from pathlib import Path
-import re
 import shutil
 import struct
 import sys
@@ -11,45 +18,36 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SUN = Path(os.environ.get('PIANO_TEST_SUNUEFI', ROOT / 'build/test-sources/sunuefi'))
+sys.path.insert(0, str(ROOT / 'tests'))
+from board_dtb_fixture import cpu_zones, make_kernel_source  # noqa: E402
+
+
+def composed_with_fixture(directory):
+    spec = importlib.util.spec_from_file_location('compose_board_dtb',
+                                                  ROOT / 'scripts/compose-board-dtb.py')
+    composer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(composer)
+    kernel, source = make_kernel_source(Path(directory) / 'kernel-fixture', SUN)
+    composer.compose(SUN, kernel, source, Path(directory) / 'out')
+    return Path(directory) / 'out/board.dtb'
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('--dtb', type=Path, help='已合成的 board.dtb；省略时用内核替身合成')
+    args = parser.parse_args()
     if not (SUN / 'tools/package_release.py').is_file():
         assert 'PIANO_TEST_SUNUEFI' not in os.environ, 'explicit upstream test source is missing'
         print('SKIP: bundle overlay integration needs PIANO_TEST_SUNUEFI')
         return
-    assert all(shutil.which(name) for name in ('cpp', 'dtc', 'fdtoverlay')), 'missing overlay test tools'
-    # workflow 手写的 overlay 列表必须和上游 release.json 一致。少传一个不会报错，
-    # 只会在设备上少一个功能；这条断言是唯一能提前发现它的地方。
-    kernel = json.loads((SUN / 'config/release.json').read_text())['kernel']
-    workflow = (ROOT / '.github/workflows/build-bundle.yml').read_text()
-    passed = re.findall(r'--dtb-overlay\s+(\S+)', workflow)
-    # 不发货的 overlay 记在 product.json，workflow 里不该出现。
-    skipped = set(json.loads((ROOT / 'product.json').read_text())['dtb_overlays_not_shipped'])
-    expected = ['build/sources/sunuefi/' + name for name in kernel['additional_dtb_overlays']
-                if name not in skipped]
-    assert passed == expected, f'workflow overlays differ from release.json: {passed}'
-    cpu = re.findall(r'--cpu-model-overlay\s+(\S+)', workflow)
-    assert cpu == ['build/sources/sunuefi/' + kernel['cpu_model_overlay']], cpu
     sys.path.insert(0, str(SUN / 'tools'))
-    import package_release as package
     from compose_piano_dtb import read_fdt
     with tempfile.TemporaryDirectory(prefix='bundle-overlays-') as directory:
-        work = Path(directory)
-        board = work / 'board.dtb'
-        shutil.copyfile(SUN / 'vendor/piano-linux/board.dtb', board)
-        before = read_fdt(board.read_bytes())
-        overlays = ['cpu-model'] + [Path(item).name[len('piano-'):-len('.dtso')]
-                                    for item in kernel['additional_dtb_overlays']
-                                    if item not in skipped]
-        include_dirs = (SUN / 'upstream/linux-piano/include',)
-        if not include_dirs[0].is_dir():
-            include_dirs = ()
-        for name in overlays:
-            print('APPLY:', name, flush=True)
-            package.apply_cpu_model_overlay(board, SUN / f'linux/dts/piano-{name}.dtso',
-                                            work, cpu_only=name == 'cpu-model',
-                                            include_dirs=include_dirs)
+        if args.dtb is None:
+            assert all(shutil.which(name) for name in ('cpp', 'dtc', 'fdtoverlay', 'git')), (
+                'missing overlay test tools')
+        board = args.dtb or composed_with_fixture(directory)
+        before = read_fdt((SUN / 'vendor/piano-linux/board.dtb').read_bytes())
         after = read_fdt(board.read_bytes())
         tree, handles = after['tree'], after['phandles']
         assert after['reservations'] == before['reservations']
@@ -96,9 +94,20 @@ def main():
         assert [handles[interconnects[index]] for index in (0, 3, 6, 9)] == [
             '/soc/interconnect@1780000', '/soc/interconnect@1',
             '/soc/interconnect@24100000', '/soc/interconnect@1600000']
-        print('OK: every shipped overlay in release.json applies; CMA, PCIe IRQs and clocks, Type-C, '
+        # SoC 温区：GPU 能当降频设备，overlay 点名的每个 CPU 温区都有被动触发点，
+        # 并且绑到了一个能降频的 CPU 上。
+        assert cells(tree['/soc/gpu@3d00000']['#cooling-cells']) == (2,)
+        for zone in cpu_zones(SUN):
+            node = '/thermal-zones/' + zone
+            maps = [props for path, props in tree.items() if path.startswith(node + '/cooling-maps/')]
+            assert len(maps) == 1, (zone, len(maps))
+            trip = handles[cells(maps[0]['trip'])[0]]
+            assert trip.startswith(node + '/trips/') and tree[trip]['type'] == b'passive\0', (zone, trip)
+            cpu = handles[cells(maps[0]['cooling-device'])[0]]
+            assert cpu.startswith('/cpus/cpu@') and '#cooling-cells' in tree[cpu], (zone, cpu)
+        print('OK: every overlay in release.json left its mark: CMA, PCIe IRQs and clocks, Type-C, '
               'UFS MCQ, CDSP, fingerprint, touch link, pen GPIOs, battery, camera clock, '
-              'display interconnects and inherited phandles all hold')
+              'display interconnects, CPU and GPU thermal cooling, and inherited phandles all hold')
 
 
 if __name__ == '__main__':

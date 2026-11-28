@@ -28,7 +28,7 @@ PIANO_TEST_SUNUEFI=build/test-sources/sunuefi make test
 ```
 
 - `apply-patches.py --check` 在隔离副本中按序重放全部系列并比对 `targets` 与 `creates`，打印 `CHECKED` 为通过；排查单个失败时不要仅用 `--only`（缺少前置补丁会误报），按顺序手工 `git apply --check` 定位。
-- `make test` 通过 `scripts/run-checks.py` 自动运行所有 `tests/check_*.py`（可用 `--pattern <子串>` 或 `--timeout <秒>` 过滤和调整）；设置 `PIANO_TEST_SUNUEFI` 才不会跳过 `check_iris_source.py`、`check_bundle_overlays.py`、`check_installer.py` 等上游相关测试。其中 `tests/check_bundle_overlays.py` 会直接将 `build-bundle.yml` 传入的 `--dtb-overlay` 列表与上游 `config/release.json`（排除 `product.json` 的 `dtb_overlays_not_shipped`）逐项对齐，防止漏传硬件 overlay。
+- `make test` 通过 `scripts/run-checks.py` 自动运行所有 `tests/check_*.py`（可用 `--pattern <子串>` 或 `--timeout <秒>` 过滤和调整）；设置 `PIANO_TEST_SUNUEFI` 才不会跳过 `check_iris_source.py`、`check_bundle_overlays.py`、`check_installer.py` 等上游相关测试。其中 `tests/check_bundle_overlays.py` 用 `scripts/compose-board-dtb.py` 合成一份板级 DTB，核对上游 `config/release.json` 的每个 overlay 在结果里留下的节点，防止漏叠硬件 overlay。
 
 ## CI 发布构建顺序
 
@@ -53,5 +53,5 @@ PIANO_TEST_SUNUEFI=build/test-sources/sunuefi make test
 2. 若上游改名或移动文件，同步修改对应补丁路径与 `series.json` `targets` 摘要，跑 `apply-patches.py --check` 确认干净。
 3. 若上游内核序列变动，按先上游序列、后自有补丁（整体后移）重排并重算每条 `tree` / `original_parent` / `original_commit` 及 `config/release.json` 末尾值；按同样分段边界重新导出 `patches/kernel/0001`-`0007` 累积 diff 并更新 `patches/kernel/series.json`。
 4. 若重排更改了内核补丁文件名，同步更新 `tests/check_iris_source.py` 中的 `EXPECTED` 列表。
-5. 不随镜像发布的上游 overlay 统一登记在 `product.json` 的 `dtb_overlays_not_shipped`。
+5. 上游 `config/release.json` 新增的 overlay 会自动合成进板级 DTB，在 `tests/check_bundle_overlays.py` 给它补一条断言。
 6. 运行上面的取源、补丁与 `PIANO_TEST_SUNUEFI=... make test` 三条门禁命令，全绿后提交。

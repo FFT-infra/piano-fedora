@@ -141,8 +141,9 @@ for pkg in "${PACKAGES_TO_BUILD[@]}"; do
             fi
             DTB_DIR=$(resolve_board_dtb) || {
                 echo "Error: no composed board DTB for kernel-piano." >&2
-                echo "       Run scripts/compose-board-dtb.py --sunuefi <checkout> --output build/board-dtb," >&2
-                echo "       or point BOARD_DTB_DIR at its output." >&2
+                echo "       Run scripts/compose-board-dtb.py --sunuefi <checkout> --kernel <artifact>" >&2
+                echo "       --kernel-source <tree> --output build/board-dtb, or point BOARD_DTB_DIR" >&2
+                echo "       at its output." >&2
                 rm -rf "$STAGE"
                 exit 1
             }
