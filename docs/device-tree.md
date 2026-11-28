@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | `sunuefi/vendor/piano-linux/board.dtb` | 二进制，1,208,011 字节 | 是 | 启动基线，供全部 overlay 叠加 |
 | `android_kernel_xiaomi_piano`（`arch/arm64/boot/dts/vendor/qcom/`） | Android 下游 DTS 源码（808 个 `.dts`/`.dtsi`） | 否 | 仅供 CI `compare-vendor-dt.py` 对照参考 |
-| `sunuefi/linux/dts/*.dtso` | 1 个 CPU 模型 + 24 个附加 overlay（发货 23 个） | 是（合并进 `board.dtb`） | 将基线修补到主线 Linux 7.3 可用状态 |
+| `sunuefi/linux/dts/*.dtso` | 1 个 CPU 模型 + 24 个附加 overlay | 是（合并进 `board.dtb`） | 将基线修补到主线 Linux 7.3 可用状态 |
 
 内核源码自带的 `arch/arm64/boot/dts/qcom/sm8750-xiaomi-piano.dts` 当前不参与启动，因此主线 DT 上游提交暂无法直接搬运。
 
@@ -21,7 +21,7 @@
 
 ## 启动使用的 24 个 Overlay
 
-SunUEFI `config/release.json` 声明 `piano-cpu-model` 及 24 个附加 overlay；其中 `product.json` 的 `dtb_overlays_not_shipped` 排除 `piano-tsens`，其余 23 个由 `build-bundle.yml` 全部合并进 ESP（`tests/check_bundle_overlays.py` 强制对齐两份清单）：
+SunUEFI `config/release.json` 声明 `piano-cpu-model` 及 24 个附加 overlay。`scripts/compose-board-dtb.py` 在 `build-piano-rpms.yml` 里把它们全部合成进 `kernel-piano` 随包的 `board.dtb`，`build-bundle.yml` 把包里这一份原样写进 ESP（`tests/check_bundle_overlays.py` 核对每个 overlay 在合成结果里留下的节点）：
 
 | Overlay | 目标节点 / 范围 | 作用 |
 | --- | --- | --- |
@@ -49,13 +49,14 @@ SunUEFI `config/release.json` 声明 `piano-cpu-model` 及 24 个附加 overlay�
 | `piano-bluetooth-nvm` | 蓝牙 | 指定 `brhbtnv20.b2e` 与板级 RF 校准 |
 | `piano-ir-spi-controller` | QUP2 SE7 / CS0 | LIRC 红外发射与 GPIO29 |
 | `piano-display-interconnects` | `/soc/interconnect@1780000` | SM8750 MDSS/RPMh 互连绑定 |
+| `piano-tsens` | `/thermal-zones` | SoC 温区（节点取自编出内核的那份 `sm8750.dtsi`）、CPU 95 °C 被动降频与 GPU 降频绑定 |
 
 合并后的 DTB 在 BLS 布局下位于 `/linux/<release>/board.dtb`（UKI 布局打入 PE `.dtb` 节区），由 `kernel-piano` `%posttrans` 随内核同步升级。每次启动时 UEFI 固件再通过 `EFI_DT_FIXUP_PROTOCOL` 动态重写 `/memory`、面板 `compatible`、蓝牙地址、RTC 偏移与 Gunyah RM 属性。
 
-注意：`piano-cma` 与 `piano-ufs-mcq` 若漏传将直接无法开机；回退只需刷回上一版可用 bundle 里的 `sunuefi_esp.img`。
+注意：缺了 `piano-cma` 或 `piano-ufs-mcq` 将直接无法开机；回退只需刷回上一版可用 bundle 里的 `sunuefi_esp.img`。
 
 ## Oracle 厂商对照检查
 
-CI 的 `vendor-dt` 任务运行 `scripts/compare-vendor-dt.py`：用厂商基线 DTB 依次叠入 `piano-sm8750-overlay` 及 techpack 显示/相机/音频 overlay，逐 fragment 检查各个 SunUEFI overlay 的目标节点与属性值，并将结果输出到 `build/vendor-dt-report/report.{json,md}`。
+CI 的 `vendor-dt` 任务运行 `scripts/compare-vendor-dt.py`：用厂商基线 DTB 依次叠入 `piano-sm8750-overlay` 及 techpack 显示/相机/音频 overlay，逐 fragment 检查各个 SunUEFI overlay 的目标节点与属性值（`piano-tsens` 的 include 要从内核源码生成，不参与对照），并将结果输出到 `build/vendor-dt-report/report.{json,md}`。
 
 由于与出货树结构非同一源码树，预期内的命名或存在差异登记在 `KNOWN_MISSING`；出现列表外的新增缺失时脚本报错，提醒维护者审查新增 overlay 或厂商更新。所有出货构建脚本均禁止直接消费 `vendor-kernel`，见[上游跟踪](upstream.md)。面板 profile 与 RAM 边界判据见[上游跟踪的内存与面板章节](upstream.md#内存与面板边界)。

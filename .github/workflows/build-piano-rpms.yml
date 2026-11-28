@@ -152,20 +152,6 @@ jobs:
           sunuefi_commit=$(git -C build/sources/sunuefi rev-parse HEAD)
           echo "sunuefi_commit=$sunuefi_commit" >> "$GITHUB_OUTPUT"
 
-      - name: Compose the board DTB that ships with the kernel
-        run: |
-          set -euo pipefail
-          # kernel-piano 随包带这份 DTB，设备升级内核时把它写进 ESP。它必须与
-          # build-bundle 写进 ESP 镜像的那一份逐字节相同，所以走同一条上游链、
-          # 用同一个锁定的 libfdt：Ubuntu 24.04 的 1.6.1 会覆盖已存在的 panel
-          # phandle。内核源码此时还是 pin 的原样，dt-bindings 与 bundle 用的一致。
-          make -C build/sources/dtc -j2 NO_PYTHON=1 NO_YAML=1 dtc fdtoverlay
-          PATH="$PWD/build/sources/dtc:$PATH" \
-            LD_LIBRARY_PATH="$PWD/build/sources/dtc/libfdt" \
-            python3 scripts/compose-board-dtb.py \
-            --sunuefi build/sources/sunuefi --output build/board-dtb
-          python3 scripts/compose-board-dtb.py --verify build/board-dtb
-
       - name: Seed the sealed kernel source from a reachable mirror
         run: |
           set -euo pipefail
@@ -182,6 +168,26 @@ jobs:
           python3 scripts/prepare-runtime-kernel.py --sunuefi build/sources/sunuefi \
             --kernel build/kernel --sdk build/in/sdk --output build/kernel-runtime
           test -s build/kernel-runtime/v4l2loopback/v4l2loopback.ko
+
+      - name: Compose the board DTB that ships with the kernel
+        run: |
+          set -euo pipefail
+          # kernel-piano 随包带这份 DTB：build-bundle 把它原样写进 ESP 镜像，设备
+          # 升级内核时 %posttrans 再写一次，全程只有这一处合成。
+          # SoC 温区取自内核源码的 sm8750.dtsi，所以排在上一步之后：那一步重放出
+          # 源码树，并核对过它的提交与 tree 就是这个内核产物的。
+          # libfdt 用锁定的 1.8.1：Ubuntu 24.04 的 1.6.1 会覆盖已存在的 panel phandle。
+          make -C build/sources/dtc -j2 NO_PYTHON=1 NO_YAML=1 dtc fdtoverlay
+          export PATH="$PWD/build/sources/dtc:$PATH"
+          export LD_LIBRARY_PATH="$PWD/build/sources/dtc/libfdt"
+          worktree=$(python3 -c 'import json; print(json.load(open("build/sources/sunuefi/build/release/source-manifest.json"))["worktree"])')
+          python3 scripts/compose-board-dtb.py \
+            --sunuefi build/sources/sunuefi --kernel build/kernel \
+            --kernel-source "$worktree" --output build/board-dtb
+          python3 scripts/compose-board-dtb.py --verify build/board-dtb
+          # 少叠一个 overlay 不会让构建失败，只会让对应的硬件在设备上不工作。
+          PIANO_TEST_SUNUEFI=build/sources/sunuefi \
+            python3 tests/check_bundle_overlays.py --dtb build/board-dtb/board.dtb
 
       - name: Build the local RPM matrix in Fedora
         env:

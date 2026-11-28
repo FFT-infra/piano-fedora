@@ -21,6 +21,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 FRAGMENT = re.compile(r"^fragment@\d+$")
 
+# 这些 overlay 的 include 由上游从内核源码生成（sm8750-thermal-zones.dtsi 取自
+# sm8750.dtsi），这个 job 没有那棵源码树，编不了，不参与对照。
+NEEDS_KERNEL_SOURCE = {"linux/dts/piano-tsens.dtso"}
+
 # 第一轮对照里厂商侧找不到的目标节点。这里登记的是已经看过、确认属于两条
 # 血缘正常差异的项：厂商用下游命名、节点由别的 overlay 建立、或者厂商 DT
 # 本来就不描述这块硬件。新增的差异不进这张表，报告里单独列成 unexplained。
@@ -288,10 +292,7 @@ def main():
     names = list(release["kernel"]["additional_dtb_overlays"])
     if release["kernel"].get("cpu_model_overlay"):
         names.insert(0, release["kernel"]["cpu_model_overlay"])
-    # 不发货的 overlay 不参与对照：它们的 include 由上游在 --kernel-source 下
-    # 从内核源码生成，这里没有那棵源码树。
-    not_shipped = set(json.loads((ROOT / "product.json").read_text()).get("dtb_overlays_not_shipped", []))
-    names = [name for name in names if name not in not_shipped]
+    names = [name for name in names if name not in NEEDS_KERNEL_SOURCE]
 
     overlays = []
     provided = {}
