@@ -21,7 +21,7 @@ F2FS 镜像打包不走 `f2fs-tools` 的 `sload -P`（它会丢掉 xattr、ACL �
 | Workflow | 触发方式 | 产出与职责 |
 | --- | --- | --- |
 | `host-check.yml` | push / PR / 手动 | 跑 `make test`；手动时可复用调用 `build-piano-rpms`、`build-ffmpeg`、`package-install` |
-| `build-piano-rpms.yml` | `host-check` 复用 | 编译 15 个硬件/运行时矩阵 RPM 与匹配内核的 `kernel-piano`（含 SRPM） |
+| `build-piano-rpms.yml` | `host-check` 复用 | 编译 14 个矩阵 RPM（含匹配内核的 `kernel-piano`）与 SRPM |
 | `build-ffmpeg.yml` | `host-check` 复用 | 编译启用 H.264/HEVC v4l2m2m 的 `ffmpeg-piano` |
 | `build-uefi.yml` | 手动 | UEFI 固件产品及原始 manifest |
 | `build-kernel.yml` | 手动 | 启用 F2FS/SELinux/Gunyah 的内核 `Image`、模块树与 SDK |

@@ -24,7 +24,7 @@
 | 引导稳定性 | ✅ | `qbootctl.service` 上报 `Successful: 1`，避免 ABL 计数归零掉进 Fastboot |
 | 相机 | ✅ | `piano-camerad` 前后摄直出 NV12 成像正常；开流首帧黑帧与 AE 收敛问题见[已知问题](docs/known-issues.md#触屏网络音频与相机) |
 | 音频 | ⚠️ | 拓扑按原厂矩阵把立体声铺到四扬声器 DAP（功放上限 235）；播放录音连续无 xrun，四扬声器分频与 DAP 效果待实机验收 |
-| 性能调度 | ✅ | `uperf-linux` 触控提频，并通过 `tuned-ppd` 桥接三档电源模式 |
+| 性能调度 | ✅ | TuneD 三档电源模式定 CPU 与 GPU 的频率上限，桌面经 `tuned-ppd` 切换；性能档满载发热见[已知问题](docs/known-issues.md#电源模式与发热) |
 | 无线 | ✅ | Wi-Fi 6E/7、蓝牙 |
 | 传感器 | ✅ | SSC 后端（`libssc` + `iio-sensor-proxy-ssc`）提供加速度计、光感与接近数据，支持自动旋转 |
 | 虚拟化 | ✅ | `/dev/gunyah`、`librevm`、virtio-blk/net 与单 vCPU 客体启动通过；SMP 与图形客体未验 |

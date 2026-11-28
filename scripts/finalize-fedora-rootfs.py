@@ -463,7 +463,7 @@ def verify_runtime_extras(root, runtime_meta):
 def verify_device_integration(root, runtime_meta):
     """固定来源、适配代码和实际安装载荷必须一致。
 
-    piano-camerad、uperf 与 VA-API 驱动都由 RPM 矩阵构建，这里只核对仍然
+    piano-camerad 与 VA-API 驱动都由 RPM 矩阵构建，这里只核对仍然
     由运行时产出的触控载荷。手指电极为矩阵载荷，运行时复算工厂 INI 后把
     它的摘要写进 proof，所以仍按安装后的文件逐字节核对。
     """
@@ -668,7 +668,7 @@ def main():
                 "piano-camera.service",
                 "piano-camerad.service", "adsprpcd-sensorspd.service",
                 "piano-fake-tablet-mode.service", "xiaomi-charger-mode.service",
-                "librevm-daemon.service", "uperf-linux.service",
+                "librevm-daemon.service", "tuned-ppd.service",
                 "piano-clock-restore.service", "piano-clock-save.service",
                 "piano-clock-save.timer", "piano-selinux-policy.service",
                 "piano-wait-display.service",

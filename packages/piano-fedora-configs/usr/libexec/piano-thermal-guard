@@ -1,0 +1,37 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# Keep TuneD from raising the CPU and GPU ceilings on a device tree that cannot
+# cool the SoC.
+#
+# The piano TuneD profiles only set frequency ceilings. Throttling under heat is
+# the kernel's job, and the kernel throttles only where the device tree binds a
+# cooling device to a thermal zone. Board DTBs composed before kernel-piano
+# 7.3.3-12 have no such binding. A system keeps running on one of them after the
+# upgrade until it reboots, when the ESP update did not go through, and when it
+# is started from the previous boot entry.
+#
+# On such a boot this writes the ceilings of the power-saver profile and exits
+# non-zero. It is the ExecStartPre of tuned.service, so TuneD stays down and
+# nothing raises the ceilings again. It does nothing on a piano whose device
+# tree has cooling maps, and nothing on any other machine.
+set -u
+
+root=${PIANO_GUARD_ROOT:-}
+tree=$root/sys/firmware/devicetree/base
+profile=$root/usr/lib/tuned/profiles/piano-power-saver/tuned.conf
+
+[ -r "$tree/compatible" ] || exit 0
+tr '\0' '\n' < "$tree/compatible" | grep -qx 'xiaomi,piano' || exit 0
+for maps in "$tree"/thermal-zones/*/cooling-maps; do
+    [ -d "$maps" ] && exit 0
+done
+
+sed -n 's|^\(/sys/[^=]*\)=\(.*\)$|\1 \2|p' "$profile" |
+while read -r path value; do
+    [ -e "$root$path" ] && echo "$value" > "$root$path"
+done
+echo "piano-thermal-guard: the running device tree binds no cooling device to a" \
+     "thermal zone; holding the power-saver ceilings and keeping TuneD down until" \
+     "the system boots one that does" >&2
+exit 1

@@ -27,7 +27,7 @@ PACKAGES = ("piano-fedora-configs", "alsa-xiaomi-piano", "xiaomi-piano-firmware"
             "piano-camera", "piano-fingerprint", "piano-libfprint",
             "piano-libwacom", "piano-bluez",
             "piano-pipewire-gstreamer", "xiaomi-piano-thp", "sm8750-video-accel",
-            "uperf-linux", "libssc", "iio-sensor-proxy-ssc", "kernel-piano")
+            "libssc", "iio-sensor-proxy-ssc", "kernel-piano")
 RUNTIME = ("piano-runtime", "piano-crosvm", "librevm")
 KERNEL_RELEASE = "7.3.0-piano-gnome-g8c0e589d8829"
 
@@ -101,11 +101,11 @@ def test_tampered_rpm(module, tmp):
 
 
 def test_missing_rpm(module, tmp):
-    directory = make_matrix(tmp / "missing", drop_rpm="uperf-linux")
+    directory = make_matrix(tmp / "missing", drop_rpm="sm8750-video-accel")
     manifest = module.load_manifest(directory)
     # The manifest still lists it, so the missing file is caught by name before
     # the package-set check reports it.
-    expect_error(module, lambda: module.verify_artifacts(directory, manifest, {"id": 1}), "uperf-linux")
+    expect_error(module, lambda: module.verify_artifacts(directory, manifest, {"id": 1}), "sm8750-video-accel")
 
 
 def test_missing_srpm(module, tmp):

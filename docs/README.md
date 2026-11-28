@@ -7,7 +7,7 @@
 - [安装与分区](installation.md)：首次分区的两种方式、手动与一键刷写、SSH 公钥注入与常见故障排查
 - [升级与回滚](upgrade.md)：`dnf upgrade` 升级内核与 COPR 包、`update-f2fs.py` 覆盖升级、UEFI 模块更新与双系统往返
 - [桌面档位](desktops.md)：GNOME、KDE、niri、Hyprland、Denial 的会话登录、电源策略、自动旋转与 `extras` 说明
-- [COPR 软件源](copr-repository.md)：20 个维护包与 `extras` 源的启用、降级回滚及内核 `%posttrans` 说明
+- [COPR 软件源](copr-repository.md)：19 个维护包与 `extras` 源的启用、降级回滚及内核 `%posttrans` 说明
 - [已知问题](known-issues.md)：未解决限制、硬件工作边界与可忽略的开机错误日志
 
 ## 构建与系统参考

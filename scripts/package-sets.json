@@ -15,7 +15,6 @@
     {"name": "piano-pipewire-gstreamer", "arches": ["aarch64"]},
     {"name": "xiaomi-piano-thp", "arches": ["aarch64"]},
     {"name": "sm8750-video-accel", "arches": ["aarch64"]},
-    {"name": "uperf-linux", "arches": ["aarch64"]},
     {"name": "kernel-piano", "arches": ["aarch64"], "kernel": true}
   ],
   "runtime": ["piano-crosvm", "librevm", "piano-runtime"],

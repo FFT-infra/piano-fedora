@@ -336,9 +336,9 @@
       "repo": "code002-2/uperf-linux",
       "ref": "main",
       "category": "runtime",
-      "role": "原生 ARM64 性能守护进程、CLI 和 GTK GUI；使用内核限制与显式触控坐标单位",
+      "role": "性能守护进程，已不再打包",
       "decision": "consume",
-      "reason": "正式 Fedora 运行时按固定源码构建并核验安装字节",
+      "reason": "锁条目还在，原因与移除条件写在 sources.lock.json 的 role 里",
       "reference_commit": "edfb14a235c3708b4e9627c819dc28c68596d0f1",
       "reference_date": "2026-10-15",
       "lock_key": "uperf"

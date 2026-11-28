@@ -4,7 +4,7 @@
 契约说明：
 1. 彻底淘汰旧版的混杂 finalize 注入逻辑；
 2. 系统内所有驱动、配置与服务均由标准 RPM (piano-fedora-configs, alsa-xiaomi-piano,
-   xiaomi-piano-thp, piano-camera, sm8750-video-accel, uperf-linux, libssc,
+   xiaomi-piano-thp, piano-camera, sm8750-video-accel, libssc,
    iio-sensor-proxy-ssc, xiaomi-piano-firmware) 规范化装配；
 3. 具备完整的构建计划 (plan)、构建执行 (execute) 与 100% RPM 文件归属审计 (audit)。
 
@@ -260,7 +260,7 @@ def audit_rootfs(rootfs_dir):
         "usr/bin/piano-next-boot",
         "usr/bin/piano-thp-live",
         "usr/lib/piano/piano-camerad",
-        "usr/bin/uperf-linux",
+        "usr/lib/systemd/system/tuned-ppd.service",
         "usr/lib64/libssc.so",
         "usr/lib64/dri/qcom_drv_video.so",
         "etc/systemd/system/qbootctl.service.d/piano.conf",
@@ -310,7 +310,6 @@ def audit_rootfs(rootfs_dir):
         root / "usr/lib/piano/camera-start",
         root / "usr/lib/piano/pen-control.py",
         root / "usr/lib/piano/power-button",
-        root / "usr/bin/uperf-linux",
         root / "usr/libexec/xiaomi-charger-mode",
     ]
     for target in audit_targets:
@@ -665,7 +664,7 @@ def execute(plan_data):
     services_to_enable = [
         "NetworkManager.service", "sshd.service", "bluetooth.service",
         *piano_desktop.enable_units(context),
-        "piano-touch.service", "piano-camerad.service", "uperf-linux.service",
+        "piano-touch.service", "piano-camerad.service", "tuned-ppd.service",
         "piano-clock-restore.service", "piano-clock-save.timer",
         "piano-physical-platform.service",
         "qbootctl.service",

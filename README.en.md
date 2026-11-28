@@ -24,7 +24,7 @@ Legend: ✅ Verified on device | ⚠️ Partially working (see notes) | ❌ Not 
 | Boot stability | ✅ | `qbootctl.service` marks `Successful: 1` so ABL will not drop to Fastboot |
 | Camera | ✅ | `piano-camerad` streams NV12 from front and rear ISPs; first-frame black drop and AE convergence notes in [known issues](docs/known-issues.md#触屏网络音频与相机) |
 | Audio | ⚠️ | Four-speaker DAP matrix topology (amp cap 235) and glitch-free playback/capture; DAP loading and crossover await full device sign-off |
-| Scheduling | ✅ | `uperf-linux` touch boost, bridged to `tuned-ppd` profiles |
+| Scheduling | ✅ | Three TuneD power profiles set the CPU and GPU frequency ceilings and desktops switch them through `tuned-ppd`; heat under full load in the performance profile is in [known issues](docs/known-issues.md#电源模式与发热) |
 | Wireless | ✅ | Wi-Fi 6E/7, Bluetooth |
 | Sensors | ✅ | SSC backend (`libssc` + `iio-sensor-proxy-ssc`) exposing accelerometer, ambient light, proximity, and auto-rotate |
 | Virtualization | ✅ | `/dev/gunyah`, `librevm`, virtio-blk/net, single-vCPU guest boot verified; SMP and GUI guests unverified |

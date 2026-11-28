@@ -623,7 +623,7 @@ Windows 脚本不自动注入。需要时按 `flash-linux.bat` 的提示手工�
 | root 账户 | 密码默认锁定 |
 | SSH 公钥 | 镜像内不含 `authorized_keys`，需在刷写时通过 `--ssh-key` 注入 |
 
-默认系统行为：内核直接负责手指矩阵与笔解码（`piano-touch-view` 自动让路，`piano-touch.service` 仅留作笔蓝牙初始化）；四扬声器走原厂 DAP 矩阵拓扑（功放上限 235）；双电芯电量与深度挂起正常（默认关闭自动休眠与空闲挂起）；`uperf-linux` 负责触控 1 ms 提频；串口登录通过 `serial-getty@ttyGS0.service` 提供。
+默认系统行为：内核直接负责手指矩阵与笔解码（`piano-touch-view` 自动让路，`piano-touch.service` 仅留作笔蓝牙初始化）；四扬声器走原厂 DAP 矩阵拓扑（功放上限 235）；双电芯电量与深度挂起正常（默认关闭自动休眠与空闲挂起）；电源模式默认平衡档；串口登录通过 `serial-getty@ttyGS0.service` 提供。
 
 维护者专用的增量 SELinux 重标记、ABL 诊断包与取证脚本说明已集中到[维护与验收](internals.md)。
 
