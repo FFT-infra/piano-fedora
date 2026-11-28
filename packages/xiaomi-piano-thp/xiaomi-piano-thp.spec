@@ -1,19 +1,15 @@
-%global _annotated_build 0
 %global debug_package %{nil}
 
 Name:           xiaomi-piano-thp
 Version:        0.2.0
-Release:        7%{?dist}
-Summary:        Touch Host Processor (THP) and Xiaomi Focus Pen driver for Xiaomi Pad 8 Pro (piano)
-License:        Apache-2.0 AND MIT
+Release:        8%{?dist}
+Summary:        Pen initializer unit and touch and pen calibration data for Xiaomi Pad 8 Pro (piano)
+License:        MIT
 URL:            https://github.com/FFT-infra/piano-fedora
 Source0:        %{name}-%{version}.tar.gz
 
 ExclusiveArch:  aarch64
 
-BuildRequires:  gcc-c++
-BuildRequires:  json-devel
-BuildRequires:  make
 BuildRequires:  systemd-rpm-macros
 Requires:       systemd
 Requires:       python3
@@ -25,29 +21,26 @@ Requires:       bluez
 Provides:       piano-touch = %{version}-%{release}
 
 %description
-Touch Host Processor (THP) multitouch input daemon, 5-stage Kalman temporal
-filtering, jitter lock (24px deadband), axis lock, non-linear physical grid
-calibration (32000x21360 at 134x131 units/mm), and Xiaomi Focus Pen (P81C)
-pressure/tilt input pipeline for Xiaomi Pad 8 Pro (SM8750 piano).
+Runtime data for the touchscreen and the Xiaomi Focus Pen (P81C) on Xiaomi Pad 8
+Pro (SM8750 piano). The kernel decodes fingers and the pen; this package ships:
+- piano-touch.service, which runs the BlueZ pen initializer from piano-runtime
+- Pen calibration for the CSOT and BOE panels and the P81C radio parameters
+- Per-panel finger electrode calibration for piano-touch-view
 
 %prep
 %autosetup
 
 %build
-make -C src all CXXFLAGS="%{optflags} -std=c++20"
+# Nothing to compile: the package carries a unit, its drop-in and data files.
 
 %install
-mkdir -p %{buildroot}%{_bindir}
+mkdir -p %{buildroot}
 cp -a usr etc %{buildroot}/
-if [ -f src/build/piano-thp-live ]; then
-    install -m 0755 src/build/piano-thp-live %{buildroot}%{_bindir}/piano-thp-live
-fi
 
 %files
 # piano-touch-view, pen-control.py 与 piano-pen-offline 归 piano-runtime：
 # SunUEFI 从 pin 的 debian-piano overlay 与 linux/userspace/pen 生成它们。
 # 在这里再放一份同名文件就有两个所有者，内容一旦分叉 rpm 会整单回滚。
-%{_bindir}/piano-thp-live
 %{_unitdir}/piano-touch.service
 %config(noreplace) %{_sysconfdir}/systemd/system/piano-touch.service.d/20-fast-restart.conf
 %dir %{_datadir}/piano/touch
@@ -71,6 +64,11 @@ fi
 %systemd_postun_with_restart piano-touch.service
 
 %changelog
+* Sat Nov 28 2026 FFT-infra <dev@piano.invalid> - 0.2.0-8
+- 删掉 piano-thp-live 与仓库里编它的那份源码：手指与笔由内核解码，没有 unit 启动它，
+  用户态的兜底是 piano-runtime 的 piano-touch-view。本包不再编译任何东西
+- License 去掉 Apache-2.0：改编自 xiaomi-sheng-thp 的源码已不在包里
+
 * Sun Nov 22 2026 FFT-infra <dev@piano.invalid> - 0.2.0-7
 - piano-touch.service 跟到 SunUEFI edcf272：手指与笔改由内核解码，
   unit 只剩 BlueZ 笔初始化，启动 /usr/lib/piano/pen-control.py。
