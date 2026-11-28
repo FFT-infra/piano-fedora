@@ -258,7 +258,7 @@ def audit_rootfs(rootfs_dir):
         "usr/lib/piano/piano-ram-hardware-prepare",
         "usr/lib/piano/piano-disk-hardware-prepare",
         "usr/bin/piano-next-boot",
-        "usr/bin/piano-thp-live",
+        "usr/lib/systemd/system/piano-touch.service",
         "usr/lib/piano/piano-camerad",
         "usr/lib/systemd/system/tuned-ppd.service",
         "usr/lib64/libssc.so",
@@ -304,7 +304,6 @@ def audit_rootfs(rootfs_dir):
     unowned_binaries = []
     audit_targets = [
         root / "usr/bin/piano-next-boot",
-        root / "usr/bin/piano-thp-live",
         root / "usr/bin/piano-touch-view",
         root / "usr/lib/piano/piano-camerad",
         root / "usr/lib/piano/camera-start",
